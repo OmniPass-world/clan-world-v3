@@ -1,0 +1,29 @@
+I’ll write the contract additions doc first, then talk vision and tonight’s plan.​​​​​​​​​​​​​​​​
+
+Doc’s there, ready to forward. The price-tracking idea is folded into getMarketState() — spot price computed onchain in 18-decimal fixed point, indexer stores one price row per resource per tick, UI gets free sparklines. No separate getter needed.
+Tick cadence — agree with your read
+15–20s per tick is the right floor. Below that and you’re racing the LLM’s first token, not its decision. A safe cadence model:
+	•	Demo cadence: 20s/tick. Six-minute season at 18 ticks gets you through 1–2 winters’ worth of drama without burning judges’ attention.
+	•	Agent budget: ~10–12s thinking window per tick, ~3s for tx confirmation, ~5s buffer. Tunable via system prompt brevity and max_tokens.
+	•	Speed up boring stretches in post. A 3-min cut from a 6-min recording is the right ratio for hackathon judging videos anyway.
+The Makefile + single-mnemonic-derived wallets is exactly right for hackathon ops. Add a make seed-pools, make spawn-clans, make fund-agents, make start-agents, make tail-logs, make demo-reset and you’ll be glad on the morning of submission.
+Visual vision — my pitch
+Picture Final Fantasy 6 / Chrono Trigger overworld as the foundation, but reframed as an illuminated chessboard. The world isn’t a battlefield, it’s a table — agents are the players, clansmen are pieces, and the world is a beautifully-rendered miniature you’re watching from above.
+Concrete palette and feel:
+	•	World view — warm parchment background, hand-drawn-feeling regions in earth tones. Forest in mossy greens, Mountains in slate-and-snow, Farms in golden wheat-yellow, Docks in faded teal, Deep Sea in moody twilight blue, Unicorn Town as a single bright spot of pastel magic at the center. The unicorn town being whimsical is a feature — it makes the rest of the world feel grounded by contrast. Each clan’s homebase sprite uses heraldic colors — clan 1 crimson, clan 2 cobalt, clan 3 gold, clan 4 forest green — so identity reads at a glance even at the strategic zoom.
+	•	Detail view — chibi-style 24×24 clansman sprites with clan-color caps and tiny tools (axe, pickaxe, fishing rod, shield). Subtle environmental motion: smoke from chimneys, wheat swaying, waves at the shoreline, a windmill turning. Trees that visibly shake when chopped. Wheat plots that visibly empty as harvested. A bandit camp with a flickering campfire and an ominous flag.
+	•	HUD chrome — illuminated-manuscript / Civ-2 / HoMM-3 inspired. Ornate pixel-art borders, parchment-and-ink colored panels, clan banners as nameplates. Tick clock as an actual sundial or hourglass. Speech bubbles in classic JRPG style with a tiny LLM-reasoning excerpt — the magic moment.
+	•	Bandit drama — when bandits are projected to attack a base, that base pulses red, the bandit sprite gains a war-banner, and a small skull icon appears over the projected target. Failed defense = brief screen-shake + flash. Successful defense = bandit sprite explodes into a cloud of pixel-coins.
+The reason this beats a “modern flat blockchain game” aesthetic: judges have seen a hundred neon-cyber-grid demos this year. They have not seen a blockchain game that feels like they want to play it. Make ClanWorld look like a SNES game judges loved as kids, with thought-bubbles surfacing the LLM cognition, and the demo writes itself.
+Tonight: the visual vertical slice
+Don’t touch Convex, contracts, agents, or RPCs tonight. Build the visual loop on hard-coded data. The ordering matters because every other layer downstream of this depends on the shape of the snapshot, and shipping a working render proves the shape.
+Tonight’s checklist (roughly 4–6 focused hours):
+	1.	Scaffold Vite + React 19 + TS + Tailwind + PixiJS v8 + Zustand + @use-gesture/react. ~30 min.
+	2.	Define the WorldSnapshot TypeScript type matching the contract additions doc. This is your client/server contract. ~30 min.
+	3.	Hard-code one WorldSnapshot with 4 clans, 12 clansmen, 3 missions in flight (one traveling, one gathering, one waiting), plus a camped bandit. ~30 min.
+	4.	Lay out the 8 region polygons on a portrait canvas in PixiJS. Earth-tone fills, no detail yet. Just shapes that read as a world. ~1 hr.
+	5.	Drop one tiny sprite per clansman in the right region. Use placeholder colored circles with clan-color caps if you don’t have art yet. ~30 min.
+	6.	Implement the state-derivation function — pure, no React, no Pixi. Input: snapshot + now. Output: per-clansman screen position, status, animation key. Test it standalone. This is the hardest correctness work of the entire project. Do it tonight while you’re fresh. ~1.5 hr.
+	7.	Wire the derivation function into the Pixi render loop. Tick a fake clock at 1Hz; watch sprites lerp between regions. ~1 hr.
+Definition of done for tonight: you can refresh the page and see four clans of placeholder dots wandering between regions in real time, with one of them visibly traveling between two regions over ~15 seconds. If that’s working, the rest of the build is plumbing — risky, but plumbing.
+If you want, I can sketch the WorldSnapshot TypeScript type and the state-derivation function signature in the next message so you have a head start.​​​​​​​​​​​​​​​​
