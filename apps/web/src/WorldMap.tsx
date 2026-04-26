@@ -1254,20 +1254,51 @@ function makeBubble(message: string, clanId: string, clanColor: number): BubbleH
   const container = new Container();
   container.alpha = 0;
 
-  const text = new Text({
-    text: message,
+  // Split on first ": " — header (e.g. "Iron Guard Elder") gets distinct styling
+  // (bold, clan-colored, Cinzel) above the orders body. Fall back to single-line
+  // rendering if the message has no header separator.
+  const splitIdx = message.indexOf(': ');
+  const hasHeader = splitIdx > 0;
+  const header = hasHeader ? message.slice(0, splitIdx) : '';
+  const body = hasHeader ? message.slice(splitIdx + 2) : message;
+
+  const wrapWidth = BUBBLE_MAX_WIDTH - BUBBLE_PAD_X * 2;
+  const HEADER_BODY_GAP = 2;
+
+  const headerText = hasHeader
+    ? new Text({
+        text: header,
+        style: {
+          fill: clanColor,
+          fontSize: 13,
+          fontFamily: '"Cinzel", "Times New Roman", serif',
+          fontWeight: 'bold',
+          wordWrap: true,
+          wordWrapWidth: wrapWidth,
+          lineHeight: 16,
+        },
+      })
+    : null;
+
+  const bodyText = new Text({
+    text: body,
     style: {
-      fill: 0xffffff,
+      fill: 0xfff5e0,
       fontSize: 12,
       fontFamily: 'monospace',
       wordWrap: true,
-      wordWrapWidth: BUBBLE_MAX_WIDTH - BUBBLE_PAD_X * 2,
+      wordWrapWidth: wrapWidth,
       lineHeight: 15,
     },
   });
 
-  const textW = Math.min(text.width, BUBBLE_MAX_WIDTH - BUBBLE_PAD_X * 2);
-  const textH = text.height;
+  const headerW = headerText ? Math.min(headerText.width, wrapWidth) : 0;
+  const headerH = headerText ? headerText.height : 0;
+  const bodyW = Math.min(bodyText.width, wrapWidth);
+  const bodyH = bodyText.height;
+
+  const textW = Math.max(headerW, bodyW);
+  const textH = headerText ? headerH + HEADER_BODY_GAP + bodyH : bodyH;
   const w = textW + BUBBLE_PAD_X * 2;
   const h = textH + BUBBLE_PAD_Y * 2;
 
@@ -1295,9 +1326,17 @@ function makeBubble(message: string, clanId: string, clanColor: number): BubbleH
   tail.stroke({ color: BUBBLE_TAIL_OUTLINE, width: BUBBLE_TAIL_OUTLINE_WIDTH, alpha: 1 });
   container.addChild(tail);
 
-  text.x = bx + BUBBLE_PAD_X;
-  text.y = by + BUBBLE_PAD_Y;
-  container.addChild(text);
+  if (headerText) {
+    headerText.x = bx + BUBBLE_PAD_X;
+    headerText.y = by + BUBBLE_PAD_Y;
+    container.addChild(headerText);
+    bodyText.x = bx + BUBBLE_PAD_X;
+    bodyText.y = by + BUBBLE_PAD_Y + headerH + HEADER_BODY_GAP;
+  } else {
+    bodyText.x = bx + BUBBLE_PAD_X;
+    bodyText.y = by + BUBBLE_PAD_Y;
+  }
+  container.addChild(bodyText);
 
   return {
     container,
