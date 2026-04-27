@@ -40,7 +40,9 @@ v4.3 is a purely additive patch to v4.2 — it adds new rules (same-region NOOP 
 
 ### v4.5 alignment addendum: scope and supersession
 
-`clanworld_v4_5_alignment_addendum.md` self-declares as superseding conflicting language in the prior 7 spec docs. It remains authoritative for: tick cadence per-submission (§2), agent vocabulary (Elder / orchestrator / toolbelt / situation block — §11.2), and §11.3 sections of `clanworld_agent_runner_spec.md` that remain valid.
+`clanworld_v4_5_alignment_addendum.md` self-declares as superseding conflicting language in the prior 7 spec docs (its own reading order includes IClanWorld.sol at position 6). Despite this claim, `IClanWorld.sol` retains rank 1 here because it is contract interface *code* — the deployed ABI is ground truth, not a document that a later doc can override. v4.5 is authoritative for architectural and coordination decisions that exist only in docs, not for on-chain interface semantics.
+
+v4.5 remains authoritative for: tick cadence per-submission (§2), agent vocabulary (Elder / orchestrator / toolbelt / situation block — §11.2), and §11.3 sections of `clanworld_agent_runner_spec.md` that remain valid.
 
 The following sections of v4.5 are **superseded by the back-on-plan doc** (`~/claudes-world/plans/inprogress/20260426-clanworld-back-on-plan-v1.md` §1A):
 - §3 (heartbeat caller model) — superseded by back-on-plan §1A runner architecture
