@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -41,9 +41,17 @@ function makeChain(overrides: Partial<IChainClient> = {}): IChainClient {
   };
 }
 
+const TMP_DIRS: string[] = [];
 function tmpHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'elder-test-'));
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'elder-test-'));
+  TMP_DIRS.push(d);
+  return d;
 }
+afterEach(() => {
+  for (const d of TMP_DIRS.splice(0)) {
+    fs.rmSync(d, { recursive: true, force: true });
+  }
+});
 
 describe('world snapshot', () => {
   it('returns data from mocked convex client', async () => {
@@ -91,6 +99,13 @@ describe('clan submit-orders', () => {
     expect(result.txHash).toBe('0xdeadbeef');
     expect(chain.submitOrders).toHaveBeenCalledWith('1', expect.arrayContaining([expect.objectContaining({ kind: 'mission' })]));
   });
+
+  it('throws UsageError on malformed orders JSON', async () => {
+    const home = tmpHome();
+    const file = path.join(home, 'bad.json');
+    fs.writeFileSync(file, 'not json');
+    await expect(runCommand('clan', 'submit-orders', [file], { convex: makeConvex(), chain: makeChain() })).rejects.toThrow(UsageError);
+  });
 });
 
 describe('memory save/recall', () => {
@@ -131,15 +146,17 @@ describe('peer whisper/inbox', () => {
     home = tmpHome();
   });
 
-  it('appends whisper and reads it from inbox', async () => {
+  it('sends whisper to recipient inbox file', async () => {
     const deps = { convex: makeConvex(), chain: makeChain() };
     const whisperOut = await runCommand('peer', 'whisper', ['clan-7', 'hello there'], deps, env, home);
     expect(whisperOut.trim()).toBe('whisper sent');
 
-    const inboxOut = await runCommand('peer', 'inbox', [], deps, env, home);
-    expect(inboxOut).toContain('from=3');
-    expect(inboxOut).toContain('to=clan-7');
-    expect(inboxOut).toContain('hello there');
+    // Recipient reads their own inbox (elder-clan-7.jsonl)
+    const recipientInbox = path.join(home, '.world', 'clanworld-runner', 'state', 'peer-inbox', 'elder-clan-7.jsonl');
+    expect(fs.existsSync(recipientInbox)).toBe(true);
+    const content = fs.readFileSync(recipientInbox, 'utf8');
+    expect(content).toContain('from":3');
+    expect(content).toContain('hello there');
   });
 
   it('prints inbox empty when no messages', async () => {
@@ -147,13 +164,27 @@ describe('peer whisper/inbox', () => {
     expect(out.trim()).toBe('inbox empty');
   });
 
-  it('appends multiple whispers', async () => {
+  it('each recipient gets their own inbox file', async () => {
     const deps = { convex: makeConvex(), chain: makeChain() };
-    await runCommand('peer', 'whisper', ['clan-1', 'msg one'], deps, env, home);
-    await runCommand('peer', 'whisper', ['clan-2', 'msg two'], deps, env, home);
-    const out = await runCommand('peer', 'inbox', [], deps, env, home);
-    expect(out).toContain('msg one');
-    expect(out).toContain('msg two');
+    await runCommand('peer', 'whisper', ['1', 'msg one'], deps, env, home);
+    await runCommand('peer', 'whisper', ['2', 'msg two'], deps, env, home);
+    const inbox1 = path.join(home, '.world', 'clanworld-runner', 'state', 'peer-inbox', 'elder-1.jsonl');
+    const inbox2 = path.join(home, '.world', 'clanworld-runner', 'state', 'peer-inbox', 'elder-2.jsonl');
+    expect(fs.existsSync(inbox1)).toBe(true);
+    expect(fs.existsSync(inbox2)).toBe(true);
+    expect(fs.readFileSync(inbox1, 'utf8')).toContain('msg one');
+    expect(fs.readFileSync(inbox2, 'utf8')).toContain('msg two');
+  });
+
+  it('peer whisper writes to recipient inbox, not sender inbox', async () => {
+    const env1 = { ELDER_N: '1' };
+    const deps = { convex: makeConvex(), chain: makeChain() };
+    await runCommand('peer', 'whisper', ['2', 'hello'], deps, env1, home);
+    // should write to elder-2.jsonl, NOT elder-1.jsonl
+    const recipientFile = path.join(home, '.world', 'clanworld-runner', 'state', 'peer-inbox', 'elder-2.jsonl');
+    const senderFile = path.join(home, '.world', 'clanworld-runner', 'state', 'peer-inbox', 'elder-1.jsonl');
+    expect(fs.existsSync(recipientFile)).toBe(true);
+    expect(fs.existsSync(senderFile)).toBe(false);
   });
 });
 
@@ -174,6 +205,18 @@ describe('ack-clear', () => {
     expect(fs.existsSync(flagPath)).toBe(true);
     const content = fs.readFileSync(flagPath, 'utf8').trim();
     expect(new Date(content).getTime()).toBeGreaterThan(0);
+  });
+});
+
+describe('ELDER_N validation', () => {
+  const deps = { convex: makeConvex(), chain: makeChain() };
+
+  it('throws UsageError when ELDER_N is missing for memory recall', async () => {
+    await expect(runCommand('memory', 'recall', ['topic'], deps, {})).rejects.toThrow(UsageError);
+  });
+
+  it('throws UsageError when ELDER_N is out of range', async () => {
+    await expect(runCommand('memory', 'recall', ['topic'], deps, { ELDER_N: '5' })).rejects.toThrow(UsageError);
   });
 });
 

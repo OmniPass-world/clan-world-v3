@@ -96,6 +96,7 @@ export function createConvexClient(): IConvexClient {
   }
   const url = readEnv('CONVEX_URL');
   if (!url) {
+    console.warn('[ConvexClient] CONVEX_URL not set — using stub data. Set CLAN_WORLD_USE_STUB_CONVEX=true to silence.');
     return new StubConvexClient();
   }
   return new RealConvexClient(url);

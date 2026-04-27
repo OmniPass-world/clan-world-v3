@@ -6,17 +6,13 @@ import type { ClanOrder } from '@clan-world/shared';
 import type { IConvexClient, IChainClient } from '@clan-world/shared/adapters';
 import { createConvexClient, createChainClient } from '@clan-world/shared/adapters';
 
+export class UsageError extends Error {}
+
 export function getElderN(env: Record<string, string | undefined> = process.env): number {
   const val = env['ELDER_N'];
-  if (!val) {
-    process.stderr.write('elder: ELDER_N env var is not set\n');
-    process.exit(1);
-  }
+  if (!val) throw new UsageError('elder: ELDER_N env var is not set');
   const n = parseInt(val, 10);
-  if (isNaN(n) || n < 1 || n > 4) {
-    process.stderr.write(`elder: ELDER_N must be an integer 1–4, got '${val}'\n`);
-    process.exit(1);
-  }
+  if (isNaN(n) || n < 1 || n > 4) throw new UsageError(`elder: ELDER_N must be an integer 1–4, got '${val}'`);
   return n;
 }
 
@@ -30,6 +26,10 @@ export function memoryFile(n: number, base?: string): string {
 
 export function inboxFile(n: number, base?: string): string {
   return path.join(stateDir(base), 'peer-inbox', `elder-${n}.jsonl`);
+}
+
+export function recipientInboxFile(clanId: string, base?: string): string {
+  return path.join(stateDir(base), 'peer-inbox', `elder-${clanId}.jsonl`);
 }
 
 export function ackFile(n: number, base?: string): string {
@@ -80,8 +80,16 @@ export async function runCommand(
   if (ns === 'clan' && cmd === 'submit-orders') {
     const [ordersFile] = rest;
     if (!ordersFile) throw new UsageError('usage: elder clan submit-orders <ordersJsonFile>');
-    const raw = fs.readFileSync(ordersFile, 'utf8');
-    const parsed = JSON.parse(raw) as { clanId: string; orders: ClanOrder[] };
+    let parsed: { clanId: string; orders: ClanOrder[] };
+    try {
+      const raw = fs.readFileSync(ordersFile, 'utf8');
+      parsed = JSON.parse(raw) as { clanId: string; orders: ClanOrder[] };
+    } catch (err) {
+      throw new UsageError(`elder: failed to read orders file '${ordersFile}': ${String(err)}`);
+    }
+    if (!parsed.clanId || !Array.isArray(parsed.orders)) {
+      throw new UsageError(`elder: orders file must contain { clanId: string, orders: [...] }`);
+    }
     const result = await deps.chain.submitOrders(parsed.clanId, parsed.orders);
     return JSON.stringify(result, null, 2) + '\n';
   }
@@ -96,8 +104,9 @@ export async function runCommand(
   }
 
   if (ns === 'memory' && cmd === 'save') {
-    const [key, value] = rest;
-    if (!key || value === undefined) throw new UsageError('usage: elder memory save <key> <value>');
+    const [key, ...valueParts] = rest;
+    if (!key || valueParts.length === 0) throw new UsageError('usage: elder memory save <key> <value>');
+    const value = valueParts.join(' ');
     const n = getElderN(env);
     const mem = readMemory(n, homeBase);
     mem[key] = value;
@@ -111,7 +120,7 @@ export async function runCommand(
     const n = getElderN(env);
     const msg = msgParts.join(' ');
     const entry = JSON.stringify({ from: n, to: clanId, msg, ts: new Date().toISOString() });
-    const file = inboxFile(n, homeBase);
+    const file = recipientInboxFile(clanId, homeBase);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.appendFileSync(file, entry + '\n', 'utf8');
     return 'whisper sent\n';
@@ -155,8 +164,6 @@ export async function runCommand(
       '  elder ack-clear\n',
   );
 }
-
-export class UsageError extends Error {}
 
 async function main(argv: string[]): Promise<void> {
   const [, , ns, cmd, ...rest] = argv;

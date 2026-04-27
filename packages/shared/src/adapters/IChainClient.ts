@@ -336,6 +336,12 @@ class RealChainClient implements IChainClient {
     }
     if (!pk) throw new Error('Neither ELDER_WALLET_KEY_PATH nor DEPLOYER_PRIVATE_KEY is set');
 
+    // Normalize: add 0x prefix if missing
+    if (!pk.startsWith('0x')) pk = '0x' + pk;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
+      throw new Error(`ELDER_WALLET_KEY_PATH: file does not contain a valid 64-hex-char private key`);
+    }
+
     const account = privateKeyToAccount(pk as `0x${string}`);
     const walletClient = createWalletClient({
       account,
