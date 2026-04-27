@@ -304,4 +304,14 @@ contract ClanWorldTest is Test {
         // cs1 unused — suppress warning
         cs1;
     }
+
+    function test_quoteTravel_outOfBounds_returnsZero() public {
+        (uint8 ticks, bytes8 path) = world.quoteTravel(9, 1);
+        assertEq(ticks, 0, "out-of-range src should return 0 ticks");
+        assertEq(path, bytes8(0), "out-of-range src should return empty path");
+
+        (ticks, path) = world.quoteTravel(1, 9);
+        assertEq(ticks, 0, "out-of-range dst should return 0 ticks");
+        assertEq(path, bytes8(0), "out-of-range dst should return empty path");
+    }
 }

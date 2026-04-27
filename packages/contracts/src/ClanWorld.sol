@@ -1152,6 +1152,8 @@ contract ClanWorld is IClanWorld {
     // DERIVED READ GETTERS (read-only, no storage mutation)
     // =========================================================================
 
+    /// @dev Returns last-settled state; starvation check uses currentTick (live).
+    ///      Carry amounts lag until next settleClan().
     function getDerivedClanState(uint32 clanId)
         external
         view
@@ -1209,6 +1211,9 @@ contract ClanWorld is IClanWorld {
             path = bytes8(uint64(srcRegion) << 56);
             return (travelTicks, path);
         }
+        if (srcRegion > 8 || dstRegion > 8) {
+            return (0, bytes8(0));
+        }
         travelTicks = _travelTicks(srcRegion, dstRegion);
         path = _buildPath(srcRegion, dstRegion);
     }
@@ -1231,6 +1236,8 @@ contract ClanWorld is IClanWorld {
     // UI INDEXER AGGREGATOR GETTERS
     // =========================================================================
 
+    /// @dev Leaderboard loot values reflect vault contents only (last-settled state).
+    ///      Carry amounts not included. Full view-only settlement deferred.
     function getWorldSnapshot() external view override returns (WorldSnapshot memory) {
         LeaderboardEntry[] memory lb = new LeaderboardEntry[](_allClanIds.length);
         for (uint256 i = 0; i < _allClanIds.length; i++) {
@@ -1262,6 +1269,9 @@ contract ClanWorld is IClanWorld {
         });
     }
 
+    /// @dev Returns last-settled storage state. Vault contents and starvation flag are
+    ///      current; carry amounts and wheat progress lag until next settleClan() call.
+    ///      Full view-only settlement simulation is deferred (tracked issue).
     function getClanFullView(uint32 clanId) external view override returns (ClanFullView memory) {
         Clan storage clan = _clans[clanId];
         bool starving = clan.starvationStartsAtTick != 0 && clan.starvationStartsAtTick <= _world.currentTick;
