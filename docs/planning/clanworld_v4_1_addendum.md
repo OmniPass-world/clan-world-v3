@@ -106,21 +106,20 @@ Implication:
 
 ## A7. Market action input mode
 
-All v1 market actions are **Exact Input** actions only.
+> **[PATCHED 2026-04-26]** The original text of this section incorrectly stated that all v1 market actions are Exact Input. `market_buy` is Exact Output, not Exact Input. The corrected text is below. Authoritative source: `clanworld_v4_2_state_schema_interface_spec.md §8.4` and `IClanWorld.sol`.
 
 ### `market_sell`
-The input is an exact amount of resource token to sell.
-- Example: sell exactly `15 wood`
-- output gold amount is whatever the AMM returns at execution time
+`market_sell` is **Exact Input**.
+- `marketAmount` = exact amount of resource token to sell
+- gold output is whatever the AMM returns at execution time
+- no `minOut` guard in v1
 
 ### `market_buy`
-The input is an exact amount of gold to spend.
-- Example: spend exactly `10 gold` to buy wood
-- output resource amount is whatever the AMM returns at execution time
-
-V1 does **not** support Exact Output market actions.
-
-This is required because v1 intentionally allows unlimited slippage / no minimum-out guard for scheduled trades, and Exact Output semantics would create unsafe purse-drain behavior under adversarial price movement.
+`market_buy` is **Exact Output**.
+- `marketAmount` = exact amount of resource to receive
+- `maxGoldIn` = max purse gold willing to spend (slippage guard)
+- buy fails if required gold at execution time exceeds `maxGoldIn`
+- buy fails if clan purse lacks sufficient gold at execution time
 
 ---
 
