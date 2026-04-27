@@ -1,66 +1,188 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
-import type { WorldSnapshot } from '@clan-world/shared';
+import path from 'node:path';
+import os from 'node:os';
 import type { ClanOrder } from '@clan-world/shared';
-import { createChainClient } from '@clan-world/shared/adapters';
+import type { IConvexClient, IChainClient } from '@clan-world/shared/adapters';
+import { createConvexClient, createChainClient } from '@clan-world/shared/adapters';
 
-// elder CLI — toolbelt invoked by Elder Claude Code sessions per tick.
-// Wave 0 stub: only `elder world snapshot` is implemented and returns mock JSON.
-// Real impl reads from Convex via IConvexClient and chain via IChainClient.
-
-function snapshot(): WorldSnapshot {
-  return {
-    tick: 0,
-    tickEpoch: { startedAt: 0, durationMs: 20_000 },
-    regions: [],
-    clans: [],
-  };
+export function getElderN(env: Record<string, string | undefined> = process.env): number {
+  const val = env['ELDER_N'];
+  if (!val) {
+    process.stderr.write('elder: ELDER_N env var is not set\n');
+    process.exit(1);
+  }
+  const n = parseInt(val, 10);
+  if (isNaN(n) || n < 1 || n > 4) {
+    process.stderr.write(`elder: ELDER_N must be an integer 1–4, got '${val}'\n`);
+    process.exit(1);
+  }
+  return n;
 }
 
-async function main(argv: string[]): Promise<void> {
-  const [, , ns, cmd, ...rest] = argv;
+export function stateDir(base: string = os.homedir()): string {
+  return path.join(base, '.world', 'clanworld-runner', 'state');
+}
 
-  if (ns === 'world' && cmd === 'snapshot') {
-    process.stdout.write(JSON.stringify(snapshot(), null, 2) + '\n');
-    return;
+export function memoryFile(n: number, base?: string): string {
+  return path.join(stateDir(base), `elder-${n}-memory.json`);
+}
+
+export function inboxFile(n: number, base?: string): string {
+  return path.join(stateDir(base), 'peer-inbox', `elder-${n}.jsonl`);
+}
+
+export function ackFile(n: number, base?: string): string {
+  return path.join(stateDir(base), `elder-${n}-ack.flag`);
+}
+
+export function readMemory(n: number, base?: string): Record<string, string> {
+  const file = memoryFile(n, base);
+  if (!fs.existsSync(file)) return {};
+  try {
+    return JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, string>;
+  } catch {
+    return {};
   }
+}
 
-  if (ns === 'clan' && cmd === 'submit-orders') {
-    const [clanId, ordersFile] = rest;
-    if (!clanId || !ordersFile) {
-      process.stderr.write('usage: elder clan submit-orders <clanId> <ordersJsonFile>\n');
-      process.exit(1);
-    }
-    const raw = fs.readFileSync(ordersFile, 'utf8');
-    const orders = JSON.parse(raw) as ClanOrder[];
-    const client = createChainClient();
-    const result = await client.submitOrders(clanId, orders);
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-    return;
+export function writeMemory(n: number, data: Record<string, string>, base?: string): void {
+  const file = memoryFile(n, base);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
+}
+
+export interface Deps {
+  convex: IConvexClient;
+  chain: IChainClient;
+}
+
+export async function runCommand(
+  ns: string | undefined,
+  cmd: string | undefined,
+  rest: string[],
+  deps: Deps,
+  env: Record<string, string | undefined> = process.env,
+  homeBase?: string,
+): Promise<string> {
+  if (ns === 'world' && cmd === 'snapshot') {
+    const snapshot = await deps.convex.getSnapshot();
+    return JSON.stringify(snapshot, null, 2) + '\n';
   }
 
   if (ns === 'clan' && cmd === 'view') {
     const [clanId] = rest;
-    if (!clanId) {
-      process.stderr.write('usage: elder clan view <clanId>\n');
-      process.exit(1);
-    }
-    const client = createChainClient();
-    const result = await client.getClanFullView(clanId);
-    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
-    return;
+    if (!clanId) throw new UsageError('usage: elder clan view <clanId>');
+    const result = await deps.convex.getClanFullView(clanId);
+    return JSON.stringify(result, null, 2) + '\n';
   }
 
-  process.stderr.write(
-    'usage: elder world snapshot\n' +
-      '       elder clan submit-orders <clanId> <ordersJsonFile>\n' +
-      '       elder clan view <clanId>\n' +
-      '       elder whisper send <fromClan> <toClan> <text>    (TBD)\n',
+  if (ns === 'clan' && cmd === 'submit-orders') {
+    const [ordersFile] = rest;
+    if (!ordersFile) throw new UsageError('usage: elder clan submit-orders <ordersJsonFile>');
+    const raw = fs.readFileSync(ordersFile, 'utf8');
+    const parsed = JSON.parse(raw) as { clanId: string; orders: ClanOrder[] };
+    const result = await deps.chain.submitOrders(parsed.clanId, parsed.orders);
+    return JSON.stringify(result, null, 2) + '\n';
+  }
+
+  if (ns === 'memory' && cmd === 'recall') {
+    const [topic] = rest;
+    if (!topic) throw new UsageError('usage: elder memory recall <topic>');
+    const n = getElderN(env);
+    const mem = readMemory(n, homeBase);
+    const val = mem[topic];
+    return val !== undefined ? val + '\n' : `no memory for ${topic}\n`;
+  }
+
+  if (ns === 'memory' && cmd === 'save') {
+    const [key, value] = rest;
+    if (!key || value === undefined) throw new UsageError('usage: elder memory save <key> <value>');
+    const n = getElderN(env);
+    const mem = readMemory(n, homeBase);
+    mem[key] = value;
+    writeMemory(n, mem, homeBase);
+    return `saved ${key}\n`;
+  }
+
+  if (ns === 'peer' && cmd === 'whisper') {
+    const [clanId, ...msgParts] = rest;
+    if (!clanId || msgParts.length === 0) throw new UsageError('usage: elder peer whisper <clanId> <msg>');
+    const n = getElderN(env);
+    const msg = msgParts.join(' ');
+    const entry = JSON.stringify({ from: n, to: clanId, msg, ts: new Date().toISOString() });
+    const file = inboxFile(n, homeBase);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.appendFileSync(file, entry + '\n', 'utf8');
+    return 'whisper sent\n';
+  }
+
+  if (ns === 'peer' && cmd === 'inbox') {
+    const n = getElderN(env);
+    const file = inboxFile(n, homeBase);
+    if (!fs.existsSync(file)) return 'inbox empty\n';
+    const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    if (lines.length === 0) return 'inbox empty\n';
+    return lines
+      .map(line => {
+        try {
+          const entry = JSON.parse(line) as { from: number; to: string; msg: string; ts: string };
+          return `[${entry.ts}] from=${entry.from} to=${entry.to}: ${entry.msg}`;
+        } catch {
+          return line;
+        }
+      })
+      .join('\n') + '\n';
+  }
+
+  if (ns === 'ack-clear') {
+    const n = getElderN(env);
+    const file = ackFile(n, homeBase);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, new Date().toISOString() + '\n', 'utf8');
+    return 'ack cleared\n';
+  }
+
+  throw new UsageError(
+    'usage:\n' +
+      '  elder world snapshot\n' +
+      '  elder clan view <clanId>\n' +
+      '  elder clan submit-orders <ordersJsonFile>\n' +
+      '  elder memory recall <topic>\n' +
+      '  elder memory save <key> <value>\n' +
+      '  elder peer whisper <clanId> <msg>\n' +
+      '  elder peer inbox\n' +
+      '  elder ack-clear\n',
   );
-  process.exit(1);
 }
 
-main(process.argv).catch(err => {
-  process.stderr.write(`elder: fatal: ${String(err)}\n`);
-  process.exit(1);
-});
+export class UsageError extends Error {}
+
+async function main(argv: string[]): Promise<void> {
+  const [, , ns, cmd, ...rest] = argv;
+  const deps: Deps = {
+    convex: createConvexClient(),
+    chain: createChainClient(),
+  };
+  try {
+    const out = await runCommand(ns, cmd, rest, deps);
+    process.stdout.write(out);
+  } catch (err) {
+    if (err instanceof UsageError) {
+      process.stderr.write(err.message + '\n');
+      process.exit(1);
+    }
+    throw err;
+  }
+}
+
+// Only run when executed directly (not when imported by tests or other modules)
+const isMain = process.argv[1] !== undefined &&
+  (process.argv[1].endsWith('/cli.ts') || process.argv[1].endsWith('/elder') || process.argv[1].endsWith('/cli.js'));
+
+if (isMain) {
+  main(process.argv).catch(err => {
+    process.stderr.write(`elder: fatal: ${String(err)}\n`);
+    process.exit(1);
+  });
+}

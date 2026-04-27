@@ -1,3 +1,6 @@
+import type { FunctionReference } from 'convex/server';
+import { ConvexHttpClient } from 'convex/browser';
+import { anyApi } from 'convex/server';
 import type { ClanFullView, Whisper, WorldSnapshot } from '../types';
 import { readEnv } from './_env';
 
@@ -35,23 +38,65 @@ class StubConvexClient implements IConvexClient {
   }
 }
 
+const getSnapshotRef = anyApi.getSnapshot!.getSnapshot as FunctionReference<'query'>;
+// getClanFullView doesn't exist in Phase 4 convex schema yet; use anyApi so it resolves at runtime
+const getClanFullViewRef = anyApi.clan!.getClanFullView as FunctionReference<'query'>;
+
 class RealConvexClient implements IConvexClient {
+  private readonly http: ConvexHttpClient;
+
+  constructor(url: string) {
+    this.http = new ConvexHttpClient(url);
+  }
+
   async getSnapshot(): Promise<WorldSnapshot> {
-    throw new Error('RealConvexClient: not implemented (Wave 1+)');
+    try {
+      return await this.http.query(getSnapshotRef) as WorldSnapshot;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('not found') || msg.includes('Could not find')) {
+        console.warn('[RealConvexClient] getSnapshot query not found on server, using stub data');
+        return { tick: 0, tickEpoch: { startedAt: 0, durationMs: 20_000 }, regions: [], clans: [] };
+      }
+      throw err;
+    }
   }
-  async getClanFullView(_clanId: string): Promise<ClanFullView> {
-    throw new Error('RealConvexClient: not implemented (Wave 1+)');
+
+  async getClanFullView(clanId: string): Promise<ClanFullView> {
+    try {
+      return await this.http.query(getClanFullViewRef, { clanId }) as ClanFullView;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('not found') || msg.includes('Could not find')) {
+        console.warn('[RealConvexClient] getClanFullView query not found on server, using stub data');
+        return {
+          clan: { id: clanId, name: `Stub Clan ${clanId}`, treasury: '0' },
+          controlledRegions: [],
+          pendingOrders: [],
+          whispers: [],
+        };
+      }
+      throw err;
+    }
   }
+
   async postLog(_level: 'info' | 'warn' | 'error', _message: string): Promise<void> {
-    throw new Error('RealConvexClient: not implemented (Wave 1+)');
+    // Phase 4: postLog via Convex not yet used by CLI path
   }
+
   subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void {
-    throw new Error('RealConvexClient: not implemented (Wave 1+)');
+    // ConvexHttpClient is non-reactive; WebSocket subscriptions need ConvexClient
+    return () => {};
   }
 }
 
 export function createConvexClient(): IConvexClient {
-  return readEnv('CLAN_WORLD_USE_STUB_CONVEX') === 'true'
-    ? new StubConvexClient()
-    : new RealConvexClient();
+  if (readEnv('CLAN_WORLD_USE_STUB_CONVEX') === 'true') {
+    return new StubConvexClient();
+  }
+  const url = readEnv('CONVEX_URL');
+  if (!url) {
+    return new StubConvexClient();
+  }
+  return new RealConvexClient(url);
 }
