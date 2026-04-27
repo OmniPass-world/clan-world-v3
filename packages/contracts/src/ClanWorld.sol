@@ -24,6 +24,7 @@ contract ClanWorld is IClanWorld {
     mapping(uint64 => ScheduledMarketAction[]) private _scheduledMarketActions; // keyed by tick
     mapping(uint32 => uint32[]) private _incomingDefenders;    // targetClanId => clansmanIds
     mapping(uint32 => uint32) private _clanDefendingBase;      // clansmanId => targetClanId
+    mapping(uint64 => bytes32) private _tickSeeds;              // tick => seed
 
     uint32 private _nextClanId;
     uint32 private _nextClansmanId;
@@ -195,6 +196,12 @@ contract ClanWorld is IClanWorld {
         uint64 fromTick = clan.lastSettledTick;
         if (fromTick >= curTick) return;
 
+        // Cap ticks settled per call to prevent block gas limit issues
+        uint64 maxSettleTicks = 200;
+        if (curTick > fromTick + maxSettleTicks) {
+            curTick = fromTick + maxSettleTicks;
+        }
+
         uint32[] storage clansmanIds = _clanClansmanIds[clanId];
 
         // Settle tick by tick from fromTick to curTick - 1
@@ -203,7 +210,18 @@ contract ClanWorld is IClanWorld {
             // 1. Apply upkeep for this tick
             _applyUpkeep(clan, tick);
 
-            // 2. Advance each clansman
+            // 2. Wheat plot regrow check (lazy, per tick)
+            for (uint256 pi = 0; pi < 2; pi++) {
+                WheatPlot storage plot = _wheatPlots[clanId][pi];
+                if (plot.state == WheatPlotState.Regrowing && tick >= plot.regrowUntilTick) {
+                    plot.state = WheatPlotState.Harvestable;
+                    plot.remainingWheat = ClanWorldConstants.WHEAT_PLOT_STARTING_WHEAT;
+                    plot.regrowUntilTick = 0;
+                }
+            }
+
+            // 3. Advance each clansman
+            bytes32 tickSeed = _tickSeeds[tick];
             for (uint256 i = 0; i < clansmanIds.length; i++) {
                 uint32 csId = clansmanIds[i];
                 Clansman storage cs = _clansmen[csId];
@@ -221,7 +239,7 @@ contract ClanWorld is IClanWorld {
 
                 // Action resolution: if acting and this tick >= actionStartTick
                 if (cs.state == ClansmanState.ACTING && tick >= m.actionStartTick) {
-                    _resolveAction(clan, cs, m, clanId, tick);
+                    _resolveAction(clan, cs, m, clanId, tick, tickSeed);
                 }
             }
         }
@@ -231,7 +249,7 @@ contract ClanWorld is IClanWorld {
     }
 
     /// @dev Apply one tick of upkeep. Marks starvation if insufficient food.
-    function _applyUpkeep(Clan storage clan, uint64 /*tick*/) internal {
+    function _applyUpkeep(Clan storage clan, uint64 tick) internal {
         if (clan.livingClansmen == 0) return;
 
         uint256 wheatNeeded = uint256(clan.livingClansmen) * ClanWorldConstants.WHEAT_UPKEEP_PER_CLANSMAN;
@@ -253,11 +271,11 @@ contract ClanWorld is IClanWorld {
 
         bool starving = !hadEnoughWheat || !hadEnoughFish;
         if (starving && clan.starvationStartsAtTick == 0) {
-            clan.starvationStartsAtTick = _world.currentTick; // starts next tick
-            emit ClanStarvationChanged(clan.clanId, true, _world.currentTick);
+            clan.starvationStartsAtTick = tick;
+            emit ClanStarvationChanged(clan.clanId, true, tick);
         } else if (!starving && clan.starvationStartsAtTick != 0) {
             clan.starvationStartsAtTick = 0;
-            emit ClanStarvationChanged(clan.clanId, false, _world.currentTick);
+            emit ClanStarvationChanged(clan.clanId, false, tick);
         }
     }
 
@@ -272,19 +290,20 @@ contract ClanWorld is IClanWorld {
         Clansman storage cs,
         Mission storage m,
         uint32 clanId,
-        uint64 tick
+        uint64 tick,
+        bytes32 tickSeed
     ) internal {
         bool starving = _isStarving(clan);
         ActionType action = m.action;
 
         if (action == ActionType.ChopWood) {
-            _gatherWood(clan, cs, m, clanId, tick, starving);
+            _gatherWood(clan, cs, m, clanId, tick, starving, tickSeed);
         } else if (action == ActionType.MineIron) {
-            _gatherIron(clan, cs, m, clanId, tick, starving);
+            _gatherIron(clan, cs, m, clanId, tick, starving, tickSeed);
         } else if (action == ActionType.FishDocks) {
-            _gatherFishDocks(clan, cs, m, clanId, tick, starving);
+            _gatherFishDocks(clan, cs, m, clanId, tick, starving, tickSeed);
         } else if (action == ActionType.FishDeepSea) {
-            _gatherFishDeepSea(clan, cs, m, clanId, tick, starving);
+            _gatherFishDeepSea(clan, cs, m, clanId, tick, starving, tickSeed);
         } else if (action == ActionType.HarvestWheat) {
             _gatherWheat(clan, cs, m, clanId, tick, starving);
         } else if (action == ActionType.DepositResources) {
@@ -318,7 +337,8 @@ contract ClanWorld is IClanWorld {
         Mission storage m,
         uint32 clanId,
         uint64 tick,
-        bool starving
+        bool starving,
+        bytes32 tickSeed
     ) internal {
         uint256 remaining = ClanWorldConstants.WOOD_CAP - cs.carryWood;
         if (remaining == 0) {
@@ -327,7 +347,7 @@ contract ClanWorld is IClanWorld {
         }
         uint256 yield = ClanWorldConstants.WOOD_BASE_YIELD;
         // Crit roll: domain-separated RNG
-        bytes32 critRng = keccak256(abi.encode("wood_crit", _world.currentTickSeed, cs.clansmanId, m.nonce, tick));
+        bytes32 critRng = keccak256(abi.encode("wood_crit", tickSeed, cs.clansmanId, m.nonce, tick));
         uint256 critRoll = uint256(critRng) % 10000;
         if (critRoll < ClanWorldConstants.WOOD_CRIT_BPS) {
             yield += ClanWorldConstants.WOOD_CRIT_BONUS;
@@ -350,7 +370,8 @@ contract ClanWorld is IClanWorld {
         Mission storage m,
         uint32 clanId,
         uint64 tick,
-        bool starving
+        bool starving,
+        bytes32 tickSeed
     ) internal {
         uint256 remaining = ClanWorldConstants.IRON_CAP - cs.carryIron;
         if (remaining == 0) {
@@ -362,19 +383,27 @@ contract ClanWorld is IClanWorld {
         if (yield > remaining) yield = remaining;
         cs.carryIron += yield;
 
-        // Gold bonus roll
-        uint256 goldBonus = 0;
-        bytes32 goldRng = keccak256(abi.encode("iron_gold_bonus", _world.currentTickSeed, cs.clansmanId, m.nonce, tick));
-        uint256 goldRoll = uint256(goldRng) % 10000;
-        if (goldRoll < ClanWorldConstants.GOLD_FROM_IRON_BPS) {
-            goldBonus = ClanWorldConstants.GOLD_FROM_IRON_AMOUNT;
-            clan.goldBalance += goldBonus;
-        }
+        // Gold bonus roll — scoped to reduce stack depth
+        uint256 goldBonus = _rollIronGoldBonus(clan, cs.clansmanId, m.nonce, tick, tickSeed);
 
         emit ResourcesGathered(clanId, cs.clansmanId, ActionType.MineIron, 0, yield, 0, 0, goldBonus, tick);
 
         if (cs.carryIron >= ClanWorldConstants.IRON_CAP) {
             _completeMission(cs, m);
+        }
+    }
+
+    function _rollIronGoldBonus(
+        Clan storage clan,
+        uint32 clansmanId,
+        uint64 nonce,
+        uint64 tick,
+        bytes32 tickSeed
+    ) internal returns (uint256 goldBonus) {
+        bytes32 goldRng = keccak256(abi.encode("iron_gold_bonus", tickSeed, clansmanId, nonce, tick));
+        if (uint256(goldRng) % 10000 < ClanWorldConstants.GOLD_FROM_IRON_BPS) {
+            goldBonus = ClanWorldConstants.GOLD_FROM_IRON_AMOUNT;
+            clan.goldBalance += goldBonus;
         }
     }
 
@@ -384,14 +413,15 @@ contract ClanWorld is IClanWorld {
         Mission storage m,
         uint32 clanId,
         uint64 tick,
-        bool starving
+        bool starving,
+        bytes32 tickSeed
     ) internal {
         uint256 remaining = ClanWorldConstants.FISH_CAP - cs.carryFish;
         if (remaining == 0) {
             _completeMission(cs, m);
             return;
         }
-        bytes32 fishRng = keccak256(abi.encode("fish_roll", _world.currentTickSeed, cs.clansmanId, m.nonce, tick));
+        bytes32 fishRng = keccak256(abi.encode("fish_roll", tickSeed, cs.clansmanId, m.nonce, tick));
         uint256 fishRoll = uint256(fishRng) % 10000;
         uint256 yield = 0;
         if (fishRoll < ClanWorldConstants.FISH_DOCKS_BPS) {
@@ -414,14 +444,15 @@ contract ClanWorld is IClanWorld {
         Mission storage m,
         uint32 clanId,
         uint64 tick,
-        bool starving
+        bool starving,
+        bytes32 tickSeed
     ) internal {
         uint256 remaining = ClanWorldConstants.FISH_CAP - cs.carryFish;
         if (remaining == 0) {
             _completeMission(cs, m);
             return;
         }
-        bytes32 fishRng = keccak256(abi.encode("fish_roll", _world.currentTickSeed, cs.clansmanId, m.nonce, tick));
+        bytes32 fishRng = keccak256(abi.encode("fish_roll", tickSeed, cs.clansmanId, m.nonce, tick));
         uint256 fishRoll = uint256(fishRng) % 10000;
         uint256 yield = 0;
         if (fishRoll < ClanWorldConstants.FISH_DEEP_BPS) {
@@ -654,7 +685,9 @@ contract ClanWorld is IClanWorld {
         uint64 closedTick = _world.currentTick;
 
         // Derive tick seed: domain-separated from block randomness
-        _world.currentTickSeed = keccak256(abi.encode(block.prevrandao, closedTick, block.timestamp));
+        bytes32 newSeed = keccak256(abi.encode(block.prevrandao, closedTick, block.timestamp));
+        _tickSeeds[closedTick] = newSeed;
+        _world.currentTickSeed = newSeed;
 
         // Advance tick
         _world.currentTick = closedTick + 1;
@@ -662,19 +695,6 @@ contract ClanWorld is IClanWorld {
 
         // TODO Phase 2: execute scheduled market actions for closedTick
         // TODO Phase 3: bandit state transitions and attacks
-
-        // Wheat plot regrow check across all clans
-        for (uint256 i = 0; i < _allClanIds.length; i++) {
-            uint32 clanId = _allClanIds[i];
-            for (uint256 pi = 0; pi < 2; pi++) {
-                WheatPlot storage plot = _wheatPlots[clanId][pi];
-                if (plot.state == WheatPlotState.Regrowing && _world.currentTick >= plot.regrowUntilTick) {
-                    plot.state = WheatPlotState.Harvestable;
-                    plot.remainingWheat = ClanWorldConstants.WHEAT_PLOT_STARTING_WHEAT;
-                    plot.regrowUntilTick = 0;
-                }
-            }
-        }
 
         emit TickAdvanced(closedTick, _world.currentTick, _world.currentTickSeed);
     }
@@ -999,13 +1019,16 @@ contract ClanWorld is IClanWorld {
             }
         }
 
-        // DefendBase: targetClanId must be valid
+        // DefendBase: targetClanId must be valid and gotoRegion must match target's baseRegion
         if (action == ActionType.DefendBase) {
             if (order.targetClanId == 0 || _clans[order.targetClanId].clanId == 0) {
                 return StatusCode.ERR_INVALID_TARGET;
             }
             if (_clans[order.targetClanId].clanState == ClanState.DEAD) {
                 return StatusCode.ERR_NOT_DEFENDABLE;
+            }
+            if (gotoRegion != _clans[order.targetClanId].baseRegion) {
+                return StatusCode.ERR_NOT_AT_TARGET_BASE;
             }
         }
 

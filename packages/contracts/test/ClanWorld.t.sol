@@ -227,12 +227,18 @@ contract ClanWorldTest is Test {
         uint32 csId = view_.clansmen[0].clansman.clansman.clansmanId;
         uint8 homeRegion = view_.clan.clan.baseRegion;
 
-        // Submit ChopWood mission toward Forest
-        // Compute travel ticks from homebase to forest
-        (uint8 travelTicks,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_FOREST);
+        // Submit MineIron mission to Mountains (region 2) — requires at least 1 travel tick from Forest(1)
+        uint8 targetRegion = ClanWorldConstants.REGION_MOUNTAINS;
+        (uint8 travelTicks,) = world.quoteTravel(homeRegion, targetRegion);
 
-        OrderResult[] memory r = _submitOrder(clanId, csId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+        OrderResult[] memory r = _submitOrder(clanId, csId, targetRegion, ActionType.MineIron);
         assertEq(uint8(r[0].status), uint8(StatusCode.OK));
+
+        // If travel > 0, clansman should be TRAVELING immediately after submission
+        if (travelTicks > 0) {
+            Clansman memory csTraveling = world.getClansman(csId);
+            assertEq(uint8(csTraveling.state), uint8(ClansmanState.TRAVELING), "should be TRAVELING before arrival");
+        }
 
         // Advance past travel ticks + 1 action tick
         uint256 ticksToAdvance = uint256(travelTicks) + 1;
@@ -243,9 +249,9 @@ contract ClanWorldTest is Test {
         // Trigger settlement by calling settleClan
         world.settleClan(clanId);
 
-        // Verify clansman has carry wood
+        // Verify clansman has carry iron (traveled to Mountains and mined)
         Clansman memory cs = world.getClansman(csId);
-        assertGt(cs.carryWood, 0, "clansman should have gathered wood");
+        assertGt(cs.carryIron, 0, "clansman should have gathered iron after travel to Mountains");
     }
 
     // -------------------------------------------------------------------------
@@ -257,42 +263,43 @@ contract ClanWorldTest is Test {
         ClanFullView memory view_ = world.getClanFullView(clanId);
         uint8 homeRegion = view_.clan.clan.baseRegion;
 
-        // Use two clansmen: one gathers wood, one stays home to deposit
+        // Use two clansmen: one mines iron, one stays home to deposit
         uint32 cs0 = view_.clansmen[0].clansman.clansman.clansmanId;
         uint32 cs1 = view_.clansmen[1].clansman.clansman.clansmanId;
 
-        // Send cs0 to forest to gather
-        (uint8 travelToForest,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_FOREST);
-        _submitOrder(clanId, cs0, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+        // Send cs0 to Mountains to mine iron (requires travel from non-Mountains home)
+        uint8 targetRegion = ClanWorldConstants.REGION_MOUNTAINS;
+        (uint8 travelToMountains,) = world.quoteTravel(homeRegion, targetRegion);
+        _submitOrder(clanId, cs0, targetRegion, ActionType.MineIron);
 
-        // Advance past travel + 1 action tick to gather some wood
-        for (uint256 i = 0; i < uint256(travelToForest) + 1; i++) {
+        // Advance past travel + 1 action tick to gather some iron
+        for (uint256 i = 0; i < uint256(travelToMountains) + 1; i++) {
             _advanceTick();
         }
         world.settleClan(clanId);
 
-        uint256 carryBefore = world.getClansman(cs0).carryWood;
-        assertGt(carryBefore, 0, "cs0 should have carry wood after gathering");
+        uint256 carryBefore = world.getClansman(cs0).carryIron;
+        assertGt(carryBefore, 0, "cs0 should have carry iron after mining at Mountains");
 
-        uint256 vaultBefore = world.getClan(clanId).vaultWood;
+        uint256 vaultBefore = world.getClan(clanId).vaultIron;
 
         // Wait for cs0 cooldown to expire, then send back to deposit
         vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
         _submitOrder(clanId, cs0, homeRegion, ActionType.DepositResources);
 
-        // Advance 1 tick for arrival (if non-same-region) + 1 action tick
-        (uint8 travelBack,) = world.quoteTravel(ClanWorldConstants.REGION_FOREST, homeRegion);
+        // Advance travel back to homebase + 1 action tick
+        (uint8 travelBack,) = world.quoteTravel(targetRegion, homeRegion);
         for (uint256 i = 0; i < uint256(travelBack) + 1; i++) {
             _advanceTick();
         }
         world.settleClan(clanId);
 
-        // cs0 carry should be cleared and vault should have increased
+        // cs0 carry iron should be cleared and vault iron should have increased
         Clansman memory cs0After = world.getClansman(cs0);
-        assertEq(cs0After.carryWood, 0, "carry should be cleared after deposit");
+        assertEq(cs0After.carryIron, 0, "carry iron should be cleared after deposit");
 
-        uint256 vaultAfter = world.getClan(clanId).vaultWood;
-        assertGt(vaultAfter, vaultBefore, "vault wood should increase after deposit");
+        uint256 vaultAfter = world.getClan(clanId).vaultIron;
+        assertGt(vaultAfter, vaultBefore, "vault iron should increase after deposit");
 
         // cs1 unused — suppress warning
         cs1;
