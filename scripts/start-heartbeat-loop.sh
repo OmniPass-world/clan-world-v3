@@ -19,7 +19,7 @@ REQUIRED_VARS=(
   CONVEX_DEPLOY_URL
   WEBHOOK_SHARED_SECRET
   DEPLOYER_PRIVATE_KEY
-  CLAN_WORLD_STUB_ADDRESS
+  CLAN_WORLD_CONTRACT_ADDRESS
 )
 
 missing=0
@@ -40,8 +40,8 @@ if [ "$missing" -eq 1 ]; then
 fi
 
 echo "Starting heartbeat loop (interval: 20s)"
-echo "  stub:  $CLAN_WORLD_STUB_ADDRESS"
-echo "  rpc:   $RPC_URL_PRIMARY"
+echo "  engine: $CLAN_WORLD_CONTRACT_ADDRESS"
+echo "  rpc:    $RPC_URL_PRIMARY"
 echo "  convex: $CONVEX_DEPLOY_URL"
 
 while true; do
@@ -53,7 +53,7 @@ while true; do
   curl -sS --fail -X POST "$CONVEX_DEPLOY_URL/api/heartbeat-webhook" \
     -H "Authorization: Bearer $WEBHOOK_SHARED_SECRET" \
     -H "Content-Type: application/json" \
-    -d "{\"chain\":\"worldchain-sepolia\",\"engineAddress\":\"$CLAN_WORLD_STUB_ADDRESS\",\"firedAtTs\":$(date +%s),\"source\":\"foundry-loop\"}" \
+    -d "{\"chain\":\"worldchain-sepolia\",\"engineAddress\":\"$CLAN_WORLD_CONTRACT_ADDRESS\",\"firedAtTs\":$(date +%s),\"source\":\"foundry-loop\"}" \
     || echo "webhook POST failed (continuing)" >&2
 
   # Note: actual cadence = forge_time + curl_time + 20s
