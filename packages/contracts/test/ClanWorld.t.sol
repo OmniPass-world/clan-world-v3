@@ -314,4 +314,84 @@ contract ClanWorldTest is Test {
         assertEq(ticks, 0, "out-of-range dst should return 0 ticks");
         assertEq(path, bytes8(0), "out-of-range dst should return empty path");
     }
+
+    // -------------------------------------------------------------------------
+    // Test A: quoteTravel(9,9) — both out-of-bounds same-region, must return (0, bytes8(0))
+    // -------------------------------------------------------------------------
+
+    function test_quoteTravel_outOfBounds_sameRegion() public {
+        // Previously (9,9) escaped the > 8 guard (same-region early return fired first),
+        // returning (0, bytes8(uint64(9) << 56)) instead of (0, bytes8(0)).
+        (uint8 ticks, bytes8 path) = world.quoteTravel(9, 9);
+        assertEq(ticks, 0, "quoteTravel(9,9): travelTicks must be 0");
+        assertEq(path, bytes8(0), "quoteTravel(9,9): path must be bytes8(0), not a packed 9-region sentinel");
+    }
+
+    // -------------------------------------------------------------------------
+    // Test B: submitClanOrders returns ERR_INVALID_ACTION when clan is >200 ticks behind
+    // -------------------------------------------------------------------------
+
+    function test_submitClanOrders_reverts_when_clan_too_far_behind() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory view_ = world.getClanFullView(clanId);
+        uint32 csId = view_.clansmen[0].clansman.clansman.clansmanId;
+
+        // Advance 201 ticks — clan is now 201 ticks behind its lastSettledTick
+        for (uint256 i = 0; i < 201; i++) {
+            _advanceTick();
+        }
+
+        // submitClanOrders should return ERR_INVALID_ACTION (ERR_MUST_SETTLE_FIRST proxy)
+        // without reverting, for every order in the batch
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: ClanWorldConstants.REGION_FOREST,
+            action: ActionType.ChopWood,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory results = world.submitClanOrders(clanId, orders);
+
+        assertEq(results.length, 1, "should return one result");
+        assertEq(
+            uint8(results[0].status),
+            uint8(StatusCode.ERR_INVALID_ACTION),
+            "clan >200 ticks behind must return ERR_INVALID_ACTION (settle-first guard)"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Test C: cooldown resets on mission interrupt
+    // -------------------------------------------------------------------------
+
+    function test_cooldown_resets_on_mission_interrupt() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory view_ = world.getClanFullView(clanId);
+        uint32 csId = view_.clansmen[0].clansman.clansman.clansmanId;
+
+        // Submit first mission — sends clansman to Forest to chop wood
+        OrderResult[] memory r1 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+        assertEq(uint8(r1[0].status), uint8(StatusCode.OK), "first order should succeed");
+        uint64 firstCooldown = r1[0].cooldownEndsAtTs;
+        assertGt(firstCooldown, 0, "cooldown should be set after first order");
+
+        // Wait for cooldown to expire
+        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
+
+        // Advance tick so heartbeat is valid, then submit interrupt mission
+        _advanceTick();
+
+        // Submit a new mission to interrupt the first (still en-route to Forest)
+        // Use MineIron in Mountains — different target, forces interrupt
+        OrderResult[] memory r2 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+        assertEq(uint8(r2[0].status), uint8(StatusCode.OK), "interrupt order should succeed");
+
+        uint64 newCooldown = r2[0].cooldownEndsAtTs;
+        assertGt(newCooldown, firstCooldown, "new cooldown must be later than first cooldown");
+        assertGt(newCooldown, block.timestamp, "new cooldown must be in the future");
+    }
 }

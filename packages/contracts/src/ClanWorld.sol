@@ -312,7 +312,12 @@ contract ClanWorld is IClanWorld {
             // NOOP — worker stays ACTING (continuous), no transition needed
             // Wait mission is effectively persistent until interrupted
         } else if (action == ActionType.DefendBase) {
-            // Phase 3 — defense is registered at order time; just persist
+            // Register defender at arrival (not at submission) per v4.3 — ensures only arrived clansmen counted.
+            // Guard: only register once (this branch executes every ACTING tick; idempotent via _clanDefendingBase check).
+            if (_clanDefendingBase[cs.clansmanId] != m.targetClanId) {
+                _incomingDefenders[m.targetClanId].push(cs.clansmanId);
+                _clanDefendingBase[cs.clansmanId] = m.targetClanId;
+            }
         } else if (
             action == ActionType.BuildWall ||
             action == ActionType.UpgradeBase ||
@@ -683,14 +688,13 @@ contract ClanWorld is IClanWorld {
         require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
         uint64 closedTick = _world.currentTick;
+        _world.currentTick = closedTick + 1;                                    // increment first
 
-        // Derive tick seed: domain-separated from block randomness
+        // Derive tick seed: domain-separated from block randomness; stored under NEW tick
         bytes32 newSeed = keccak256(abi.encode(block.prevrandao, closedTick, block.timestamp));
-        _tickSeeds[closedTick] = newSeed;
+        _tickSeeds[_world.currentTick] = newSeed;                               // store under new tick
         _world.currentTickSeed = newSeed;
 
-        // Advance tick
-        _world.currentTick = closedTick + 1;
         _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
 
         // TODO Phase 2: execute scheduled market actions for closedTick
@@ -714,7 +718,10 @@ contract ClanWorld is IClanWorld {
     // =========================================================================
 
     /// @notice Mint a new clan and spawn its homebase.
+    /// @dev payable per IClanWorld interface; the game has no mint fee — any ETH sent is silently held.
+    ///      A future upgrade may add a fee or revert on non-zero msg.value.
     function mintClan(address to) external payable override returns (uint32 clanId, uint256 iftTokenId) {
+        require(to != address(0), "ClanWorld: zero address");
         clanId = _nextClanId++;
         iftTokenId = uint256(clanId); // Phase 1 placeholder; real iNFT is Phase 7
 
@@ -798,6 +805,25 @@ contract ClanWorld is IClanWorld {
         require(clan.clanId != 0, "ClanWorld: clan not found");
         require(clan.owner == msg.sender, "ClanWorld: not clan owner");
         require(clan.clanState == ClanState.ACTIVE, "ClanWorld: clan dead");
+
+        // Guard: if clan is more than 200 ticks behind, caller must call settleClan() first
+        // (_settleClan caps at 200 ticks per call; submitting into a partially-settled clan corrupts invariants)
+        // ERR_MUST_SETTLE_FIRST not in StatusCode enum — using ERR_INVALID_ACTION as the closest proxy
+        {
+            uint64 lastSettled = _clans[clanId].lastSettledTick;
+            if (_world.currentTick > lastSettled + 200) {
+                results = new OrderResult[](orders.length);
+                for (uint256 i = 0; i < orders.length; i++) {
+                    results[i] = OrderResult({
+                        clansmanId: orders[i].clansmanId,
+                        status: StatusCode.ERR_INVALID_ACTION,
+                        cooldownEndsAtTs: 0,
+                        missionNonce: 0
+                    });
+                }
+                return results;
+            }
+        }
 
         // Lazy settle before processing orders
         _settleClan(clanId);
@@ -897,8 +923,15 @@ contract ClanWorld is IClanWorld {
         // Start cooldown
         cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
 
-        // DefendBase registration
-        _updateDefendRegistry(order, cs.clansmanId);
+        // DefendBase: deregister old assignment immediately (clansman is being re-tasked).
+        // Registration at the target base happens at arrival in _resolveAction (v4.3 — arrived defenders only).
+        {
+            uint32 oldTarget = _clanDefendingBase[cs.clansmanId];
+            if (oldTarget != 0) {
+                _removeDefender(oldTarget, cs.clansmanId);
+                _clanDefendingBase[cs.clansmanId] = 0;
+            }
+        }
 
         if (ctx.wasActive) {
             emit MissionInterrupted(clanId, order.clansmanId, ctx.oldNonce, ctx.newNonce);
@@ -944,23 +977,6 @@ contract ClanWorld is IClanWorld {
         m.marketToken = order.marketToken;
         m.marketAmount = order.marketAmount;
         m.maxGoldIn = order.maxGoldIn;
-    }
-
-    function _updateDefendRegistry(ClanOrder calldata order, uint32 clansmanId) internal {
-        if (order.action == ActionType.DefendBase) {
-            uint32 oldTarget = _clanDefendingBase[clansmanId];
-            if (oldTarget != 0) {
-                _removeDefender(oldTarget, clansmanId);
-            }
-            _incomingDefenders[order.targetClanId].push(clansmanId);
-            _clanDefendingBase[clansmanId] = order.targetClanId;
-        } else {
-            uint32 oldTarget = _clanDefendingBase[clansmanId];
-            if (oldTarget != 0) {
-                _removeDefender(oldTarget, clansmanId);
-                _clanDefendingBase[clansmanId] = 0;
-            }
-        }
     }
 
     function _removeDefender(uint32 targetClanId, uint32 clansmanId) internal {
@@ -1206,13 +1222,13 @@ contract ClanWorld is IClanWorld {
         override
         returns (uint8 travelTicks, bytes8 path)
     {
+        if (srcRegion > 8 || dstRegion > 8) {
+            return (0, bytes8(0));
+        }
         if (srcRegion == dstRegion || srcRegion == 0 || dstRegion == 0) {
             travelTicks = 0;
             path = bytes8(uint64(srcRegion) << 56);
             return (travelTicks, path);
-        }
-        if (srcRegion > 8 || dstRegion > 8) {
-            return (0, bytes8(0));
         }
         travelTicks = _travelTicks(srcRegion, dstRegion);
         path = _buildPath(srcRegion, dstRegion);
@@ -1238,6 +1254,8 @@ contract ClanWorld is IClanWorld {
 
     /// @dev Leaderboard loot values reflect vault contents only (last-settled state).
     ///      Carry amounts not included. Full view-only settlement deferred.
+    ///      View function — no gas cost for off-chain indexer/UI reads.
+    ///      Iterates all clans. Canonical game cap: ≤12 clans, ≤4 clansmen each = ≤48 iterations.
     function getWorldSnapshot() external view override returns (WorldSnapshot memory) {
         LeaderboardEntry[] memory lb = new LeaderboardEntry[](_allClanIds.length);
         for (uint256 i = 0; i < _allClanIds.length; i++) {
@@ -1356,6 +1374,8 @@ contract ClanWorld is IClanWorld {
         });
     }
 
+    /// @dev View function — no gas cost for off-chain indexer/UI reads.
+    ///      Iterates all clans. Canonical game cap: ≤12 clans, ≤4 clansmen each = ≤48 iterations.
     function getRegionPopulation(uint8 region)
         external
         view

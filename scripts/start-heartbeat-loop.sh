@@ -48,7 +48,8 @@ while true; do
   forge script packages/contracts/script/Heartbeat.s.sol \
     --root packages/contracts \
     --broadcast \
-    --rpc-url "$RPC_URL_PRIMARY"
+    --rpc-url "$RPC_URL_PRIMARY" \
+    || true  # contract reverts (e.g. rate-limited tick) must not kill the loop
 
   curl -sS --fail -X POST "$CONVEX_DEPLOY_URL/api/heartbeat-webhook" \
     -H "Authorization: Bearer $WEBHOOK_SHARED_SECRET" \
@@ -56,7 +57,6 @@ while true; do
     -d "{\"chain\":\"worldchain-sepolia\",\"engineAddress\":\"$CLAN_WORLD_CONTRACT_ADDRESS\",\"firedAtTs\":$(date +%s),\"source\":\"foundry-loop\"}" \
     || echo "webhook POST failed (continuing)" >&2
 
-  # Note: actual cadence = forge_time + curl_time + 20s
-  # For Submission 1 this is fine; the on-chain interval guard in the contract handles overlap
-  sleep 20
+  # 65s sleep avoids rate-limit collisions with on-chain 60s guard
+  sleep 65
 done
