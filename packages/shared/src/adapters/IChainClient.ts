@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { createPublicClient, createWalletClient, http, fallback, defineChain } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { ClanFullView, ClanOrder, Tick } from '../types';
@@ -322,8 +323,24 @@ class RealChainClient implements IChainClient {
       throw new Error('submitOrders: no valid mission orders to submit');
     }
 
-    const pk = readEnv('DEPLOYER_PRIVATE_KEY');
-    if (!pk) throw new Error('DEPLOYER_PRIVATE_KEY not set');
+    const keyPath = readEnv('ELDER_WALLET_KEY_PATH');
+    let pk: string | undefined;
+    if (keyPath) {
+      pk = fs.readFileSync(keyPath, 'utf8').trim();
+    } else {
+      const fallbackKey = readEnv('DEPLOYER_PRIVATE_KEY');
+      if (fallbackKey) {
+        console.warn('[RealChainClient] ELDER_WALLET_KEY_PATH not set; falling back to DEPLOYER_PRIVATE_KEY (deprecated)');
+        pk = fallbackKey;
+      }
+    }
+    if (!pk) throw new Error('Neither ELDER_WALLET_KEY_PATH nor DEPLOYER_PRIVATE_KEY is set');
+
+    // Normalize: add 0x prefix if missing
+    if (!pk.startsWith('0x')) pk = '0x' + pk;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
+      throw new Error(`ELDER_WALLET_KEY_PATH: file does not contain a valid 64-hex-char private key`);
+    }
 
     const account = privateKeyToAccount(pk as `0x${string}`);
     const walletClient = createWalletClient({
