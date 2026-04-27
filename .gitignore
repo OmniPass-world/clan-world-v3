@@ -148,3 +148,6 @@ vite.config.ts.timestamp-*
 
 # Local planning extraction (V1.zip already committed; the unzipped tree is per-checkout)
 docs/planning/V1/
+
+# port-for: ports.yml is tracked, ports.lock is per-worktree state
+.world/ports.lock
