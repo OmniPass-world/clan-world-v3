@@ -7,12 +7,12 @@ import {IClanWorld} from "../src/IClanWorld.sol";
 contract Heartbeat is Script {
     function run() external {
         uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address stub = vm.envAddress("CLAN_WORLD_STUB_ADDRESS");
+        address engine = vm.envAddress("CLAN_WORLD_CONTRACT_ADDRESS");
 
         vm.startBroadcast(pk);
-        IClanWorld(stub).heartbeat();
+        IClanWorld(engine).heartbeat();
         vm.stopBroadcast();
 
-        console.log("heartbeat() fired on", stub);
+        console.log("heartbeat() fired on", engine);
     }
 }

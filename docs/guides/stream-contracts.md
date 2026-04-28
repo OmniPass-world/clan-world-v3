@@ -36,7 +36,7 @@ RPC_URL_PRIMARY=$BASE_SEPOLIA_RPC \
   forge script script/Deploy.s.sol --rpc-url $RPC_URL_PRIMARY --broadcast --verify
 ```
 
-After deploy, write the engine address to `.env.local` as `ENGINE_ADDRESS=0x…` so the orchestrator and indexer pick it up.
+After deploy, write the engine address to `.env.local` as `CLAN_WORLD_CONTRACT_ADDRESS=0x…` so the orchestrator and indexer pick it up.
 
 ## ABI extraction
 

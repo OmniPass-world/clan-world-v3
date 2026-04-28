@@ -6,12 +6,15 @@ import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
 import worldMapBg from './assets/world-map.png';
+import { DEMO_MODE } from './config/env';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
-// Matches REF_W/REF_H so all existing layout coords (offsetX + nx*REF_W*scaleX)
-// continue to work unchanged inside the viewport.
-const WORLD_WIDTH = 800;
-const WORLD_HEIGHT = 600;
+// Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
+// at native resolution. The viewport scales/pans this world inside the screen.
+const MAP_WIDTH = 814;
+const MAP_HEIGHT = 1448;
+const WORLD_WIDTH = MAP_WIDTH;
+const WORLD_HEIGHT = MAP_HEIGHT;
 
 interface RegionDef {
   id: string;
@@ -35,6 +38,8 @@ interface ClanDef {
   archetype: string;
   /** Base sprite (longhouse / tower / dock keep) shown at the home region. */
   basePng: string;
+  /** Clansman worker sprite shown for traveling units (replaces colored dot). */
+  clansmanPng: string;
 }
 
 // Reference design size — coords below were authored against this frame.
@@ -59,11 +64,15 @@ const REGIONS: RegionDef[] = [
 //   Dawn Watch ↔ Sora    (long-game monument-builder)
 //   Storm Riders ↔ Mira  (transactional trader)
 const MOCK_CLANS: ClanDef[] = [
-  { id: 'clan-iron',  name: 'Iron Guard',   homeRegion: 'forest',     color: 0x4488cc, sigil: '/sigils/iron-guard-sigil.png',  portrait: '/portraits/aldric-portrait.png',  archetype: 'Cautious',   basePng: '/bases/iron-guard.png'   },
-  { id: 'clan-ember', name: 'Ember Hand',   homeRegion: 'mountains',  color: 0xcc4422, sigil: '/sigils/ember-hand-sigil.png',  portrait: '/portraits/brennan-portrait.png', archetype: 'Aggressive', basePng: '/bases/ember-hand.png'   },
-  { id: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/dawn-watch.png'   },
-  { id: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/storm-riders.png' },
+  { id: 'clan-iron',  name: 'Iron Guard',   homeRegion: 'forest',     color: 0x4488cc, sigil: '/sigils/iron-guard-sigil.png',  portrait: '/portraits/aldric-portrait.png',  archetype: 'Cautious',   basePng: '/bases/iron-guard.png',   clansmanPng: '/clansmen/clan-iron.png'  },
+  { id: 'clan-ember', name: 'Ember Hand',   homeRegion: 'mountains',  color: 0xcc4422, sigil: '/sigils/ember-hand-sigil.png',  portrait: '/portraits/brennan-portrait.png', archetype: 'Aggressive', basePng: '/bases/ember-hand.png',   clansmanPng: '/clansmen/clan-ember.png' },
+  { id: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/dawn-watch.png',   clansmanPng: '/clansmen/clan-dawn.png'  },
+  { id: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/storm-riders.png', clansmanPng: '/clansmen/clan-storm.png' },
 ];
+
+// Worker sprite textures, loaded once at init. Keyed by clan id.
+// Falls back to colored Graphics dot if texture missing.
+const clansmanTextureCache: Record<string, import('pixi.js').Texture | undefined> = {};
 
 const SIGIL_SIZE = 36;
 
@@ -104,7 +113,8 @@ interface WorkerTravel {
   startedAt: number;
   durationMs: number;
   color: number;
-  gfx: Graphics;
+  /** Display node — Sprite when clansman texture loaded, Graphics dot fallback. */
+  gfx: Container;
 }
 
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
@@ -350,12 +360,22 @@ export function WorldMap() {
           events: app.renderer.events,
         });
         app.stage.addChild(viewport); // viewport is the only direct child of stage
+        // Fit-cover scale: smallest scale where the map fully covers the screen
+        // (no dead background space on either axis). minScale = fitScale means
+        // user CANNOT zoom out past fit; map always fills the screen.
+        const initialFitScale = Math.max(
+          initialW / WORLD_WIDTH,
+          initialH / WORLD_HEIGHT,
+        );
         viewport
           .drag()
           .pinch()
           .wheel()
           .decelerate()
-          .clampZoom({ minScale: 0.5, maxScale: 4 });
+          .clampZoom({ minScale: initialFitScale, maxScale: initialFitScale * 4 })
+          .clamp({ direction: 'all', underflow: 'center' });
+        viewport.setZoom(initialFitScale, true);
+        viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
         viewportRef.current = viewport;
 
         // 1. Background terrain map (PR #40) — fantasy strategy art generated to match REGIONS layout.
@@ -364,8 +384,9 @@ export function WorldMap() {
           const tex = await Assets.load(worldMapBg);
           if (!mounted) return;
           const bg = new Sprite(tex);
-          bg.width = initialW;
-          bg.height = initialH;
+          // Render at native world resolution; viewport handles screen-fit zoom.
+          bg.width = MAP_WIDTH;
+          bg.height = MAP_HEIGHT;
           bg.x = 0;
           bg.y = 0;
           viewport.addChild(bg);
@@ -518,7 +539,10 @@ export function WorldMap() {
         zonePulseCbRef.current = zonePulseCb;
 
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
-        relayout(initialW, initialH);
+        // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
+        // viewport handles screen-fit transformation. Children inside the viewport
+        // are positioned in world coords and pixi-viewport scales them to screen.
+        relayout(MAP_WIDTH, MAP_HEIGHT);
         setSize({ w: initialW, h: initialH });
         setPixiReady(true);
       });
@@ -555,7 +579,17 @@ export function WorldMap() {
       };
       viewportRef.current = null;
       appRef.current = null;
-      a?.destroy(true);
+      // PIXI v8 + React StrictMode double-invoke guard: the second cleanup
+      // pass hits an already-destroyed Application where internal fields like
+      // _cancelResize are undefined. Wrap in try/catch — first destroy is the
+      // real one, second is benign noise.
+      try {
+        a?.destroy(true);
+      } catch (err) {
+        if (import.meta.env.DEV) {
+          console.debug('[WorldMap] destroy noop (StrictMode double-invoke):', err);
+        }
+      }
     };
   }, []);
 
@@ -575,8 +609,21 @@ export function WorldMap() {
       // Update pixi-viewport's screen dimensions so pinch/drag math tracks
       // the new canvas size. World dims stay fixed at WORLD_WIDTH/HEIGHT.
       const vp = viewportRef.current;
-      if (vp) vp.resize(w, h, WORLD_WIDTH, WORLD_HEIGHT);
-      relayout(w, h);
+      if (vp) {
+        vp.resize(w, h, WORLD_WIDTH, WORLD_HEIGHT);
+        // Recompute fit-cover scale for the new screen size; reapply zoom/pan
+        // clamps so user still can't zoom out past fit or pan into dead space.
+        const fitScale = Math.max(w / WORLD_WIDTH, h / WORLD_HEIGHT);
+        vp.clampZoom({ minScale: fitScale, maxScale: fitScale * 4 });
+        vp.clamp({ direction: 'all', underflow: 'center' });
+        // Snap back to fit if current zoom dropped below the new floor.
+        if (vp.scale.x < fitScale) {
+          vp.setZoom(fitScale, true);
+          vp.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+        }
+      }
+      // relayout positions everything in WORLD coords now, not screen coords.
+      relayout(WORLD_WIDTH, WORLD_HEIGHT);
       setSize({ w, h });
     };
 
@@ -595,12 +642,16 @@ export function WorldMap() {
   function buildScene(app: Application, viewport: Viewport) {
     const drawn = drawnRef.current;
 
-    // Clan zones (big translucent breathing halos) — drawn FIRST so everything else
-    // sits on top. Visual sense of "this clan controls this zone."
-    for (const clan of MOCK_CLANS) {
-      const zoneGfx = new Graphics();
-      viewport.addChild(zoneGfx);
-      drawn.clanZones.push({ gfx: zoneGfx, clan });
+    // Clan zones, sigil flags, bases, walls, monuments, bandits — all mock data.
+    // Skip entirely when DEMO_MODE is off; the canvas renders as an empty terrain map.
+    if (DEMO_MODE) {
+      // Clan zones (big translucent breathing halos) — drawn FIRST so everything else
+      // sits on top. Visual sense of "this clan controls this zone."
+      for (const clan of MOCK_CLANS) {
+        const zoneGfx = new Graphics();
+        viewport.addChild(zoneGfx);
+        drawn.clanZones.push({ gfx: zoneGfx, clan });
+      }
     }
 
     for (const region of REGIONS) {
@@ -617,132 +668,144 @@ export function WorldMap() {
       drawn.regionLabels.push(label);
     }
 
-    // Wall rings — drawn first so they sit above region circles but under sigils.
-    for (const clan of MOCK_CLANS) {
-      const wallGfx = new Graphics();
-      viewport.addChild(wallGfx);
-      drawn.walls.push({ gfx: wallGfx, clan });
-    }
+    if (DEMO_MODE) {
+      // Wall rings — drawn first so they sit above region circles but under sigils.
+      for (const clan of MOCK_CLANS) {
+        const wallGfx = new Graphics();
+        viewport.addChild(wallGfx);
+        drawn.walls.push({ gfx: wallGfx, clan });
+      }
 
-    // Monument towers — drawn before flags so sigil layers cleanly on top.
-    for (const clan of MOCK_CLANS) {
-      const monGfx = new Graphics();
-      viewport.addChild(monGfx);
-      drawn.monuments.push({ gfx: monGfx, clan });
-    }
+      // Monument towers — drawn before flags so sigil layers cleanly on top.
+      for (const clan of MOCK_CLANS) {
+        const monGfx = new Graphics();
+        viewport.addChild(monGfx);
+        drawn.monuments.push({ gfx: monGfx, clan });
+      }
 
-    for (const clan of MOCK_CLANS) {
-      const flag = new Graphics();
-      viewport.addChild(flag);
-      const label = new Text({
-        text: clan.name,
-        style: { fill: clan.color, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' },
+      for (const clan of MOCK_CLANS) {
+        const flag = new Graphics();
+        viewport.addChild(flag);
+        const label = new Text({
+          text: clan.name,
+          style: { fill: clan.color, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' },
+        });
+        label.anchor.set(0, 1);
+        viewport.addChild(label);
+        const entry: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef } = {
+          gfx: flag,
+          sprite: null,
+          label,
+          clan,
+        };
+        drawn.flags.push(entry);
+
+        // Async-load clan sigil sprite (PR #42). Fallback rect (gfx) shows during load and
+        // remains visible if load fails. Once loaded, sprite is positioned by relayout.
+        Assets.load(clan.sigil)
+          .then((texture) => {
+            const sprite = new Sprite(texture);
+            sprite.alpha = 0; // hidden until first relayout positions it
+            viewport.addChild(sprite);
+            entry.sprite = sprite;
+            // Trigger a relayout so sprite gets positioned and shown.
+            const wrap = canvasWrapRef.current;
+            if (wrap && appRef.current) {
+              relayout(WORLD_WIDTH, WORLD_HEIGHT);
+            }
+          })
+          .catch(() => {
+            // Keep fallback rect visible.
+          });
+      }
+
+      // Bandit indicator (style/bandit-archetype-sprites): stylized hooded silhouette.
+      // Pixi loads /sprites/bandit.png async; we keep a Graphics fallback (red ring + "!")
+      // visible during the load and as a safety net if the asset 404s. The countdown text
+      // anchors next to whichever marker is currently rendered.
+      const banditIcon = new Graphics();
+      viewport.addChild(banditIcon);
+      const countdown = new Text({
+        text: '',
+        style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
       });
-      label.anchor.set(0, 1);
-      viewport.addChild(label);
-      const entry: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef } = {
-        gfx: flag,
-        sprite: null,
-        label,
-        clan,
-      };
-      drawn.flags.push(entry);
+      countdown.anchor.set(0, 0.5);
+      viewport.addChild(countdown);
+      drawn.banditIcon = banditIcon;
+      drawn.banditCountdown = countdown;
 
-      // Async-load clan sigil sprite (PR #42). Fallback rect (gfx) shows during load and
-      // remains visible if load fails. Once loaded, sprite is positioned by relayout.
-      Assets.load(clan.sigil)
+      // Async-load the bandit sprite — once ready, redrawBandit positions it and
+      // hides the fallback ring. Catch silently so the ring stays visible on failure.
+      Assets.load('/sprites/bandit.png')
         .then((texture) => {
           const sprite = new Sprite(texture);
-          sprite.alpha = 0; // hidden until first relayout positions it
+          sprite.anchor.set(0.5, 0.5);
+          sprite.alpha = 0; // hidden until first redrawBandit positions it
           viewport.addChild(sprite);
-          entry.sprite = sprite;
-          // Trigger a relayout so sprite gets positioned and shown.
-          const wrap = canvasWrapRef.current;
-          if (wrap && appRef.current) {
-            relayout(wrap.clientWidth || 800, wrap.clientHeight || 600);
-          }
+          drawn.banditSprite = sprite;
+          redrawBandit();
         })
         .catch(() => {
-          // Keep fallback rect visible.
+          // Keep fallback ring visible.
         });
-    }
 
-    // Bandit indicator (style/bandit-archetype-sprites): stylized hooded silhouette.
-    // Pixi loads /sprites/bandit.png async; we keep a Graphics fallback (red ring + "!")
-    // visible during the load and as a safety net if the asset 404s. The countdown text
-    // anchors next to whichever marker is currently rendered.
-    const banditIcon = new Graphics();
-    viewport.addChild(banditIcon);
-    const countdown = new Text({
-      text: '',
-      style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
-    });
-    countdown.anchor.set(0, 0.5);
-    viewport.addChild(countdown);
-    drawn.banditIcon = banditIcon;
-    drawn.banditCountdown = countdown;
+      // Per-clan BASE SPRITES — pixel-art structures at home regions (towers / keeps / longhouses).
+      // Visible on top of region circles + sigil flags. Falls back to a simple colored rect.
+      for (const clan of MOCK_CLANS) {
+        const fallback = new Graphics();
+        viewport.addChild(fallback);
+        const entry: { sprite: Sprite | null; fallback: Graphics; clan: ClanDef } = {
+          sprite: null,
+          fallback,
+          clan,
+        };
+        drawn.bases.push(entry);
 
-    // Async-load the bandit sprite — once ready, redrawBandit positions it and
-    // hides the fallback ring. Catch silently so the ring stays visible on failure.
-    Assets.load('/sprites/bandit.png')
-      .then((texture) => {
-        const sprite = new Sprite(texture);
-        sprite.anchor.set(0.5, 0.5);
-        sprite.alpha = 0; // hidden until first redrawBandit positions it
-        viewport.addChild(sprite);
-        drawn.banditSprite = sprite;
-        redrawBandit();
-      })
-      .catch(() => {
-        // Keep fallback ring visible.
-      });
+        Assets.load(clan.basePng)
+          .then((texture) => {
+            const sprite = new Sprite(texture);
+            sprite.anchor.set(0.5, 1); // anchored at bottom-center so it "stands" on the region
+            sprite.alpha = 0;
+            viewport.addChild(sprite);
+            entry.sprite = sprite;
+            const wrap = canvasWrapRef.current;
+            if (wrap && appRef.current) {
+              relayout(WORLD_WIDTH, WORLD_HEIGHT);
+            }
+          })
+          .catch(() => {
+            // fallback rect stays visible
+          });
 
-    // Per-clan BASE SPRITES — pixel-art structures at home regions (towers / keeps / longhouses).
-    // Visible on top of region circles + sigil flags. Falls back to a simple colored rect.
-    for (const clan of MOCK_CLANS) {
-      const fallback = new Graphics();
-      viewport.addChild(fallback);
-      const entry: { sprite: Sprite | null; fallback: Graphics; clan: ClanDef } = {
-        sprite: null,
-        fallback,
-        clan,
-      };
-      drawn.bases.push(entry);
+        // Worker (clansman) sprite for traveling units. Cached per clan id.
+        // If load fails we silently fall back to the colored Graphics dot.
+        Assets.load(clan.clansmanPng)
+          .then((texture) => {
+            clansmanTextureCache[clan.id] = texture;
+          })
+          .catch(() => {
+            // Travel dot fallback handles missing texture.
+          });
+      }
 
-      Assets.load(clan.basePng)
-        .then((texture) => {
-          const sprite = new Sprite(texture);
-          sprite.anchor.set(0.5, 1); // anchored at bottom-center so it "stands" on the region
-          sprite.alpha = 0;
-          viewport.addChild(sprite);
-          entry.sprite = sprite;
-          const wrap = canvasWrapRef.current;
-          if (wrap && appRef.current) {
-            relayout(wrap.clientWidth || 800, wrap.clientHeight || 600);
-          }
-        })
-        .catch(() => {
-          // fallback rect stays visible
+      // Floating "Lv N" badges — drawn last so they overlay everything.
+      for (const clan of MOCK_CLANS) {
+        const bg = new Graphics();
+        viewport.addChild(bg);
+        const label = new Text({
+          text: 'Lv 1',
+          style: {
+            fill: 0xffe9b8,
+            fontSize: 12,
+            fontFamily: '"Cinzel", "Times New Roman", serif',
+            fontWeight: '700',
+          },
         });
-    }
-
-    // Floating "Lv N" badges — drawn last so they overlay everything.
-    for (const clan of MOCK_CLANS) {
-      const bg = new Graphics();
-      viewport.addChild(bg);
-      const label = new Text({
-        text: 'Lv 1',
-        style: {
-          fill: 0xffe9b8,
-          fontSize: 12,
-          fontFamily: '"Cinzel", "Times New Roman", serif',
-          fontWeight: '700',
-        },
-      });
-      label.anchor.set(0.5, 0.5);
-      viewport.addChild(label);
-      drawn.levelBadges.push({ bg, label, clan });
-    }
+        label.anchor.set(0.5, 0.5);
+        viewport.addChild(label);
+        drawn.levelBadges.push({ bg, label, clan });
+      }
+    } // end DEMO_MODE block
   }
 
   // ---- Layout: scale all draw coords from REF frame to canvas dimensions ---
@@ -774,37 +837,40 @@ export function WorldMap() {
     // Smaller terrain dots — zones below now carry the "control area" weight
     const regionRadius = 18 * cappedSizeScale;
 
-    // Stretch background terrain to fill the canvas.
+    // Background terrain renders at native world resolution (MAP_WIDTH x MAP_HEIGHT).
+    // The viewport handles fit-cover scaling, so we never stretch the bg here.
     if (drawn.bgSprite) {
-      drawn.bgSprite.width = w;
-      drawn.bgSprite.height = h;
+      drawn.bgSprite.width = MAP_WIDTH;
+      drawn.bgSprite.height = MAP_HEIGHT;
       drawn.bgSprite.x = 0;
       drawn.bgSprite.y = 0;
     }
 
     const regionMap = new Map(REGIONS.map(r => [r.id, r]));
 
-    // Big translucent CLAN ZONES — drawn first, breathing animation ticker pulses alpha.
-    // Stored geometry only here; alpha applied per-tick.
-    drawn.clanZones.forEach(({ gfx, clan }) => {
-      const base = regionMap.get(clan.homeRegion);
-      if (!base) return;
-      const cx = projX(base.nx);
-      const cy = projY(base.ny);
-      // Radius targets ~150-200px range; scaled by cappedSizeScale so it stays
-      // proportionate on tall portrait screens.
-      const r = 95 * cappedSizeScale;
-      gfx.clear();
-      // Outer soft ring
-      gfx.circle(cx, cy, r);
-      gfx.fill({ color: clan.color, alpha: 0.18 });
-      // Inner brighter core for "this is the base"
-      gfx.circle(cx, cy, r * 0.55);
-      gfx.fill({ color: clan.color, alpha: 0.28 });
-      // Crisp edge stroke
-      gfx.circle(cx, cy, r);
-      gfx.stroke({ color: clan.color, width: 2, alpha: 0.55 });
-    });
+    if (DEMO_MODE) {
+      // Big translucent CLAN ZONES — drawn first, breathing animation ticker pulses alpha.
+      // Stored geometry only here; alpha applied per-tick.
+      drawn.clanZones.forEach(({ gfx, clan }) => {
+        const base = regionMap.get(clan.homeRegion);
+        if (!base) return;
+        const cx = projX(base.nx);
+        const cy = projY(base.ny);
+        // Radius targets ~150-200px range; scaled by cappedSizeScale so it stays
+        // proportionate on tall portrait screens.
+        const r = 95 * cappedSizeScale;
+        gfx.clear();
+        // Outer soft ring
+        gfx.circle(cx, cy, r);
+        gfx.fill({ color: clan.color, alpha: 0.18 });
+        // Inner brighter core for "this is the base"
+        gfx.circle(cx, cy, r * 0.55);
+        gfx.fill({ color: clan.color, alpha: 0.28 });
+        // Crisp edge stroke
+        gfx.circle(cx, cy, r);
+        gfx.stroke({ color: clan.color, width: 2, alpha: 0.55 });
+      });
+    }
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
     REGIONS.forEach((region, i) => {
@@ -812,7 +878,8 @@ export function WorldMap() {
       const cy = projY(region.ny);
       const g = drawn.regions[i];
       // Hide region dots that are home to a clan (zone halo replaces them visually)
-      const isClanHome = MOCK_CLANS.some(c => c.homeRegion === region.id);
+      // Only apply the "clan home" suppression when DEMO_MODE is on.
+      const isClanHome = DEMO_MODE && MOCK_CLANS.some(c => c.homeRegion === region.id);
       if (g) {
         g.clear();
         if (!isClanHome) {
@@ -830,98 +897,100 @@ export function WorldMap() {
       }
     });
 
-    // Build per-clan monument level lookup. Prefer live snapshot via treasury;
-    // fall back to mock 4-i pattern matching scoreboard demo data.
-    const liveClans = snapshot?.clans;
-    const levelByClan = new Map<string, number>();
-    if (liveClans && liveClans.length > 0) {
-      for (const c of liveClans) levelByClan.set(c.id, treasuryToMonument(c.treasury));
-    }
-    MOCK_CLANS.forEach((c, i) => {
-      if (!levelByClan.has(c.id)) levelByClan.set(c.id, 4 - i);
-    });
-
-    // Wall rings — visually replaced by zone halos. Clear graphics; keep refs.
-    drawn.walls.forEach(({ gfx }) => {
-      gfx.clear();
-    });
-
-    // Monument towers — stacked rectangles + top cap, height grows with level.
-    // Positioned at the flag location, just below the sigil so it reads as
-    // "the clan's structure at their homebase."
-    // Old monument obelisks — replaced by base sprites + floating Lv badges.
-    // Keep refs alive (cleanup is done in unmount) but draw nothing.
-    drawn.monuments.forEach(({ gfx }) => {
-      gfx.clear();
-    });
-
-    // Clan sigil flags — REPLACED by base sprites. Hide them but keep bubble
-    // anchors so the speech-bubble system still has positions to attach to.
-    drawn.flags.forEach(({ gfx, sprite, label, clan }) => {
-      const base = regionMap.get(clan.homeRegion);
-      if (!base) return;
-      const cx = projX(base.nx);
-      const cy = projY(base.ny);
-      const baseSize = Math.max(48, 72 * cappedSizeScale);
-      // Hide everything visually
-      gfx.clear();
-      if (sprite) sprite.alpha = 0;
-      label.alpha = 0;
-      // Bubble anchor: top of base sprite
-      flagAnchorsRef.current.set(clan.id, { x: cx, y: cy - baseSize * 1.05 });
-    });
-
-    // BASE SPRITES — render at clan home positions, replacing monument obelisks.
-    drawn.bases.forEach(({ sprite, fallback, clan }) => {
-      const base = regionMap.get(clan.homeRegion);
-      if (!base) return;
-      const cx = projX(base.nx);
-      const cy = projY(base.ny);
-      // Base size: ~64px at 1x scale, scales with viewport
-      const baseSize = Math.max(48, 72 * cappedSizeScale);
-      fallback.clear();
-      if (!sprite) {
-        // Simple colored fallback rect with clan-color border
-        fallback.rect(cx - baseSize / 2, cy - baseSize, baseSize, baseSize);
-        fallback.fill({ color: 0x444444, alpha: 0.7 });
-        fallback.stroke({ color: clan.color, width: 3 });
+    if (DEMO_MODE) {
+      // Build per-clan monument level lookup. Prefer live snapshot via treasury;
+      // fall back to mock 4-i pattern matching scoreboard demo data.
+      const liveClans = snapshot?.clans;
+      const levelByClan = new Map<string, number>();
+      if (liveClans && liveClans.length > 0) {
+        for (const c of liveClans) levelByClan.set(c.id, treasuryToMonument(c.treasury));
       }
-      if (sprite) {
-        sprite.width = baseSize;
-        sprite.height = baseSize;
-        sprite.x = cx;
-        sprite.y = cy + baseSize * 0.15; // anchor=bottom-center; sit slightly below center
-        sprite.alpha = 1;
-      }
-    });
+      MOCK_CLANS.forEach((c, i) => {
+        if (!levelByClan.has(c.id)) levelByClan.set(c.id, 4 - i);
+      });
 
-    // FLOATING "Lv N" BADGES — beside each base sprite. Updates with monument level.
-    drawn.levelBadges.forEach(({ bg, label, clan }) => {
-      const base = regionMap.get(clan.homeRegion);
-      if (!base) return;
-      const cx = projX(base.nx);
-      const cy = projY(base.ny);
-      const baseSize = Math.max(48, 72 * cappedSizeScale);
-      const lvl = levelByClan.get(clan.id) ?? 0;
-      label.text = `Lv ${lvl}`;
-      label.style.fontSize = Math.max(11, Math.round(13 * cappedSizeScale));
-      // Position to the right of the base sprite, near the top
-      const bx = cx + baseSize * 0.55;
-      const by = cy - baseSize * 0.55;
-      label.x = bx;
-      label.y = by;
-      // Pill background
-      const pad = Math.max(4, 6 * cappedSizeScale);
-      const w = label.width + pad * 2;
-      const h = label.height + pad * 0.6;
-      bg.clear();
-      bg.roundRect(bx - w / 2, by - h / 2, w, h, h / 2);
-      bg.fill({ color: 0x0d1a0d, alpha: 0.85 });
-      bg.stroke({ color: clan.color, width: 1.5, alpha: 0.95 });
-    });
+      // Wall rings — visually replaced by zone halos. Clear graphics; keep refs.
+      drawn.walls.forEach(({ gfx }) => {
+        gfx.clear();
+      });
 
-    // Bandit redraw uses live tick — recompute alongside layout
-    redrawBandit();
+      // Monument towers — stacked rectangles + top cap, height grows with level.
+      // Positioned at the flag location, just below the sigil so it reads as
+      // "the clan's structure at their homebase."
+      // Old monument obelisks — replaced by base sprites + floating Lv badges.
+      // Keep refs alive (cleanup is done in unmount) but draw nothing.
+      drawn.monuments.forEach(({ gfx }) => {
+        gfx.clear();
+      });
+
+      // Clan sigil flags — REPLACED by base sprites. Hide them but keep bubble
+      // anchors so the speech-bubble system still has positions to attach to.
+      drawn.flags.forEach(({ gfx, sprite, label, clan }) => {
+        const base = regionMap.get(clan.homeRegion);
+        if (!base) return;
+        const cx = projX(base.nx);
+        const cy = projY(base.ny);
+        const baseSize = Math.max(96, 144 * cappedSizeScale);
+        // Hide everything visually
+        gfx.clear();
+        if (sprite) sprite.alpha = 0;
+        label.alpha = 0;
+        // Bubble anchor: top of base sprite
+        flagAnchorsRef.current.set(clan.id, { x: cx, y: cy - baseSize * 1.05 });
+      });
+
+      // BASE SPRITES — render at clan home positions, replacing monument obelisks.
+      drawn.bases.forEach(({ sprite, fallback, clan }) => {
+        const base = regionMap.get(clan.homeRegion);
+        if (!base) return;
+        const cx = projX(base.nx);
+        const cy = projY(base.ny);
+        // Base size: ~128px at 1x scale, scales with viewport (2x bump for phone readability)
+        const baseSize = Math.max(96, 144 * cappedSizeScale);
+        fallback.clear();
+        if (!sprite) {
+          // Simple colored fallback rect with clan-color border
+          fallback.rect(cx - baseSize / 2, cy - baseSize, baseSize, baseSize);
+          fallback.fill({ color: 0x444444, alpha: 0.7 });
+          fallback.stroke({ color: clan.color, width: 3 });
+        }
+        if (sprite) {
+          sprite.width = baseSize;
+          sprite.height = baseSize;
+          sprite.x = cx;
+          sprite.y = cy + baseSize * 0.15; // anchor=bottom-center; sit slightly below center
+          sprite.alpha = 1;
+        }
+      });
+
+      // FLOATING "Lv N" BADGES — beside each base sprite. Updates with monument level.
+      drawn.levelBadges.forEach(({ bg, label, clan }) => {
+        const base = regionMap.get(clan.homeRegion);
+        if (!base) return;
+        const cx = projX(base.nx);
+        const cy = projY(base.ny);
+        const baseSize = Math.max(96, 144 * cappedSizeScale);
+        const lvl = levelByClan.get(clan.id) ?? 0;
+        label.text = `Lv ${lvl}`;
+        label.style.fontSize = Math.max(11, Math.round(13 * cappedSizeScale));
+        // Position to the right of the base sprite, near the top
+        const bx = cx + baseSize * 0.55;
+        const by = cy - baseSize * 0.55;
+        label.x = bx;
+        label.y = by;
+        // Pill background
+        const pad = Math.max(4, 6 * cappedSizeScale);
+        const w = label.width + pad * 2;
+        const h = label.height + pad * 0.6;
+        bg.clear();
+        bg.roundRect(bx - w / 2, by - h / 2, w, h, h / 2);
+        bg.fill({ color: 0x0d1a0d, alpha: 0.85 });
+        bg.stroke({ color: clan.color, width: 1.5, alpha: 0.95 });
+      });
+
+      // Bandit redraw uses live tick — recompute alongside layout
+      redrawBandit();
+    } // end DEMO_MODE relayout block
   }
 
   // ---- Bandit: hooded silhouette over Mountains + ticks-until-attack readout
@@ -980,9 +1049,9 @@ export function WorldMap() {
     text.y = iconY;
   }
 
-  // Tick changes: refresh bandit countdown
+  // Tick changes: refresh bandit countdown (demo mode only)
   useEffect(() => {
-    if (!pixiReady) return;
+    if (!pixiReady || !DEMO_MODE) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.tick, pixiReady]);
@@ -992,13 +1061,13 @@ export function WorldMap() {
     if (!pixiReady) return;
     const wrap = canvasWrapRef.current;
     if (!wrap) return;
-    relayout(wrap.clientWidth || 800, wrap.clientHeight || 600);
+    relayout(WORLD_WIDTH, WORLD_HEIGHT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.clans, pixiReady]);
 
   // Pulse the bandit icon when 1-2 ticks from attacking — urgency cue for the demo
   useEffect(() => {
-    if (!pixiReady) return;
+    if (!pixiReady || !DEMO_MODE) return;
     const app = appRef.current;
     if (!app) return;
     const tick = snapshot?.tick ?? 0;
@@ -1029,8 +1098,9 @@ export function WorldMap() {
   }, [snapshot?.tick, pixiReady]);
 
   // Speech bubbles (PR #43): spawn bubbles for new logs; attribute each to a clan via string match.
+  // Only active in DEMO_MODE (MOCK_CLANS provides the attribution table).
   useEffect(() => {
-    if (!pixiReady || !bubbleLayerRef.current || logs.length === 0) return;
+    if (!pixiReady || !DEMO_MODE || !bubbleLayerRef.current || logs.length === 0) return;
     const layer = bubbleLayerRef.current;
 
     // useAgentLogs returns desc order. Reverse so chronological add → newest stacked on top.
@@ -1061,7 +1131,7 @@ export function WorldMap() {
   }, [logs, pixiReady]);
 
   // ---- Worker travel (PR #44): spawn dots from log "send X to Y" + canned demos
-  function spawnTravel(fromRegionKey: string, toRegionKey: string, color: number) {
+  function spawnTravel(fromRegionKey: string, toRegionKey: string, color: number, clanId?: string) {
     const layer = travelLayerRef.current;
     if (!layer) return;
     if (fromRegionKey === toRegionKey) return;
@@ -1069,11 +1139,28 @@ export function WorldMap() {
     const to = REGIONS.find(r => r.id === toRegionKey);
     if (!from || !to) return;
 
-    const gfx = new Graphics();
-    gfx.circle(0, 0, TRAVEL_DOT_RADIUS);
-    gfx.fill({ color });
-    gfx.stroke({ color: 0x000000, width: 1, alpha: 0.55 });
-    gfx.alpha = 0;
+    // Prefer the clansman sprite (replaces the old colored dot). Falls back to the
+    // dot if the texture hasn't loaded yet — keeps the demo robust on slow assets.
+    const tex = clanId ? clansmanTextureCache[clanId] : undefined;
+    let gfx: Container;
+    if (tex) {
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 0.5);
+      // Workers are smaller than bases — keep them readable but not chunky.
+      const targetH = 28;
+      const ratio = targetH / sprite.texture.height;
+      sprite.height = targetH;
+      sprite.width = sprite.texture.width * ratio;
+      sprite.alpha = 0;
+      gfx = sprite;
+    } else {
+      const dot = new Graphics();
+      dot.circle(0, 0, TRAVEL_DOT_RADIUS);
+      dot.fill({ color });
+      dot.stroke({ color: 0x000000, width: 1, alpha: 0.55 });
+      dot.alpha = 0;
+      gfx = dot;
+    }
     layer.addChild(gfx);
 
     const durationMs =
@@ -1091,9 +1178,9 @@ export function WorldMap() {
     });
   }
 
-  // Real travels: parse "send X to Y" out of new log messages
+  // Real travels: parse "send X to Y" out of new log messages (demo mode only)
   useEffect(() => {
-    if (!pixiReady || !travelLayerRef.current || logs.length === 0) return;
+    if (!pixiReady || !DEMO_MODE || !travelLayerRef.current || logs.length === 0) return;
     const ordered: AgentLog[] = [...logs].reverse();
     for (const log of ordered) {
       if (seenTravelLogIdsRef.current.has(log._id)) continue;
@@ -1105,34 +1192,39 @@ export function WorldMap() {
       const clan = clanId ? MOCK_CLANS.find(c => c.id === clanId) : null;
       if (!clan) continue;
       if (clan.homeRegion === dest) continue;
-      spawnTravel(clan.homeRegion, dest, clan.color);
+      spawnTravel(clan.homeRegion, dest, clan.color, clan.id);
     }
   }, [logs, pixiReady]);
 
   // Canned demo travels: continuous spawn so 4-8 dots are always in motion.
-  // Hackathon visual: the map should never feel dead.
+  // Hackathon visual: the map should never feel dead. Skipped when DEMO_MODE is off.
   useEffect(() => {
-    if (!pixiReady) return;
+    if (!pixiReady || !DEMO_MODE) return;
     const fireOne = () => {
       const clan = MOCK_CLANS[Math.floor(Math.random() * MOCK_CLANS.length)];
       if (!clan) return;
       const candidates = REGIONS.filter(r => r.id !== clan.homeRegion);
       const dest = candidates[Math.floor(Math.random() * candidates.length)];
       if (!dest) return;
-      spawnTravel(clan.homeRegion, dest.id, clan.color);
+      spawnTravel(clan.homeRegion, dest.id, clan.color, clan.id);
     };
     // Initial burst — one worker from EACH clan, staggered so they're visible
-    // immediately when the canvas loads.
-    MOCK_CLANS.forEach((clan, i) => {
+    // immediately when the canvas loads. Track timeout IDs so we can cancel
+    // them on unmount (PR #133 review MUST FIX #2 — without this, callbacks
+    // fire after Pixi teardown and call spawnTravel on destroyed objects).
+    const staggerIds = MOCK_CLANS.map((clan, i) =>
       window.setTimeout(() => {
         const candidates = REGIONS.filter(r => r.id !== clan.homeRegion);
         const dest = candidates[Math.floor(Math.random() * candidates.length)];
         if (!dest) return;
-        spawnTravel(clan.homeRegion, dest.id, clan.color);
-      }, i * 250);
-    });
+        spawnTravel(clan.homeRegion, dest.id, clan.color, clan.id);
+      }, i * 250),
+    );
     const interval = window.setInterval(fireOne, CANNED_TRAVEL_INTERVAL_MS);
-    return () => window.clearInterval(interval);
+    return () => {
+      staggerIds.forEach(id => window.clearTimeout(id));
+      window.clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pixiReady]);
 
@@ -1140,6 +1232,8 @@ export function WorldMap() {
   // Portrait + archetype label come from MOCK_CLANS (they are static metadata,
   // not server state) — we look them up by clan id whether the row is sourced
   // from a live snapshot or the mock fallback.
+  // When DEMO_MODE is off, scoreboardClans is empty — the scoreboard panel hides
+  // and the "no chain data yet" placeholder is shown instead.
   const scoreboardClans = (() => {
     const live = snapshot?.clans;
     if (live && live.length > 0) {
@@ -1157,14 +1251,18 @@ export function WorldMap() {
         })
         .sort((a, b) => b.monumentLevel - a.monumentLevel);
     }
-    return MOCK_CLANS.map((c, i) => ({
-      id: c.id,
-      name: c.name,
-      color: c.color,
-      portrait: c.portrait,
-      archetype: c.archetype,
-      monumentLevel: 4 - i,
-    })).sort((a, b) => b.monumentLevel - a.monumentLevel);
+    // Mock fallback — only used in DEMO_MODE
+    if (DEMO_MODE) {
+      return MOCK_CLANS.map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        color: c.color,
+        portrait: c.portrait,
+        archetype: c.archetype,
+        monumentLevel: 4 - i,
+      })).sort((a, b) => b.monumentLevel - a.monumentLevel);
+    }
+    return [];
   })();
 
   return (
@@ -1173,8 +1271,14 @@ export function WorldMap() {
       style={{
         position: 'relative',
         width: '100%',
-        // Fill remaining flex space inside <main>. min-height:0 lets flex
-        // shrink past content size; dvh ensures iOS toolbar is honored.
+        // Fill the parent. We set BOTH `height: 100%` (so grid-cell parents
+        // like the cockpit's center cell give us their full row height) AND
+        // `flex: 1 1 auto` + min-height:0 (legacy: the standalone
+        // /worldmap-only route uses a flex column <main> wrapper). Without
+        // height:100%, grid-cell children collapse to content-height (= 0
+        // because the inner canvasWrap is absolutely positioned), pixi
+        // ResizeObserver reports 0x0, and the canvas renders empty/black.
+        height: '100%',
         flex: '1 1 auto',
         minHeight: 0,
         overflow: 'hidden',
@@ -1192,45 +1296,83 @@ export function WorldMap() {
 
       {/* Compact world-pulse panel — bottom-left, semi-transparent.
           Floating Lv badges on the canvas show per-clan level; this panel just
-          gives a glance of the world tick + a tight per-clan summary line. */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 8,
-          left: 8,
-          padding: '5px 8px',
-          background: 'rgba(13, 26, 13, 0.7)',
-          border: '1px solid rgba(204, 170, 34, 0.35)',
-          borderRadius: 5,
-          fontFamily: 'monospace',
-          color: '#e8e2c8',
-          fontSize: 10,
-          lineHeight: 1.3,
-          boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-          pointerEvents: 'none',
-          zIndex: 2,
-          maxWidth: '70%',
-        }}
-      >
-        <div style={{ color: '#e8d68f', fontWeight: 600, letterSpacing: '0.05em' }}>
-          tick {liveTick}
+          gives a glance of the world tick + a tight per-clan summary line.
+          Shown whenever scoreboardClans is non-empty (demo mock data OR live snapshot). */}
+      {scoreboardClans.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: 8,
+            padding: '5px 8px',
+            background: 'rgba(13, 26, 13, 0.7)',
+            border: '1px solid rgba(204, 170, 34, 0.35)',
+            borderRadius: 5,
+            fontFamily: 'monospace',
+            color: '#e8e2c8',
+            fontSize: 10,
+            lineHeight: 1.3,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+            pointerEvents: 'none',
+            zIndex: 2,
+            maxWidth: '70%',
+          }}
+        >
+          <div style={{ color: '#e8d68f', fontWeight: 600, letterSpacing: '0.05em' }}>
+            tick {liveTick}
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', opacity: 0.85 }}>
+            {scoreboardClans.map((c) => {
+              const initials =
+                c.name === 'Iron Guard' ? 'IG'
+                  : c.name === 'Ember Hand' ? 'EH'
+                  : c.name === 'Dawn Watch' ? 'DW'
+                  : c.name === 'Storm Riders' ? 'SR'
+                  : c.name.slice(0, 2).toUpperCase();
+              return (
+                <span key={c.id} style={{ color: hex(c.color), whiteSpace: 'nowrap' }}>
+                  {initials} L{c.monumentLevel}
+                </span>
+              );
+            })}
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', opacity: 0.85 }}>
-          {scoreboardClans.map((c) => {
-            const initials =
-              c.name === 'Iron Guard' ? 'IG'
-                : c.name === 'Ember Hand' ? 'EH'
-                : c.name === 'Dawn Watch' ? 'DW'
-                : c.name === 'Storm Riders' ? 'SR'
-                : c.name.slice(0, 2).toUpperCase();
-            return (
-              <span key={c.id} style={{ color: hex(c.color), whiteSpace: 'nowrap' }}>
-                {initials} L{c.monumentLevel}
-              </span>
-            );
-          })}
+      )}
+
+      {/* "No chain data yet" placeholder — shown when DEMO_MODE is off and no
+          live snapshot clans are present. Centered overlay so it reads clearly
+          on the bare terrain map. */}
+      {!DEMO_MODE && (!snapshot?.clans || snapshot.clans.length === 0) && (
+        <div
+          data-testid="no-chain-data-placeholder"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+            zIndex: 3,
+          }}
+        >
+          <div
+            style={{
+              padding: '16px 28px',
+              background: 'rgba(13, 26, 13, 0.82)',
+              border: '1px solid rgba(204, 170, 34, 0.4)',
+              borderRadius: 8,
+              fontFamily: '"Cinzel", "Times New Roman", serif',
+              color: '#e8d68f',
+              fontSize: 15,
+              letterSpacing: '0.07em',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+              textAlign: 'center',
+            }}
+          >
+            no chain data yet
+          </div>
         </div>
-      </div>
+      )}
 
       {/* World-level notice parchment — bottom-center, surfaces warn-level
           WORLD events (bandits, raids, weather). Distinct from per-clan

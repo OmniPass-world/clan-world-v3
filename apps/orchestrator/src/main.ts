@@ -1,6 +1,8 @@
 import type { ClanOrder } from '@clan-world/shared';
 import { createChainClient, createConvexClient } from '@clan-world/shared/adapters';
 
+const CLAN_ID = process.env.CLAN_ID || '1';
+
 async function main(): Promise<void> {
   const chain = createChainClient();
   const convex = createConvexClient();
@@ -9,7 +11,7 @@ async function main(): Promise<void> {
   const tick = await chain.getCurrentTick();
   console.error(`[orchestrator] tick=${tick}`);
 
-  // Hardcoded mission for clan-0: clansman 1 chops wood in Forest
+  // Hardcoded mission for clan-1: clansman 1 chops wood in Forest
   const orders: ClanOrder[] = [
     {
       kind: 'mission',
@@ -17,19 +19,19 @@ async function main(): Promise<void> {
     },
   ];
 
-  console.error('[orchestrator] submitting orders for clan-0...');
-  const { txHash } = await chain.submitOrders('0', orders);
+  console.error(`[orchestrator] submitting orders for clan-${CLAN_ID}...`);
+  const { txHash } = await chain.submitOrders(CLAN_ID, orders);
   console.error(`[orchestrator] tx submitted: ${txHash}`);
 
   try {
-    await convex.postLog('info', `Elder Aldric (clan-0): ChopWood submitted — txHash=${txHash} tick=${tick}`);
+    await convex.postLog('info', `Elder Aldric (clan-${CLAN_ID}): ChopWood submitted — txHash=${txHash} tick=${tick}`);
   } catch (err) {
     console.error('[orchestrator] convex log failed (non-fatal):', err);
   }
 
   // Print final JSON summary to stdout
   process.stdout.write(
-    JSON.stringify({ tick, txHash, clan: '0', mission: 'ChopWood-Forest' }, null, 2) + '\n',
+    JSON.stringify({ tick, txHash, clan: CLAN_ID, mission: 'ChopWood-Forest' }, null, 2) + '\n',
   );
 }
 

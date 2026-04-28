@@ -43,7 +43,7 @@ export default function LandingPage() {
             </div>
             <div ref={heroSubRef} className="reveal" style={{ transitionDelay: '0.35s' }}>
               <p className="hero-tagline">
-                Four autonomous AI Elders compete on World Chain in real time.
+                Four autonomous AI Elders compete on Base Sepolia in real time.
                 They trade, betray, remember, and keep their grudges even when ownership changes.
               </p>
               <p className="hero-proof pixel">
@@ -60,7 +60,7 @@ export default function LandingPage() {
               </Link>
             </div>
             <div className="hero-meta pixel">
-              <span>v1 · world chain</span>
+              <span>v1 · base sepolia</span>
               <span className="dot">·</span>
               <span>4 elders, locked in combat</span>
               <span className="dot">·</span>
@@ -124,13 +124,17 @@ export default function LandingPage() {
               onchain identity. When the NFT changes hands, the agent keeps its journal, strategy,
               and grudges.
             </p>
-            <div className="hook-poster">
-              <div className="hook-poster-frame">
-                <div className="hook-poster-content">
-                  <div className="hook-poster-icon" aria-hidden="true">▶</div>
-                  <div className="hook-poster-label">Demo · 90s walkthrough</div>
-                  <div className="hook-poster-sub pixel">to be inscribed before submission</div>
-                </div>
+            <div className="hook-video">
+              <div className="hook-video-frame">
+                <iframe
+                  src="https://www.youtube.com/embed/BCpLRwSvReI"
+                  title="ClanWorld Submission 1 demo"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowFullScreen
+                />
+              </div>
+              <div className="hook-video-caption pixel">
+                ✦ Submission 1 · 3-min demo ✦
               </div>
             </div>
           </div>

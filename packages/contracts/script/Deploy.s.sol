@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import {Script, console} from "forge-std/Script.sol";
 import {MinimalERC20} from "../src/MinimalERC20.sol";
 import {StubPool} from "../src/StubPool.sol";
-import {ClanWorldStub} from "../src/ClanWorldStub.sol";
+import {ClanWorld} from "../src/ClanWorld.sol";
 
 contract Deploy is Script {
     function run() external {
@@ -12,7 +12,7 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        // 1. Deploy 6 resource tokens
+        // 1. Deploy 6 resource tokens (still needed for treasury/pool references)
         MinimalERC20 wood      = new MinimalERC20("ClanWorld Wood",      "WOOD");
         MinimalERC20 iron      = new MinimalERC20("ClanWorld Iron",      "IRON");
         MinimalERC20 wheat     = new MinimalERC20("ClanWorld Wheat",     "WHEAT");
@@ -27,35 +27,20 @@ contract Deploy is Script {
         console.log("gold:     ", address(gold));
         console.log("blueprint:", address(blueprint));
 
-        // 2. Deploy 4 stub LP pools
-        StubPool woodGold  = new StubPool(address(wood),  address(gold));
-        StubPool wheatGold = new StubPool(address(wheat), address(gold));
-        StubPool fishGold  = new StubPool(address(fish),  address(gold));
-        StubPool ironGold  = new StubPool(address(iron),  address(gold));
+        // 3. Deploy ClanWorld first (needed as engine arg for pools)
+        ClanWorld game = new ClanWorld();
+        console.log("CLAN_WORLD_CONTRACT_ADDRESS:", address(game));
+
+        // 2. Deploy 4 AMM pools (Phase 2: real constant-product pools)
+        StubPool woodGold  = new StubPool(address(wood),  address(gold), address(game));
+        StubPool wheatGold = new StubPool(address(wheat), address(gold), address(game));
+        StubPool fishGold  = new StubPool(address(fish),  address(gold), address(game));
+        StubPool ironGold  = new StubPool(address(iron),  address(gold), address(game));
 
         console.log("woodGoldPool: ", address(woodGold));
         console.log("wheatGoldPool:", address(wheatGold));
         console.log("fishGoldPool: ", address(fishGold));
         console.log("ironGoldPool: ", address(ironGold));
-
-        // 3. Deploy ClanWorldStub
-        address[6] memory tokens = [
-            address(wood),
-            address(iron),
-            address(wheat),
-            address(fish),
-            address(gold),
-            address(blueprint)
-        ];
-        address[4] memory pools = [
-            address(woodGold),
-            address(wheatGold),
-            address(fishGold),
-            address(ironGold)
-        ];
-
-        ClanWorldStub stub = new ClanWorldStub(tokens, pools);
-        console.log("ClanWorldStub:", address(stub));
 
         vm.stopBroadcast();
     }

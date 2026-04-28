@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { createPublicClient, createWalletClient, http, fallback, defineChain } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { ClanFullView, ClanOrder, Tick } from '../types';
@@ -9,14 +10,14 @@ export interface IChainClient {
   getClanFullView(clanId: string): Promise<ClanFullView>;
 }
 
-const DEFAULT_CONTRACT_ADDRESS = '0xC012275376b867944cd874FB2d600d6dA3B4A56e' as const;
+const DEFAULT_CONTRACT_ADDRESS = '0x1BF5649f29CbB53E117a5aE969A18A71790f83E8' as const;
 
-const worldChainSepolia = defineChain({
-  id: 4801,
-  name: 'World Chain Sepolia',
+const baseSepolia = defineChain({
+  id: 84532,
+  name: 'Base Sepolia',
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://worldchain-sepolia.g.alchemy.com/public'] },
+    default: { http: ['https://sepolia.base.org'] },
   },
 });
 
@@ -271,7 +272,7 @@ class RealChainClient implements IChainClient {
       DEFAULT_CONTRACT_ADDRESS) as `0x${string}`;
 
     this.client = createPublicClient({
-      chain: worldChainSepolia,
+      chain: baseSepolia,
       transport: this.transport,
     });
   }
@@ -322,13 +323,29 @@ class RealChainClient implements IChainClient {
       throw new Error('submitOrders: no valid mission orders to submit');
     }
 
-    const pk = readEnv('DEPLOYER_PRIVATE_KEY');
-    if (!pk) throw new Error('DEPLOYER_PRIVATE_KEY not set');
+    const keyPath = readEnv('ELDER_WALLET_KEY_PATH');
+    let pk: string | undefined;
+    if (keyPath) {
+      pk = fs.readFileSync(keyPath, 'utf8').trim();
+    } else {
+      const fallbackKey = readEnv('DEPLOYER_PRIVATE_KEY');
+      if (fallbackKey) {
+        console.warn('[RealChainClient] ELDER_WALLET_KEY_PATH not set; falling back to DEPLOYER_PRIVATE_KEY (deprecated)');
+        pk = fallbackKey;
+      }
+    }
+    if (!pk) throw new Error('Neither ELDER_WALLET_KEY_PATH nor DEPLOYER_PRIVATE_KEY is set');
+
+    // Normalize: add 0x prefix if missing
+    if (!pk.startsWith('0x')) pk = '0x' + pk;
+    if (!/^0x[0-9a-fA-F]{64}$/.test(pk)) {
+      throw new Error(`ELDER_WALLET_KEY_PATH: file does not contain a valid 64-hex-char private key`);
+    }
 
     const account = privateKeyToAccount(pk as `0x${string}`);
     const walletClient = createWalletClient({
       account,
-      chain: worldChainSepolia,
+      chain: baseSepolia,
       transport: this.transport,
     });
 
