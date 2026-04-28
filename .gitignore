@@ -148,3 +148,8 @@ vite.config.ts.timestamp-*
 
 # Local planning extraction (V1.zip already committed; the unzipped tree is per-checkout)
 docs/planning/V1/
+
+# Playwright (anchor as glob so per-app dirs like apps/web/test-results/ also match)
+**/test-results/
+**/playwright-report/
+**/playwright/.cache/
