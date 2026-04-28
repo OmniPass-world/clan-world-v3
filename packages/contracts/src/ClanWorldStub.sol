@@ -1,9 +1,44 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.34;
 
-import "./IClanWorld.sol";
+import {
+    IClanWorld,
+    IClanWorldEvents,
+    ClanWorldConstants,
+    ClanState,
+    ClansmanState,
+    BanditState,
+    WheatPlotState,
+    ResourceType,
+    ActionType,
+    MarketExecutionMode,
+    StatusCode,
+    WorldState,
+    TreasuryState,
+    Clan,
+    WheatPlot,
+    Clansman,
+    Mission,
+    BanditTroop,
+    ScheduledMarketAction,
+    DefenseContribution,
+    PackedRoute,
+    DerivedClanState,
+    DerivedClansmanState,
+    ClanOrder,
+    OrderResult,
+    PoolSeedConfig,
+    LeaderboardEntry,
+    WorldSnapshot,
+    ClansmanFullView,
+    ClanFullView,
+    PoolReserves,
+    MarketState,
+    ActiveBanditView,
+    RegionOccupant
+} from "./IClanWorld.sol";
 
-/// @notice Stub implementation of IClanWorld for World Chain Sepolia deployment.
+/// @notice Stub implementation of IClanWorld for Base Sepolia deployment.
 ///         Stores tick state and token/pool addresses. All game logic is no-op.
 contract ClanWorldStub is IClanWorld {
     WorldState private _world;
