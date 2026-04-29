@@ -50,7 +50,7 @@ contract ClanWorldStub is IClanWorld {
         _world.seasonStartTick = 0;
         _world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
         _world.currentSeasonNumber = 1;
-        _world.nextHeartbeatAtTick = 1;
+        _world.nextHeartbeatAtTick = _world.currentTick + 1;
         _world.winterStartsAtTick =
             ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS;
         _world.winterEndsAtTick = ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
