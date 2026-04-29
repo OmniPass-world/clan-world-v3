@@ -454,7 +454,7 @@ contract ClanWorldTest is Test {
         vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
         _submitOrder(clanId, cs0, homeRegion, ActionType.DepositResources);
 
-        // Advance through travel back to homebase; deposit is instant on arrival.
+        // Advance through travel back to homebase and the deposit's 1-tick transfer.
         (uint8 travelBack,) = world.quoteTravel(targetRegion, homeRegion);
         for (uint256 i = 0; i < uint256(travelBack) + world.getActionDuration(ActionType.DepositResources) + 1; i++) {
             _advanceTick();
@@ -484,10 +484,14 @@ contract ClanWorldTest is Test {
         assertEq(uint8(r[0].status), uint8(StatusCode.OK), "deposit order should be accepted");
 
         Mission memory mission = harness.getActiveMission(csId);
-        assertEq(mission.settlesAtTick, mission.executesAtTick, "deposit settles instantly on arrival");
+        assertEq(
+            mission.settlesAtTick,
+            mission.executesAtTick + harness.getActionDuration(ActionType.DepositResources),
+            "deposit settles after transfer duration"
+        );
 
         _advanceTickHarness(harness);
-        harness.settleClan(clanId);
+        _advanceTickHarness(harness);
 
         assertEq(harness.getClan(clanId).vaultWood, vaultBefore + woodDelta, "vault wood receives carried wood");
         assertEq(harness.getClansman(csId).carryWood, 0, "carry wood is cleared");
@@ -500,9 +504,9 @@ contract ClanWorldTest is Test {
         OrderResult[] memory r = _submitOrderHarness(harness, clanId, csId, homeRegion, ActionType.DepositResources);
         assertEq(uint8(r[0].status), uint8(StatusCode.OK), "empty deposit order should be accepted");
 
-        _advanceTickHarness(harness);
         vm.recordLogs();
-        harness.settleClan(clanId);
+        _advanceTickHarness(harness);
+        _advanceTickHarness(harness);
         Vm.Log[] memory logs = vm.getRecordedLogs();
         bytes32 depositedTopic = keccak256("ResourcesDeposited(uint32,uint32,uint256,uint256,uint256,uint256)");
 
@@ -527,15 +531,14 @@ contract ClanWorldTest is Test {
         assertEq(uint8(r[0].status), uint8(StatusCode.OK), "deposit order should be accepted");
 
         _advanceTickHarness(harness);
-        harness.settleClan(clanId);
+        _advanceTickHarness(harness);
 
         Clan memory afterClan = harness.getClan(clanId);
         Clansman memory afterCs = harness.getClansman(csId);
-        uint256 fishUpkeep = uint256(beforeClan.livingClansmen) * ClanWorldConstants.FISH_UPKEEP_PER_CLANSMAN;
 
         assertEq(afterClan.vaultWood, beforeClan.vaultWood + woodDelta, "wood transferred");
         assertEq(afterClan.vaultIron, beforeClan.vaultIron + ironDelta, "iron transferred");
-        assertEq(afterClan.vaultFish, beforeClan.vaultFish - fishUpkeep + fishDelta, "fish transferred after upkeep");
+        assertEq(afterClan.vaultFish, beforeClan.vaultFish + fishDelta, "fish transferred");
         assertEq(afterCs.carryWood, 0, "wood carry cleared");
         assertEq(afterCs.carryIron, 0, "iron carry cleared");
         assertEq(afterCs.carryFish, 0, "fish carry cleared");
@@ -565,7 +568,7 @@ contract ClanWorldTest is Test {
         _advanceTickHarness(harness);
         vm.expectEmit(true, false, false, true);
         emit IClanWorldEvents.ResourcesDeposited(clanId, csId, 5e18, 2e18, 3e18, 1e18);
-        harness.settleClan(clanId);
+        _advanceTickHarness(harness);
     }
 
     function test_quoteTravel_outOfBounds_returnsZero() public {
@@ -1404,6 +1407,7 @@ contract ClanWorldTest is Test {
         // Wait for submit-time cooldown to expire (warp only; no ticks yet)
         vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
 
+        _advanceTick();
         _advanceTick();
 
         // Settle the clan — mission completes, clansman back to WAITING with new cooldown

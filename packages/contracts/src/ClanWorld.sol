@@ -74,6 +74,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     // CONSTANTS — Wheat harvest rate (not in IClanWorld constants)
     // =========================================================================
 
+    uint64 private constant DEPOSIT_DURATION_TICKS = 1;
     uint256 private constant WHEAT_HARVEST_RATE = 20e18;
     /// @dev Caps market queue work per heartbeat; overflow is deferred to the next tick.
     uint256 public constant MAX_MARKET_ACTIONS_PER_TICK = 32;
@@ -1798,6 +1799,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 || action == ActionType.FishDeepSea || action == ActionType.HarvestWheat
         ) {
             return 4;
+        }
+
+        if (action == ActionType.DepositResources) {
+            return DEPOSIT_DURATION_TICKS;
         }
 
         if (
