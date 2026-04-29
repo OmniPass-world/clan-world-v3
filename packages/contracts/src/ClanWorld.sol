@@ -38,13 +38,14 @@ import {
     RegionOccupant
 } from "./IClanWorld.sol";
 import {StubPool} from "./StubPool.sol";
+import {ReentrancyGuard} from "./util/ReentrancyGuard.sol";
 
 /// @title ClanWorld
 /// @notice Phase 1+2 real engine implementation of IClanWorld v4.
 ///         Implements: world clock, clan lifecycle, lazy settlement, resource gathering,
 ///         deposit, wheat harvest, travel, NOOP bypass, order validation, and market execution.
 ///         Phase 2 is implemented; Phase 3 (bandits, winter damage) remains stubbed.
-contract ClanWorld is IClanWorld {
+contract ClanWorld is IClanWorld, ReentrancyGuard {
     // =========================================================================
     // STORAGE
     // =========================================================================
@@ -52,7 +53,7 @@ contract ClanWorld is IClanWorld {
     WorldState private _world;
     TreasuryState private _treasury;
 
-    mapping(uint32 => Clan) private _clans;
+    mapping(uint32 => Clan) internal _clans;
     mapping(uint32 => Clansman) internal _clansmen;
     mapping(uint32 => Mission) private _missions; // keyed by clansmanId
     mapping(uint32 => WheatPlot[2]) private _wheatPlots; // [0]=west [1]=east
@@ -86,6 +87,14 @@ contract ClanWorld is IClanWorld {
         _world.nextHeartbeatAtTs = uint64(block.timestamp);
         _world.seasonStartTick = 0;
         _world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
+        _world.currentSeasonNumber = 1;
+        _world.nextHeartbeatAtTick = 1; // first heartbeat will open tick 1
+        // First winter: last WINTER_DURATION_TICKS of first TICKS_PER_WINTER_CYCLE cycle
+        // i.e. ticks [100, 110)
+        _world.winterStartsAtTick =
+            ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS; // = 100
+        _world.winterEndsAtTick = ClanWorldConstants.TICKS_PER_WINTER_CYCLE; // = 110
+        _world.winterActive = false;
         _treasury.treasuryOwner = msg.sender;
         _nextClanId = 1;
         _nextClansmanId = 1;
@@ -856,28 +865,118 @@ contract ClanWorld is IClanWorld {
     // =========================================================================
 
     /// @notice Permissionless heartbeat. Closes the current tick, advances tick counter.
-    function heartbeat() external override {
+    ///         Execution order per spec §4.2 (CEI-safe):
+    ///         CEI guard: nextHeartbeatAtTs written first to close reentrancy window.
+    ///         Seed:      closedTick seed derived and published before step 1 so
+    ///                    settlement RNG reads real entropy, not zero.
+    ///         1. Settle missions completing this tick.
+    ///         2. Execute scheduled market actions for closedTick (external calls).
+    ///         3. Eager-settle clans touched by world events (Phase 3 stub).
+    ///         4. Resolve world events (season boundary, winter transitions).
+    ///         5. Increment tick and publish (seed already written above).
+    function heartbeat() external override nonReentrant {
         require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
         uint64 closedTick = _world.currentTick;
-        _world.currentTick = closedTick + 1; // increment first
 
-        // Derive tick seed: domain-separated from block randomness; stored under NEW tick
-        bytes32 newSeed = keccak256(abi.encode(block.prevrandao, closedTick, block.timestamp));
-        _tickSeeds[_world.currentTick] = newSeed; // store under new tick
-        _world.currentTickSeed = newSeed;
-
+        // CEI: update rate-limit guard before any external calls
         _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
 
-        // Phase 2: execute scheduled market actions for closedTick
-        _executeScheduledMarketActions(closedTick);
-        // TODO Phase 3: bandit state transitions and attacks
+        // Derive and publish seed for closedTick before step 1 (settlement reads it for RNG)
+        bytes32 newSeed = keccak256(abi.encode(block.prevrandao, _world.currentTickSeed, closedTick));
+        _tickSeeds[closedTick] = newSeed;
+        _world.currentTickSeed = newSeed;
 
-        emit TickAdvanced(closedTick, _world.currentTick, _world.currentTickSeed);
+        // Step 1: Settle missions that complete this tick (settlesAtTick == closedTick).
+        // Bounded by 12-clan cap x 4 clansmen = 48 max iterations.
+        _settleCompletingMissions(closedTick);
+
+        // Step 2: Execute scheduled market actions for closedTick (may make external calls).
+        _executeScheduledMarketActions(closedTick);
+
+        // Step 3: Eager-settle clans touched by world events (Phase 3 bandit — stub).
+        // TODO Phase 3: _settleClansNearBandit(closedTick);
+
+        // Step 4: Resolve world events (season boundary, winter transitions).
+        _resolveWorldEvents(closedTick);
+
+        // Step 5: Increment tick and publish (seed already written above; complete the atomic pair).
+        uint64 newTick = closedTick + 1;
+        _world.currentTick = newTick;
+        _world.nextHeartbeatAtTick = newTick + 1;
+
+        emit TickAdvanced(closedTick, newTick, newSeed);
+    }
+
+    /// @dev Settle missions that complete exactly at `tick` (settlesAtTick == tick).
+    ///      Called from heartbeat before market execution and tick increment.
+    ///      Bounded by 12-clan cap x 4 clansmen = 48 max iterations.
+    function _settleCompletingMissions(uint64 tick) internal {
+        for (uint256 i = 0; i < _allClanIds.length; i++) {
+            uint32 clanId = _allClanIds[i];
+            Clan storage clan = _clans[clanId];
+            if (clan.clanState == ClanState.DEAD) continue;
+
+            uint32[] storage csIds = _clanClansmanIds[clanId];
+            for (uint256 j = 0; j < csIds.length; j++) {
+                Clansman storage cs = _clansmen[csIds[j]];
+                if (cs.state == ClansmanState.DEAD) continue;
+
+                Mission storage m = _missions[cs.clansmanId];
+                if (!m.active) continue;
+                if (m.settlesAtTick != tick) continue; // not due this tick
+
+                // Settle this mission using the single-tick range [tick, tick+1).
+                _settleMissionForClansman(clan, cs, clanId, tick, tick + 1);
+            }
+        }
+    }
+
+    /// @dev Resolve world events for the tick that was just closed.
+    ///      Uses closedTick+1 as the equivalent of the old `newTick` for transition checks.
+    function _resolveWorldEvents(uint64 closedTick) internal {
+        uint64 newTick = closedTick + 1;
+
+        // --- season boundary ---
+        if (newTick >= _world.seasonEndTick) {
+            _world.currentSeasonNumber += 1;
+            _world.seasonStartTick = _world.seasonEndTick;
+            _world.seasonEndTick = _world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
+            // reset winter timers for new season
+            _world.winterActive = false;
+            _world.winterStartsAtTick = _world.seasonStartTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE
+                - ClanWorldConstants.WINTER_DURATION_TICKS;
+            _world.winterEndsAtTick = _world.seasonStartTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
+        }
+
+        // --- winter transitions (timer only; mechanics = Phase 10) ---
+        if (
+            !_world.winterActive && newTick >= _world.winterStartsAtTick
+                && _world.winterStartsAtTick < _world.seasonEndTick
+        ) {
+            _world.winterActive = true;
+            emit WinterStarted(newTick);
+        }
+        if (_world.winterActive && newTick >= _world.winterEndsAtTick) {
+            _world.winterActive = false;
+            emit WinterEnded(newTick);
+            // schedule next winter cycle within this season
+            uint64 nextWinterStart = _world.winterEndsAtTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE
+                - ClanWorldConstants.WINTER_DURATION_TICKS;
+            uint64 nextWinterEnd = _world.winterEndsAtTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
+            if (nextWinterStart < _world.seasonEndTick) {
+                _world.winterStartsAtTick = nextWinterStart;
+                _world.winterEndsAtTick = nextWinterEnd;
+            } else {
+                // no more winters this season; sentinel = seasonEndTick so guard never fires
+                _world.winterStartsAtTick = _world.seasonEndTick;
+                _world.winterEndsAtTick = _world.seasonEndTick;
+            }
+        }
     }
 
     /// @notice Public settlement trigger — lazily settle a clan.
-    function settleClan(uint32 clanId) external override {
+    function settleClan(uint32 clanId) external override nonReentrant {
         _settleClan(clanId);
     }
 
@@ -885,7 +984,7 @@ contract ClanWorld is IClanWorld {
     ///         Internally settles the entire clan (including upkeep) to guarantee
     ///         correct ordering and prevent double-settlement. Callers may call this
     ///         or settleClan interchangeably; both are safe and idempotent.
-    function settleClansman(uint32 csId) external override {
+    function settleClansman(uint32 csId) external override nonReentrant {
         Clansman storage cs = _clansmen[csId];
         if (cs.clansmanId == 0) return;
         _settleClan(cs.clanId);
@@ -901,7 +1000,7 @@ contract ClanWorld is IClanWorld {
     // =========================================================================
 
     /// @notice Mint a new clan and spawn its homebase.
-    function mintClan(address to) external override returns (uint32 clanId, uint256 iftTokenId) {
+    function mintClan(address to) external override nonReentrant returns (uint32 clanId, uint256 iftTokenId) {
         require(to != address(0), "ClanWorld: zero address");
         require(_allClanIds.length < 12, "ClanWorld: max clans");
         clanId = _nextClanId++;
@@ -981,6 +1080,7 @@ contract ClanWorld is IClanWorld {
     function submitClanOrders(uint32 clanId, ClanOrder[] calldata orders)
         external
         override
+        nonReentrant
         returns (OrderResult[] memory results)
     {
         Clan storage clan = _clans[clanId];
@@ -1597,7 +1697,7 @@ contract ClanWorld is IClanWorld {
 
     /// @notice One-time treasury initialization: register token and pool addresses.
     ///         Must be called before seedPools. Callable only once.
-    function initTreasury(address[6] calldata tokens, address[4] calldata pools) external override {
+    function initTreasury(address[6] calldata tokens, address[4] calldata pools) external override nonReentrant {
         require(!_treasury.poolsSeeded && _treasury.woodToken == address(0), "ClanWorld: treasury already init");
         require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
 
@@ -1615,7 +1715,7 @@ contract ClanWorld is IClanWorld {
     }
 
     /// @notice Owner-only. Seeds the four Unicorn Town AMM pools.
-    function seedPools(PoolSeedConfig calldata cfg) external override {
+    function seedPools(PoolSeedConfig calldata cfg) external override nonReentrant {
         require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
         require(!_treasury.poolsSeeded, "ClanWorld: pools already seeded");
         require(_treasury.woodToken != address(0), "ClanWorld: treasury not init");
@@ -1881,6 +1981,8 @@ contract ClanWorld is IClanWorld {
             seasonStartTick: _world.seasonStartTick,
             seasonEndTick: _world.seasonEndTick,
             seasonFinalized: _world.seasonFinalized,
+            currentSeasonNumber: _world.currentSeasonNumber,
+            nextHeartbeatAtTick: _world.nextHeartbeatAtTick,
             winterActive: _world.winterActive,
             winterStartsAtTick: _world.winterStartsAtTick,
             winterEndsAtTick: _world.winterEndsAtTick,
