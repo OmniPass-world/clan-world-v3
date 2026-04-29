@@ -53,12 +53,13 @@ contract ClanWorld is IClanWorld {
     TreasuryState private _treasury;
 
     mapping(uint32 => Clan) private _clans;
-    mapping(uint32 => Clansman) private _clansmen;
+    mapping(uint32 => Clansman) internal _clansmen;
     mapping(uint32 => Mission) private _missions; // keyed by clansmanId
     mapping(uint32 => WheatPlot[2]) private _wheatPlots; // [0]=west [1]=east
     mapping(uint64 => ScheduledMarketAction[]) private _scheduledMarketActions; // keyed by tick
-    mapping(uint32 => uint32[]) private _incomingDefenders; // targetClanId => clansmanIds
-    mapping(uint32 => uint32) private _clanDefendingBase; // clansmanId => targetClanId
+    mapping(uint8 => uint32[]) private _defendingClansByRegion; // home region => unique defending clanIds
+    mapping(uint8 => mapping(uint32 => uint256)) private _defenderCountByRegionClan; // region => clanId => clansmen count
+    mapping(uint32 => uint8) private _clansmanDefendingRegion; // clansmanId => defended home region
     mapping(uint64 => bytes32) private _tickSeeds; // tick => seed
 
     uint32 private _nextClanId;
@@ -275,9 +276,68 @@ contract ClanWorld is IClanWorld {
         return _distMatrix(fromRegion, toRegion);
     }
 
+    function _addTicksClamped(uint64 tick, uint64 delta) private pure returns (uint64) {
+        if (type(uint64).max - tick < delta) return type(uint64).max;
+        return tick + delta;
+    }
+
     // =========================================================================
     // INTERNAL SETTLEMENT
     // =========================================================================
+
+    /// @dev Settle a single clansman's mission for the tick range [fromTick, toTick).
+    ///      Handles all 6 mission lifecycle paths. Called from _settleClan and settleClansman.
+    function _settleMissionForClansman(
+        Clan storage clan,
+        Clansman storage cs,
+        uint32 clanId,
+        uint64 fromTick,
+        uint64 toTick
+    ) internal {
+        Mission storage m = _missions[cs.clansmanId];
+
+        // Path 6: dead clansman — invalidate active mission if any
+        if (cs.state == ClansmanState.DEAD) {
+            if (m.active) {
+                if (m.action == ActionType.DefendBase) {
+                    _clearDefender(cs.clansmanId);
+                }
+                m.active = false; // silent invalidation; dead clansman gets no MissionCompleted
+            }
+            return;
+        }
+
+        if (!m.active) return; // no active mission — nothing to settle
+
+        bytes32 tickSeed;
+        for (uint64 tick = fromTick; tick < toTick; tick++) {
+            tickSeed = _tickSeeds[tick];
+
+            // Path 1 → Path 2 transition: TRAVELING → ACTING at arrivalTick
+            if (cs.state == ClansmanState.TRAVELING && tick >= m.arrivalTick) {
+                cs.state = ClansmanState.ACTING;
+                cs.currentRegion = m.targetRegion;
+                emit WorkerArrived(clanId, cs.clansmanId, m.targetRegion, tick);
+
+                if (m.action == ActionType.DefendBase) {
+                    _registerDefender(m.targetRegion, clanId, cs.clansmanId);
+                }
+            }
+
+            if (m.action == ActionType.DefendBase) continue; // persistent defender mission
+
+            // Path 3: ACTING at/past settlesAtTick → resolve
+            if (cs.state == ClansmanState.ACTING && tick >= m.settlesAtTick) {
+                _resolveAction(clan, cs, m, clanId, tick, tickSeed);
+                if (m.active && getActionDuration(m.action) > 0) {
+                    _completeMission(cs, m);
+                }
+            }
+
+            // If mission completed during this tick, stop iterating
+            if (!m.active) break;
+        }
+    }
 
     /// @dev Lazy settlement of a clan forward to currentTick.
     ///      Mutates storage. Called before order submission and by public settleClan().
@@ -313,27 +373,10 @@ contract ClanWorld is IClanWorld {
                 }
             }
 
-            // 3. Advance each clansman
-            bytes32 tickSeed = _tickSeeds[tick];
+            // 3. Advance each clansman (single-tick range: [tick, tick+1))
             for (uint256 i = 0; i < clansmanIds.length; i++) {
-                uint32 csId = clansmanIds[i];
-                Clansman storage cs = _clansmen[csId];
-                if (cs.state == ClansmanState.DEAD) continue;
-
-                Mission storage m = _missions[csId];
-                if (!m.active) continue;
-
-                // Travel advancement: if still traveling and this tick >= arrivalTick, arrive
-                if (cs.state == ClansmanState.TRAVELING && tick >= m.arrivalTick) {
-                    cs.state = ClansmanState.ACTING;
-                    cs.currentRegion = m.targetRegion;
-                    emit WorkerArrived(clanId, csId, m.targetRegion, tick);
-                }
-
-                // Action resolution: if acting and this tick >= actionStartTick
-                if (cs.state == ClansmanState.ACTING && tick >= m.actionStartTick) {
-                    _resolveAction(clan, cs, m, clanId, tick, tickSeed);
-                }
+                Clansman storage cs = _clansmen[clansmanIds[i]];
+                _settleMissionForClansman(clan, cs, clanId, tick, tick + 1);
             }
         }
 
@@ -405,12 +448,7 @@ contract ClanWorld is IClanWorld {
             // NOOP — worker stays ACTING (continuous), no transition needed
             // Wait mission is effectively persistent until interrupted
         } else if (action == ActionType.DefendBase) {
-            // Register defender at arrival (not at submission) per v4.3 — ensures only arrived clansmen counted.
-            // Guard: only register once (this branch executes every ACTING tick; idempotent via _clanDefendingBase check).
-            if (_clanDefendingBase[cs.clansmanId] != m.targetClanId) {
-                _incomingDefenders[m.targetClanId].push(cs.clansmanId);
-                _clanDefendingBase[cs.clansmanId] = m.targetClanId;
-            }
+            // Persistent mission. Registration happens atomically at order submission.
         } else if (
             action == ActionType.BuildWall || action == ActionType.UpgradeBase || action == ActionType.UpgradeMonument
         ) {
@@ -805,9 +843,10 @@ contract ClanWorld is IClanWorld {
         return true;
     }
 
-    /// @dev Complete a mission: set worker to WAITING, mark mission inactive, emit event.
+    /// @dev Complete a mission: set worker to WAITING, set cooldown, mark mission inactive, emit event.
     function _completeMission(Clansman storage cs, Mission storage m) internal {
         cs.state = ClansmanState.WAITING;
+        cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
         m.active = false;
         emit MissionCompleted(_clans[cs.clanId].clanId, cs.clansmanId, m.nonce, m.action);
     }
@@ -840,6 +879,16 @@ contract ClanWorld is IClanWorld {
     /// @notice Public settlement trigger — lazily settle a clan.
     function settleClan(uint32 clanId) external override {
         _settleClan(clanId);
+    }
+
+    /// @notice Lazily settle a single clansman's mission to current tick. Idempotent.
+    ///         Internally settles the entire clan (including upkeep) to guarantee
+    ///         correct ordering and prevent double-settlement. Callers may call this
+    ///         or settleClan interchangeably; both are safe and idempotent.
+    function settleClansman(uint32 csId) external override {
+        Clansman storage cs = _clansmen[csId];
+        if (cs.clansmanId == 0) return;
+        _settleClan(cs.clanId);
     }
 
     /// @notice Finalize season. Phase 1 stub.
@@ -977,6 +1026,7 @@ contract ClanWorld is IClanWorld {
         uint8 travelTicks;
         uint64 arrivalTick;
         uint64 newNonce;
+        uint32 targetClanId;
         bool wasActive;
         uint64 oldNonce;
     }
@@ -997,6 +1047,27 @@ contract ClanWorld is IClanWorld {
             result.status = StatusCode.ERR_CLANSMAN_DEAD;
             return result;
         }
+
+        if (order.action == ActionType.DefendBase) {
+            StatusCode defendErr = _validateDefendBaseOrder(clan, order, order.gotoRegion);
+            if (defendErr != StatusCode.OK) {
+                result.status = defendErr;
+                return result;
+            }
+
+            uint32 defendTargetClanId = order.targetClanId == 0 ? clanId : order.targetClanId;
+            Mission storage currentM = _missions[order.clansmanId];
+            if (
+                currentM.active && currentM.action == ActionType.DefendBase && currentM.targetRegion == order.gotoRegion
+                    && currentM.targetClanId == defendTargetClanId
+            ) {
+                result.status = StatusCode.OK;
+                result.cooldownEndsAtTs = cs.cooldownEndsAtTs;
+                result.missionNonce = currentM.nonce;
+                return result;
+            }
+        }
+
         // Cooldown check
         if (block.timestamp < cs.cooldownEndsAtTs) {
             result.status = StatusCode.ERR_COOLDOWN_ACTIVE;
@@ -1008,9 +1079,12 @@ contract ClanWorld is IClanWorld {
         OrderCtx memory ctx;
         ctx.fromRegion = cs.currentRegion;
         ctx.gotoRegion = order.gotoRegion;
+        ctx.targetClanId =
+            order.action == ActionType.DefendBase && order.targetClanId == 0 ? clanId : order.targetClanId;
 
-        // NOOP bypass: treat 0 as "stay here"
-        ctx.isNoop = (ctx.gotoRegion == ClanWorldConstants.REGION_NOOP || ctx.gotoRegion == ctx.fromRegion);
+        // NOOP bypass: treat 0 as "stay here"; DefendBase requires explicit home region.
+        ctx.isNoop = order.action != ActionType.DefendBase
+            && (ctx.gotoRegion == ClanWorldConstants.REGION_NOOP || ctx.gotoRegion == ctx.fromRegion);
         if (ctx.isNoop) {
             ctx.gotoRegion = ctx.fromRegion;
         }
@@ -1033,9 +1107,9 @@ contract ClanWorld is IClanWorld {
         ctx.wasActive = existingM.active;
         ctx.oldNonce = existingM.nonce;
 
-        // Compute travel
+        // Compute travel from the clansman's current region to the order target.
         ctx.travelTicks = _travelTicks(ctx.fromRegion, ctx.gotoRegion);
-        ctx.arrivalTick = _world.currentTick + uint64(ctx.travelTicks);
+        ctx.arrivalTick = _addTicksClamped(_world.currentTick, uint64(ctx.travelTicks));
 
         // New nonce
         ctx.newNonce = cs.lastMissionNonce + 1;
@@ -1056,15 +1130,7 @@ contract ClanWorld is IClanWorld {
         // Start cooldown
         cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
 
-        // DefendBase: deregister old assignment immediately (clansman is being re-tasked).
-        // Registration at the target base happens at arrival in _resolveAction (v4.3 — arrived defenders only).
-        {
-            uint32 oldTarget = _clanDefendingBase[cs.clansmanId];
-            if (oldTarget != 0) {
-                _removeDefender(oldTarget, cs.clansmanId);
-                _clanDefendingBase[cs.clansmanId] = 0;
-            }
-        }
+        _clearDefender(cs.clansmanId);
 
         // v4.2 §8 L758: "executes at heartbeat closing tick T" where T = arrivalTick.
         // executeAtTick = arrivalTick (not arrivalTick+1).
@@ -1072,12 +1138,8 @@ contract ClanWorld is IClanWorld {
             _enqueueScheduledMarketAction(clanId, order, cs.clansmanId, ctx.arrivalTick, ctx.newNonce);
         }
 
-        // DefendBase zero-travel: register synchronously so getActiveDefenders() has no drop window.
-        // When travelTicks == 0 the clansman is already at the target base — no travel window to wait out.
-        // The _resolveAction guard (clanDefendingBase != targetClanId) will be false next tick, preventing double-register.
         if (order.action == ActionType.DefendBase && ctx.travelTicks == 0) {
-            _incomingDefenders[order.targetClanId].push(cs.clansmanId);
-            _clanDefendingBase[cs.clansmanId] = order.targetClanId;
+            _registerDefender(ctx.gotoRegion, clanId, cs.clansmanId);
         }
 
         if (ctx.wasActive) {
@@ -1107,6 +1169,11 @@ contract ClanWorld is IClanWorld {
         m.active = true;
         m.nonce = ctx.newNonce;
         m.clansmanId = cs.clansmanId;
+        m.submittedAtTick = _world.currentTick;
+        m.executesAtTick = ctx.arrivalTick;
+        m.settlesAtTick = order.action == ActionType.DefendBase
+            ? type(uint64).max
+            : _addTicksClamped(ctx.arrivalTick, getActionDuration(order.action));
         m.startRegion = ctx.fromRegion;
         m.targetRegion = ctx.gotoRegion;
         m.action = order.action;
@@ -1117,7 +1184,7 @@ contract ClanWorld is IClanWorld {
         m.marketMode = (order.action == ActionType.MarketBuy || order.action == ActionType.MarketSell)
             ? MarketExecutionMode.Scheduled
             : MarketExecutionMode.None;
-        m.targetClanId = order.targetClanId;
+        m.targetClanId = ctx.targetClanId;
         m.marketToken = order.marketToken;
         m.marketAmount = order.marketAmount;
         m.maxGoldIn = order.maxGoldIn;
@@ -1154,15 +1221,38 @@ contract ClanWorld is IClanWorld {
         );
     }
 
-    function _removeDefender(uint32 targetClanId, uint32 clansmanId) internal {
-        uint32[] storage defenders = _incomingDefenders[targetClanId];
-        for (uint256 i = 0; i < defenders.length; i++) {
-            if (defenders[i] == clansmanId) {
-                defenders[i] = defenders[defenders.length - 1];
-                defenders.pop();
-                break;
+    function _registerDefender(uint8 region, uint32 clanId, uint32 clansmanId) internal {
+        if (_clansmanDefendingRegion[clansmanId] == region) return;
+        _clearDefender(clansmanId);
+
+        if (_defenderCountByRegionClan[region][clanId] == 0) {
+            _defendingClansByRegion[region].push(clanId);
+        }
+        _defenderCountByRegionClan[region][clanId]++;
+        _clansmanDefendingRegion[clansmanId] = region;
+    }
+
+    function _clearDefender(uint32 clansmanId) internal {
+        uint8 region = _clansmanDefendingRegion[clansmanId];
+        if (region == 0) return;
+
+        uint32 clanId = _clansmen[clansmanId].clanId;
+        uint256 count = _defenderCountByRegionClan[region][clanId];
+        if (count > 1) {
+            _defenderCountByRegionClan[region][clanId] = count - 1;
+        } else {
+            delete _defenderCountByRegionClan[region][clanId];
+            uint32[] storage clans = _defendingClansByRegion[region];
+            for (uint256 i = 0; i < clans.length; i++) {
+                if (clans[i] == clanId) {
+                    clans[i] = clans[clans.length - 1];
+                    clans.pop();
+                    break;
+                }
             }
         }
+
+        delete _clansmanDefendingRegion[clansmanId];
     }
 
     // =========================================================================
@@ -1458,17 +1548,8 @@ contract ClanWorld is IClanWorld {
             }
         }
 
-        // DefendBase: targetClanId must be valid and gotoRegion must match target's baseRegion
         if (action == ActionType.DefendBase) {
-            if (order.targetClanId == 0 || _clans[order.targetClanId].clanId == 0) {
-                return StatusCode.ERR_INVALID_TARGET;
-            }
-            if (_clans[order.targetClanId].clanState == ClanState.DEAD) {
-                return StatusCode.ERR_NOT_DEFENDABLE;
-            }
-            if (gotoRegion != _clans[order.targetClanId].baseRegion) {
-                return StatusCode.ERR_NOT_AT_TARGET_BASE;
-            }
+            return _validateDefendBaseOrder(clan, order, gotoRegion);
         }
 
         // MarketBuy/MarketSell: must target Unicorn Town
@@ -1497,6 +1578,16 @@ contract ClanWorld is IClanWorld {
         }
 
         cs; // suppress unused warning
+        return StatusCode.OK;
+    }
+
+    function _validateDefendBaseOrder(Clan storage clan, ClanOrder calldata order, uint8 gotoRegion)
+        internal
+        view
+        returns (StatusCode)
+    {
+        if (gotoRegion != clan.baseRegion) return StatusCode.ERR_INVALID_REGION;
+        if (order.targetClanId != 0 && order.targetClanId != clan.clanId) return StatusCode.ERR_INVALID_TARGET;
         return StatusCode.OK;
     }
 
@@ -1589,6 +1680,42 @@ contract ClanWorld is IClanWorld {
         return _missions[clansmanId];
     }
 
+    function getMissionTiming(uint32 clanId, uint32 clansmanId)
+        external
+        view
+        override
+        returns (uint64 submitted, uint64 executes, uint64 settles)
+    {
+        Mission memory m = _missions[clansmanId];
+        if (!m.active || _clansmen[clansmanId].clanId != clanId) {
+            return (0, 0, 0);
+        }
+        return (m.submittedAtTick, m.executesAtTick, m.settlesAtTick);
+    }
+
+    function getActionDuration(ActionType action) public pure override returns (uint64) {
+        if (
+            action == ActionType.ChopWood || action == ActionType.MineIron || action == ActionType.FishDocks
+                || action == ActionType.FishDeepSea || action == ActionType.HarvestWheat
+        ) {
+            return 4;
+        }
+
+        if (
+            action == ActionType.DepositResources || action == ActionType.BuildWall || action == ActionType.UpgradeBase
+                || action == ActionType.UpgradeMonument || action == ActionType.MarketBuy
+                || action == ActionType.MarketSell
+        ) {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    function getTravelTicks(uint8 fromRegion, uint8 toRegion) external pure override returns (uint64) {
+        return uint64(_travelTicks(fromRegion, toRegion));
+    }
+
     function getBanditTroop(uint32) external pure override returns (BanditTroop memory) {
         return BanditTroop({
             banditId: 0,
@@ -1625,8 +1752,36 @@ contract ClanWorld is IClanWorld {
         return _scheduledMarketActions[tick];
     }
 
-    function getActiveDefenders(uint32 targetClanId) external view override returns (uint32[] memory) {
-        return _incomingDefenders[targetClanId];
+    function getActiveDefenders(uint32 targetClanId) external view override returns (uint32[] memory clansmanIds) {
+        uint32[] storage defendingClans = _defendingClansByRegion[_clans[targetClanId].baseRegion];
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < defendingClans.length; i++) {
+            uint32[] storage clanClansmen = _clanClansmanIds[defendingClans[i]];
+            for (uint256 j = 0; j < clanClansmen.length; j++) {
+                Mission storage mission = _missions[clanClansmen[j]];
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    count++;
+                }
+            }
+        }
+
+        clansmanIds = new uint32[](count);
+        uint256 out = 0;
+        for (uint256 i = 0; i < defendingClans.length; i++) {
+            uint32[] storage clanClansmen = _clanClansmanIds[defendingClans[i]];
+            for (uint256 j = 0; j < clanClansmen.length; j++) {
+                uint32 clansmanId = clanClansmen[j];
+                Mission storage mission = _missions[clansmanId];
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    clansmanIds[out++] = clansmanId;
+                }
+            }
+        }
+    }
+
+    function getDefendingClans(uint8 region) external view override returns (uint32[] memory) {
+        return _defendingClansByRegion[region];
     }
 
     // =========================================================================
@@ -1762,12 +1917,12 @@ contract ClanWorld is IClanWorld {
             clansmen[i] = ClansmanFullView({clansman: dcs, activeMission: m});
         }
 
-        // Find if any of this clan's clansmen is defending a base
+        // Find if any of this clan's clansmen is defending a home region.
         uint32 thisClanDefendingBaseId = 0;
         for (uint256 i = 0; i < csIds.length; i++) {
-            uint32 target = _clanDefendingBase[csIds[i]];
-            if (target != 0) {
-                thisClanDefendingBaseId = target;
+            uint8 region = _clansmanDefendingRegion[csIds[i]];
+            if (region != 0) {
+                thisClanDefendingBaseId = region;
                 break;
             }
         }
@@ -1777,7 +1932,7 @@ contract ClanWorld is IClanWorld {
             clansmen: clansmen,
             westPlot: _wheatPlots[clanId][0],
             eastPlot: _wheatPlots[clanId][1],
-            incomingDefenderIds: _incomingDefenders[clanId],
+            incomingDefenderIds: _defendingClansByRegion[clan.baseRegion],
             thisClanDefendingBaseId: thisClanDefendingBaseId
         });
     }

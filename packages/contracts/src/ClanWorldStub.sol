@@ -76,6 +76,8 @@ contract ClanWorldStub is IClanWorld {
 
     function settleClan(uint32) external override {}
 
+    function settleClansman(uint32) external override {}
+
     function finalizeSeason() external override {}
 
     // -------------------------------------------------------------------------
@@ -168,6 +170,9 @@ contract ClanWorldStub is IClanWorld {
         return Mission({
             active: false,
             nonce: 0,
+            submittedAtTick: 0,
+            executesAtTick: 0,
+            settlesAtTick: 0,
             clansmanId: 0,
             startRegion: 0,
             targetRegion: 0,
@@ -182,6 +187,23 @@ contract ClanWorldStub is IClanWorld {
             marketAmount: 0,
             maxGoldIn: 0
         });
+    }
+
+    function getMissionTiming(uint32, uint32)
+        external
+        pure
+        override
+        returns (uint64 submitted, uint64 executes, uint64 settles)
+    {
+        return (0, 0, 0);
+    }
+
+    function getActionDuration(ActionType) external pure override returns (uint64) {
+        return 0;
+    }
+
+    function getTravelTicks(uint8, uint8) external pure override returns (uint64) {
+        return 0;
     }
 
     function getBanditTroop(uint32) external pure override returns (BanditTroop memory) {
@@ -211,6 +233,10 @@ contract ClanWorldStub is IClanWorld {
     }
 
     function getActiveDefenders(uint32) external pure override returns (uint32[] memory) {
+        return new uint32[](0);
+    }
+
+    function getDefendingClans(uint8) external pure override returns (uint32[] memory) {
         return new uint32[](0);
     }
 

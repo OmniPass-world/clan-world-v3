@@ -43,6 +43,13 @@ import {
     RegionOccupant
 } from "../src/IClanWorld.sol";
 
+/// @dev Test harness that exposes internal state manipulation for unit tests.
+contract ClanWorldTestHarness is ClanWorld {
+    function killClansman(uint32 csId) external {
+        _clansmen[csId].state = ClansmanState.DEAD;
+    }
+}
+
 contract ClanWorldTest is Test {
     ClanWorld world;
     address elder = address(0xA1);
@@ -336,8 +343,8 @@ contract ClanWorldTest is Test {
             assertEq(uint8(csTraveling.state), uint8(ClansmanState.TRAVELING), "should be TRAVELING before arrival");
         }
 
-        // Advance past travel ticks + 1 action tick
-        uint256 ticksToAdvance = uint256(travelTicks) + 1;
+        // Advance until the arrival tick and four-tick action duration have both closed.
+        uint256 ticksToAdvance = uint256(travelTicks) + world.getActionDuration(ActionType.MineIron) + 1;
         for (uint256 i = 0; i < ticksToAdvance; i++) {
             _advanceTick();
         }
@@ -368,8 +375,8 @@ contract ClanWorldTest is Test {
         (uint8 travelToMountains,) = world.quoteTravel(homeRegion, targetRegion);
         _submitOrder(clanId, cs0, targetRegion, ActionType.MineIron);
 
-        // Advance past travel + 1 action tick to gather some iron
-        for (uint256 i = 0; i < uint256(travelToMountains) + 1; i++) {
+        // Advance through travel and the four-tick mining duration.
+        for (uint256 i = 0; i < uint256(travelToMountains) + world.getActionDuration(ActionType.MineIron) + 1; i++) {
             _advanceTick();
         }
         world.settleClan(clanId);
@@ -383,9 +390,9 @@ contract ClanWorldTest is Test {
         vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
         _submitOrder(clanId, cs0, homeRegion, ActionType.DepositResources);
 
-        // Advance travel back to homebase + 1 action tick
+        // Advance travel back to homebase + deposit duration.
         (uint8 travelBack,) = world.quoteTravel(targetRegion, homeRegion);
-        for (uint256 i = 0; i < uint256(travelBack) + 1; i++) {
+        for (uint256 i = 0; i < uint256(travelBack) + world.getActionDuration(ActionType.DepositResources) + 1; i++) {
             _advanceTick();
         }
         world.settleClan(clanId);
@@ -831,7 +838,11 @@ contract ClanWorldTest is Test {
         uint256 overflowCount = totalQueuedForTickTwo - cap;
         ScheduledMarketAction[] memory mergedQueue = world.getScheduledMarketActionsForTick(nextTick);
         assertEq(mergedQueue.length, overflowCount + 1, "overflow should merge with native next-tick action");
-        assertEq(mergedQueue[mergedQueue.length - 1].commitSequence, nativeSeq, "native action must stay after older overflow");
+        assertEq(
+            mergedQueue[mergedQueue.length - 1].commitSequence,
+            nativeSeq,
+            "native action must stay after older overflow"
+        );
         for (uint256 i = 1; i < mergedQueue.length; i++) {
             assertGt(mergedQueue[i].commitSequence, mergedQueue[i - 1].commitSequence, "merged queue must be FIFO");
         }
@@ -1094,9 +1105,9 @@ contract ClanWorldTest is Test {
         vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
         _advanceTick();
 
-        uint32[] memory defs = world.getActiveDefenders(clanId);
+        uint32[] memory defs = world.getDefendingClans(baseRegion);
         assertEq(defs.length, 1, "one defender registered");
-        assertEq(defs[0], csId, "csId is the defender");
+        assertEq(defs[0], clanId, "clanId is the defender");
 
         // Second DefendBase to same target: zero-travel re-task — the regression case.
         vm.prank(elder);
@@ -1104,8 +1115,742 @@ contract ClanWorldTest is Test {
         assertEq(uint8(r2[0].status), uint8(StatusCode.OK), "re-task DefendBase OK");
 
         // Defender must NOT be dropped — fix must register synchronously.
-        defs = world.getActiveDefenders(clanId);
+        defs = world.getDefendingClans(baseRegion);
         assertEq(defs.length, 1, "defender count must not drop after re-task");
-        assertEq(defs[0], csId, "csId must still be defending after re-task");
+        assertEq(defs[0], clanId, "clanId must still be defending after re-task");
+    }
+
+    // =========================================================================
+    // Phase 3.1 Order Submission Tests (3.E1–3.E8)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // 3.E1: Valid order returns OK with correct nonce and cooldown set
+    // -------------------------------------------------------------------------
+
+    function test_phase3E1_validOrder_returnsOkNonceCooldown() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+
+        OrderResult[] memory r = _submitOrder(clanId, csId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK), "3.E1: status must be OK");
+        assertEq(r[0].missionNonce, 1, "3.E1: first nonce must be 1");
+        assertEq(
+            r[0].cooldownEndsAtTs,
+            block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS,
+            "3.E1: cooldownEndsAtTs must equal block.timestamp + COOLDOWN"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E2: ERR_INVALID_CLANSMAN — clansmanId belongs to a different clan
+    // -------------------------------------------------------------------------
+
+    function test_phase3E2_invalidClansman_wrongClan() public {
+        // Clan 1 (elder)
+        uint32 clanId1 = _mintClan();
+        // Clan 2 (elder2)
+        vm.prank(elder2);
+        (uint32 clanId2,) = world.mintClan(elder2);
+
+        // Get a clansmanId from clan2
+        uint32 cs2Id = world.getClanFullView(clanId2).clansmen[0].clansman.clansman.clansmanId;
+
+        // Submit an order for clan1 using clan2's clansmanId
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: cs2Id,
+            gotoRegion: ClanWorldConstants.REGION_FOREST,
+            action: ActionType.ChopWood,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory r = world.submitClanOrders(clanId1, orders);
+
+        assertEq(uint8(r[0].status), uint8(StatusCode.ERR_INVALID_CLANSMAN), "3.E2: cross-clan csId must be invalid");
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E3: ERR_CLANSMAN_DEAD — dead clansman is rejected
+    // -------------------------------------------------------------------------
+
+    function test_phase3E3_deadClansman_rejectsOrder() public {
+        ClanWorldTestHarness harness = new ClanWorldTestHarness();
+
+        vm.prank(elder);
+        (uint32 clanId,) = harness.mintClan(elder);
+
+        uint32 csId = harness.getClanFullView(clanId).clansmen[0].clansman.clansman.clansmanId;
+
+        harness.killClansman(csId);
+
+        assertEq(uint8(harness.getClansman(csId).state), uint8(ClansmanState.DEAD), "3.E3: clansman must be DEAD");
+
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: ClanWorldConstants.REGION_FOREST,
+            action: ActionType.ChopWood,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory r = harness.submitClanOrders(clanId, orders);
+
+        assertEq(uint8(r[0].status), uint8(StatusCode.ERR_CLANSMAN_DEAD), "3.E3: dead clansman must be rejected");
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E4: ERR_COOLDOWN_ACTIVE — submit-time cooldown enforced
+    // -------------------------------------------------------------------------
+
+    function test_phase3E4_cooldownActive_blocksImmediateReorder() public {
+        uint32 clanId = _mintClan();
+        uint32 csId = _firstCs(clanId);
+
+        // First order succeeds
+        OrderResult[] memory r1 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+        assertEq(uint8(r1[0].status), uint8(StatusCode.OK), "3.E4: first order must succeed");
+        uint64 expectedCooldown = r1[0].cooldownEndsAtTs;
+
+        // Immediate re-order hits cooldown
+        OrderResult[] memory r2 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+        assertEq(uint8(r2[0].status), uint8(StatusCode.ERR_COOLDOWN_ACTIVE), "3.E4: must return ERR_COOLDOWN_ACTIVE");
+        assertEq(r2[0].cooldownEndsAtTs, expectedCooldown, "3.E4: cooldownEndsAtTs must match first order cooldown");
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E5: Cooldown from heartbeat-resolved mission — can't re-order immediately after natural completion
+    // -------------------------------------------------------------------------
+
+    function test_phase3E5_heartbeatResolvedMission_setsCooldown() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion;
+
+        // Send clansman to homebase to DepositResources (empty carry → completes in 1 tick).
+        // This is the cleanest single-tick completion: _doDeposit with empty carry calls _completeMission immediately.
+        OrderResult[] memory r = _submitOrder(clanId, csId, homeRegion, ActionType.DepositResources);
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK), "3.E5: order must succeed");
+
+        // Wait for submit-time cooldown to expire (warp only; no ticks yet)
+        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
+
+        // Advance until the one-tick deposit duration has closed.
+        _advanceTick();
+        _advanceTick();
+
+        // Settle the clan — mission completes, clansman back to WAITING with new cooldown
+        world.settleClan(clanId);
+
+        // Verify clansman is now WAITING
+        Clansman memory cs = world.getClansman(csId);
+        assertEq(uint8(cs.state), uint8(ClansmanState.WAITING), "3.E5: clansman must be WAITING after completion");
+        assertGt(cs.cooldownEndsAtTs, block.timestamp, "3.E5: heartbeat-resolved completion must set future cooldown");
+
+        // Attempt to re-order without advancing time — must hit cooldown
+        OrderResult[] memory r2 = _submitOrder(clanId, csId, homeRegion, ActionType.Wait);
+        assertEq(
+            uint8(r2[0].status),
+            uint8(StatusCode.ERR_COOLDOWN_ACTIVE),
+            "3.E5: must be ERR_COOLDOWN_ACTIVE after heartbeat resolution"
+        );
+
+        // Warp past cooldown and try again — should succeed
+        // Note: the cooldown check uses strict less-than (`block.timestamp < cs.cooldownEndsAtTs`),
+        // so `timestamp == cooldownEndsAtTs` is already expired (boundary is inclusive).
+        // The +1 warp here is conservative; test_phase3E5b_cooldown_exactBoundary verifies the exact boundary.
+        vm.warp(cs.cooldownEndsAtTs + 1);
+        OrderResult[] memory r3 = _submitOrder(clanId, csId, homeRegion, ActionType.Wait);
+        assertEq(uint8(r3[0].status), uint8(StatusCode.OK), "3.E5: after cooldown expires must succeed");
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E5b: Cooldown exact boundary — at exactly cooldownEndsAtTs, order is accepted
+    // (contract uses strict `<`, so `timestamp == cooldownEndsAtTs` passes)
+    // -------------------------------------------------------------------------
+
+    function test_phase3E5b_cooldown_exactBoundary() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion;
+
+        // Submit first order — sets cooldown
+        OrderResult[] memory r1 = _submitOrder(clanId, csId, homeRegion, ActionType.Wait);
+        assertEq(uint8(r1[0].status), uint8(StatusCode.OK), "3.E5b: first order must succeed");
+        uint64 cooldownEndsAt = r1[0].cooldownEndsAtTs;
+        assertGt(cooldownEndsAt, 0, "3.E5b: cooldown must be set");
+
+        // Warp to exactly cooldownEndsAtTs (not +1) — the strict-less-than guard means
+        // `block.timestamp < cooldownEndsAtTs` is false, so cooldown is considered expired.
+        vm.warp(cooldownEndsAt);
+
+        // Order must be accepted at the exact boundary
+        OrderResult[] memory r2 = _submitOrder(clanId, csId, homeRegion, ActionType.Wait);
+        assertEq(
+            uint8(r2[0].status),
+            uint8(StatusCode.OK),
+            "3.E5b: order at exact cooldownEndsAtTs must succeed (boundary inclusive)"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.phase3: DefendBase does not call _completeMission — cooldown must not slide
+    // -------------------------------------------------------------------------
+
+    function test_phase3_defendBase_noCompletionCooldownSlide() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 baseRegion = v.clan.clan.baseRegion;
+
+        // Submit DefendBase to own clan — same region → zero travel → instant ACTING
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: baseRegion,
+            action: ActionType.DefendBase,
+            targetClanId: clanId,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory r = world.submitClanOrders(clanId, orders);
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK), "DefendBase order must succeed");
+
+        // Wait for submit-time cooldown to expire before settling
+        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
+        _advanceTick();
+        world.settleClan(clanId);
+
+        // Record cooldown after initial settlement
+        uint64 cooldownAfterSubmit = world.getClansman(csId).cooldownEndsAtTs;
+
+        // Run 3 more settle ticks — each calls _resolveAction for DefendBase
+        // DefendBase does NOT call _completeMission, so cooldown must stay flat
+        for (uint256 i = 0; i < 3; i++) {
+            _advanceTick();
+            world.settleClan(clanId);
+            uint64 cooldownNow = world.getClansman(csId).cooldownEndsAtTs;
+            assertEq(
+                cooldownNow,
+                cooldownAfterSubmit,
+                "DefendBase must not slide cooldown: _completeMission must not be called per tick"
+            );
+        }
+
+        // Clansman must still be ACTING (continuous defender, not returned to WAITING)
+        Clansman memory cs = world.getClansman(csId);
+        assertEq(
+            uint8(cs.state),
+            uint8(ClansmanState.ACTING),
+            "DefendBase clansman must remain ACTING after 3 settlement ticks"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E6: ERR_INVALID_REGION — wrong region for action type
+    // -------------------------------------------------------------------------
+
+    function test_phase3E6_invalidRegion_wrongActionForRegion() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+
+        uint32 cs0 = v.clansmen[0].clansman.clansman.clansmanId;
+        uint32 cs1 = v.clansmen[1].clansman.clansman.clansmanId;
+        uint32 cs2 = v.clansmen[2].clansman.clansman.clansmanId;
+
+        // ChopWood to Mountains (not Forest) → ERR_INVALID_REGION
+        OrderResult[] memory r0 = _submitOrder(clanId, cs0, ClanWorldConstants.REGION_MOUNTAINS, ActionType.ChopWood);
+        assertEq(
+            uint8(r0[0].status), uint8(StatusCode.ERR_INVALID_REGION), "3.E6: ChopWood to Mountains must be invalid"
+        );
+
+        // MineIron to Forest (not Mountains) → ERR_INVALID_REGION
+        OrderResult[] memory r1 = _submitOrder(clanId, cs1, ClanWorldConstants.REGION_FOREST, ActionType.MineIron);
+        assertEq(uint8(r1[0].status), uint8(StatusCode.ERR_INVALID_REGION), "3.E6: MineIron to Forest must be invalid");
+
+        // FishDocks to Forest (not WestDocks or EastDocks) → ERR_INVALID_REGION
+        OrderResult[] memory r2 = _submitOrder(clanId, cs2, ClanWorldConstants.REGION_FOREST, ActionType.FishDocks);
+        assertEq(uint8(r2[0].status), uint8(StatusCode.ERR_INVALID_REGION), "3.E6: FishDocks to Forest must be invalid");
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E7: Mission overwrite — nonce increments, MissionInterrupted emitted
+    // -------------------------------------------------------------------------
+
+    function test_phase3E7_missionOverwrite_nonceIncrements_interruptedEmitted() public {
+        uint32 clanId = _mintClan();
+        uint32 csId = _firstCs(clanId);
+
+        // Submit first mission → nonce 1
+        OrderResult[] memory r1 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood);
+        assertEq(uint8(r1[0].status), uint8(StatusCode.OK), "3.E7: first order must succeed");
+        assertEq(r1[0].missionNonce, 1, "3.E7: first mission nonce must be 1");
+
+        // Wait for cooldown
+        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
+
+        // Expect MissionInterrupted(clanId, csId, oldNonce=1, newNonce=2) before second submit
+        vm.expectEmit(true, true, false, true);
+        emit IClanWorldEvents.MissionInterrupted(clanId, csId, 1, 2);
+
+        // Submit second mission → interrupts first, nonce 2
+        OrderResult[] memory r2 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+        assertEq(uint8(r2[0].status), uint8(StatusCode.OK), "3.E7: interrupt order must succeed");
+        assertEq(r2[0].missionNonce, 2, "3.E7: second mission nonce must be 2");
+
+        // Active mission must have nonce 2
+        Mission memory m = world.getActiveMission(csId);
+        assertTrue(m.active, "3.E7: mission must be active");
+        assertEq(m.nonce, 2, "3.E7: active mission nonce must be 2");
+    }
+
+    // =========================================================================
+    // Phase 3.2 Lazy Settlement Engine Tests
+    // =========================================================================
+
+    // Helper: harness-based setup for Path 6 and other tests needing killClansman
+    function _setupHarness() internal returns (ClanWorldTestHarness harness, uint32 clanId, uint32 csId) {
+        harness = new ClanWorldTestHarness();
+        vm.prank(elder);
+        (clanId,) = harness.mintClan(elder);
+        csId = harness.getClanFullView(clanId).clansmen[0].clansman.clansman.clansmanId;
+    }
+
+    // Helper: submit an order on a harness-based world
+    function _submitOrderHarness(
+        ClanWorldTestHarness harness,
+        uint32 clanId,
+        uint32 csId,
+        uint8 gotoRegion,
+        ActionType action
+    ) internal returns (OrderResult[] memory) {
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: gotoRegion,
+            action: action,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        return harness.submitClanOrders(clanId, orders);
+    }
+
+    // Helper: advance tick on a harness-based world
+    function _advanceTickHarness(ClanWorldTestHarness harness) internal {
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        harness.heartbeat();
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path1_noopBeforeArrival
+    // Path 1: TRAVELING, currentTick < arrivalTick → no-op
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path1_noopBeforeArrival() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion; // Forest (region 1) for first clan
+
+        // Travel from Forest(1) to Mountains(2) is 1 tick — clansman starts TRAVELING
+        (uint8 travelTicks,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_MOUNTAINS);
+        assertGt(travelTicks, 0, "path1: need travel > 0 ticks");
+
+        OrderResult[] memory r = _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK));
+
+        // Clansman should be TRAVELING before arrival
+        Clansman memory csNow = world.getClansman(csId);
+        assertEq(uint8(csNow.state), uint8(ClansmanState.TRAVELING), "path1: should be TRAVELING after submission");
+        assertTrue(world.getActiveMission(csId).active, "path1: mission should be active");
+
+        // Call settleClansman without advancing any ticks (same tick as submission)
+        world.settleClansman(csId);
+
+        // State must be unchanged — still TRAVELING, no iron
+        Clansman memory csAfter = world.getClansman(csId);
+        assertEq(
+            uint8(csAfter.state), uint8(ClansmanState.TRAVELING), "path1: must still be TRAVELING (no ticks passed)"
+        );
+        assertEq(csAfter.carryIron, 0, "path1: no iron gathered (haven't arrived)");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path2_arrivalTransition
+    // Path 2: TRAVELING → ACTING at arrivalTick
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path2_arrivalTransition() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion;
+
+        // Travel Forest(1) → Mountains(2) = 1 tick
+        (uint8 travelTicks,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_MOUNTAINS);
+        assertGt(travelTicks, 0, "path2: need travel > 0 ticks");
+
+        _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+
+        // arrivalTick = currentTick + travelTicks. Settlement processes [lastSettledTick, currentTick).
+        // To include arrivalTick in the settled range we need currentTick > arrivalTick,
+        // i.e. currentTick >= arrivalTick + 1, so advance travelTicks + 1 ticks.
+        for (uint256 i = 0; i < uint256(travelTicks) + 1; i++) {
+            _advanceTick();
+        }
+
+        // Call settleClansman on-demand
+        world.settleClansman(csId);
+
+        // Clansman should have transitioned to ACTING at the target region
+        Clansman memory csAfter = world.getClansman(csId);
+        assertEq(uint8(csAfter.state), uint8(ClansmanState.ACTING), "path2: must be ACTING after arrival");
+        assertEq(csAfter.currentRegion, ClanWorldConstants.REGION_MOUNTAINS, "path2: currentRegion must be Mountains");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path3_settleOnCompletion
+    // Path 3: ACTING + tick >= settlesAtTick → resolves action
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path3_settleOnCompletion() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion;
+
+        (uint8 travelTicks,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_MOUNTAINS);
+        _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+
+        // Advance through travel and the four-tick mining duration.
+        for (uint256 i = 0; i < uint256(travelTicks) + world.getActionDuration(ActionType.MineIron) + 1; i++) {
+            _advanceTick();
+        }
+
+        // settleClan triggers the full settlement path
+        world.settleClan(clanId);
+
+        // Clansman should have mined some iron
+        Clansman memory csAfter = world.getClansman(csId);
+        assertGt(csAfter.carryIron, 0, "path3: clansman should have gathered iron after action resolved");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path4_missionOverwrite
+    // Path 4: mission overwrite mid-flight — old mission gone, new mission executes
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path4_missionOverwrite() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion;
+
+        // Submit mission 1: FishDocks to EastDocks (region 7) — from Forest homebase, that's
+        // 4 ticks of travel (Forest→Mountains→UnicornTown→EastFarms→EastDocks), ensuring the
+        // clansman is still TRAVELING when interrupted after just 1 tick.
+        (uint8 travelTicks1,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_EAST_DOCKS);
+        assertGt(travelTicks1, 1, "path4: first mission needs > 1 tick travel so it stays TRAVELING after 1 tick");
+
+        OrderResult[] memory r1 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_EAST_DOCKS, ActionType.FishDocks);
+        assertEq(uint8(r1[0].status), uint8(StatusCode.OK), "path4: first order must succeed");
+        uint64 nonce1 = r1[0].missionNonce;
+        assertEq(nonce1, 1, "path4: first nonce must be 1");
+
+        // Advance only 1 tick — first mission still TRAVELING (arrivalTick is 4 ticks away)
+        // Wait for cooldown and advance 1 tick, then interrupt
+        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
+        _advanceTick();
+
+        // Confirm clansman is still TRAVELING (hasn't reached EastDocks yet)
+        assertEq(
+            uint8(world.getClansman(csId).state),
+            uint8(ClansmanState.TRAVELING),
+            "path4: must still be TRAVELING before interrupt"
+        );
+
+        // Overwrite with MineIron to Mountains
+        OrderResult[] memory r2 = _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+        assertEq(uint8(r2[0].status), uint8(StatusCode.OK), "path4: interrupt order must succeed");
+        uint64 nonce2 = r2[0].missionNonce;
+        assertEq(nonce2, 2, "path4: second nonce must be 2");
+
+        // Active mission must now be MineIron (nonce 2)
+        Mission memory m = world.getActiveMission(csId);
+        assertTrue(m.active, "path4: mission must be active");
+        assertEq(m.nonce, 2, "path4: active mission nonce must be 2");
+        assertEq(uint8(m.action), uint8(ActionType.MineIron), "path4: active mission action must be MineIron");
+
+        // Advance until new mission resolves (from current position after 1 tick)
+        // clansman was re-tasked from its current region; compute remaining travel
+        uint8 csRegionNow = world.getClansman(csId).currentRegion;
+        (uint8 travelToMountains,) = world.quoteTravel(csRegionNow, ClanWorldConstants.REGION_MOUNTAINS);
+        for (uint256 i = 0; i < uint256(travelToMountains) + world.getActionDuration(ActionType.MineIron) + 1; i++) {
+            _advanceTick();
+        }
+        world.settleClan(clanId);
+
+        // Must have iron (new mission executed), must have NO fish (old mission never arrived)
+        Clansman memory csAfter = world.getClansman(csId);
+        assertGt(csAfter.carryIron, 0, "path4: new mission (MineIron) should have executed");
+        assertEq(csAfter.carryFish, 0, "path4: old mission (FishDocks) must not have executed (clansman never arrived)");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path5_defendBaseNeverSettles
+    // Path 5: DefendBase → clansman stays ACTING indefinitely, mission stays active
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path5_defendBaseNeverSettles() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 baseRegion = v.clan.clan.baseRegion;
+
+        // Submit DefendBase to own clan's base (zero travel)
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: baseRegion,
+            action: ActionType.DefendBase,
+            targetClanId: clanId,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory r = world.submitClanOrders(clanId, orders);
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK), "path5: DefendBase order must succeed");
+
+        // Advance 5 ticks and settle
+        for (uint256 i = 0; i < 5; i++) {
+            _advanceTick();
+        }
+        world.settleClan(clanId);
+
+        // Clansman must still be ACTING (DefendBase never completes the mission)
+        Clansman memory csAfter = world.getClansman(csId);
+        assertEq(uint8(csAfter.state), uint8(ClansmanState.ACTING), "path5: DefendBase clansman must stay ACTING");
+        assertTrue(world.getActiveMission(csId).active, "path5: DefendBase mission must stay active");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path6_deadClansmanMidMission
+    // Path 6: dead clansman mid-mission → mission invalidated
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path6_deadClansmanMidMission() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 csId) = _setupHarness();
+        uint8 homeRegion = harness.getClanFullView(clanId).clan.clan.baseRegion;
+
+        // Submit ChopWood to a region that requires travel (so clansman is TRAVELING)
+        // From Forest homebase, go to Mountains (1 tick travel)
+        (uint8 travelTicks,) = harness.quoteTravel(homeRegion, ClanWorldConstants.REGION_MOUNTAINS);
+        assertGt(travelTicks, 0, "path6: need travel > 0 so clansman is TRAVELING when killed");
+
+        OrderResult[] memory r =
+            _submitOrderHarness(harness, clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK), "path6: order must succeed");
+        assertTrue(harness.getActiveMission(csId).active, "path6: mission must be active before kill");
+
+        // Kill clansman while it's mid-mission (TRAVELING)
+        harness.killClansman(csId);
+        assertEq(uint8(harness.getClansman(csId).state), uint8(ClansmanState.DEAD), "path6: clansman must be DEAD");
+
+        // Settle the clan — should trigger path 6 handling
+        _advanceTickHarness(harness);
+        harness.settleClan(clanId);
+
+        // Mission must be invalidated (active = false)
+        Mission memory m = harness.getActiveMission(csId);
+        assertFalse(m.active, "path6: mission must be inactive after clansman died");
+
+        // Clansman must still be DEAD (no resurrection)
+        assertEq(uint8(harness.getClansman(csId).state), uint8(ClansmanState.DEAD), "path6: clansman must remain DEAD");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_path6_deadDefender_cleanedFromRegistry
+    // Path 6 + DefendBase: dead defending clansman must be removed from registry
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_path6_deadDefender_cleanedFromRegistry() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 csId) = _setupHarness();
+        uint8 baseRegion = harness.getClanFullView(clanId).clan.clan.baseRegion;
+
+        // Submit DefendBase to own base (zero travel → immediately registered)
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: baseRegion,
+            action: ActionType.DefendBase,
+            targetClanId: clanId,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory r = harness.submitClanOrders(clanId, orders);
+        assertEq(uint8(r[0].status), uint8(StatusCode.OK), "path6-defender: DefendBase order must succeed");
+
+        // Confirm clansman is registered as a defender
+        uint32[] memory defs = harness.getActiveDefenders(clanId);
+        assertEq(defs.length, 1, "path6-defender: should have 1 defender before kill");
+
+        // Kill the clansman
+        harness.killClansman(csId);
+        assertEq(
+            uint8(harness.getClansman(csId).state), uint8(ClansmanState.DEAD), "path6-defender: clansman must be DEAD"
+        );
+
+        // Settle the clan — triggers Path 6, should remove from registry
+        _advanceTickHarness(harness);
+        harness.settleClan(clanId);
+
+        // Defender must be removed from registry
+        uint32[] memory defsAfter = harness.getActiveDefenders(clanId);
+        assertEq(defsAfter.length, 0, "path6-defender: dead defender must be removed from registry");
+
+        // Mission must be inactive
+        assertFalse(harness.getActiveMission(csId).active, "path6-defender: mission must be inactive");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_settleClansman_onDemand
+    // settleClansman settles a single clansman without settleClan
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_settleClansman_onDemand() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+        uint8 homeRegion = v.clan.clan.baseRegion;
+
+        // Submit MineIron — requires travel to Mountains
+        (uint8 travelTicks,) = world.quoteTravel(homeRegion, ClanWorldConstants.REGION_MOUNTAINS);
+        _submitOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
+
+        // Advance through travel and the four-tick mining duration WITHOUT calling settleClan.
+        for (uint256 i = 0; i < uint256(travelTicks) + world.getActionDuration(ActionType.MineIron) + 1; i++) {
+            _advanceTick();
+        }
+
+        // Verify: raw storage not yet updated (settleClan not called)
+        assertEq(world.getClansman(csId).carryIron, 0, "onDemand: carryIron must be 0 before settleClansman");
+
+        // Call settleClansman on-demand — only this clansman's mission should resolve
+        world.settleClansman(csId);
+
+        // Verify: clansman now has iron (settled on demand)
+        assertGt(world.getClansman(csId).carryIron, 0, "onDemand: carryIron must be > 0 after settleClansman");
+    }
+
+    // -------------------------------------------------------------------------
+    // test_lazySettle_settleClansman_noopIfUpToDate
+    // settleClansman is a no-op when clan is already settled
+    // -------------------------------------------------------------------------
+
+    function test_lazySettle_settleClansman_noopIfUpToDate() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+        uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
+
+        // No ticks advanced — clan is already up to date
+        // settleClansman must not revert and must leave state unchanged
+        world.settleClansman(csId);
+
+        Clansman memory csAfter = world.getClansman(csId);
+        assertEq(uint8(csAfter.state), uint8(ClansmanState.WAITING), "noop: state must be unchanged");
+        assertEq(csAfter.carryIron, 0, "noop: carryIron must be 0");
+        assertEq(csAfter.carryWood, 0, "noop: carryWood must be 0");
+    }
+
+    // -------------------------------------------------------------------------
+    // 3.E8: Partial batch — mixed results across 4 orders
+    // -------------------------------------------------------------------------
+
+    function test_phase3E8_partialBatch_mixedResults() public {
+        uint32 clanId = _mintClan();
+        ClanFullView memory v = world.getClanFullView(clanId);
+
+        uint32 cs0 = v.clansmen[0].clansman.clansman.clansmanId;
+        uint32 cs1 = v.clansmen[1].clansman.clansman.clansmanId;
+        uint32 cs2 = v.clansmen[2].clansman.clansman.clansmanId;
+
+        ClanOrder[] memory orders = new ClanOrder[](4);
+
+        // Order 0: valid — cs0 ChopWood to Forest
+        orders[0] = ClanOrder({
+            clansmanId: cs0,
+            gotoRegion: ClanWorldConstants.REGION_FOREST,
+            action: ActionType.ChopWood,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+
+        // Order 1: invalid clansmanId 9999
+        orders[1] = ClanOrder({
+            clansmanId: 9999,
+            gotoRegion: ClanWorldConstants.REGION_FOREST,
+            action: ActionType.ChopWood,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+
+        // Order 2: valid — cs1 Wait at homebase (NOOP)
+        orders[2] = ClanOrder({
+            clansmanId: cs1,
+            gotoRegion: ClanWorldConstants.REGION_NOOP,
+            action: ActionType.Wait,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+
+        // Order 3: invalid — cs2 ChopWood to Mountains (wrong region for ChopWood)
+        orders[3] = ClanOrder({
+            clansmanId: cs2,
+            gotoRegion: ClanWorldConstants.REGION_MOUNTAINS,
+            action: ActionType.ChopWood,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+
+        vm.prank(elder);
+        OrderResult[] memory results = world.submitClanOrders(clanId, orders);
+
+        assertEq(results.length, 4, "3.E8: must return 4 results");
+        assertEq(uint8(results[0].status), uint8(StatusCode.OK), "3.E8: order[0] must be OK");
+        assertEq(
+            uint8(results[1].status),
+            uint8(StatusCode.ERR_INVALID_CLANSMAN),
+            "3.E8: order[1] must be ERR_INVALID_CLANSMAN"
+        );
+        assertEq(uint8(results[2].status), uint8(StatusCode.OK), "3.E8: order[2] must be OK");
+        assertEq(
+            uint8(results[3].status), uint8(StatusCode.ERR_INVALID_REGION), "3.E8: order[3] must be ERR_INVALID_REGION"
+        );
     }
 }

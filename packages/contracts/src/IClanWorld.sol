@@ -273,6 +273,9 @@ struct Mission {
     bool active;
 
     uint64 nonce;
+    uint64 submittedAtTick;
+    uint64 executesAtTick;
+    uint64 settlesAtTick;
     uint32 clansmanId;
 
     uint8 startRegion;
@@ -424,8 +427,8 @@ struct ClanFullView {
     ClansmanFullView[] clansmen;
     WheatPlot westPlot;
     WheatPlot eastPlot;
-    uint32[] incomingDefenderIds; // workers from other clans defending us
-    uint32 thisClanDefendingBaseId; // 0 if none
+    uint32[] incomingDefenderIds; // legacy UI field; clanIds defending this clan's home region
+    uint32 thisClanDefendingBaseId; // defended home region, or 0 if none
 }
 
 struct PoolReserves {
@@ -634,6 +637,9 @@ interface IClanWorld is IClanWorldEvents {
     /// @notice Lazily settle a clan forward to current tick. Idempotent.
     function settleClan(uint32 clanId) external;
 
+    /// @notice Lazily settle a single clansman's mission to current tick. Idempotent.
+    function settleClansman(uint32 csId) external;
+
     /// @notice Finalize the current season. Permissionless after seasonEndTick.
     function finalizeSeason() external;
 
@@ -695,6 +701,15 @@ interface IClanWorld is IClanWorldEvents {
 
     function getActiveMission(uint32 clansmanId) external view returns (Mission memory);
 
+    function getMissionTiming(uint32 clanId, uint32 clansmanId)
+        external
+        view
+        returns (uint64 submitted, uint64 executes, uint64 settles);
+
+    function getActionDuration(ActionType action) external pure returns (uint64);
+
+    function getTravelTicks(uint8 fromRegion, uint8 toRegion) external pure returns (uint64);
+
     function getBanditTroop(uint32 banditId) external view returns (BanditTroop memory);
 
     function getWheatPlots(uint32 clanId) external view returns (WheatPlot memory west, WheatPlot memory east);
@@ -702,6 +717,8 @@ interface IClanWorld is IClanWorldEvents {
     function getScheduledMarketActionsForTick(uint64 tick) external view returns (ScheduledMarketAction[] memory);
 
     function getActiveDefenders(uint32 targetClanId) external view returns (uint32[] memory clansmanIds);
+
+    function getDefendingClans(uint8 region) external view returns (uint32[] memory clanIds);
 
     // -------------------------------------------------------------------------
     // Derived read getters (read-only simulation forward to current tick)
