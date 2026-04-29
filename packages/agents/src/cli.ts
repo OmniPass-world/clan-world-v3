@@ -8,6 +8,32 @@ import { createConvexClient, createChainClient } from '@clan-world/shared/adapte
 
 export class UsageError extends Error {}
 
+const RESTRICTED_FILE_MODE = 0o600;
+
+function writeRestrictedFileSync(
+  file: string,
+  data: string,
+  options: Omit<fs.WriteFileOptions, 'mode'> = {},
+): void {
+  fs.writeFileSync(file, data, {
+    ...options,
+    mode: RESTRICTED_FILE_MODE,
+  });
+  fs.chmodSync(file, RESTRICTED_FILE_MODE);
+}
+
+function appendRestrictedFileSync(
+  file: string,
+  data: string,
+  options: Omit<fs.WriteFileOptions, 'mode'> = {},
+): void {
+  fs.appendFileSync(file, data, {
+    ...options,
+    mode: RESTRICTED_FILE_MODE,
+  });
+  fs.chmodSync(file, RESTRICTED_FILE_MODE);
+}
+
 export function getElderN(env: Record<string, string | undefined> = process.env): number {
   const val = env['ELDER_N'];
   if (!val) throw new UsageError('elder: ELDER_N env var is not set');
@@ -50,7 +76,9 @@ export function readMemory(n: number, base?: string): Record<string, string> {
 export function writeMemory(n: number, data: Record<string, string>, base?: string): void {
   const file = memoryFile(n, base);
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  writeRestrictedFileSync(file, JSON.stringify(data, null, 2) + '\n', {
+    encoding: 'utf8',
+  });
 }
 
 export interface Deps {
@@ -123,7 +151,9 @@ export async function runCommand(
     const entry = JSON.stringify({ from: n, to: clanId, msg, ts: new Date().toISOString() });
     const file = recipientInboxFile(clanId, homeBase);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.appendFileSync(file, entry + '\n', 'utf8');
+    appendRestrictedFileSync(file, entry + '\n', {
+      encoding: 'utf8',
+    });
     return 'whisper sent\n';
   }
 
@@ -151,7 +181,9 @@ export async function runCommand(
     const n = getElderN(env);
     const file = ackFile(n, homeBase);
     fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, new Date().toISOString() + '\n', 'utf8');
+    writeRestrictedFileSync(file, new Date().toISOString() + '\n', {
+      encoding: 'utf8',
+    });
     return 'ack cleared\n';
   }
 

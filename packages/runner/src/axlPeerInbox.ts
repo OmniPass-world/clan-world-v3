@@ -37,6 +37,7 @@ import path from 'node:path';
 import type { IElderPeerInbox, PeerMessage } from '@clan-world/agents/seams';
 import { FilePeerInbox } from './filePeerInbox';
 import { defaultStateDir } from './fileMemoryStore';
+import { appendRestrictedFileSync } from './restrictedFile';
 import { type ElderId } from './types';
 
 // ---------------------------------------------------------------------------
@@ -451,7 +452,9 @@ export class AxlPeerInbox implements IElderPeerInbox {
     if (!this.#journalPath) return;
     try {
       fs.mkdirSync(path.dirname(this.#journalPath), { recursive: true });
-      fs.appendFileSync(this.#journalPath, JSON.stringify(entry) + '\n', 'utf8');
+      appendRestrictedFileSync(this.#journalPath, JSON.stringify(entry) + '\n', {
+        encoding: 'utf8',
+      });
     } catch (err) {
       console.warn('[AxlPeerInbox] journal write failed — crash durability reduced:', err);
     }

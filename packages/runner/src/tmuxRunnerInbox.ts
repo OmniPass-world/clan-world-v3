@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { IRunnerInbox, DeliveryStatus } from '@clan-world/agents/seams';
+import { writeRestrictedFileSync } from './restrictedFile';
 import type { ElderId } from './types';
 
 /**
@@ -148,7 +149,9 @@ function readLastTick(file: string): number | undefined {
 
 function writeLastTick(file: string, tick: number): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${tick}\n`, 'utf8');
+  writeRestrictedFileSync(file, `${tick}\n`, {
+    encoding: 'utf8',
+  });
 }
 
 async function waitForFile(file: string, timeoutMs: number): Promise<'found' | 'timeout'> {
