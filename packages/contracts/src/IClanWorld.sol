@@ -191,8 +191,6 @@ struct WorldState {
     uint64 seasonStartTick;
     uint64 seasonEndTick;
     bool seasonFinalized;
-    uint64 currentSeasonNumber;   // 1-indexed; incremented each time seasonEndTick is crossed
-    uint64 nextHeartbeatAtTick;   // estimated tick that will be opened by the next heartbeat (for off-chain UI)
 
     uint64 nextHeartbeatAtTs;
     uint64 nextBanditSpawnEligibleTick;
@@ -205,6 +203,10 @@ struct WorldState {
     uint64 winterEndsAtTick; // 0 if not active
 
     uint64 nextCommitSequence; // global FIFO sequence for scheduled market actions
+
+    // appended fields — do not insert before this line
+    uint64 currentSeasonNumber;   // 1-indexed; incremented each time seasonEndTick is crossed
+    uint64 nextHeartbeatAtTick;   // estimated tick that will be opened by the next heartbeat (for off-chain UI)
 }
 
 struct TreasuryState {
@@ -540,7 +542,7 @@ interface IClanWorldEvents {
         uint256 ironDelta,
         uint256 wheatDelta,
         uint256 fishDelta,
-        uint32 tick
+        uint64 atTick
     );
 
     // ----- building -----

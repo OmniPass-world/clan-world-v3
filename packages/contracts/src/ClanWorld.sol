@@ -123,6 +123,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         bool[] simWallReservationCleared;
         bool[] simBaseReservationCleared;
         bool[] simMonumentReservationCleared;
+        uint256 reservedWheat; // mirrors _reservedWheatByClan[clanId] for reservation-aware upkeep simulation
     }
 
     struct HeldUpgradeResources {
@@ -536,9 +537,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         } else if (action == ActionType.HarvestWheat) {
             _gatherWheat(clan, cs, m, clanId, tick, starving);
         } else if (action == ActionType.DepositResources) {
-            // Deposit event ABI intentionally stores the current tick as uint32.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            _doDeposit(clan, cs, m, clanId, uint32(tick));
+            _doDeposit(clan, cs, m, clanId, tick);
         } else if (action == ActionType.Wait) {
             // NOOP — worker stays ACTING (continuous), no transition needed
             // Wait mission is effectively persistent until interrupted
@@ -752,7 +751,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         // else continuous
     }
 
-    function _doDeposit(Clan storage clan, Clansman storage cs, Mission storage m, uint32 clanId, uint32 tick)
+    function _doDeposit(Clan storage clan, Clansman storage cs, Mission storage m, uint32 clanId, uint64 tick)
         internal
     {
         // Must be at homebase region
@@ -829,7 +828,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return true;
         }
         if (held.fromLevel != clan.wallLevel) {
-            _refundWallUpgradeReservation(clansmanId);
+            // fromLevel > current.level: a higher-level reservation arrived before the lower-level one settled.
+            // Retain reservation (no refund) so the worker can retry once the prerequisite upgrade lands.
+            // fromLevel < current.level: stale/impossible — refund immediately.
+            if (held.fromLevel < clan.wallLevel) _refundWallUpgradeReservation(clansmanId);
             return false;
         }
 
@@ -866,7 +868,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return true;
         }
         if (held.fromLevel != clan.baseLevel) {
-            _refundBaseUpgradeReservation(clansmanId);
+            // fromLevel > current.level: retain for retry once prerequisite upgrade settles.
+            // fromLevel < current.level: stale/impossible — refund immediately.
+            if (held.fromLevel < clan.baseLevel) _refundBaseUpgradeReservation(clansmanId);
             return false;
         }
 
@@ -908,7 +912,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return true;
         }
         if (held.fromLevel != clan.monumentLevel) {
-            _refundMonumentUpgradeReservation(clansmanId);
+            // fromLevel > current.level: retain for retry once prerequisite upgrade settles.
+            // fromLevel < current.level: stale/impossible — refund immediately.
+            if (held.fromLevel < clan.monumentLevel) _refundMonumentUpgradeReservation(clansmanId);
             return false;
         }
 
@@ -979,6 +985,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
         sim.wheatPlots[0] = _wheatPlots[clanId][0];
         sim.wheatPlots[1] = _wheatPlots[clanId][1];
+        sim.reservedWheat = _reservedWheatByClan[clanId];
 
         uint64 fromTick = sim.clan.lastSettledTick;
         if (fromTick >= toTick) return sim;
@@ -1005,10 +1012,17 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 wheatNeeded = uint256(sim.clan.livingClansmen) * ClanWorldConstants.WHEAT_UPKEEP_PER_CLANSMAN;
         uint256 fishNeeded = uint256(sim.clan.livingClansmen) * ClanWorldConstants.FISH_UPKEEP_PER_CLANSMAN;
 
-        bool hadEnoughWheat = sim.clan.vaultWheat >= wheatNeeded;
+        // Mirror _applyUpkeep: respect wheat reservations so sim and real agree when reservations exist.
+        uint256 spendableWheat =
+            sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
+        bool hadEnoughWheat = spendableWheat >= wheatNeeded;
         bool hadEnoughFish = sim.clan.vaultFish >= fishNeeded;
 
-        sim.clan.vaultWheat = hadEnoughWheat ? sim.clan.vaultWheat - wheatNeeded : 0;
+        if (hadEnoughWheat) {
+            sim.clan.vaultWheat -= wheatNeeded;
+        } else {
+            sim.clan.vaultWheat -= spendableWheat;
+        }
         sim.clan.vaultFish = hadEnoughFish ? sim.clan.vaultFish - fishNeeded : 0;
 
         bool starving = !hadEnoughWheat || !hadEnoughFish;
@@ -1280,7 +1294,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
         if (sim.clan.wallLevel >= WALL_MAX_LEVEL) return true;
         if (held.fromLevel != sim.clan.wallLevel) {
-            _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            // Only clear (sim-refund) if stale; if ahead of current level, retain for later retry.
+            if (held.fromLevel < sim.clan.wallLevel) {
+                _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            }
             return false;
         }
 
@@ -1305,7 +1322,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
         if (sim.clan.baseLevel >= BASE_MAX_LEVEL) return true;
         if (held.fromLevel != sim.clan.baseLevel) {
-            _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+            // Only clear (sim-refund) if stale; if ahead of current level, retain for later retry.
+            if (held.fromLevel < sim.clan.baseLevel) {
+                _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+            }
             return false;
         }
 
@@ -1337,7 +1357,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
         if (sim.clan.monumentLevel >= MONUMENT_MAX_LEVEL) return true;
         if (held.fromLevel != sim.clan.monumentLevel) {
-            _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+            // Only clear (sim-refund) if stale; if ahead of current level, retain for later retry.
+            if (held.fromLevel < sim.clan.monumentLevel) {
+                _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+            }
             return false;
         }
 
