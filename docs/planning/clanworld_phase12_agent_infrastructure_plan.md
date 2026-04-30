@@ -1,14 +1,14 @@
 # ClanWorld Phase 12 — Agent Infrastructure Rework Plan
 
 **Issue:** #282  
-**Status:** Draft  
+**Status:** Ready for implementation  
 **Scope:** Runtime harness at `/home/claude/clan-world/` — NOT the code repo at `/home/claude/code/clan-world/`
 
 ---
 
 ## Background
 
-Current layout uses per-elder `CLAUDE_CONFIG_DIR` pointing to `elder-N/.claude/`. This gives full isolation per elder (credentials, session state, memory, transcripts) but forces duplication of any shared config. The rework proposes collapsing the config dir to a single shared location — **however, `CLAUDE_CONFIG_DIR` relocates the entire `~/.claude` tree, not just OAuth credentials**. This means shared `CLAUDE_CONFIG_DIR` would also share session history, memory, and transcripts across elders. Whether to proceed with this approach, keep per-elder isolation, or use a hybrid is an **open decision (see Section 7 DECISION NEEDED block)**. Per-elder identity would move to env vars; per-elder writable skill directories would live at `elder-N/.claude/skills/`. Parent-walk discovery handles config union automatically.
+Current layout uses per-elder `CLAUDE_CONFIG_DIR` pointing to `elder-N/.claude/`. This gives full isolation per elder but forces duplication of any shared config. The rework adopts a **hybrid design** (resolved 2026-04-30 — Liam directive): `agents/.claude/` serves as the shared config dir (replaces `~/.claude` for the agents context, isolated from orchestrator/system config), while `elder-N/.claude/` holds per-elder private settings and personality discovered via parent-walk union. Both layers are active simultaneously. Per-elder identity moves to env vars in run.sh; per-elder writable skill directories live at `elder-N/.claude/skills/`. Parent-walk discovery handles config union automatically.
 
 ---
 
@@ -160,12 +160,10 @@ These are elder-specific and must remain in run.sh because settings.json `env` b
 
 ### Proposed A/B split
 
-- **Group A** (elders 1 and 3): launch with `--output-format <value>` flag
+- **Group A** (elders 1 and 3): launch with `--system-prompt ""` flag
 - **Group B** (elders 2 and 4): launch with no flag (current default behavior)
 
-> ⚠️ DECISION NEEDED: verify the exact `--output-format` value that strips the coding system prompt. Current candidates are `stream-json` and a custom value. Run `claude --help` and `claude --output-format --help` to enumerate valid values before adding to any run.sh. Do NOT add an unverified flag — an invalid value will cause elders to fail to start.
-
-> ⚠️ UNVERIFIED: Verify exact `--output-format` value that removes coding system prompt artifacts. Known values include `stream-json`, `json`, `text` — none are documented as removing the coding prompt specifically.
+> **Resolved 2026-04-30 — Liam directive:** `--output-format` takes only `text`, `json`, or `stream-json` (output format only — does NOT remove the coding system prompt). Verified against `claude --help`. For the A/B experiment, the correct flag is `--system-prompt ""` which **replaces the default coding system prompt with an empty string**, removing Claude Code assistant framing from elder responses. `--bare` was evaluated but rejected — it also disables CLAUDE.md auto-discovery and hooks, which breaks the elder config setup.
 
 ### How to observe behavior delta
 
@@ -241,14 +239,19 @@ Note: 0G adapter = Phase 7 (stub exists, not production). AXL whisper = Phase 8 
 
 ## 7. Parent-Walk Behavior Analysis
 
-> ⚠️ DECISION NEEDED: **`CLAUDE_CONFIG_DIR` relocates the entire `~/.claude` tree**, not just OAuth credentials. This includes settings, session history, memory, plugins, transcripts, and skill state. Sharing `CLAUDE_CONFIG_DIR` across all 4 elders means sharing ALL that state — sessions, memory, and transcripts would not be isolated per elder. This may invalidate the core design premise.
+> **Resolved 2026-04-30 — Liam directive: Hybrid design is correct.** The reviewer concern ("`CLAUDE_CONFIG_DIR` relocates the entire `~/.claude` tree — sharing it means sharing sessions/memory/transcripts") was noted but does NOT invalidate the design — sharing agents/.claude/ as the config home IS the intended behavior. Both layers are active simultaneously:
 >
-> Options to evaluate:
-> 1. **Keep per-elder `CLAUDE_CONFIG_DIR`** (current approach) — full isolation, but duplication of shared config. Shared config must be maintained 4× or symlinked.
-> 2. **Shared `CLAUDE_CONFIG_DIR` with explicit per-elder overrides** — risks session/memory cross-contamination unless Claude Code supports sub-scoping within a shared config dir.
-> 3. **Hybrid** — per-elder `CLAUDE_CONFIG_DIR` pointing to per-elder dirs, but each per-elder dir symlinks shared assets (skills/, CLAUDE.md, settings base).
+> ```
+> ~/clan-world/agents/.claude/         ← REPLACES ~/.claude for the agents context.
+>                                        Shared state across elder agents.
+>                                        Isolated from normal claude-on-system.
 >
-> **Liam must decide before implementation proceeds.**
+> ~/clan-world/agents/elder-N/         ← Each elder's working dir (cwd at launch).
+> ~/clan-world/agents/elder-N/.claude/ ← Per-elder PRIVATE .claude scoped to that
+>                                        agent only (discovered via parent-walk).
+> ```
+>
+> `CLAUDE_CONFIG_DIR` points to `agents/.claude/` (shared credentials, session state, memory). Per-elder personality and settings live at `elder-N/.claude/` and are merged in via parent-walk — closer cwd wins on key conflicts. Do not re-litigate.
 
 ### Discovery path with proposed layout
 
@@ -267,7 +270,7 @@ Both per-elder and shared configs are discovered and **merged** — this is the 
 
 ### CLAUDE_CONFIG_DIR is NOT narrow OAuth-only
 
-`CLAUDE_CONFIG_DIR` relocates the ENTIRE `~/.claude` tree — credentials, session state, plugin cache, settings, memory, transcripts, and skill state. It does NOT affect which `settings.json` or `CLAUDE.md` files are discovered via parent-walk (those are separate mechanisms). The proposed change (CLAUDE_CONFIG_DIR → shared) is a PROPOSED OPTION pending verification — see the DECISION NEEDED block above.
+`CLAUDE_CONFIG_DIR` relocates the ENTIRE `~/.claude` tree — credentials, session state, plugin cache, settings, memory, transcripts, and skill state. It does NOT affect which `settings.json` or `CLAUDE.md` files are discovered via parent-walk (those are separate mechanisms). Per the resolved design, `CLAUDE_CONFIG_DIR` points to `agents/.claude/` (shared home for all 4 elders); per-elder config is layered on top via parent-walk from `elder-N/.claude/`.
 
 ### Conflict resolution
 
@@ -287,9 +290,9 @@ Keep per-elder `settings.json` minimal: only `ELDER_NUMBER`, `ELDER_NAME`, `ELDE
 
 ### OAuth token sharing
 
-> Note: the framing below describes the **shared `CLAUDE_CONFIG_DIR` option** (Option 2 from Section 7). If Liam chooses Option 1 (keep per-elder) or Option 3 (hybrid), credential handling stays as-is and this section applies only to the shared symlink pattern.
+With the hybrid design (Section 7 resolved), `CLAUDE_CONFIG_DIR` = `agents/.claude/` for all 4 elders:
 
-If shared `CLAUDE_CONFIG_DIR` is adopted — all 4 elders pointing to `/home/claude/clan-world/agents/.claude/`:
+With `CLAUDE_CONFIG_DIR` = `agents/.claude/` — all 4 elders pointing to `/home/claude/clan-world/agents/.claude/`:
 
 - All 4 elders read `.credentials.json` from the same location
 - Token refresh writes back to the same file — last-writer-wins if two elders refresh simultaneously
@@ -297,15 +300,7 @@ If shared `CLAUDE_CONFIG_DIR` is adopted — all 4 elders pointing to `/home/cla
 
 > ⚠️ UNVERIFIED: whether simultaneous token refresh from two elder processes causes a race condition on `.credentials.json`. If elders all start within the same minute, test with 2 concurrent elders before assuming it is safe.
 
-Mitigation options (pick one before implementation):
-
-a. **Read-only token via env var** — set `CLAUDE_CODE_OAUTH_TOKEN` env var (already in run.sh via .env.local); if this env var is set, Claude Code uses it directly and does not write to `.credentials.json`. Verify this prevents file writes entirely.
-
-b. **flock on credential file** — wrap any credential-refresh-triggering operations with `flock /home/claude/clan-world/agents/.claude/.credentials.json <command>`.
-
-c. **Per-elder credential files** — keep `.credentials.json` per-elder via symlinks into a shared source, same as current approach.
-
-> ⚠️ DECISION NEEDED: Verify whether `CLAUDE_CODE_OAUTH_TOKEN` env var suppresses all `.credentials.json` writes. If yes, option (a) is simplest.
+**Resolved 2026-04-30 — Liam directive: use the OAuth env var from `claude setup-token`.** Set `CLAUDE_CODE_OAUTH_TOKEN` in each elder's run.sh (via `.env.local`). When this env var is set, Claude Code uses the token directly and does not write to `.credentials.json` — eliminating the race entirely. No flock, no per-elder credential files needed. Run `claude setup-token` to generate a long-lived token; store it in `.env.local` at the harness root.
 
 ### Credentials file consolidation
 
@@ -351,9 +346,9 @@ Execute in order. Stop at any failing step — do not proceed to the next elder 
    - No cross-contamination: elder-1 does not see elder-2's state outbox files
    - Plugin cache dirs are separate (`state/plugin-cache` in each elder's own dir)
 
-8. **--output-format flag (Group A test)** — boot elder-1 with the verified `--output-format` flag. Issue a tick response prompt.
+8. **`--system-prompt ""` flag (Group A test)** — boot elder-1 with `--system-prompt ""`. Issue a tick response prompt.
 
-   Pass criterion: elder-1 (with `--output-format` experiment flag) produces ≥2 consecutive responses that contain NO markdown code blocks (``` fences) when given a purely strategic prompt (e.g., "what resources should we prioritize this tick?"). Elder-2 (without flag) produces ≥1 code block in same scenario. Log to `state/outbox/` for comparison.
+   Pass criterion: elder-1 (with `--system-prompt ""` flag) produces ≥2 consecutive responses that contain NO markdown code blocks (``` fences) when given a purely strategic prompt (e.g., "what resources should we prioritize this tick?"). Elder-2 (without flag) produces ≥1 code block in same scenario. Log to `state/outbox/` for comparison.
 
 9. **Credentials symlink** — confirm `/home/claude/clan-world/agents/.claude/.credentials.json` resolves to `/home/claude/.claude/.credentials.json` and elder-1 authenticates without the interactive OAuth wizard.
 
@@ -369,7 +364,7 @@ Execute in order. Stop at any failing step — do not proceed to the next elder 
 | Shared `CLAUDE_CONFIG_DIR` breaks per-elder OAuth refresh (race on `.credentials.json`) | Med | High | Use Section 8 options a/b/c (OAUTH_TOKEN env var suppresses writes; flock; or keep per-elder files). Do not rely on stagger-by-5s alone. Test 2 concurrent elders before running all 4. | Revert `CLAUDE_CONFIG_DIR` to per-elder in each run.sh; re-create per-elder `.credentials.json` symlinks |
 | Parent-walk does not union `settings.json` correctly (per-elder overrides too aggressively) | Med | High | Test elder-1 alone first; inspect loaded config with `claude config list` or equivalent; verify shared env vars are active | Revert directory layout for that elder; debug settings merge before migrating others |
 | Per-elder `skills/` directory not auto-discovered by Claude Code | Low | Med | Run `/skill-creator` test (step 6 of test plan); skills are discovered by convention (`skills/<name>/SKILL.md`) relative to `.claude/` dirs on parent-walk path — no `skillsDirectory` settings key exists | Symlink `agents/elder-N/.claude/skills/` into `agents/.claude/skills/` under a namespaced subdirectory |
-| `--output-format` flag unsupported in current claude CLI version | Med | Low | Run `claude --help` before adding to run.sh; if not listed, omit; the A/B experiment degrades gracefully | Remove flag from Group A (elder-1 and elder-3) run.sh |
+| `--system-prompt ""` produces unexpected behavior (interactive mode ignores it, or CLAUDE.md still loaded) | Low | Low | Verify Group A (elder-1) responses lack code-block artifacts in first 3 ticks; fall back to `--append-system-prompt` with an explicit override instruction if needed | Remove flag from Group A run.sh; A/B experiment degrades gracefully to baseline |
 | Plugin pollers cross-kill when sharing config dir | Low | High | Keep `CLAUDE_CODE_PLUGIN_CACHE_DIR` per-elder regardless of `CLAUDE_CONFIG_DIR` change; test concurrent boot (step 7 of test plan) | Already mitigated by per-elder plugin cache — if issues persist, investigate plugin-specific state files in the shared dir |
 | Makefile elder targets break after path migration | Med | Low | Update Makefile paths as part of migration step 14; test `make elder-1` before declaring migration done | Revert Makefile to old paths; old paths still exist in backup |
 | Old `elder-N/` dirs deleted before backup verified | Low | Critical | Backup step is step 1; old dirs deleted only after ALL 4 elders pass test plan | Restore from `/home/claude/clan-world.bak-phase12/` |
@@ -378,4 +373,4 @@ Execute in order. Stop at any failing step — do not proceed to the next elder 
 
 ---
 
-*Plan authored: 2026-04-30. Review: Codex (2 rounds) + Gemini (2 rounds) — CLEAN.*
+*Plan authored: 2026-04-30. Review: Codex (2 rounds) + Gemini (2 rounds) — CLEAN. Open decisions resolved 2026-04-30 — Liam directive (R1 revision).*
