@@ -1325,6 +1325,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             // Only clear (sim-refund) if stale; if ahead of current level, retain for later retry.
             if (held.fromLevel < sim.clan.baseLevel) {
                 _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+                // Release held wheat reservation so subsequent upkeep ticks stay accurate.
+                if (sim.reservedWheat >= held.wheatCost) sim.reservedWheat -= held.wheatCost;
+                else sim.reservedWheat = 0;
             }
             return false;
         }
@@ -1340,6 +1343,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
+        // Mirror _clearBaseUpgradeReservation: release the wheat reservation so subsequent upkeep ticks
+        // in the sim see the correct spendable balance (sim/real parity for reservedWheat).
+        if (sim.reservedWheat >= wheatDebit) sim.reservedWheat -= wheatDebit;
+        else sim.reservedWheat = 0;
         sim.clan.baseLevel += 1;
         return true;
     }
@@ -1360,6 +1367,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             // Only clear (sim-refund) if stale; if ahead of current level, retain for later retry.
             if (held.fromLevel < sim.clan.monumentLevel) {
                 _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+                // Release held wheat reservation so subsequent upkeep ticks stay accurate.
+                if (sim.reservedWheat >= held.wheatCost) sim.reservedWheat -= held.wheatCost;
+                else sim.reservedWheat = 0;
             }
             return false;
         }
@@ -1379,6 +1389,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
         sim.clan.blueprintBalance -= blueprintDebit;
+        // Mirror _clearMonumentUpgradeReservation: release wheat reservation for upkeep parity.
+        if (sim.reservedWheat >= wheatDebit) sim.reservedWheat -= wheatDebit;
+        else sim.reservedWheat = 0;
         sim.clan.monumentLevel += 1;
         sim.simMonumentReachedAt[sim.clan.monumentLevel] = tick;
         return true;

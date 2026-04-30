@@ -40,8 +40,6 @@ const HEARTBEAT_ABI = [
           { name: 'seasonStartTick', type: 'uint64' },
           { name: 'seasonEndTick', type: 'uint64' },
           { name: 'seasonFinalized', type: 'bool' },
-          { name: 'currentSeasonNumber', type: 'uint64' },
-          { name: 'nextHeartbeatAtTick', type: 'uint64' },
           { name: 'nextHeartbeatAtTs', type: 'uint64' },
           { name: 'nextBanditSpawnEligibleTick', type: 'uint64' },
           { name: 'currentBanditSpawnChanceBps', type: 'uint16' },
@@ -51,6 +49,9 @@ const HEARTBEAT_ABI = [
           { name: 'winterStartsAtTick', type: 'uint64' },
           { name: 'winterEndsAtTick', type: 'uint64' },
           { name: 'nextCommitSequence', type: 'uint64' },
+          // appended fields — must match IClanWorld.sol WorldState layout
+          { name: 'currentSeasonNumber', type: 'uint64' },
+          { name: 'nextHeartbeatAtTick', type: 'uint64' },
         ],
       },
     ],
