@@ -120,6 +120,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         Mission[] missions;
         WheatPlot[2] wheatPlots;
         uint64[11] simMonumentReachedAt;
+        bool[] simWallReservationCleared;
+        bool[] simBaseReservationCleared;
+        bool[] simMonumentReservationCleared;
     }
 
     struct HeldUpgradeResources {
@@ -825,7 +828,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _clearWallUpgradeReservation(clansmanId);
             return true;
         }
-        if (held.fromLevel != clan.wallLevel && _hasEarlierWallUpgradeReservation(clanId, clansmanId, clan.wallLevel)) {
+        if (held.fromLevel != clan.wallLevel) {
+            _refundWallUpgradeReservation(clansmanId);
             return false;
         }
 
@@ -861,7 +865,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _clearBaseUpgradeReservation(clansmanId);
             return true;
         }
-        if (held.fromLevel != clan.baseLevel && _hasEarlierBaseUpgradeReservation(clanId, clansmanId, clan.baseLevel)) {
+        if (held.fromLevel != clan.baseLevel) {
+            _refundBaseUpgradeReservation(clansmanId);
             return false;
         }
 
@@ -902,10 +907,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _clearMonumentUpgradeReservation(clansmanId);
             return true;
         }
-        if (
-            held.fromLevel != clan.monumentLevel
-                && _hasEarlierMonumentUpgradeReservation(clanId, clansmanId, clan.monumentLevel)
-        ) {
+        if (held.fromLevel != clan.monumentLevel) {
+            _refundMonumentUpgradeReservation(clansmanId);
             return false;
         }
 
@@ -966,6 +969,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint32[] storage clansmanIds = _clanClansmanIds[clanId];
         sim.clansmen = new Clansman[](clansmanIds.length);
         sim.missions = new Mission[](clansmanIds.length);
+        sim.simWallReservationCleared = new bool[](clansmanIds.length);
+        sim.simBaseReservationCleared = new bool[](clansmanIds.length);
+        sim.simMonumentReservationCleared = new bool[](clansmanIds.length);
         for (uint256 i = 0; i < clansmanIds.length; i++) {
             uint32 clansmanId = clansmanIds[i];
             sim.clansmen[i] = _clansmen[clansmanId];
@@ -1250,58 +1256,72 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         ActionType action,
         uint64 tick
     ) internal view returns (Clansman memory, Mission memory) {
+        bool finished = true;
         if (cs.currentRegion == sim.clan.baseRegion) {
             if (action == ActionType.UpgradeWall) {
-                _simulateSettleWallUpgrade(sim, cs.clansmanId, m.nonce);
+                finished = _simulateSettleWallUpgrade(sim, cs.clansmanId, m.nonce);
             } else if (action == ActionType.UpgradeBase) {
-                _simulateSettleBaseUpgrade(sim, cs.clansmanId, m.nonce);
+                finished = _simulateSettleBaseUpgrade(sim, cs.clansmanId, m.nonce);
             } else if (action == ActionType.UpgradeMonument) {
-                _simulateSettleMonumentUpgrade(sim, cs.clansmanId, m.nonce, tick);
+                finished = _simulateSettleMonumentUpgrade(sim, cs.clansmanId, m.nonce, tick);
             }
         }
-        return _simulateCompleteMission(cs, m);
+        if (finished) return _simulateCompleteMission(cs, m);
+        return (cs, m);
     }
 
     function _simulateSettleWallUpgrade(SettlementSimulation memory sim, uint32 clansmanId, uint64 missionNonce)
         internal
         view
+        returns (bool)
     {
+        if (_simUpgradeReservationCleared(sim, clansmanId, ActionType.UpgradeWall)) return true;
         WallUpgradeReservation memory held = _wallUpgradeReservations[clansmanId];
-        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return;
-        if (sim.clan.wallLevel >= WALL_MAX_LEVEL) return;
-        if (held.fromLevel != sim.clan.wallLevel) return;
+        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
+        if (sim.clan.wallLevel >= WALL_MAX_LEVEL) return true;
+        if (held.fromLevel != sim.clan.wallLevel) {
+            _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            return false;
+        }
 
         (uint256 woodCost, uint256 ironCost) = _wallUpgradeCost(sim.clan.wallLevel);
         uint256 woodDebit = _min(held.woodCost, woodCost);
         uint256 ironDebit = _min(held.ironCost, ironCost);
-        if (sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit) return;
+        if (sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit) return false;
 
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.wallLevel += 1;
+        return true;
     }
 
     function _simulateSettleBaseUpgrade(SettlementSimulation memory sim, uint32 clansmanId, uint64 missionNonce)
         internal
         view
+        returns (bool)
     {
+        if (_simUpgradeReservationCleared(sim, clansmanId, ActionType.UpgradeBase)) return true;
         BaseUpgradeReservation memory held = _baseUpgradeReservations[clansmanId];
-        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return;
-        if (sim.clan.baseLevel >= BASE_MAX_LEVEL) return;
-        if (held.fromLevel != sim.clan.baseLevel) return;
+        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
+        if (sim.clan.baseLevel >= BASE_MAX_LEVEL) return true;
+        if (held.fromLevel != sim.clan.baseLevel) {
+            _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+            return false;
+        }
 
         (uint256 woodCost, uint256 ironCost, uint256 wheatCost) = _baseUpgradeCost(sim.clan.baseLevel);
         uint256 woodDebit = _min(held.woodCost, woodCost);
         uint256 ironDebit = _min(held.ironCost, ironCost);
         uint256 wheatDebit = _min(held.wheatCost, wheatCost);
         if (sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit || sim.clan.vaultWheat < wheatDebit) {
-            return;
+            return false;
         }
 
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
         sim.clan.baseLevel += 1;
+        return true;
     }
 
     function _simulateSettleMonumentUpgrade(
@@ -1309,11 +1329,17 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint32 clansmanId,
         uint64 missionNonce,
         uint64 tick
-    ) internal view {
+    ) internal view returns (bool) {
+        if (_simUpgradeReservationCleared(sim, clansmanId, ActionType.UpgradeMonument)) {
+            return true;
+        }
         MonumentUpgradeReservation memory held = _monumentUpgradeReservations[clansmanId];
-        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return;
-        if (sim.clan.monumentLevel >= MONUMENT_MAX_LEVEL) return;
-        if (held.fromLevel != sim.clan.monumentLevel) return;
+        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
+        if (sim.clan.monumentLevel >= MONUMENT_MAX_LEVEL) return true;
+        if (held.fromLevel != sim.clan.monumentLevel) {
+            _simClearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+            return false;
+        }
 
         (uint256 woodCost, uint256 ironCost, uint256 wheatCost, uint256 blueprintCost) =
             _monumentUpgradeCost(sim.clan.monumentLevel);
@@ -1324,7 +1350,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (
             sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit || sim.clan.vaultWheat < wheatDebit
                 || sim.clan.blueprintBalance < blueprintDebit
-        ) return;
+        ) return false;
 
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
@@ -1332,6 +1358,46 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         sim.clan.blueprintBalance -= blueprintDebit;
         sim.clan.monumentLevel += 1;
         sim.simMonumentReachedAt[sim.clan.monumentLevel] = tick;
+        return true;
+    }
+
+    function _simUpgradeReservationCleared(SettlementSimulation memory sim, uint32 clansmanId, ActionType action)
+        internal
+        pure
+        returns (bool)
+    {
+        (uint256 index, bool found) = _simClansmanIndex(sim, clansmanId);
+        if (!found) return false;
+        if (action == ActionType.UpgradeWall) return sim.simWallReservationCleared[index];
+        if (action == ActionType.UpgradeBase) return sim.simBaseReservationCleared[index];
+        if (action == ActionType.UpgradeMonument) return sim.simMonumentReservationCleared[index];
+        return false;
+    }
+
+    function _simClearUpgradeReservation(SettlementSimulation memory sim, uint32 clansmanId, ActionType action)
+        internal
+        pure
+    {
+        (uint256 index, bool found) = _simClansmanIndex(sim, clansmanId);
+        if (!found) return;
+        if (action == ActionType.UpgradeWall) {
+            sim.simWallReservationCleared[index] = true;
+        } else if (action == ActionType.UpgradeBase) {
+            sim.simBaseReservationCleared[index] = true;
+        } else if (action == ActionType.UpgradeMonument) {
+            sim.simMonumentReservationCleared[index] = true;
+        }
+    }
+
+    function _simClansmanIndex(SettlementSimulation memory sim, uint32 clansmanId)
+        internal
+        pure
+        returns (uint256, bool)
+    {
+        for (uint256 i = 0; i < sim.clansmen.length; i++) {
+            if (sim.clansmen[i].clansmanId == clansmanId) return (i, true);
+        }
+        return (0, false);
     }
 
     function _simulateCompleteMission(Clansman memory cs, Mission memory m)
