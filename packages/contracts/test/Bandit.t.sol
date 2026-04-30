@@ -59,6 +59,8 @@ contract BanditTest is Test {
         assertEq(bandit.targetClanId, 0, "no target while spawned");
         assertEq(bandit.tickEnteredState, world.getWorldState().currentTick, "entered tick");
         assertEq(bandit.strength, 250, "strength");
+        assertEq(bandit.tier, 0, "custom strength has no v4 tier");
+        assertEq(bandit.attackAttemptsMade, 0, "no attacks yet");
 
         uint32[] memory regionBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS);
         assertEq(regionBandits.length, 1, "region index length");
@@ -158,6 +160,22 @@ contract BanditTest is Test {
         BanditTroop memory camped = world.getBandit(id);
         assertEq(uint8(camped.state), uint8(BanditState.Camped), "camped again");
         assertEq(camped.targetClanId, 0, "target remains clear");
+        assertEq(camped.region, ClanWorldConstants.REGION_MOUNTAINS, "rampaged to next region");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "left forest index");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS)[0], id, "entered mountain index");
+    }
+
+    function test_restingToCampedFollowsRampagePath() public {
+        uint32 id = _spawnCampAndAttack(77);
+        world.transitionBandit(id, BanditState.Escaped);
+        world.transitionBandit(id, BanditState.Resting);
+
+        _advanceTicks(ClanWorldConstants.BANDIT_REST_TICKS + 1);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "forest to mountains");
+
+        world.transitionBandit(id, BanditState.Resting);
+        _advanceTicks(ClanWorldConstants.BANDIT_REST_TICKS + 1);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_FARMS, "mountains to east farms");
     }
 
     function test_invalidTransitionsRevert() public {
