@@ -8,6 +8,11 @@ export interface IChainClient {
   getCurrentTick(): Promise<Tick>;
   submitOrders(clanId: string, orders: ClanOrder[]): Promise<{ txHash: string }>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
+  getWallUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint }>;
+  getBaseUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint }>;
+  getMonumentUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint; blueprint: bigint }>;
+  getClanScore(clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }>;
+  getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }>;
 }
 
 const DEFAULT_CONTRACT_ADDRESS = '0x1BF5649f29CbB53E117a5aE969A18A71790f83E8' as const;
@@ -210,6 +215,61 @@ const CLAN_WORLD_ABI = [
     ],
     stateMutability: 'view',
   },
+  // Phase 8 read functions
+  {
+    type: 'function',
+    name: 'getWallUpgradeCost',
+    inputs: [{ name: 'currentLevel', type: 'uint8' }],
+    outputs: [
+      { name: 'wood', type: 'uint256' },
+      { name: 'iron', type: 'uint256' },
+    ],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    name: 'getBaseUpgradeCost',
+    inputs: [{ name: 'currentLevel', type: 'uint8' }],
+    outputs: [
+      { name: 'wood', type: 'uint256' },
+      { name: 'iron', type: 'uint256' },
+      { name: 'wheat', type: 'uint256' },
+    ],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    name: 'getMonumentUpgradeCost',
+    inputs: [{ name: 'currentLevel', type: 'uint8' }],
+    outputs: [
+      { name: 'wood', type: 'uint256' },
+      { name: 'iron', type: 'uint256' },
+      { name: 'wheat', type: 'uint256' },
+      { name: 'blueprint', type: 'uint256' },
+    ],
+    stateMutability: 'pure',
+  },
+  {
+    type: 'function',
+    name: 'getClanScore',
+    inputs: [{ name: 'clanId', type: 'uint32' }],
+    outputs: [
+      { name: 'score', type: 'uint256' },
+      { name: 'monumentReachedAtTick', type: 'uint64' },
+      { name: 'monumentLevel', type: 'uint8' },
+    ],
+    stateMutability: 'view',
+  },
+  {
+    type: 'function',
+    name: 'getRankings',
+    inputs: [],
+    outputs: [
+      { name: 'clanIdsRanked', type: 'uint32[]' },
+      { name: 'scores', type: 'uint256[]' },
+    ],
+    stateMutability: 'view',
+  },
   {
     name: 'submitClanOrders',
     type: 'function',
@@ -259,6 +319,21 @@ class StubChainClient implements IChainClient {
       pendingOrders: [],
       whispers: [],
     };
+  }
+  async getWallUpgradeCost(_currentLevel: number): Promise<{ wood: bigint; iron: bigint }> {
+    return { wood: 0n, iron: 0n };
+  }
+  async getBaseUpgradeCost(_currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint }> {
+    return { wood: 0n, iron: 0n, wheat: 0n };
+  }
+  async getMonumentUpgradeCost(_currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint; blueprint: bigint }> {
+    return { wood: 0n, iron: 0n, wheat: 0n, blueprint: 0n };
+  }
+  async getClanScore(_clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }> {
+    return { score: 0n, monumentReachedAtTick: 0n, monumentLevel: 0 };
+  }
+  async getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }> {
+    return { clanIdsRanked: [], scores: [] };
   }
 }
 
@@ -402,6 +477,55 @@ class RealChainClient implements IChainClient {
       pendingOrders: [],
       whispers: [],
     };
+  }
+
+  async getWallUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint }> {
+    const [wood, iron] = await this.client.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'getWallUpgradeCost',
+      args: [currentLevel],
+    });
+    return { wood, iron };
+  }
+
+  async getBaseUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint }> {
+    const [wood, iron, wheat] = await this.client.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'getBaseUpgradeCost',
+      args: [currentLevel],
+    });
+    return { wood, iron, wheat };
+  }
+
+  async getMonumentUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint; blueprint: bigint }> {
+    const [wood, iron, wheat, blueprint] = await this.client.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'getMonumentUpgradeCost',
+      args: [currentLevel],
+    });
+    return { wood, iron, wheat, blueprint };
+  }
+
+  async getClanScore(clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }> {
+    const [score, monumentReachedAtTick, monumentLevel] = await this.client.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'getClanScore',
+      args: [parseInt(clanId, 10)],
+    });
+    return { score, monumentReachedAtTick, monumentLevel };
+  }
+
+  async getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }> {
+    const [clanIdsRanked, scores] = await this.client.readContract({
+      address: this.contractAddress,
+      abi: CLAN_WORLD_ABI,
+      functionName: 'getRankings',
+    });
+    return { clanIdsRanked: clanIdsRanked as readonly number[], scores };
   }
 }
 

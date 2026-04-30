@@ -37,6 +37,11 @@ function makeChain(overrides: Partial<IChainClient> = {}): IChainClient {
       pendingOrders: [],
       whispers: [],
     } satisfies ClanFullView)),
+    getWallUpgradeCost: vi.fn(async () => ({ wood: 0n, iron: 0n })),
+    getBaseUpgradeCost: vi.fn(async () => ({ wood: 0n, iron: 0n, wheat: 0n })),
+    getMonumentUpgradeCost: vi.fn(async () => ({ wood: 0n, iron: 0n, wheat: 0n, blueprint: 0n })),
+    getClanScore: vi.fn(async () => ({ score: 0n, monumentReachedAtTick: 0n, monumentLevel: 0 })),
+    getRankings: vi.fn(async () => ({ clanIdsRanked: [], scores: [] })),
     ...overrides,
   };
 }
