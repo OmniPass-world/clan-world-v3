@@ -228,15 +228,19 @@ contract MonumentUpgradesTest is Test {
         assertEq(world.getClan(clanB).monumentLevel, 0, "clan B monument");
     }
 
-    function test_upgradeMonument_simHidesRefundedReservationFromLaterRetry() public {
+    function test_upgradeMonument_simAndRealBothApplySequentially() public {
+        // SHOULD FIX 5: higher-level reservation is retained for retry after lower-level settles.
+        // Both reservations apply and sim agrees with real.
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
         world.setVault(clanId, 500e18, 500e18, 500e18, 100e18);
         world.setBlueprint(clanId, 5e18);
 
+        // secondCsId queues level 0→1 (fromLevel=0, matches current=0, settles first)
         OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeMonument);
         assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second clansman queues level 1");
+        // firstCsId queues level 1→2 (fromLevel=1, retained until monument reaches 1, then retries)
         OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeMonument);
         assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 2");
 
@@ -246,7 +250,7 @@ contract MonumentUpgradesTest is Test {
 
         (uint256 realScore, uint256 realLoot, uint8 monumentLevel) = world.settleClanAndGetStoredScore(clanId);
 
-        assertEq(monumentLevel, 1, "real refunds stale level-2 reservation");
+        assertEq(monumentLevel, 2, "both reservations apply sequentially");
         assertEq(realLoot, simLoot, "sim and real loot match");
         assertEq(realScore, simScore, "sim and real score match");
     }

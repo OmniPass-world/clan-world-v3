@@ -238,22 +238,26 @@ contract WallUpgradesTest is Test {
         assertEq(uint8(next[0].status), uint8(StatusCode.OK), "pending count released");
     }
 
-    function test_upgradeWall_reversedClansmanSettlementInvalidatesFutureReservation() public {
+    function test_upgradeWall_reversedClansmanSettlementBothApply() public {
+        // SHOULD FIX 5: higher-level reservation is retained (not refunded) when lower-level worker hasn't
+        // settled yet. Once the lower-level worker settles, the higher-level worker retries and also applies.
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
         world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
 
+        // secondCsId queues level 0→1 (fromLevel=0, runs first in _clanClansmanIds order)
         OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
         assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second clansman queues level 1");
+        // firstCsId queues level 1→2 (fromLevel=1, runs second but is index 0)
         OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeWall);
         assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 2");
 
         _advanceTicks(world.getActionDuration(ActionType.UpgradeWall) + 2);
 
-        assertEq(world.getClan(clanId).wallLevel, 1, "only current-level reservation settles");
-        assertEq(world.getClan(clanId).vaultWood, 80e18, "only level 1 cost debited");
-        assertEq(world.getClan(clanId).vaultIron, 100e18, "no iron before level 3");
+        // Both reservations apply: level-0→1 first, then level-1→2 on retry pass.
+        assertEq(world.getClan(clanId).wallLevel, 2, "both reservations apply");
+        assertEq(world.getClan(clanId).vaultWood, 45e18, "both upgrade costs debited (20+35)");
     }
 
     function test_upgradeWall_simAndRealScoresMatchAfterOutOfOrderCancellation() public {
@@ -283,7 +287,8 @@ contract WallUpgradesTest is Test {
         assertTrue(world.getActiveMission(firstCsId).active, "failed upgrade remains pending for retry pass");
     }
 
-    function test_upgradeWall_simHidesRefundedReservationFromLaterRetry() public {
+    function test_upgradeWall_simAndRealBothApplySequentially() public {
+        // SHOULD FIX 5: both reservations apply when settled. Sim and real agree.
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
@@ -300,7 +305,7 @@ contract WallUpgradesTest is Test {
 
         (uint256 realScore, uint256 realLoot, uint8 wallLevel) = world.settleClanAndGetStoredScore(clanId);
 
-        assertEq(wallLevel, 1, "real refunds stale level-2 reservation");
+        assertEq(wallLevel, 2, "both reservations apply sequentially");
         assertEq(realLoot, simLoot, "sim and real loot match");
         assertEq(realScore, simScore, "sim and real score match");
     }
@@ -366,5 +371,34 @@ contract WallUpgradesTest is Test {
 
         assertEq(world.getClan(clanA).wallLevel, 1, "clan A wall");
         assertEq(world.getClan(clanB).wallLevel, 0, "clan B wall");
+    }
+
+    /// @dev SHOULD FIX 8: ERR_NOT_AT_HOMEBASE when gotoRegion != clan.baseRegion for UpgradeWall.
+    function test_upgradeWall_rejectsWrongRegion() public {
+        uint32 clanId = _mintClan(elder);
+        uint32 csId = _firstCs(clanId);
+        world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
+
+        Clan memory clan = world.getClan(clanId);
+        uint8 nonBase = clan.baseRegion == ClanWorldConstants.REGION_FOREST
+            ? ClanWorldConstants.REGION_MOUNTAINS
+            : ClanWorldConstants.REGION_FOREST;
+
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: nonBase,
+            action: ActionType.UpgradeWall,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory result = world.submitClanOrders(clanId, orders);
+
+        assertEq(uint8(result[0].status), uint8(StatusCode.ERR_NOT_AT_HOMEBASE), "wrong region rejects");
+        assertFalse(world.getActiveMission(csId).active, "no mission queued");
+        assertEq(world.getClan(clanId).wallLevel, 0, "wall level unchanged");
     }
 }

@@ -195,14 +195,18 @@ contract BaseUpgradesTest is Test {
         assertEq(world.getClan(clanB).baseLevel, 1, "clan B base");
     }
 
-    function test_upgradeBase_simHidesRefundedReservationFromLaterRetry() public {
+    function test_upgradeBase_simAndRealBothApplySequentially() public {
+        // SHOULD FIX 5: higher-level reservation is retained for retry after lower-level settles.
+        // Both reservations apply and sim agrees with real.
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
         world.setVault(clanId, 500e18, 500e18, 500e18, 100e18);
 
+        // secondCsId queues level 1→2 (fromLevel=1, matches current, settles first)
         OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeBase);
         assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second clansman queues level 2");
+        // firstCsId queues level 2→3 (fromLevel=2, retained until base reaches 2, then retries)
         OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeBase);
         assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 3");
 
@@ -212,8 +216,94 @@ contract BaseUpgradesTest is Test {
 
         (uint256 realScore, uint256 realLoot, uint8 baseLevel) = world.settleClanAndGetStoredScore(clanId);
 
-        assertEq(baseLevel, 2, "real refunds stale level-3 reservation");
+        assertEq(baseLevel, 3, "both reservations apply sequentially");
         assertEq(realLoot, simLoot, "sim and real loot match");
         assertEq(realScore, simScore, "sim and real score match");
+    }
+
+    /// @dev MUST FIX 1: sim upkeep must respect wheat reservations.
+    ///      quoteLootValueSettled and getClanScore must agree with real settle when a wheat
+    ///      reservation is active, because _simulateApplyUpkeep now mirrors _applyUpkeep's
+    ///      _spendableAfterReleasing logic.
+    function test_quoteLootValueMatchesRealAfterUpkeepWithReservedWheat() public {
+        uint32 clanId = _mintClan(elder);
+        uint32 csId = _firstCs(clanId);
+
+        // Give enough wheat to cover the reservation but not upkeep (tight budget).
+        // Base level 1 → 2 reservation costs 20e18 wheat. Clan has 1 living clansman,
+        // upkeep = 1e18 wheat/tick. Set vault so reserved wheat covers most of vault.
+        (,, uint256 wheatReserved) = world.getBaseUpgradeCost(1);
+        // Give exactly reservation + 0 surplus (spendable = 0 if vault == reserved)
+        world.setVault(clanId, 100e18, 100e18, wheatReserved, 100e18);
+
+        // Queue the upgrade — this creates the wheat reservation.
+        OrderResult[] memory result = _submitOrder(elder, clanId, csId, ActionType.UpgradeBase);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        // Advance to settlement tick.
+        world.setCurrentTick(world.getActionDuration(ActionType.UpgradeBase) + 1);
+
+        // Sim and real must agree: no wheat available for upkeep (all reserved), so clan starves.
+        uint256 simLoot = world.quoteLootValueSettled(clanId);
+        (uint256 simScore,,) = world.getClanScore(clanId);
+
+        (uint256 realScore, uint256 realLoot,) = world.settleClanAndGetStoredScore(clanId);
+
+        assertEq(realLoot, simLoot, "sim and real loot agree with wheat reservation");
+        assertEq(realScore, simScore, "sim and real score agree with wheat reservation");
+        // Clan is starving: starvation started (wheat spendable = 0)
+        assertGt(world.getClan(clanId).starvationStartsAtTick, 0, "clan starves when all wheat reserved");
+    }
+
+    /// @dev SHOULD FIX 8: ERR_NOT_AT_HOMEBASE when gotoRegion != clan.baseRegion for UpgradeBase.
+    function test_upgradeBase_rejectsWrongRegion() public {
+        uint32 clanId = _mintClan(elder);
+        uint32 csId = _firstCs(clanId);
+        world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
+
+        Clan memory clan = world.getClan(clanId);
+        // Use a region that is NOT the base region
+        uint8 nonBase = clan.baseRegion == ClanWorldConstants.REGION_FOREST
+            ? ClanWorldConstants.REGION_MOUNTAINS
+            : ClanWorldConstants.REGION_FOREST;
+
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: csId,
+            gotoRegion: nonBase,
+            action: ActionType.UpgradeBase,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
+        vm.prank(elder);
+        OrderResult[] memory result = world.submitClanOrders(clanId, orders);
+
+        assertEq(uint8(result[0].status), uint8(StatusCode.ERR_NOT_AT_HOMEBASE), "wrong region rejects");
+        assertFalse(world.getActiveMission(csId).active, "no mission queued");
+        assertEq(world.getClan(clanId).baseLevel, 1, "base level unchanged");
+    }
+
+    /// @dev SHOULD FIX 8: vault drained between submission and settlement triggers insolvency handling.
+    ///      After draining vault below wheat cost, the upgrade should be retried (return false)
+    ///      rather than incorrectly completing.
+    function test_upgradeBase_drainedVaultBetweenSubmitAndSettleIsRetried() public {
+        uint32 clanId = _mintClan(elder);
+        uint32 csId = _firstCs(clanId);
+        world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
+
+        OrderResult[] memory result = _submitOrder(elder, clanId, csId, ActionType.UpgradeBase);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        // Drain the vault below upgrade cost before settlement.
+        world.setVault(clanId, 0, 0, 0, 100e18);
+
+        world.setCurrentTick(world.getActionDuration(ActionType.UpgradeBase) + 1);
+        world.settleClan(clanId);
+
+        // Upgrade must NOT have applied — clansman still pending retry.
+        assertEq(world.getClan(clanId).baseLevel, 1, "base not upgraded with drained vault");
+        assertTrue(world.getActiveMission(csId).active, "mission stays active for retry");
     }
 }
