@@ -42,10 +42,10 @@ import {StubPool} from "./StubPool.sol";
 import {ReentrancyGuard} from "./util/ReentrancyGuard.sol";
 
 /// @title ClanWorld
-/// @notice Phase 1+2 real engine implementation of IClanWorld v4.
+/// @notice Phase 1–9 real engine implementation of IClanWorld v4.
 ///         Implements: world clock, clan lifecycle, lazy settlement, resource gathering,
-///         deposit, wheat harvest, travel, NOOP bypass, order validation, and market execution.
-///         Phase 2 is implemented; Phase 3 (bandits, winter damage) remains stubbed.
+///         deposit, wheat harvest, travel, NOOP bypass, order validation, market execution,
+///         and Phase 9 bandit spawn/attack/resolution.
 contract ClanWorld is IClanWorld, ReentrancyGuard {
     // =========================================================================
     // STORAGE
@@ -557,7 +557,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
 
         _releaseDefendersForDeadTarget(clanId, baseRegion);
-        _abortBanditAttacksForDeadTarget(clanId, excludedBanditId);
+        _abortBanditAttacksForDeadTarget(clanId, excludedBanditId, tick);
 
         emit ClanEliminated(clanId, tick);
     }
@@ -587,10 +587,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
     }
 
-    function _abortBanditAttacksForDeadTarget(uint32 deadClanId, uint32 excludedBanditId) internal {
-        // Match _transitionBanditState's event stamp; heartbeat keeps currentTick
-        // equal to the closed tick while aborting linked bandit attacks.
-        uint64 currentTick = _world.currentTick;
+    function _abortBanditAttacksForDeadTarget(uint32 deadClanId, uint32 excludedBanditId, uint64 tick) internal {
+        // Uses caller-provided tick for replay-determinism; matches closedTick from heartbeat context.
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = _banditsByRegion[region];
             for (uint256 i = 0; i < regionBandits.length; i++) {
@@ -600,8 +598,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 BanditTroop storage bandit = _bandits[banditId];
                 if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
                     _transitionBanditState(banditId, BanditState.Escaped);
-                    emit BanditEscaped(banditId, currentTick);
-                    emit BanditTargetDied(banditId, deadClanId, currentTick);
+                    emit BanditEscaped(banditId, tick);
+                    emit BanditTargetDied(banditId, deadClanId, tick);
                 }
             }
         }
@@ -2299,9 +2297,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     ///         CEI guard: nextHeartbeatAtTs written first to close reentrancy window.
     ///         1. Settle missions completing this tick.
     ///         2. Execute scheduled market actions for closedTick (external calls).
-    ///         3. Eager-settle clans touched by world events (Phase 9 stub).
-    ///         4. Advance bandit timers and resolve closed-tick bandit/world events.
-    ///         5. Increment tick and publish the next tick seed atomically.
+    ///         3. Eager-settle bases and defenders in bandit spawn-candidate regions.
+    ///         4. Advance bandit timers for the closed tick.
+    ///         5. Resolve closed-tick bandit attacks and deaths.
+    ///         6. Spawn new bandits if spawn conditions are met.
+    ///         7. Resolve world events (season boundary, winter transitions).
+    ///         8. Increment tick and publish the next tick seed atomically.
     function heartbeat() external override nonReentrant {
         require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
@@ -3403,18 +3404,22 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     function quoteLootValueSettled(uint32 clanId) external view override returns (uint256) {
         SettlementSimulation memory sim = _simulateSettleToTick(clanId, _world.currentTick);
-        return _lootValueRaw(sim.clan);
+        // memory struct — inline to avoid ambiguity with the storage overload below
+        return sim.clan.vaultWood + sim.clan.vaultWheat + sim.clan.vaultFish * 2 + sim.clan.vaultIron * 4;
     }
 
     /// @dev Compute loot value per v4 spec §6.9: wood=1, wheat=1, fish=2, iron=4 points.
-    function _lootValueRaw(Clan memory clan) internal pure returns (uint256) {
+    ///      Storage overload: avoids full storage→memory struct copy on hot paths.
+    function _lootValueRaw(Clan storage clan) internal view returns (uint256) {
         return clan.vaultWood + clan.vaultWheat + clan.vaultFish * 2 + clan.vaultIron * 4;
     }
 
     function _derivedClanStateFromSimulation(Clan memory clan) internal view returns (DerivedClanState memory) {
         bool starving = clan.starvationStartsAtTick != 0 && clan.starvationStartsAtTick <= _world.currentTick;
+        // memory struct — inline to avoid ambiguity with the storage overload of _lootValueRaw
+        uint256 lootValue = clan.vaultWood + clan.vaultWheat + clan.vaultFish * 2 + clan.vaultIron * 4;
         return DerivedClanState({
-            clan: clan, isStarving: starving, lootValue: _lootValueRaw(clan), derivedAtTick: _world.currentTick
+            clan: clan, isStarving: starving, lootValue: lootValue, derivedAtTick: _world.currentTick
         });
     }
 
@@ -3563,13 +3568,15 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             }
         }
 
+        // attackAttemptsMade, maxAttemptsRemaining, projectedTargetLootValue are projected
+        // fields not yet implemented; always returned as 0.
         return ActiveBanditView({
             exists: exists,
             banditId: bandit.id,
             state: bandit.state,
             currentRegion: bandit.region,
-            attackAttemptsMade: 0,
-            maxAttemptsRemaining: 0,
+            attackAttemptsMade: 0, // projected — not tracked in current implementation
+            maxAttemptsRemaining: 0, // projected — not tracked in current implementation
             stateEnteredTick: bandit.tickEnteredState,
             nextActionTick: nextActionTick,
             tier: 0,
@@ -3579,7 +3586,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             carryWheat: bandit.carryWheat,
             carryFish: bandit.carryFish,
             projectedTargetClanId: bandit.targetClanId,
-            projectedTargetLootValue: 0
+            projectedTargetLootValue: 0 // projected — loot estimation not implemented
         });
     }
 
