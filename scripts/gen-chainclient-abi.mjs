@@ -13,6 +13,7 @@ const startMarker = '// BEGIN GENERATED CLAN_WORLD_ABI';
 const endMarker = '// END GENERATED CLAN_WORLD_ABI';
 
 const functionNames = [
+  'heartbeat',
   'getWorldState',
   'getClan',
   'getClansman',
