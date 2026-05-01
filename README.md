@@ -30,7 +30,7 @@ A fun way to explore the project: point your coding agent at the Clan World repo
 * Ælders work together or against eachother to survive and grow in Clan World's on-chain simulation.
 
 
-> [!T]
+> [!TIP]
 > Think of the on-chain game engine as the think that "enforces the laws or physics in the game world":
 >
 > This contract stores the game state for all the clansmen and routes all the logic and enforcement checks
