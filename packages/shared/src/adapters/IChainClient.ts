@@ -1,5 +1,11 @@
 import fs from 'node:fs';
-import { createPublicClient, createWalletClient, http, fallback, defineChain } from 'viem';
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  fallback,
+  defineChain,
+} from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { ClanFullView, ClanOrder, Tick } from '../types';
 import { readEnv } from './_env';
@@ -16,6 +22,34 @@ export interface SubmitOrdersResult {
   results: SubmitOrderResult[];
 }
 
+export function uintValue(value: unknown): bigint {
+  if (typeof value === 'bigint') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value)) {
+      throw new Error(`uintValue: non-integer number ${value}`);
+    }
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`uintValue: unsafe integer number ${value}`);
+    }
+    if (value < 0) {
+      throw new Error(`uintValue: negative number ${value}`);
+    }
+    return BigInt(value);
+  }
+
+  if (typeof value === 'string') {
+    if (!/^\d+$/.test(value)) {
+      throw new Error(`uintValue: not a non-negative integer string: ${value}`);
+    }
+    return BigInt(value);
+  }
+
+  throw new Error(`uintValue: unsupported type ${typeof value}`);
+}
+
 export interface IChainClient {
   getCurrentTick(): Promise<Tick>;
   submitOrders(clanId: string, orders: ClanOrder[]): Promise<SubmitOrdersResult>;
@@ -27,7 +61,8 @@ export interface IChainClient {
   getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }>;
 }
 
-const DEFAULT_CONTRACT_ADDRESS = '0x1BF5649f29CbB53E117a5aE969A18A71790f83E8' as const;
+const DEFAULT_CONTRACT_ADDRESS =
+  '0x1BF5649f29CbB53E117a5aE969A18A71790f83E8' as const;
 
 export const baseSepolia = defineChain({
   id: 84532,
@@ -419,6 +454,33 @@ export const CLAN_WORLD_ABI = [
             "name": "maxGoldIn",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "withdrawResources",
+            "type": "tuple",
+            "internalType": "struct WithdrawResourcesData",
+            "components": [
+              {
+                "name": "wood",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "iron",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "wheat",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "fish",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
           }
         ]
       }
@@ -877,6 +939,33 @@ export const CLAN_WORLD_ABI = [
                 "name": "maxGoldIn",
                 "type": "uint256",
                 "internalType": "uint256"
+              },
+              {
+                "name": "withdrawResources",
+                "type": "tuple",
+                "internalType": "struct WithdrawResourcesData",
+                "components": [
+                  {
+                    "name": "wood",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  },
+                  {
+                    "name": "iron",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  },
+                  {
+                    "name": "wheat",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  },
+                  {
+                    "name": "fish",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  }
+                ]
               }
             ]
           },
@@ -1308,6 +1397,33 @@ export const CLAN_WORLD_ABI = [
                         "name": "maxGoldIn",
                         "type": "uint256",
                         "internalType": "uint256"
+                      },
+                      {
+                        "name": "withdrawResources",
+                        "type": "tuple",
+                        "internalType": "struct WithdrawResourcesData",
+                        "components": [
+                          {
+                            "name": "wood",
+                            "type": "uint256",
+                            "internalType": "uint256"
+                          },
+                          {
+                            "name": "iron",
+                            "type": "uint256",
+                            "internalType": "uint256"
+                          },
+                          {
+                            "name": "wheat",
+                            "type": "uint256",
+                            "internalType": "uint256"
+                          },
+                          {
+                            "name": "fish",
+                            "type": "uint256",
+                            "internalType": "uint256"
+                          }
+                        ]
                       }
                     ]
                   },
@@ -1417,6 +1533,33 @@ export const CLAN_WORLD_ABI = [
                     "name": "maxGoldIn",
                     "type": "uint256",
                     "internalType": "uint256"
+                  },
+                  {
+                    "name": "withdrawResources",
+                    "type": "tuple",
+                    "internalType": "struct WithdrawResourcesData",
+                    "components": [
+                      {
+                        "name": "wood",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                      },
+                      {
+                        "name": "iron",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                      },
+                      {
+                        "name": "wheat",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                      },
+                      {
+                        "name": "fish",
+                        "type": "uint256",
+                        "internalType": "uint256"
+                      }
+                    ]
                   }
                 ]
               }
@@ -2000,6 +2143,33 @@ export const CLAN_WORLD_ABI = [
             "name": "maxGoldIn",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "withdrawResources",
+            "type": "tuple",
+            "internalType": "struct WithdrawResourcesData",
+            "components": [
+              {
+                "name": "wood",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "iron",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "wheat",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "fish",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
           }
         ]
       }
@@ -2029,6 +2199,11 @@ export const CLAN_WORLD_ABI = [
             "name": "missionNonce",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "marketMode",
+            "type": "uint8",
+            "internalType": "enum MarketExecutionMode"
           }
         ]
       }
@@ -2091,7 +2266,9 @@ class StubChainClient implements IChainClient {
 class RealChainClient implements IChainClient {
   private readonly client: ReturnType<typeof createPublicClient>;
   private readonly contractAddress: `0x${string}`;
-  private readonly transport: ReturnType<typeof http> | ReturnType<typeof fallback>;
+  private readonly transport:
+    | ReturnType<typeof http>
+    | ReturnType<typeof fallback>;
 
   constructor() {
     const primaryRpc = readEnv('RPC_URL_PRIMARY');
@@ -2127,28 +2304,52 @@ class RealChainClient implements IChainClient {
     for (const order of orders) {
       if (order.kind === 'mission') {
         const { clansmanId, gotoRegion, action } = order.payload;
-        if (clansmanId === undefined || gotoRegion === undefined || action === undefined) {
-          throw new Error(`submitOrders: mission order missing required payload fields (clansmanId, gotoRegion, action)`);
+        if (
+          clansmanId === undefined ||
+          gotoRegion === undefined ||
+          action === undefined
+        ) {
+          throw new Error(
+            `submitOrders: mission order missing required payload fields (clansmanId, gotoRegion, action)`,
+          );
         }
       }
     }
 
-    const nonMissionOrders = orders.filter(o => o.kind !== 'mission');
+    const nonMissionOrders = orders.filter((o) => o.kind !== 'mission');
     if (nonMissionOrders.length > 0) {
-      console.warn(`[RealChainClient] submitOrders: ${nonMissionOrders.length} non-mission order(s) skipped (Wave 0 only supports 'mission' kind)`);
+      console.warn(
+        `[RealChainClient] submitOrders: ${nonMissionOrders.length} non-mission order(s) skipped (Wave 0 only supports 'mission' kind)`,
+      );
     }
 
     const contractOrders = orders
-      .filter(o => o.kind === 'mission')
-      .map(o => ({
-        clansmanId: Number(o.payload.clansmanId),
-        gotoRegion: Number(o.payload.gotoRegion),
-        action: Number(o.payload.action),
-        targetClanId: 0,
-        marketToken: '0x0000000000000000000000000000000000000000' as `0x${string}`,
-        marketAmount: 0n,
-        maxGoldIn: 0n,
-      }));
+      .filter((o) => o.kind === 'mission')
+      .map((o) => {
+        const withdraw =
+          o.payload.withdrawResources &&
+          typeof o.payload.withdrawResources === 'object'
+            ? (o.payload.withdrawResources as Record<string, unknown>)
+            : o.payload;
+        const optionalUintValue = (value: unknown): bigint =>
+          value === undefined || value === null ? 0n : uintValue(value);
+        return {
+          clansmanId: Number(o.payload.clansmanId),
+          gotoRegion: Number(o.payload.gotoRegion),
+          action: Number(o.payload.action),
+          targetClanId: 0,
+          marketToken:
+            '0x0000000000000000000000000000000000000000' as `0x${string}`,
+          marketAmount: 0n,
+          maxGoldIn: 0n,
+          withdrawResources: {
+            wood: optionalUintValue(withdraw.wood),
+            iron: optionalUintValue(withdraw.iron),
+            wheat: optionalUintValue(withdraw.wheat),
+            fish: optionalUintValue(withdraw.fish),
+          },
+        };
+      });
 
     if (contractOrders.length === 0) {
       throw new Error('submitOrders: no valid mission orders to submit');
@@ -2162,23 +2363,35 @@ class RealChainClient implements IChainClient {
         pk = fs.readFileSync(keyPath, 'utf8').trim();
         pkSource = `ELDER_WALLET_KEY_PATH file at ${keyPath}`;
       } catch (err) {
-        if (err && typeof err === 'object' && 'code' in err && err.code === 'ENOENT') {
+        if (
+          err &&
+          typeof err === 'object' &&
+          'code' in err &&
+          err.code === 'ENOENT'
+        ) {
           throw new Error(
             `ELDER_WALLET_KEY_PATH file not found at ${keyPath}; either set DEPLOYER_PRIVATE_KEY env var or provide a key file`,
           );
         }
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Failed to read ELDER_WALLET_KEY_PATH file at ${keyPath}: ${msg}`);
+        throw new Error(
+          `Failed to read ELDER_WALLET_KEY_PATH file at ${keyPath}: ${msg}`,
+        );
       }
     } else {
       const fallbackKey = readEnv('DEPLOYER_PRIVATE_KEY');
       if (fallbackKey) {
-        console.warn('[RealChainClient] ELDER_WALLET_KEY_PATH not set; falling back to DEPLOYER_PRIVATE_KEY (deprecated)');
+        console.warn(
+          '[RealChainClient] ELDER_WALLET_KEY_PATH not set; falling back to DEPLOYER_PRIVATE_KEY (deprecated)',
+        );
         pk = fallbackKey;
         pkSource = 'DEPLOYER_PRIVATE_KEY env var';
       }
     }
-    if (!pk) throw new Error('Neither ELDER_WALLET_KEY_PATH nor DEPLOYER_PRIVATE_KEY is set');
+    if (!pk)
+      throw new Error(
+        'Neither ELDER_WALLET_KEY_PATH nor DEPLOYER_PRIVATE_KEY is set',
+      );
 
     // Normalize: add 0x prefix if missing
     if (!pk.startsWith('0x')) pk = '0x' + pk;

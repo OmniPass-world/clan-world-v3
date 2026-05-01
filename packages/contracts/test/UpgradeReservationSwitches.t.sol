@@ -3,7 +3,15 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ClanWorld} from "../src/ClanWorld.sol";
-import {ClanWorldConstants, Clan, ClanOrder, OrderResult, StatusCode, ActionType} from "../src/IClanWorld.sol";
+import {
+    ClanWorldConstants,
+    Clan,
+    ClanOrder,
+    WithdrawResourcesData,
+    OrderResult,
+    StatusCode,
+    ActionType
+} from "../src/IClanWorld.sol";
 
 contract UpgradeReservationSwitchHarness is ClanWorld {
     function setVault(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external {
@@ -56,7 +64,8 @@ contract UpgradeReservationSwitchesTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
 
         vm.prank(elder);

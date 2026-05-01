@@ -8,6 +8,7 @@ import {
     ClanWorldConstants,
     Clan,
     ClanOrder,
+    WithdrawResourcesData,
     ClansmanState,
     OrderResult,
     StatusCode,
@@ -41,7 +42,6 @@ contract WallUpgradeHarness is ClanWorld {
         lootValue = _lootValueRaw(clan);
         wallLevel = clan.wallLevel;
     }
-
 }
 
 contract WallUpgradesTest is Test {
@@ -79,7 +79,8 @@ contract WallUpgradesTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
         vm.prank(owner);
         return world.submitClanOrders(clanId, orders);
@@ -96,7 +97,8 @@ contract WallUpgradesTest is Test {
                 targetClanId: 0,
                 marketToken: address(0),
                 marketAmount: 0,
-                maxGoldIn: 0
+                maxGoldIn: 0,
+                withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
             });
         }
         vm.prank(owner);
@@ -341,7 +343,8 @@ contract WallUpgradesTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
         vm.prank(elder);
         OrderResult[] memory result = world.submitClanOrders(clanId, orders);

@@ -87,6 +87,10 @@ library ClanWorldConstants {
     uint8 internal constant REGION_EAST_DOCKS = 7;
     uint8 internal constant REGION_DEEP_SEA = 8;
 
+    // Market event resource ids. ResourceType covers the four vault resources;
+    // gold is the quote asset emitted as resource id 4.
+    uint8 internal constant RESOURCE_GOLD = 4;
+
     // Sentinels
     uint32 internal constant CLAN_ID_NULL = 0; // valid clan IDs start at 1
     uint32 internal constant BANDIT_ID_NULL = 0;
@@ -146,7 +150,8 @@ enum ActionType {
     DefendBase,
     MarketBuy,
     MarketSell,
-    Wait
+    Wait,
+    WithdrawResources
 }
 
 enum MarketExecutionMode {
@@ -178,14 +183,16 @@ enum StatusCode {
     ERR_MARKET_UNSUPPORTED_TOKEN,
     ERR_IMMEDIATE_MARKET_NOT_ELIGIBLE,
     ERR_MARKET_BUY_OVER_CAPACITY,
-    ERR_MARKET_BUY_MAX_GOLD_EXCEEDED,
+    ERR_MAX_GOLD_IN_EXCEEDED,
     ERR_WORLD_TICK_MISMATCH,
     ERR_NO_ACTIVE_BANDIT,
     ERR_SEASON_ENDED,
     ERR_NOT_ENOUGH_GOLD,
     ERR_CARRY_FULL,
     ERR_WINTER_LOCKED,
-    ERR_MUST_SETTLE_FIRST
+    ERR_MUST_SETTLE_FIRST,
+    ERR_LIQUIDITY_INSUFFICIENT,
+    ERR_SLIPPAGE_REQUIRED
 }
 
 // =============================================================================
@@ -305,6 +312,8 @@ struct Mission {
     address marketToken; // market token for buy/sell
     uint256 marketAmount; // exact-in for sell, exact-out for buy
     uint256 maxGoldIn; // market_buy only, 0 otherwise
+
+    WithdrawResourcesData withdrawResources; // WithdrawResources only
 }
 
 // v1 ABI: Bandit troop layout redesigned in Phase 9. ABI consumers must regenerate.
@@ -370,6 +379,20 @@ struct DerivedClansmanState {
 // WRITE INPUT / OUTPUT STRUCTS
 // =============================================================================
 
+struct DepositResourcesData {
+    uint256 wood;
+    uint256 iron;
+    uint256 wheat;
+    uint256 fish;
+}
+
+struct WithdrawResourcesData {
+    uint256 wood;
+    uint256 iron;
+    uint256 wheat;
+    uint256 fish;
+}
+
 struct ClanOrder {
     uint32 clansmanId;
     uint8 gotoRegion;
@@ -379,6 +402,8 @@ struct ClanOrder {
     address marketToken;
     uint256 marketAmount;
     uint256 maxGoldIn;
+
+    WithdrawResourcesData withdrawResources;
 }
 
 struct OrderResult {
@@ -386,6 +411,7 @@ struct OrderResult {
     StatusCode status;
     uint64 cooldownEndsAtTs;
     uint64 missionNonce;
+    MarketExecutionMode marketMode;
 }
 
 struct PoolSeedConfig {
@@ -555,6 +581,15 @@ interface IClanWorldEvents {
         uint256 fish,
         uint64 atTick
     );
+    event ResourcesWithdrawn(
+        uint32 indexed clanId,
+        uint32 indexed clansmanId,
+        uint256 woodDelta,
+        uint256 ironDelta,
+        uint256 wheatDelta,
+        uint256 fishDelta,
+        uint64 atTick
+    );
 
     // ----- building -----
     event WallLevelChanged(uint32 indexed clanId, uint8 oldLevel, uint8 newLevel, uint64 atTick);
@@ -564,22 +599,31 @@ interface IClanWorldEvents {
     // ----- market -----
     event ImmediateMarketActionExecuted(
         uint32 indexed clanId,
-        uint32 indexed clansmanId,
-        address tokenIn,
-        address tokenOut,
+        uint32 clansmanId,
+        ActionType action,
+        uint8 resourceIn,
         uint256 amountIn,
+        uint8 resourceOut,
         uint256 amountOut,
-        uint64 atTick
+        uint64 tick
     );
     event ScheduledMarketActionExecuted(
-        uint64 indexed executeAtTick,
-        uint64 indexed commitSequence,
         uint32 indexed clanId,
         uint32 clansmanId,
-        address tokenIn,
-        address tokenOut,
+        ActionType action,
+        uint8 resourceIn,
         uint256 amountIn,
-        uint256 amountOut
+        uint8 resourceOut,
+        uint256 amountOut,
+        uint64 settledAtTick
+    );
+    event MarketActionFailed(
+        uint32 indexed clanId,
+        uint32 clansmanId,
+        ActionType action,
+        MarketExecutionMode mode,
+        StatusCode reason,
+        uint64 tick
     );
     event ScheduledMarketActionCommitted(
         uint64 indexed executeAtTick,
@@ -591,7 +635,8 @@ interface IClanWorldEvents {
         uint256 marketAmount,
         uint256 maxGoldIn
     );
-    event MarketActionFailed(uint32 indexed clanId, uint32 indexed clansmanId, ActionType action, StatusCode reason);
+    event ResourceMinted(uint8 indexed resourceType, address indexed to, uint256 amount);
+    event ResourceBurned(uint8 indexed resourceType, address indexed from, uint256 amount);
 
     // ----- bandits -----
     event BanditSpawned(uint32 indexed banditId, uint8 region, uint8 tier, uint16 attackPower);
@@ -675,7 +720,7 @@ interface IClanWorld is IClanWorldEvents {
     function settleClan(uint32 clanId) external;
 
     /// @notice Lazily settle a single clansman's mission to current tick. Idempotent.
-    function settleClansman(uint32 csId) external;
+    function settleClansman(uint32 clansmanId) external;
 
     /// @notice Finalize the current season. Permissionless after seasonEndTick.
     function finalizeSeason() external;
@@ -731,6 +776,12 @@ interface IClanWorld is IClanWorldEvents {
     function getWorldState() external view returns (WorldState memory);
 
     function getTreasuryState() external view returns (TreasuryState memory);
+
+    function getResourceToken(uint8 resourceType) external view returns (address);
+
+    function getPool(uint8 resourceType) external view returns (address);
+
+    function getPrice(uint8 resourceType, uint256 amountIn) external view returns (uint256 amountOut);
 
     function getClan(uint32 clanId) external view returns (Clan memory);
 

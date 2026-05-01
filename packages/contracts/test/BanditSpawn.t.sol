@@ -9,6 +9,7 @@ import {
     BanditTroop,
     Clan,
     ClanOrder,
+    WithdrawResourcesData,
     ClanWorldConstants,
     ClansmanState,
     Mission,
@@ -143,7 +144,8 @@ contract BanditSpawnTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
         orders[1] = ClanOrder({
             clansmanId: defenderId,
@@ -152,7 +154,8 @@ contract BanditSpawnTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
     }
 

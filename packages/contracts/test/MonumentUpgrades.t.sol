@@ -8,6 +8,7 @@ import {
     ClanWorldConstants,
     Clan,
     ClanOrder,
+    WithdrawResourcesData,
     ClansmanState,
     OrderResult,
     StatusCode,
@@ -86,7 +87,8 @@ contract MonumentUpgradesTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
         vm.prank(owner);
         return world.submitClanOrders(clanId, orders);
@@ -103,7 +105,8 @@ contract MonumentUpgradesTest is Test {
                 targetClanId: 0,
                 marketToken: address(0),
                 marketAmount: 0,
-                maxGoldIn: 0
+                maxGoldIn: 0,
+                withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
             });
         }
         vm.prank(owner);
