@@ -4,9 +4,26 @@ import { privateKeyToAccount } from 'viem/accounts';
 import type { ClanFullView, ClanOrder, Tick } from '../types';
 import { readEnv } from './_env';
 
+export interface OrderResult {
+  clansmanId: number;
+  status: number;
+  cooldownEndsAtTs: number;
+  missionNonce: number;
+}
+
+export interface SubmitOrdersResult {
+  txHash: string;
+  /**
+   * Per-order statuses returned by pre-send contract simulation.
+   * These are useful for client-side expectations, but are not chain-authoritative
+   * finalized outcomes for the submitted transaction.
+   */
+  results: OrderResult[];
+}
+
 export interface IChainClient {
   getCurrentTick(): Promise<Tick>;
-  submitOrders(clanId: string, orders: ClanOrder[]): Promise<{ txHash: string }>;
+  submitOrders(clanId: string, orders: ClanOrder[]): Promise<SubmitOrdersResult>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
 }
 
@@ -36,6 +53,8 @@ const CLAN_WORLD_ABI = [
           { name: 'seasonStartTick', type: 'uint64' },
           { name: 'seasonEndTick', type: 'uint64' },
           { name: 'seasonFinalized', type: 'bool' },
+          { name: 'currentSeasonNumber', type: 'uint64' },
+          { name: 'nextHeartbeatAtTick', type: 'uint64' },
           { name: 'winterActive', type: 'bool' },
           { name: 'winterStartsAtTick', type: 'uint64' },
           { name: 'winterEndsAtTick', type: 'uint64' },
@@ -133,6 +152,9 @@ const CLAN_WORLD_ABI = [
                     components: [
                       { name: 'active', type: 'bool' },
                       { name: 'nonce', type: 'uint64' },
+                      { name: 'submittedAtTick', type: 'uint64' },
+                      { name: 'executesAtTick', type: 'uint64' },
+                      { name: 'settlesAtTick', type: 'uint64' },
                       { name: 'clansmanId', type: 'uint32' },
                       { name: 'startRegion', type: 'uint8' },
                       { name: 'targetRegion', type: 'uint8' },
@@ -158,6 +180,9 @@ const CLAN_WORLD_ABI = [
                 components: [
                   { name: 'active', type: 'bool' },
                   { name: 'nonce', type: 'uint64' },
+                  { name: 'submittedAtTick', type: 'uint64' },
+                  { name: 'executesAtTick', type: 'uint64' },
+                  { name: 'settlesAtTick', type: 'uint64' },
                   { name: 'clansmanId', type: 'uint32' },
                   { name: 'startRegion', type: 'uint8' },
                   { name: 'targetRegion', type: 'uint8' },
@@ -241,8 +266,8 @@ class StubChainClient implements IChainClient {
   async getCurrentTick(): Promise<Tick> {
     return 0;
   }
-  async submitOrders(_clanId: string, _orders: ClanOrder[]): Promise<{ txHash: string }> {
-    return { txHash: '0xstub' };
+  async submitOrders(_clanId: string, _orders: ClanOrder[]): Promise<SubmitOrdersResult> {
+    return { txHash: '0xstub', results: [] };
   }
   async getClanFullView(clanId: string): Promise<ClanFullView> {
     return {
@@ -286,7 +311,7 @@ class RealChainClient implements IChainClient {
     return Number(snapshot.currentTick); // safe: tick values are small enough to fit Number precisely in Wave 0
   }
 
-  async submitOrders(clanId: string, orders: ClanOrder[]): Promise<{ txHash: string }> {
+  async submitOrders(clanId: string, orders: ClanOrder[]): Promise<SubmitOrdersResult> {
     // Wave 0: single-Elder only — concurrent nonce coordination deferred to Wave 1
     const parsedClanId = parseInt(clanId, 10);
     if (isNaN(parsedClanId) || String(parsedClanId) !== clanId.trim()) {
@@ -364,14 +389,25 @@ class RealChainClient implements IChainClient {
       transport: this.transport,
     });
 
-    const hash = await walletClient.writeContract({
+    const { request, result } = await this.client.simulateContract({
       address: this.contractAddress,
       abi: CLAN_WORLD_ABI,
       functionName: 'submitClanOrders',
       args: [parsedClanId, contractOrders],
+      account,
     });
 
-    return { txHash: hash };
+    const hash = await walletClient.writeContract(request);
+
+    return {
+      txHash: hash,
+      results: result.map(orderResult => ({
+        clansmanId: Number(orderResult.clansmanId),
+        status: Number(orderResult.status),
+        cooldownEndsAtTs: Number(orderResult.cooldownEndsAtTs),
+        missionNonce: Number(orderResult.missionNonce),
+      })),
+    };
   }
 
   async getClanFullView(clanId: string): Promise<ClanFullView> {

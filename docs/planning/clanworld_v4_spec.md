@@ -823,7 +823,7 @@ This is a required bookkeeping part of the combat model.
 # 7. Winter Rules
 
 ## 7.1 Winter cadence
-Winter occurs every `110` ticks.
+Winter occurs every `110` ticks. The first winter opens at tick `110`, so ticks `[100, 110)` remain pre-winter preparation time.
 
 ## 7.2 Winter duration
 Winter lasts `10` ticks.
@@ -832,7 +832,7 @@ Winter lasts `10` ticks.
 During winter, each clan consumes:
 - wheat consumption = `2×` normal
 - fish consumption = `2×` normal
-- wood burn = `1e18` wood per base per tick
+- wood burn = `1e18` wood per base per tick, plus `0.5e18` wood per living clansman per tick
 
 ## 7.4 Winter farming rule
 During winter:
@@ -1211,4 +1211,3 @@ The following values are intentionally tunable without changing the core mechani
 - bandit spawn probability ramp
 - bandit reward magnitudes
 - season reward pot percentages in later versions
-
