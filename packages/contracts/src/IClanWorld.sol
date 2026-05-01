@@ -315,6 +315,8 @@ struct BanditTroop {
     uint32 targetClanId; // 0 if not attacking
     uint64 tickEnteredState;
     uint32 strength; // hp / combat power
+    uint8 tier;
+    uint8 attackAttemptsMade;
     uint256 carryWood;
     uint256 carryIron;
     uint256 carryWheat;
@@ -465,7 +467,9 @@ struct ActiveBanditView {
     uint32 banditId;
     BanditState state;
     uint8 currentRegion;
+    /// @dev Attacks the bandit has already made this state.
     uint8 attackAttemptsMade;
+    /// @dev Attacks the bandit can still make before state transition.
     uint8 maxAttemptsRemaining;
     uint64 stateEnteredTick;
     uint64 nextActionTick;
@@ -478,6 +482,7 @@ struct ActiveBanditView {
     uint256 carryFish;
 
     uint32 projectedTargetClanId; // 0 if no eligible target in current region
+    /// @dev Estimated loot value of the projected target clan (0 if no eligible target).
     uint256 projectedTargetLootValue;
 }
 
@@ -608,6 +613,9 @@ interface IClanWorldEvents {
         uint64 atTick
     );
     event BanditDefeated(uint32 indexed banditId, uint32 indexed targetClanId, uint64 atTick);
+    /// @dev atTick / tick is the caller-provided tick for replay-determinism:
+    ///      closedTick in heartbeat context, or historical settlement tick in lazy-settlement context.
+    ///      Always use this value (not block.timestamp) when reconstructing state at a specific tick.
     event BanditEscaped(uint32 indexed banditId, uint64 atTick);
     event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
     event WallDamagedByBandit(uint32 indexed clanId, uint8 newLevel, uint32 indexed banditId);

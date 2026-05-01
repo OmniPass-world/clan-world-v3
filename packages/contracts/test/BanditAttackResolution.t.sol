@@ -25,6 +25,12 @@ contract BanditAttackHarness is ClanWorld {
         _bandits[id].targetClanId = targetClanId;
     }
 
+    function forceBanditAttackAttempt(uint32 banditId, uint32 targetClanId) external {
+        _bandits[banditId].state = BanditState.Attacking;
+        _bandits[banditId].targetClanId = targetClanId;
+        _bandits[banditId].tickEnteredState = this.getWorldState().currentTick;
+    }
+
     function setWallLevel(uint32 clanId, uint8 wallLevel) external {
         _clans[clanId].wallLevel = wallLevel;
     }
@@ -254,7 +260,7 @@ contract BanditAttackResolutionTest is Test {
         }
     }
 
-    function test_defeatedBanditLootSingleDefendingClanGetsFullCarry() public {
+    function test_defeatedBanditLootDropsHalfCarryAcrossContributingDefenders() public {
         uint32 clanId = _mintClan();
         uint32[] memory defenders = new uint32[](1);
         defenders[0] = clanId;
@@ -262,17 +268,23 @@ contract BanditAttackResolutionTest is Test {
 
         Clan memory beforeClan = world.getClan(clanId);
         uint32 banditId = _forceAttack(clanId, 1);
-        world.setBanditCarry(banditId, 7e18, 11e18, 13e18, 17e18, 19e18);
+        world.setBanditCarry(banditId, 8e18, 8e18, 8e18, 8e18, 8e18);
         world.setBanditStrength(banditId, 0);
 
         _advanceTick();
 
         Clan memory afterClan = world.getClan(clanId);
-        assertEq(afterClan.vaultWood, beforeClan.vaultWood + 7e18, "wood full carry");
-        assertEq(afterClan.vaultWheat, beforeClan.vaultWheat + 11e18, "wheat full carry");
-        assertEq(afterClan.vaultFish, beforeClan.vaultFish + 13e18, "fish full carry");
-        assertEq(afterClan.vaultIron, beforeClan.vaultIron + 17e18, "iron full carry");
-        assertEq(afterClan.goldBalance, beforeClan.goldBalance + 19e18, "gold full carry");
+        assertEq(afterClan.vaultWood, beforeClan.vaultWood, "wood stays in defender carry");
+        assertEq(afterClan.vaultWheat, beforeClan.vaultWheat, "wheat stays in defender carry");
+        assertEq(afterClan.vaultFish, beforeClan.vaultFish, "fish stays in defender carry");
+        assertEq(afterClan.vaultIron, beforeClan.vaultIron, "iron stays in defender carry");
+        assertEq(afterClan.goldBalance, beforeClan.goldBalance + 4e18, "gold half carry");
+        for (uint256 i = 0; i < 4; i++) {
+            assertEq(world.getClansman(_csId(clanId, i)).carryWood, 1e18, "wood defender share");
+            assertEq(world.getClansman(_csId(clanId, i)).carryWheat, 1e18, "wheat defender share");
+            assertEq(world.getClansman(_csId(clanId, i)).carryFish, 1e18, "fish defender share");
+            assertEq(world.getClansman(_csId(clanId, i)).carryIron, 1e18, "iron defender share");
+        }
         assertEq(world.getBandit(banditId).id, 0, "defeated bandit deleted");
     }
 
@@ -321,12 +333,13 @@ contract BanditAttackResolutionTest is Test {
         Vm.Log[] memory logs = vm.getRecordedLogs();
         _assertBanditAttackResolvedLog(logs, banditId, clanId);
 
-        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Escaped), "attack resolved to escaped");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "attack resolved to resting");
 
         for (uint64 i = 0; i < ClanWorldConstants.BANDIT_REST_TICKS; i++) {
             _advanceTick();
         }
-        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "escaped recovered to resting");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Camped), "resting recovered to camped");
+        assertEq(world.getBandit(banditId).region, ClanWorldConstants.REGION_MOUNTAINS, "rampaged after rest");
     }
 
     function test_deadTargetCleanupReleasesDefendersAndEscapesBandit() public {
@@ -352,10 +365,15 @@ contract BanditAttackResolutionTest is Test {
 
         uint64 deathFromTick = winterStart;
         world.setClanUpkeepState(targetClanId, deathFromTick, 0, 0);
+        world.setLivingClansmenForTest(targetClanId, 3);
 
         Clan memory unaffectedBefore = world.getClan(unaffectedClanId);
         uint32 banditId = _forceAttack(targetClanId, 100);
-        uint64 expectedBanditAbortTick = world.getWorldState().currentTick;
+        // closedTick semantics (#328b): _abortBanditAttacksForDeadTarget now uses the
+        // caller-provided settlement tick (when the last clansman dies), not _world.currentTick.
+        // Starvation deaths are deferred one winter tick; with 3 living clansmen,
+        // deaths land at winterStart+1, +2, and +3.
+        uint64 expectedBanditAbortTick = deathFromTick + 3;
 
         vm.recordLogs();
         world.settleClan(targetClanId);
@@ -382,7 +400,7 @@ contract BanditAttackResolutionTest is Test {
         assertEq(unaffectedAfter.vaultFish, unaffectedBefore.vaultFish, "clan C fish unaffected");
     }
 
-    function test_defeatedBanditLootSplitsEquallyAcrossFourDefendingClans() public {
+    function test_defeatedBanditLootSplitsEquallyAcrossContributingClansmen() public {
         uint32[] memory clanIds = _mintClans(4);
         _activateTargetDefenders(clanIds[0], clanIds, 1);
 
@@ -408,11 +426,20 @@ contract BanditAttackResolutionTest is Test {
 
         for (uint256 i = 0; i < clanIds.length; i++) {
             Clan memory clan = world.getClan(clanIds[i]);
-            assertEq(clan.vaultWood, woodBefore[i] + 25e18, "wood share");
-            assertEq(clan.vaultWheat, wheatBefore[i] + 25e18, "wheat share");
-            assertEq(clan.vaultFish, fishBefore[i] + 25e18, "fish share");
-            assertEq(clan.vaultIron, ironBefore[i] + 25e18, "iron share");
-            assertEq(clan.goldBalance, goldBefore[i] + 25e18, "gold share");
+            assertEq(clan.vaultWood, woodBefore[i], "wood stays out of vault");
+            assertEq(clan.vaultWheat, wheatBefore[i], "wheat stays out of vault");
+            assertEq(clan.vaultFish, fishBefore[i], "fish stays out of vault");
+            assertEq(clan.vaultIron, ironBefore[i], "iron stays out of vault");
+            assertEq(clan.goldBalance, goldBefore[i] + (i == 0 ? 28e18 : 7e18), "gold share");
+        }
+        for (uint256 i = 0; i < clanIds.length; i++) {
+            assertEq(world.getClansman(_csId(clanIds[i], 0)).carryWood, 7e18, "explicit wood share");
+        }
+        assertEq(world.getClansman(_csId(clanIds[0], 1)).carryWood, 7e18, "waiting wood share 1");
+        assertEq(world.getClansman(_csId(clanIds[0], 2)).carryWood, 7e18, "waiting wood share 2");
+        assertEq(world.getClansman(_csId(clanIds[0], 3)).carryWood, 7e18, "waiting wood share 3");
+        for (uint256 i = 0; i < clanIds.length; i++) {
+            assertEq(world.getClansman(_csId(clanIds[i], 0)).carryIron, 5e18, "iron capped");
         }
     }
 
@@ -461,6 +488,36 @@ contract BanditAttackResolutionTest is Test {
         );
     }
 
+    function test_waitingAtHomeClansmenContributePassiveDefense() public {
+        uint32 clanId = _mintClan();
+        uint256 blueprintBefore = world.getClan(clanId).blueprintBalance;
+        uint32 banditId = _forceAttack(clanId, 10);
+
+        _advanceTick();
+
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.None), "passive defenders defeated bandit");
+        assertEq(world.getClan(clanId).blueprintBalance, blueprintBefore + world.blueprintUnit(), "blueprint awarded");
+        assertEq(world.getClan(clanId).livingClansmen, 4, "no casualties");
+    }
+
+    function test_failedDefenseStealsTwentyPercentAndAccumulatesCarry() public {
+        uint32 clanId = _mintClan();
+        uint32 banditId = _forceAttack(clanId, 100);
+        world.setBanditCarry(banditId, 1e18, 2e18, 3e18, 4e18, 0);
+
+        _advanceTick();
+
+        Clan memory clan = world.getClan(clanId);
+        assertEq(clan.vaultWood, 16e18, "wood drained");
+        assertEq(clan.vaultWheat, 16e18, "wheat drained");
+        assertEq(clan.vaultFish, 16e17, "fish drained");
+
+        assertEq(world.getBandit(banditId).carryWood, 5e18, "wood carry accumulated");
+        assertEq(world.getBandit(banditId).carryWheat, 6e18, "wheat carry accumulated");
+        assertEq(world.getBandit(banditId).carryFish, 34e17, "fish carry accumulated");
+        assertEq(world.getBandit(banditId).carryIron, 4e18, "iron carry unchanged without vault iron");
+    }
+
     function test_winterStarvationReplayUsesHistoricalWinterTicks() public {
         uint64 winterStart = world.getWorldState().winterStartsAtTick;
         _advanceUntil(winterStart + 30);
@@ -482,7 +539,7 @@ contract BanditAttackResolutionTest is Test {
 
     function test_resolveBanditAttackReturnsWhenTargetDiesDuringSettlement() public {
         uint64 winterStart = world.getWorldState().winterStartsAtTick;
-        _advanceUntil(winterStart + 1);
+        _advanceUntil(winterStart + 2);
 
         uint32 targetClanId = _mintClan();
         world.setClanUpkeepState(targetClanId, winterStart, 0, 0);
@@ -497,15 +554,35 @@ contract BanditAttackResolutionTest is Test {
         assertEq(world.getBandit(banditId).targetClanId, 0, "bandit target cleared");
     }
 
-    function test_defeatedBanditLootBurnsWholeTokenOverflowAcrossThreeDefendingClans() public {
+    function test_banditAttackDefersWhenTargetStillStaleAfterCappedSettlement() public {
+        _advanceUntil(251);
+
+        uint32 targetClanId = _mintClan();
+        uint64 attackTick = world.getWorldState().currentTick;
+        world.setClanUpkeepState(targetClanId, attackTick - 250, 1000e18, 100e18);
+
+        Clan memory beforeClan = world.getClan(targetClanId);
+        uint32 banditId = _forceAttack(targetClanId, 100);
+
+        _advanceTick();
+
+        Clan memory afterClan = world.getClan(targetClanId);
+        assertEq(afterClan.lastSettledTick, attackTick - 50, "settlement capped before attack tick");
+        assertEq(afterClan.wallLevel, beforeClan.wallLevel, "no wall damage");
+        assertEq(uint8(afterClan.clanState), uint8(ClanState.ACTIVE), "target remains alive");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit deferred to resting");
+        assertEq(world.getBandit(banditId).targetClanId, 0, "target cleared for later pick");
+        assertEq(world.getBandit(banditId).attackAttemptsMade, 0, "deferred attack not counted");
+        assertEq(world.getBandit(banditId).carryWood, 0, "bandit carry unchanged");
+    }
+
+    function test_defeatedBanditLootBurnsDropRemainderAndCarryOverflow() public {
         uint32[] memory clanIds = _mintClans(3);
         _activateTargetDefenders(clanIds[0], clanIds, 1);
 
-        uint256 woodBeforeTotal;
         uint256 goldBeforeTotal;
         for (uint256 i = 0; i < clanIds.length; i++) {
             Clan memory clan = world.getClan(clanIds[i]);
-            woodBeforeTotal += clan.vaultWood;
             goldBeforeTotal += clan.goldBalance;
         }
 
@@ -517,25 +594,22 @@ contract BanditAttackResolutionTest is Test {
         emit BanditAttackResolved(banditId, clanIds[0], true, 0, 0, 0, 0, 0, 0, 0, world.getWorldState().currentTick);
         vm.expectEmit(true, true, false, true, address(world));
         emit BanditDefeated(banditId, clanIds[0], world.getWorldState().currentTick);
-        vm.expectEmit(true, false, false, true, address(world));
-        emit LootDistributed(banditId, clanIds, 33e18, 33e18, 33e18, 33e18, 33e18, 1e18, 1e18, 1e18, 1e18, 1e18);
 
         _advanceTick();
 
-        uint256 woodAfterTotal;
         uint256 goldAfterTotal;
         for (uint256 i = 0; i < clanIds.length; i++) {
             Clan memory clan = world.getClan(clanIds[i]);
-            assertEq(clan.vaultWood, 20e18 + 33e18, "wood share");
-            assertEq(clan.goldBalance, 3e18 + 33e18, "gold share");
-            woodAfterTotal += clan.vaultWood;
+            assertEq(clan.goldBalance, 3e18 + (i == 0 ? 32e18 : 8e18), "gold share");
             goldAfterTotal += clan.goldBalance;
         }
-        assertEq(woodAfterTotal - woodBeforeTotal, 99e18, "wood overflow burned");
-        assertEq(goldAfterTotal - goldBeforeTotal, 99e18, "gold overflow burned");
+        assertEq(goldAfterTotal - goldBeforeTotal, 48e18, "undropped gold burned");
+        assertEq(world.getClansman(_csId(clanIds[0], 0)).carryWood, 8e18, "target explicit wood");
+        assertEq(world.getClansman(_csId(clanIds[0], 1)).carryIron, 5e18, "target waiting iron capped");
+        assertEq(world.getClansman(_csId(clanIds[1], 0)).carryFish, 8e18, "helper fish capped");
     }
 
-    function test_multipleDefendersFromSameClanStillReceiveOneClanShare() public {
+    function test_multipleDefendersFromSameClanEachReceiveDefenderShare() public {
         uint32[] memory clanIds = _mintClans(2);
         uint64 firstExecutesAtTick = _submitTargetDefenders(clanIds[0], clanIds[0], 3);
         uint64 secondExecutesAtTick = _submitTargetDefenders(clanIds[1], clanIds[0], 1);
@@ -551,25 +625,31 @@ contract BanditAttackResolutionTest is Test {
 
         _advanceTick();
 
-        assertEq(world.getClan(clanIds[0]).vaultWood, targetWoodBefore + 50e18, "target clan one share");
-        assertEq(world.getClan(clanIds[1]).vaultWood, helperWoodBefore + 50e18, "helper clan one share");
+        assertEq(world.getClan(clanIds[0]).vaultWood, targetWoodBefore, "target vault unchanged");
+        assertEq(world.getClan(clanIds[1]).vaultWood, helperWoodBefore, "helper vault unchanged");
+        for (uint256 i = 0; i < 4; i++) {
+            assertEq(world.getClansman(_csId(clanIds[0], i)).carryWood, 10e18, "target defender share");
+        }
+        assertEq(world.getClansman(_csId(clanIds[1], 0)).carryWood, 10e18, "helper defender share");
     }
 
-    function test_escapedBanditDoesNotDistributeCarry() public {
+    function test_failedDefenseStealsVaultLootAndKeepsCarryWhileResting() public {
         uint32 clanId = _mintClan();
         Clan memory beforeClan = world.getClan(clanId);
         uint32 banditId = _forceAttack(clanId, 100);
-        world.setBanditCarry(banditId, 100e18, 100e18, 100e18, 100e18, 100e18);
 
         _advanceTick();
 
         Clan memory afterClan = world.getClan(clanId);
-        assertEq(afterClan.vaultWood, beforeClan.vaultWood, "wood unchanged");
-        assertEq(afterClan.vaultWheat, beforeClan.vaultWheat, "wheat unchanged");
-        assertEq(afterClan.vaultFish, beforeClan.vaultFish, "fish unchanged");
+        assertEq(afterClan.vaultWood, beforeClan.vaultWood - 4e18, "wood stolen");
+        assertEq(afterClan.vaultWheat, beforeClan.vaultWheat - 4e18, "wheat stolen");
+        assertEq(afterClan.vaultFish, beforeClan.vaultFish - 4e17, "fish stolen");
         assertEq(afterClan.vaultIron, beforeClan.vaultIron, "iron unchanged");
         assertEq(afterClan.goldBalance, beforeClan.goldBalance, "gold unchanged");
-        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Escaped), "bandit escaped");
+        assertEq(world.getBandit(banditId).carryWood, 4e18, "bandit carry wood");
+        assertEq(world.getBandit(banditId).carryWheat, 4e18, "bandit carry wheat");
+        assertEq(world.getBandit(banditId).carryFish, 4e17, "bandit carry fish");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit resting");
     }
 
     function test_escapedBanditDoesNotAwardBlueprint() public {
@@ -580,7 +660,29 @@ contract BanditAttackResolutionTest is Test {
         _advanceTick();
 
         assertEq(world.getClan(clanId).blueprintBalance, blueprintBefore, "blueprint unchanged");
-        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Escaped), "bandit escaped");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit resting");
+    }
+
+    function test_sixthFailedAttackTerminallyEscapesAndBurnsCarry() public {
+        uint32 clanId = _mintClan();
+        uint32 banditId = _forceAttack(clanId, 100);
+        world.setBanditCarry(banditId, 100e18, 100e18, 100e18, 100e18, 100e18);
+
+        for (uint8 attempt = 1; attempt <= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS; attempt++) {
+            world.setWallLevel(clanId, 1);
+            world.forceBanditAttackAttempt(banditId, clanId);
+            _advanceTick();
+
+            if (attempt < ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
+                assertEq(world.getBandit(banditId).id, banditId, "bandit remains before cap");
+                assertEq(world.getBandit(banditId).attackAttemptsMade, attempt, "attempt counted");
+                assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "nonterminal rest");
+            }
+        }
+
+        assertEq(world.getBandit(banditId).id, 0, "bandit deleted at attempt cap");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.None), "terminal escape removed troop");
+        assertEq(world.getBandit(banditId).carryWood, 0, "carry burned with deletion");
     }
 
     function test_twoAliveDefendersWithSufficientDefenseDefeatBanditWithoutWallChip() public {
@@ -589,12 +691,7 @@ contract BanditAttackResolutionTest is Test {
         world.setWallLevel(clanId, 1);
 
         uint32 banditId = _forceAttack(clanId, 1);
-        bytes32 tickSeed = world.getWorldState().currentTickSeed;
-        uint32 defense = world.defenseRoll(tickSeed, banditId, _csId(clanId, 0))
-            + world.defenseRoll(tickSeed, banditId, _csId(clanId, 1));
-        uint32 strength = defense / 2;
-        if (strength == 0) strength = 1;
-        world.setBanditStrength(banditId, strength);
+        world.setBanditStrength(banditId, 15);
         _advanceTick();
 
         assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.None), "defeated bandit deleted");
@@ -606,12 +703,13 @@ contract BanditAttackResolutionTest is Test {
         uint32 clanId = _mintClan();
         world.setWallLevel(clanId, 1);
         uint32 banditId = _forceAttack(clanId, 100);
+        world.setBanditStrength(banditId, 130);
 
         _advanceTick();
 
         assertEq(world.getClan(clanId).wallLevel, 0, "wall level decreased");
         assertEq(world.getClan(clanId).livingClansmen, 4, "wall absorbed full hit");
-        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Escaped), "bandit escaped");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit resting");
     }
 
     function test_wallZeroWeakDefenseKillsClansmanDeterministically() public {
@@ -621,7 +719,7 @@ contract BanditAttackResolutionTest is Test {
         _advanceTick();
 
         assertEq(world.getClan(clanId).livingClansmen, 3, "one clansman died");
-        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Escaped), "bandit escaped");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit resting");
     }
 
     function test_allClansmenDeadMarksClanDead() public {
@@ -647,9 +745,7 @@ contract BanditAttackResolutionTest is Test {
         world.setWallLevel(clanId, 1);
         world.setStarvationStartsAt(clanId, 1);
 
-        uint32 banditId = _forceAttack(clanId, 100);
-        uint32 nonStarvingRoll = world.defenseRoll(world.getWorldState().currentTickSeed, banditId, _csId(clanId, 0));
-        assertGt(nonStarvingRoll, 0, "test setup needs nonzero roll");
+        _forceAttack(clanId, 100);
 
         _advanceTick();
 

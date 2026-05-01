@@ -237,6 +237,8 @@ contract ClanWorldStub is IClanWorld {
             targetClanId: 0,
             tickEnteredState: 0,
             strength: 0,
+            tier: 0,
+            attackAttemptsMade: 0,
             carryWood: 0,
             carryIron: 0,
             carryWheat: 0,
