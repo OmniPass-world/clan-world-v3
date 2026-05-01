@@ -1,27 +1,30 @@
 {
   "abi": [
     {
-      "type": "constructor",
-      "inputs": [
-        {
-          "name": "tokens",
-          "type": "address[6]",
-          "internalType": "address[6]"
-        },
-        {
-          "name": "pools",
-          "type": "address[4]",
-          "internalType": "address[4]"
-        }
-      ],
-      "stateMutability": "nonpayable"
-    },
-    {
       "type": "function",
       "name": "finalizeSeason",
       "inputs": [],
       "outputs": [],
       "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "getActionDuration",
+      "inputs": [
+        {
+          "name": "action",
+          "type": "uint8",
+          "internalType": "enum ActionType"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "stateMutability": "pure"
     },
     {
       "type": "function",
@@ -116,33 +119,33 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getActiveDefenders",
       "inputs": [
         {
-          "name": "",
+          "name": "targetClanId",
           "type": "uint32",
           "internalType": "uint32"
         }
       ],
       "outputs": [
         {
-          "name": "",
+          "name": "clansmanIds",
           "type": "uint32[]",
           "internalType": "uint32[]"
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getActiveMission",
       "inputs": [
         {
-          "name": "",
+          "name": "clansmanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -160,6 +163,21 @@
             },
             {
               "name": "nonce",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "submittedAtTick",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "executesAtTick",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "settlesAtTick",
               "type": "uint64",
               "internalType": "uint64"
             },
@@ -231,33 +249,33 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getBanditTargetPreview",
       "inputs": [
         {
-          "name": "",
+          "name": "banditId",
           "type": "uint32",
           "internalType": "uint32"
         }
       ],
       "outputs": [
         {
-          "name": "",
+          "name": "previewClanId",
           "type": "uint32",
           "internalType": "uint32"
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getBanditTroop",
       "inputs": [
         {
-          "name": "",
+          "name": "banditId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -331,14 +349,14 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getClan",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -442,14 +460,14 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getClanFullView",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -662,6 +680,21 @@
                           "internalType": "uint64"
                         },
                         {
+                          "name": "submittedAtTick",
+                          "type": "uint64",
+                          "internalType": "uint64"
+                        },
+                        {
+                          "name": "executesAtTick",
+                          "type": "uint64",
+                          "internalType": "uint64"
+                        },
+                        {
+                          "name": "settlesAtTick",
+                          "type": "uint64",
+                          "internalType": "uint64"
+                        },
+                        {
                           "name": "clansmanId",
                           "type": "uint32",
                           "internalType": "uint32"
@@ -752,6 +785,21 @@
                     },
                     {
                       "name": "nonce",
+                      "type": "uint64",
+                      "internalType": "uint64"
+                    },
+                    {
+                      "name": "submittedAtTick",
+                      "type": "uint64",
+                      "internalType": "uint64"
+                    },
+                    {
+                      "name": "executesAtTick",
+                      "type": "uint64",
+                      "internalType": "uint64"
+                    },
+                    {
+                      "name": "settlesAtTick",
                       "type": "uint64",
                       "internalType": "uint64"
                     },
@@ -898,7 +946,7 @@
       "name": "getClansman",
       "inputs": [
         {
-          "name": "",
+          "name": "clansmanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -962,14 +1010,33 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getDefendingClans",
+      "inputs": [
+        {
+          "name": "region",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "clanIds",
+          "type": "uint32[]",
+          "internalType": "uint32[]"
+        }
+      ],
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getDerivedClanState",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -1102,7 +1169,7 @@
       "name": "getDerivedClansmanState",
       "inputs": [
         {
-          "name": "",
+          "name": "clansmanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -1182,6 +1249,21 @@
                 },
                 {
                   "name": "nonce",
+                  "type": "uint64",
+                  "internalType": "uint64"
+                },
+                {
+                  "name": "submittedAtTick",
+                  "type": "uint64",
+                  "internalType": "uint64"
+                },
+                {
+                  "name": "executesAtTick",
+                  "type": "uint64",
+                  "internalType": "uint64"
+                },
+                {
+                  "name": "settlesAtTick",
                   "type": "uint64",
                   "internalType": "uint64"
                 },
@@ -1406,6 +1488,11 @@
                   "internalType": "uint64"
                 },
                 {
+                  "name": "missionNonce",
+                  "type": "uint64",
+                  "internalType": "uint64"
+                },
+                {
                   "name": "clanId",
                   "type": "uint32",
                   "internalType": "uint32"
@@ -1453,6 +1540,11 @@
                   "internalType": "uint64"
                 },
                 {
+                  "name": "missionNonce",
+                  "type": "uint64",
+                  "internalType": "uint64"
+                },
+                {
                   "name": "clanId",
                   "type": "uint32",
                   "internalType": "uint32"
@@ -1491,10 +1583,44 @@
     },
     {
       "type": "function",
+      "name": "getMissionTiming",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "internalType": "uint32"
+        },
+        {
+          "name": "clansmanId",
+          "type": "uint32",
+          "internalType": "uint32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "submitted",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "executes",
+          "type": "uint64",
+          "internalType": "uint64"
+        },
+        {
+          "name": "settles",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "getRegionPopulation",
       "inputs": [
         {
-          "name": "",
+          "name": "region",
           "type": "uint8",
           "internalType": "uint8"
         }
@@ -1533,14 +1659,14 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "getScheduledMarketActionsForTick",
       "inputs": [
         {
-          "name": "",
+          "name": "tick",
           "type": "uint64",
           "internalType": "uint64"
         }
@@ -1558,6 +1684,11 @@
             },
             {
               "name": "commitSequence",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "missionNonce",
               "type": "uint64",
               "internalType": "uint64"
             },
@@ -1592,6 +1723,30 @@
               "internalType": "uint256"
             }
           ]
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "getTravelTicks",
+      "inputs": [
+        {
+          "name": "fromRegion",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "toRegion",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint64",
+          "internalType": "uint64"
         }
       ],
       "stateMutability": "pure"
@@ -1681,7 +1836,7 @@
       "name": "getWheatPlots",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -1742,7 +1897,7 @@
           ]
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
@@ -1773,6 +1928,16 @@
               "name": "seasonFinalized",
               "type": "bool",
               "internalType": "bool"
+            },
+            {
+              "name": "currentSeasonNumber",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "nextHeartbeatAtTick",
+              "type": "uint64",
+              "internalType": "uint64"
             },
             {
               "name": "winterActive",
@@ -1882,6 +2047,16 @@
               "internalType": "bool"
             },
             {
+              "name": "currentSeasonNumber",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "nextHeartbeatAtTick",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
               "name": "nextHeartbeatAtTs",
               "type": "uint64",
               "internalType": "uint64"
@@ -1940,101 +2115,132 @@
     },
     {
       "type": "function",
+      "name": "initTreasury",
+      "inputs": [
+        {
+          "name": "tokens",
+          "type": "address[6]",
+          "internalType": "address[6]"
+        },
+        {
+          "name": "pools",
+          "type": "address[4]",
+          "internalType": "address[4]"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "isWinter",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "mintClan",
       "inputs": [
         {
-          "name": "",
+          "name": "to",
           "type": "address",
           "internalType": "address"
         }
       ],
       "outputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "iftTokenId",
           "type": "uint256",
           "internalType": "uint256"
         }
       ],
-      "stateMutability": "payable"
+      "stateMutability": "nonpayable"
     },
     {
       "type": "function",
       "name": "quoteLootValueRaw",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         }
       ],
       "outputs": [
         {
-          "name": "",
+          "name": "lootValue",
           "type": "uint256",
           "internalType": "uint256"
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "quoteLootValueSettled",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         }
       ],
       "outputs": [
         {
-          "name": "",
+          "name": "lootValue",
           "type": "uint256",
           "internalType": "uint256"
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "quoteTravel",
       "inputs": [
         {
-          "name": "",
+          "name": "srcRegion",
           "type": "uint8",
           "internalType": "uint8"
         },
         {
-          "name": "",
+          "name": "dstRegion",
           "type": "uint8",
           "internalType": "uint8"
         }
       ],
       "outputs": [
         {
-          "name": "",
+          "name": "travelTicks",
           "type": "uint8",
           "internalType": "uint8"
         },
         {
-          "name": "",
+          "name": "path",
           "type": "bytes8",
           "internalType": "bytes8"
         }
       ],
-      "stateMutability": "pure"
+      "stateMutability": "view"
     },
     {
       "type": "function",
       "name": "seedPools",
       "inputs": [
         {
-          "name": "",
+          "name": "cfg",
           "type": "tuple",
           "internalType": "struct PoolSeedConfig",
           "components": [
@@ -2089,7 +2295,20 @@
       "name": "settleClan",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
+          "type": "uint32",
+          "internalType": "uint32"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "settleClansman",
+      "inputs": [
+        {
+          "name": "csId",
           "type": "uint32",
           "internalType": "uint32"
         }
@@ -2102,7 +2321,7 @@
       "name": "submitClanOrders",
       "inputs": [
         {
-          "name": "",
+          "name": "clanId",
           "type": "uint32",
           "internalType": "uint32"
         },
@@ -2151,7 +2370,7 @@
       ],
       "outputs": [
         {
-          "name": "results",
+          "name": "",
           "type": "tuple[]",
           "internalType": "struct OrderResult[]",
           "components": [
@@ -2185,17 +2404,17 @@
       "name": "transferBlueprint",
       "inputs": [
         {
-          "name": "",
+          "name": "fromClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "toClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "amount",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -2208,42 +2427,42 @@
       "name": "transferBundle",
       "inputs": [
         {
-          "name": "",
+          "name": "fromClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "toClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "gold",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "",
+          "name": "blueprint",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "",
+          "name": "wood",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "",
+          "name": "iron",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "",
+          "name": "wheat",
           "type": "uint256",
           "internalType": "uint256"
         },
         {
-          "name": "",
+          "name": "fish",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -2256,17 +2475,17 @@
       "name": "transferGold",
       "inputs": [
         {
-          "name": "",
+          "name": "fromClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "toClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "amount",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -2279,22 +2498,22 @@
       "name": "transferVaultResource",
       "inputs": [
         {
-          "name": "",
+          "name": "fromClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "toClanId",
           "type": "uint32",
           "internalType": "uint32"
         },
         {
-          "name": "",
+          "name": "resource",
           "type": "uint8",
           "internalType": "enum ResourceType"
         },
         {
-          "name": "",
+          "name": "amount",
           "type": "uint256",
           "internalType": "uint256"
         }
@@ -2607,6 +2826,56 @@
     },
     {
       "type": "event",
+      "name": "ClanColdShortage",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "indexed": true,
+          "internalType": "uint32"
+        },
+        {
+          "name": "tick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        },
+        {
+          "name": "woodShort",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ClanDied",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "indexed": true,
+          "internalType": "uint32"
+        },
+        {
+          "name": "tick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
       "name": "ClanEliminated",
       "inputs": [
         {
@@ -2707,7 +2976,7 @@
     },
     {
       "type": "event",
-      "name": "ClansmanDiedFromCold",
+      "name": "ClansmanColdDeath",
       "inputs": [
         {
           "name": "clanId",
@@ -2716,38 +2985,13 @@
           "internalType": "uint32"
         },
         {
-          "name": "atTick",
-          "type": "uint64",
-          "indexed": false,
-          "internalType": "uint64"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "ColdDamageApplied",
-      "inputs": [
-        {
-          "name": "clanId",
+          "name": "csId",
           "type": "uint32",
-          "indexed": true,
+          "indexed": false,
           "internalType": "uint32"
         },
         {
-          "name": "oldDamage",
-          "type": "uint16",
-          "indexed": false,
-          "internalType": "uint16"
-        },
-        {
-          "name": "newDamage",
-          "type": "uint16",
-          "indexed": false,
-          "internalType": "uint16"
-        },
-        {
-          "name": "atTick",
+          "name": "tick",
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
@@ -3388,6 +3632,31 @@
         },
         {
           "name": "atTick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "WallDegradedByCold",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "indexed": true,
+          "internalType": "uint32"
+        },
+        {
+          "name": "newWallLevel",
+          "type": "uint8",
+          "indexed": false,
+          "internalType": "uint8"
+        },
+        {
+          "name": "tick",
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"

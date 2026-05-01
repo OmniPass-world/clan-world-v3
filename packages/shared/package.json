@@ -11,7 +11,9 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "test": "node scripts/check-chain-abi-parity.mjs",
     "typecheck": "tsc --noEmit",
+    "test": "pnpm -w test:chainclient-abi",
     "lint": "echo 'lint stub'",
     "clean": "rm -rf dist .turbo"
   },
@@ -19,6 +21,7 @@
     "typescript": "5.9.3"
   },
   "dependencies": {
+    "convex": "1.17.4",
     "viem": "^2.48.4"
   }
 }

@@ -30,7 +30,7 @@ For repeatable demo recordings:
 
 1. Stop orchestrator and heartbeat loop.
 2. Redeploy contracts (fresh address — clean state).
-3. Update `ENGINE_ADDRESS` in `.env.local`.
+3. Update `CLAN_WORLD_CONTRACT_ADDRESS` in `.env.local`.
 4. Wipe local Convex deployment data (or use a separate clean deployment).
 5. Re-fund agent wallets from faucet.
 6. Restart orchestrator and heartbeat loop.

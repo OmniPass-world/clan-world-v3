@@ -1,29 +1,71 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.34;
 
-import "./IClanWorld.sol";
+import {
+    IClanWorld,
+    IClanWorldEvents,
+    ClanWorldConstants,
+    ClanState,
+    ClansmanState,
+    BanditState,
+    WheatPlotState,
+    ResourceType,
+    ActionType,
+    MarketExecutionMode,
+    StatusCode,
+    WorldState,
+    TreasuryState,
+    Clan,
+    WheatPlot,
+    Clansman,
+    Mission,
+    BanditTroop,
+    ScheduledMarketAction,
+    DefenseContribution,
+    PackedRoute,
+    DerivedClanState,
+    DerivedClansmanState,
+    ClanOrder,
+    OrderResult,
+    PoolSeedConfig,
+    LeaderboardEntry,
+    WorldSnapshot,
+    ClansmanFullView,
+    ClanFullView,
+    PoolReserves,
+    MarketState,
+    ActiveBanditView,
+    RegionOccupant
+} from "./IClanWorld.sol";
 
-/// @notice Stub implementation of IClanWorld for World Chain Sepolia deployment.
+/// @notice Stub implementation of IClanWorld for Base Sepolia deployment.
 ///         Stores tick state and token/pool addresses. All game logic is no-op.
 contract ClanWorldStub is IClanWorld {
     WorldState private _world;
     TreasuryState private _treasury;
 
     constructor(address[6] memory tokens, address[4] memory pools) {
-        _world.currentTick = 1;
+        _world.currentTick = 0;
         _world.nextHeartbeatAtTs = uint64(block.timestamp);
+        _world.seasonStartTick = 0;
+        _world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
+        _world.currentSeasonNumber = 1;
+        _world.nextHeartbeatAtTick = _world.currentTick + 1;
+        _world.winterStartsAtTick = ClanWorldConstants.WINTER_START_TICK;
+        _world.winterEndsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
+        _world.winterActive = false;
 
-        _treasury.woodToken      = tokens[0];
-        _treasury.ironToken      = tokens[1];
-        _treasury.wheatToken     = tokens[2];
-        _treasury.fishToken      = tokens[3];
-        _treasury.goldToken      = tokens[4];
+        _treasury.woodToken = tokens[0];
+        _treasury.ironToken = tokens[1];
+        _treasury.wheatToken = tokens[2];
+        _treasury.fishToken = tokens[3];
+        _treasury.goldToken = tokens[4];
         _treasury.blueprintToken = tokens[5];
 
-        _treasury.woodGoldPool   = pools[0];
-        _treasury.wheatGoldPool  = pools[1];
-        _treasury.fishGoldPool   = pools[2];
-        _treasury.ironGoldPool   = pools[3];
+        _treasury.woodGoldPool = pools[0];
+        _treasury.wheatGoldPool = pools[1];
+        _treasury.fishGoldPool = pools[2];
+        _treasury.ironGoldPool = pools[3];
 
         _treasury.treasuryOwner = msg.sender;
     }
@@ -33,13 +75,27 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function heartbeat() external override {
+        require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
+
         uint64 closed = _world.currentTick;
+        _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+
         _world.currentTick += 1;
-        _world.nextHeartbeatAtTs = uint64(block.timestamp);
+        _world.nextHeartbeatAtTick = _world.currentTick + 1;
+        bool wasWinter = _isWinterActiveAt(closed);
+        bool nowWinter = _isWinterActiveAt(_world.currentTick);
+        if (!wasWinter && nowWinter) {
+            emit WinterStarted(_winterEventTick(_world.currentTick));
+        }
+        if (wasWinter && !nowWinter) {
+            emit WinterEnded(_winterEventTick(_world.currentTick));
+        }
         emit TickAdvanced(closed, _world.currentTick, bytes32(0));
     }
 
     function settleClan(uint32) external override {}
+
+    function settleClansman(uint32) external override {}
 
     function finalizeSeason() external override {}
 
@@ -47,7 +103,7 @@ contract ClanWorldStub is IClanWorld {
     // Clan lifecycle
     // -------------------------------------------------------------------------
 
-    function mintClan(address) external payable override returns (uint32, uint256) {
+    function mintClan(address) external override returns (uint32, uint256) {
         return (1, 1);
     }
 
@@ -63,6 +119,8 @@ contract ClanWorldStub is IClanWorld {
     // Treasury
     // -------------------------------------------------------------------------
 
+    function initTreasury(address[6] calldata, address[4] calldata) external override {}
+
     function seedPools(PoolSeedConfig calldata) external override {}
 
     // -------------------------------------------------------------------------
@@ -75,17 +133,14 @@ contract ClanWorldStub is IClanWorld {
 
     function transferBlueprint(uint32, uint32, uint256) external override {}
 
-    function transferBundle(uint32, uint32, uint256, uint256, uint256, uint256, uint256, uint256)
-        external
-        override
-    {}
+    function transferBundle(uint32, uint32, uint256, uint256, uint256, uint256, uint256, uint256) external override {}
 
     // -------------------------------------------------------------------------
     // Raw read getters
     // -------------------------------------------------------------------------
 
     function getWorldState() external view override returns (WorldState memory) {
-        return _world;
+        return _worldStateView();
     }
 
     function getTreasuryState() external view override returns (TreasuryState memory) {
@@ -134,6 +189,9 @@ contract ClanWorldStub is IClanWorld {
         return Mission({
             active: false,
             nonce: 0,
+            submittedAtTick: 0,
+            executesAtTick: 0,
+            settlesAtTick: 0,
             clansmanId: 0,
             startRegion: 0,
             targetRegion: 0,
@@ -148,6 +206,27 @@ contract ClanWorldStub is IClanWorld {
             marketAmount: 0,
             maxGoldIn: 0
         });
+    }
+
+    function getMissionTiming(uint32, uint32)
+        external
+        pure
+        override
+        returns (uint64 submitted, uint64 executes, uint64 settles)
+    {
+        return (0, 0, 0);
+    }
+
+    function isWinter() external view override returns (bool) {
+        return _isWinterActiveAt(_world.currentTick);
+    }
+
+    function getActionDuration(ActionType) external pure override returns (uint64) {
+        return 0;
+    }
+
+    function getTravelTicks(uint8, uint8) external pure override returns (uint64) {
+        return 0;
     }
 
     function getBanditTroop(uint32) external pure override returns (BanditTroop memory) {
@@ -167,31 +246,20 @@ contract ClanWorldStub is IClanWorld {
         });
     }
 
-    function getWheatPlots(uint32)
-        external
-        pure
-        override
-        returns (WheatPlot memory west, WheatPlot memory east)
-    {
-        west = WheatPlot({ state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0 });
-        east = WheatPlot({ state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0 });
+    function getWheatPlots(uint32) external pure override returns (WheatPlot memory west, WheatPlot memory east) {
+        west = WheatPlot({state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0});
+        east = WheatPlot({state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0});
     }
 
-    function getScheduledMarketActionsForTick(uint64)
-        external
-        pure
-        override
-        returns (ScheduledMarketAction[] memory)
-    {
+    function getScheduledMarketActionsForTick(uint64) external pure override returns (ScheduledMarketAction[] memory) {
         return new ScheduledMarketAction[](0);
     }
 
-    function getActiveDefenders(uint32)
-        external
-        pure
-        override
-        returns (uint32[] memory)
-    {
+    function getActiveDefenders(uint32) external pure override returns (uint32[] memory) {
+        return new uint32[](0);
+    }
+
+    function getDefendingClans(uint8) external pure override returns (uint32[] memory) {
         return new uint32[](0);
     }
 
@@ -201,13 +269,16 @@ contract ClanWorldStub is IClanWorld {
 
     function getDerivedClanState(uint32) external view override returns (DerivedClanState memory) {
         Clan memory c = this.getClan(0);
-        return DerivedClanState({ clan: c, isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick });
+        return DerivedClanState({clan: c, isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick});
     }
 
     function getDerivedClansmanState(uint32) external view override returns (DerivedClansmanState memory) {
         Clansman memory cm = this.getClansman(0);
         Mission memory m = this.getActiveMission(0);
-        return DerivedClansmanState({ clansman: cm, activeMission: m, effectiveRegion: 0, derivedAtTick: _world.currentTick });
+        return
+            DerivedClansmanState({
+                clansman: cm, activeMission: m, effectiveRegion: 0, derivedAtTick: _world.currentTick
+            });
     }
 
     function getBanditTargetPreview(uint32) external pure override returns (uint32) {
@@ -231,14 +302,17 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function getWorldSnapshot() external view override returns (WorldSnapshot memory) {
+        WorldState memory ws = _worldStateView();
         return WorldSnapshot({
-            currentTick: _world.currentTick,
-            seasonStartTick: _world.seasonStartTick,
-            seasonEndTick: _world.seasonEndTick,
+            currentTick: ws.currentTick,
+            seasonStartTick: ws.seasonStartTick,
+            seasonEndTick: ws.seasonEndTick,
             seasonFinalized: false,
-            winterActive: false,
-            winterStartsAtTick: 0,
-            winterEndsAtTick: 0,
+            currentSeasonNumber: ws.currentSeasonNumber,
+            nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
+            winterActive: ws.winterActive,
+            winterStartsAtTick: ws.winterStartsAtTick,
+            winterEndsAtTick: ws.winterEndsAtTick,
             activeBanditId: 0,
             currentTickSeed: bytes32(0),
             leaderboard: new LeaderboardEntry[](0)
@@ -248,14 +322,11 @@ contract ClanWorldStub is IClanWorld {
     function getClanFullView(uint32) external view override returns (ClanFullView memory) {
         return ClanFullView({
             clan: DerivedClanState({
-                clan: this.getClan(0),
-                isStarving: false,
-                lootValue: 0,
-                derivedAtTick: _world.currentTick
+                clan: this.getClan(0), isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick
             }),
             clansmen: new ClansmanFullView[](0),
-            westPlot: WheatPlot({ state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0 }),
-            eastPlot: WheatPlot({ state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0 }),
+            westPlot: WheatPlot({state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0}),
+            eastPlot: WheatPlot({state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0}),
             incomingDefenderIds: new uint32[](0),
             thisClanDefendingBaseId: 0
         });
@@ -263,10 +334,18 @@ contract ClanWorldStub is IClanWorld {
 
     function getMarketState() external view override returns (MarketState memory) {
         return MarketState({
-            wood: PoolReserves({ resourceToken: _treasury.woodToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0 }),
-            wheat: PoolReserves({ resourceToken: _treasury.wheatToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0 }),
-            fish: PoolReserves({ resourceToken: _treasury.fishToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0 }),
-            iron: PoolReserves({ resourceToken: _treasury.ironToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0 }),
+            wood: PoolReserves({
+                resourceToken: _treasury.woodToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0
+            }),
+            wheat: PoolReserves({
+                resourceToken: _treasury.wheatToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0
+            }),
+            fish: PoolReserves({
+                resourceToken: _treasury.fishToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0
+            }),
+            iron: PoolReserves({
+                resourceToken: _treasury.ironToken, resourceReserve: 0, goldReserve: 0, spotPriceGoldPerResource: 0
+            }),
             currentTick: _world.currentTick,
             currentTickQueue: new ScheduledMarketAction[](0),
             nextTickQueue: new ScheduledMarketAction[](0)
@@ -296,5 +375,41 @@ contract ClanWorldStub is IClanWorld {
 
     function getRegionPopulation(uint8) external pure override returns (RegionOccupant[] memory) {
         return new RegionOccupant[](0);
+    }
+
+    function _isWinterActiveAt(uint64 tick) internal pure returns (bool) {
+        if (tick < ClanWorldConstants.WINTER_START_TICK) {
+            return false;
+        }
+        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
+        return elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
+    }
+
+    function _winterEventTick(uint64 tick) internal pure returns (uint64) {
+        return tick;
+    }
+
+    function _winterWindowForTick(uint64 tick)
+        internal
+        pure
+        returns (bool active, uint64 startsAtTick, uint64 endsAtTick)
+    {
+        if (tick < ClanWorldConstants.WINTER_START_TICK) {
+            startsAtTick = ClanWorldConstants.WINTER_START_TICK;
+            endsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
+            return (false, startsAtTick, endsAtTick);
+        }
+
+        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
+        uint64 cycleIndex = elapsed / ClanWorldConstants.WINTER_PERIOD_TICKS;
+        uint64 cycleStart = ClanWorldConstants.WINTER_START_TICK + cycleIndex * ClanWorldConstants.WINTER_PERIOD_TICKS;
+        active = elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
+        startsAtTick = active ? cycleStart : cycleStart + ClanWorldConstants.WINTER_PERIOD_TICKS;
+        endsAtTick = startsAtTick + ClanWorldConstants.WINTER_DURATION_TICKS;
+    }
+
+    function _worldStateView() internal view returns (WorldState memory ws) {
+        ws = _world;
+        (ws.winterActive, ws.winterStartsAtTick, ws.winterEndsAtTick) = _winterWindowForTick(_world.currentTick);
     }
 }

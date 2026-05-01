@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.34;
 
 /**
  * @title IClanWorld
@@ -26,64 +26,69 @@ pragma solidity ^0.8.24;
 library ClanWorldConstants {
     // World cadence
     uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 60;
-    uint64 internal constant TICKS_PER_WINTER_CYCLE = 110;
+    // First winter opens at tick 110; ticks [100,110) remain pre-winter runway.
+    uint64 internal constant WINTER_START_TICK = 110;
     uint64 internal constant WINTER_DURATION_TICKS = 10;
+    uint64 internal constant WINTER_PERIOD_TICKS = 110;
     uint64 internal constant SEASON_DURATION_TICKS = 360;
 
     // Bandit cadence
     uint64 internal constant BANDIT_COOLDOWN_TICKS = 10;
     uint64 internal constant BANDIT_CAMP_TICKS = 3;
     uint64 internal constant BANDIT_REST_TICKS = 2;
-    uint8  internal constant BANDIT_MAX_ATTACK_ATTEMPTS = 6;
+    uint8 internal constant BANDIT_MAX_ATTACK_ATTEMPTS = 6;
 
     // Clansman cadence
     uint64 internal constant CLANSMAN_COOLDOWN_SECONDS = 60;
 
     // Carry caps (per clansman)
-    uint256 internal constant WOOD_CAP  = 15e18;
-    uint256 internal constant IRON_CAP  = 5e18;
+    uint256 internal constant WOOD_CAP = 15e18;
+    uint256 internal constant IRON_CAP = 5e18;
     uint256 internal constant WHEAT_CAP = 40e18;
-    uint256 internal constant FISH_CAP  = 8e18;
+    uint256 internal constant FISH_CAP = 8e18;
 
     // Gathering yields
     uint256 internal constant WOOD_BASE_YIELD = 2e18;
     uint256 internal constant WOOD_CRIT_BONUS = 1e18;
-    uint16  internal constant WOOD_CRIT_BPS = 2000;            // 20%
+    uint16 internal constant WOOD_CRIT_BPS = 2000; // 20%
 
-    uint256 internal constant IRON_BASE_YIELD = 5e17;          // 0.5e18
-    uint16  internal constant GOLD_FROM_IRON_BPS = 200;        // 2%
+    uint256 internal constant IRON_BASE_YIELD = 5e17; // 0.5e18
+    uint16 internal constant GOLD_FROM_IRON_BPS = 200; // 2%
     uint256 internal constant GOLD_FROM_IRON_AMOUNT = 1e18;
 
-    uint16  internal constant FISH_DOCKS_BPS = 2500;           // 25%
-    uint16  internal constant FISH_DEEP_BPS = 7500;            // 75%
+    uint16 internal constant FISH_DOCKS_BPS = 2500; // 25%
+    uint16 internal constant FISH_DEEP_BPS = 7500; // 75%
 
     // Upkeep
     uint256 internal constant WHEAT_UPKEEP_PER_CLANSMAN = 1e18;
     uint256 internal constant FISH_UPKEEP_PER_CLANSMAN = 1e17; // 0.1
+    uint256 internal constant WINTER_WOOD_BURN_PER_CLANSMAN = 5e17; // 0.5
     uint256 internal constant WINTER_WOOD_BURN_PER_BASE = 1e18;
-    uint16  internal constant WINTER_UPKEEP_MULTIPLIER_BPS = 20000; // 2x
+    uint16 internal constant WINTER_UPKEEP_MULTIPLIER_BPS = 20000; // 2x
+    uint16 internal constant COLD_DAMAGE_PER_WALL_DEGRADATION = 2;
+    uint16 internal constant COLD_DAMAGE_PER_CLANSMAN_DEATH = 2;
 
     // Wheat plots
-    uint64  internal constant WHEAT_PLOT_REGROW_TICKS = 4;
+    uint64 internal constant WHEAT_PLOT_REGROW_TICKS = 4;
     uint256 internal constant WHEAT_PLOT_STARTING_WHEAT = 100e18;
 
     // Bandit combat
-    uint16 internal constant BANDIT_BASE_STEAL_BPS = 2000;        // 20%
+    uint16 internal constant BANDIT_BASE_STEAL_BPS = 2000; // 20%
     uint16 internal constant BANDIT_DROP_TO_DEFENDERS_BPS = 5000; // 50%
 
     // Region IDs (1-indexed; 0 = NOOP / unset sentinel)
-    uint8 internal constant REGION_NOOP          = 0;
-    uint8 internal constant REGION_FOREST        = 1;
-    uint8 internal constant REGION_MOUNTAINS     = 2;
-    uint8 internal constant REGION_UNICORN_TOWN  = 3;
-    uint8 internal constant REGION_WEST_FARMS    = 4;
-    uint8 internal constant REGION_EAST_FARMS    = 5;
-    uint8 internal constant REGION_WEST_DOCKS    = 6;
-    uint8 internal constant REGION_EAST_DOCKS    = 7;
-    uint8 internal constant REGION_DEEP_SEA      = 8;
+    uint8 internal constant REGION_NOOP = 0;
+    uint8 internal constant REGION_FOREST = 1;
+    uint8 internal constant REGION_MOUNTAINS = 2;
+    uint8 internal constant REGION_UNICORN_TOWN = 3;
+    uint8 internal constant REGION_WEST_FARMS = 4;
+    uint8 internal constant REGION_EAST_FARMS = 5;
+    uint8 internal constant REGION_WEST_DOCKS = 6;
+    uint8 internal constant REGION_EAST_DOCKS = 7;
+    uint8 internal constant REGION_DEEP_SEA = 8;
 
     // Sentinels
-    uint32 internal constant CLAN_ID_NULL = 0;     // valid clan IDs start at 1
+    uint32 internal constant CLAN_ID_NULL = 0; // valid clan IDs start at 1
     uint32 internal constant BANDIT_ID_NULL = 0;
 }
 
@@ -176,30 +181,35 @@ enum StatusCode {
     ERR_NO_ACTIVE_BANDIT,
     ERR_SEASON_ENDED,
     ERR_NOT_ENOUGH_GOLD,
-    ERR_CARRY_FULL
+    ERR_CARRY_FULL,
+    ERR_WINTER_LOCKED,
+    ERR_MUST_SETTLE_FIRST
 }
 
 // =============================================================================
-// CORE STATE STRUCTS (raw storage shape)
+// CORE STATE STRUCTS (canonical ABI shape; implementations may derive view-only fields)
 // =============================================================================
 
 struct WorldState {
     uint64 currentTick;
     uint64 seasonStartTick;
     uint64 seasonEndTick;
-    bool   seasonFinalized;
+    bool seasonFinalized;
+    uint64 currentSeasonNumber; // 1-indexed; incremented each time seasonEndTick is crossed
+    uint64 nextHeartbeatAtTick; // estimated tick that will be opened by the next heartbeat (for off-chain UI)
 
     uint64 nextHeartbeatAtTs;
     uint64 nextBanditSpawnEligibleTick;
     uint16 currentBanditSpawnChanceBps;
     bytes32 currentTickSeed;
 
-    uint32 activeBanditId;       // 0 if none
-    bool   winterActive;
+    uint32 activeBanditId; // 0 if none
+    // Derived view fields. ClanWorld.sol intentionally does not store these as source-of-truth.
+    bool winterActive;
     uint64 winterStartsAtTick;
-    uint64 winterEndsAtTick;     // 0 if not active
+    uint64 winterEndsAtTick; // 0 if not active
 
-    uint64 nextCommitSequence;   // global FIFO sequence for scheduled market actions
+    uint64 nextCommitSequence; // global FIFO sequence for scheduled market actions
 }
 
 struct TreasuryState {
@@ -236,7 +246,7 @@ struct Clan {
     uint64 lastSettledTick;
     uint64 starvationStartsAtTick; // 0 = none
 
-    uint16 coldDamage;             // resets to 0 at winter end
+    uint16 coldDamage; // resets to 0 at winter end
 
     uint256 goldBalance;
     uint256 blueprintBalance;
@@ -249,7 +259,7 @@ struct Clan {
 
 struct WheatPlot {
     WheatPlotState state;
-    uint8 region;                  // West Farms or East Farms
+    uint8 region; // West Farms or East Farms
     uint256 remainingWheat;
     uint64 regrowUntilTick;
 }
@@ -273,6 +283,9 @@ struct Mission {
     bool active;
 
     uint64 nonce;
+    uint64 submittedAtTick;
+    uint64 executesAtTick;
+    uint64 settlesAtTick;
     uint32 clansmanId;
 
     uint8 startRegion;
@@ -286,10 +299,10 @@ struct Mission {
     bytes32 missionSeed;
     MarketExecutionMode marketMode;
 
-    uint32 targetClanId;   // DefendBase only
-    address marketToken;   // market token for buy/sell
-    uint256 marketAmount;  // exact-in for sell, exact-out for buy
-    uint256 maxGoldIn;     // market_buy only, 0 otherwise
+    uint32 targetClanId; // DefendBase only
+    address marketToken; // market token for buy/sell
+    uint256 marketAmount; // exact-in for sell, exact-out for buy
+    uint256 maxGoldIn; // market_buy only, 0 otherwise
 }
 
 struct BanditTroop {
@@ -302,7 +315,7 @@ struct BanditTroop {
     uint64 nextActionTick;
 
     uint8 tier;
-    uint16 attackPower;            // derived from tier; tier is canonical (v4.3 §G)
+    uint16 attackPower; // derived from tier; tier is canonical (v4.3 §G)
 
     uint256 carryWood;
     uint256 carryIron;
@@ -312,14 +325,15 @@ struct BanditTroop {
 
 struct ScheduledMarketAction {
     uint64 executeAtTick;
-    uint64 commitSequence;        // global monotonic FIFO order
+    uint64 commitSequence; // global monotonic FIFO order
+    uint64 missionNonce; // mission nonce captured when the action was queued
     uint32 clanId;
     uint32 clansmanId;
-    ActionType action;            // MarketBuy or MarketSell
+    ActionType action; // MarketBuy or MarketSell
 
     address marketToken;
-    uint256 marketAmount;         // exact-in for sell, exact-out for buy
-    uint256 maxGoldIn;            // buy only, 0 otherwise
+    uint256 marketAmount; // exact-in for sell, exact-out for buy
+    uint256 maxGoldIn; // buy only, 0 otherwise
 }
 
 struct DefenseContribution {
@@ -330,7 +344,7 @@ struct DefenseContribution {
 
 struct PackedRoute {
     uint8 travelTicks;
-    bytes8 path;                  // ordered region ids, e.g. [6,4,3,2,0,0,0,0]
+    bytes8 path; // ordered region ids, e.g. [6,4,3,2,0,0,0,0]
 }
 
 // =============================================================================
@@ -338,16 +352,16 @@ struct PackedRoute {
 // =============================================================================
 
 struct DerivedClanState {
-    Clan clan;                    // settled to current tick
+    Clan clan; // settled to current tick
     bool isStarving;
-    uint256 lootValue;            // current weighted loot value
+    uint256 lootValue; // current weighted loot value
     uint64 derivedAtTick;
 }
 
 struct DerivedClansmanState {
-    Clansman clansman;            // settled to current tick
-    Mission activeMission;        // active=false if none
-    uint8 effectiveRegion;        // for traveling, derived from route + elapsed ticks
+    Clansman clansman; // settled to current tick
+    Mission activeMission; // active=false if none
+    uint8 effectiveRegion; // for traveling, derived from route + elapsed ticks
     uint64 derivedAtTick;
 }
 
@@ -360,7 +374,7 @@ struct ClanOrder {
     uint8 gotoRegion;
     ActionType action;
 
-    uint32 targetClanId;          // DefendBase only
+    uint32 targetClanId; // DefendBase only
     address marketToken;
     uint256 marketAmount;
     uint256 maxGoldIn;
@@ -396,15 +410,17 @@ struct LeaderboardEntry {
     uint8 wallLevel;
     uint8 livingClansmen;
     ClanState state;
-    uint256 lootValue;            // settled
+    uint256 lootValue; // settled
 }
 
 struct WorldSnapshot {
     uint64 currentTick;
     uint64 seasonStartTick;
     uint64 seasonEndTick;
-    bool   seasonFinalized;
-    bool   winterActive;
+    bool seasonFinalized;
+    uint64 currentSeasonNumber;
+    uint64 nextHeartbeatAtTick;
+    bool winterActive;
     uint64 winterStartsAtTick;
     uint64 winterEndsAtTick;
     uint32 activeBanditId;
@@ -423,8 +439,8 @@ struct ClanFullView {
     ClansmanFullView[] clansmen;
     WheatPlot westPlot;
     WheatPlot eastPlot;
-    uint32[] incomingDefenderIds;     // workers from other clans defending us
-    uint32   thisClanDefendingBaseId; // 0 if none
+    uint32[] incomingDefenderIds; // legacy UI field; clanIds defending this clan's home region
+    uint32 thisClanDefendingBaseId; // defended home region, or 0 if none
 }
 
 struct PoolReserves {
@@ -446,15 +462,15 @@ struct MarketState {
 }
 
 struct ActiveBanditView {
-    bool   exists;
+    bool exists;
     uint32 banditId;
     BanditState state;
-    uint8  currentRegion;
-    uint8  attackAttemptsMade;
-    uint8  maxAttemptsRemaining;
+    uint8 currentRegion;
+    uint8 attackAttemptsMade;
+    uint8 maxAttemptsRemaining;
     uint64 stateEnteredTick;
     uint64 nextActionTick;
-    uint8  tier;
+    uint8 tier;
     uint16 attackPower;
 
     uint256 carryWood;
@@ -462,7 +478,7 @@ struct ActiveBanditView {
     uint256 carryWheat;
     uint256 carryFish;
 
-    uint32 projectedTargetClanId;     // 0 if no eligible target in current region
+    uint32 projectedTargetClanId; // 0 if no eligible target in current region
     uint256 projectedTargetLootValue;
 }
 
@@ -487,15 +503,15 @@ interface IClanWorldEvents {
 
     // ----- clan lifecycle -----
     event ClanSpawned(
-        uint32 indexed clanId,
-        address indexed owner,
-        uint256 iftTokenId,
-        uint8 baseRegion,
-        uint64 atTick
+        uint32 indexed clanId, address indexed owner, uint256 iftTokenId, uint8 baseRegion, uint64 atTick
     );
     event ClanSettled(uint32 indexed clanId, uint64 settledToTick);
     event ClanEliminated(uint32 indexed clanId, uint64 indexed tick);
+    event ClanDied(uint32 indexed clanId, uint64 tick, string reason);
     event ClanStarvationChanged(uint32 indexed clanId, bool isStarving, uint64 atTick);
+    event ClanColdShortage(uint32 indexed clanId, uint64 tick, uint256 woodShort);
+    event WallDegradedByCold(uint32 indexed clanId, uint8 newWallLevel, uint64 tick);
+    event ClansmanColdDeath(uint32 indexed clanId, uint32 csId, uint64 tick);
 
     // ----- missions -----
     event MissionAssigned(
@@ -509,23 +525,10 @@ interface IClanWorldEvents {
         uint64 arrivalTick
     );
     event MissionInterrupted(
-        uint32 indexed clanId,
-        uint32 indexed clansmanId,
-        uint64 oldMissionNonce,
-        uint64 newMissionNonce
+        uint32 indexed clanId, uint32 indexed clansmanId, uint64 oldMissionNonce, uint64 newMissionNonce
     );
-    event MissionCompleted(
-        uint32 indexed clanId,
-        uint32 indexed clansmanId,
-        uint64 missionNonce,
-        ActionType action
-    );
-    event WorkerArrived(
-        uint32 indexed clanId,
-        uint32 indexed clansmanId,
-        uint8 region,
-        uint64 tick
-    );
+    event MissionCompleted(uint32 indexed clanId, uint32 indexed clansmanId, uint64 missionNonce, ActionType action);
+    event WorkerArrived(uint32 indexed clanId, uint32 indexed clansmanId, uint8 region, uint64 tick);
 
     // ----- gathering / vault movement -----
     event ResourcesGathered(
@@ -584,21 +587,12 @@ interface IClanWorldEvents {
         uint256 marketAmount,
         uint256 maxGoldIn
     );
-    event MarketActionFailed(
-        uint32 indexed clanId,
-        uint32 indexed clansmanId,
-        ActionType action,
-        StatusCode reason
-    );
+    event MarketActionFailed(uint32 indexed clanId, uint32 indexed clansmanId, ActionType action, StatusCode reason);
 
     // ----- bandits -----
     event BanditSpawned(uint32 indexed banditId, uint8 region, uint8 tier, uint16 attackPower);
     event BanditStateChanged(
-        uint32 indexed banditId,
-        BanditState oldState,
-        BanditState newState,
-        uint8 region,
-        uint64 atTick
+        uint32 indexed banditId, BanditState oldState, BanditState newState, uint8 region, uint64 atTick
     );
     event BanditMoved(uint32 indexed banditId, uint8 fromRegion, uint8 toRegion, uint64 atTick);
     event BanditAttackResolved(
@@ -627,28 +621,15 @@ interface IClanWorldEvents {
         uint256 fish
     );
 
-    // ----- winter cold damage -----
-    event ColdDamageApplied(uint32 indexed clanId, uint16 oldDamage, uint16 newDamage, uint64 atTick);
-    event ClansmanDiedFromCold(uint32 indexed clanId, uint64 atTick);
-
     // ----- OTC transfers -----
     event GoldTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
     event VaultResourceTransferred(
-        uint32 indexed fromClanId,
-        uint32 indexed toClanId,
-        ResourceType resource,
-        uint256 amount,
-        uint64 atTick
+        uint32 indexed fromClanId, uint32 indexed toClanId, ResourceType resource, uint256 amount, uint64 atTick
     );
     event BlueprintTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
 
     // ----- treasury / pools -----
-    event PoolsSeeded(
-        address woodGoldPool,
-        address wheatGoldPool,
-        address fishGoldPool,
-        address ironGoldPool
-    );
+    event PoolsSeeded(address woodGoldPool, address wheatGoldPool, address fishGoldPool, address ironGoldPool);
 }
 
 // =============================================================================
@@ -656,7 +637,6 @@ interface IClanWorldEvents {
 // =============================================================================
 
 interface IClanWorld is IClanWorldEvents {
-
     // -------------------------------------------------------------------------
     // World progression
     // -------------------------------------------------------------------------
@@ -669,6 +649,9 @@ interface IClanWorld is IClanWorldEvents {
     /// @notice Lazily settle a clan forward to current tick. Idempotent.
     function settleClan(uint32 clanId) external;
 
+    /// @notice Lazily settle a single clansman's mission to current tick. Idempotent.
+    function settleClansman(uint32 csId) external;
+
     /// @notice Finalize the current season. Permissionless after seasonEndTick.
     function finalizeSeason() external;
 
@@ -677,17 +660,20 @@ interface IClanWorld is IClanWorldEvents {
     // -------------------------------------------------------------------------
 
     /// @notice Mint a new clan iNFT and spawn its homebase in a valid region.
-    function mintClan(address to) external payable returns (uint32 clanId, uint256 iftTokenId);
+    function mintClan(address to) external returns (uint32 clanId, uint256 iftTokenId);
 
     /// @notice Submit one or more orders for a single clan's clansmen.
     ///         Per-order failures do not revert the tx.
-    function submitClanOrders(uint32 clanId, ClanOrder[] calldata orders)
-        external
-        returns (OrderResult[] memory);
+    function submitClanOrders(uint32 clanId, ClanOrder[] calldata orders) external returns (OrderResult[] memory);
 
     // -------------------------------------------------------------------------
     // Treasury / pool seeding
     // -------------------------------------------------------------------------
+
+    /// @notice Owner-only. Registers token and pool addresses once before seeding.
+    ///         tokens order: wood, iron, wheat, fish, gold, blueprint.
+    ///         pools order: wood, wheat, fish, iron.
+    function initTreasury(address[6] calldata tokens, address[4] calldata pools) external;
 
     /// @notice Owner-only. Seeds the four Unicorn Town pools at deploy time.
     function seedPools(PoolSeedConfig calldata cfg) external;
@@ -698,12 +684,7 @@ interface IClanWorld is IClanWorldEvents {
 
     function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external;
 
-    function transferVaultResource(
-        uint32 fromClanId,
-        uint32 toClanId,
-        ResourceType resource,
-        uint256 amount
-    ) external;
+    function transferVaultResource(uint32 fromClanId, uint32 toClanId, ResourceType resource, uint256 amount) external;
 
     function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external;
 
@@ -732,22 +713,27 @@ interface IClanWorld is IClanWorldEvents {
 
     function getActiveMission(uint32 clansmanId) external view returns (Mission memory);
 
+    function getMissionTiming(uint32 clanId, uint32 clansmanId)
+        external
+        view
+        returns (uint64 submitted, uint64 executes, uint64 settles);
+
+    /// @notice True iff currentTick is inside the recurring winter window.
+    function isWinter() external view returns (bool);
+
+    function getActionDuration(ActionType action) external pure returns (uint64);
+
+    function getTravelTicks(uint8 fromRegion, uint8 toRegion) external pure returns (uint64);
+
     function getBanditTroop(uint32 banditId) external view returns (BanditTroop memory);
 
-    function getWheatPlots(uint32 clanId)
-        external
-        view
-        returns (WheatPlot memory west, WheatPlot memory east);
+    function getWheatPlots(uint32 clanId) external view returns (WheatPlot memory west, WheatPlot memory east);
 
-    function getScheduledMarketActionsForTick(uint64 tick)
-        external
-        view
-        returns (ScheduledMarketAction[] memory);
+    function getScheduledMarketActionsForTick(uint64 tick) external view returns (ScheduledMarketAction[] memory);
 
-    function getActiveDefenders(uint32 targetClanId)
-        external
-        view
-        returns (uint32[] memory clansmanIds);
+    function getActiveDefenders(uint32 targetClanId) external view returns (uint32[] memory clansmanIds);
+
+    function getDefendingClans(uint8 region) external view returns (uint32[] memory clanIds);
 
     // -------------------------------------------------------------------------
     // Derived read getters (read-only simulation forward to current tick)
@@ -756,27 +742,15 @@ interface IClanWorld is IClanWorldEvents {
     // any storage, including settlement checkpoints, cached flags, or queues.
     // -------------------------------------------------------------------------
 
-    function getDerivedClanState(uint32 clanId)
-        external
-        view
-        returns (DerivedClanState memory);
+    function getDerivedClanState(uint32 clanId) external view returns (DerivedClanState memory);
 
-    function getDerivedClansmanState(uint32 clansmanId)
-        external
-        view
-        returns (DerivedClansmanState memory);
+    function getDerivedClansmanState(uint32 clansmanId) external view returns (DerivedClansmanState memory);
 
     /// @notice Non-binding preview. Bandit targeting is recomputed at attack
     ///         resolution time using then-current eagerly settled state.
-    function getBanditTargetPreview(uint32 banditId)
-        external
-        view
-        returns (uint32 previewClanId);
+    function getBanditTargetPreview(uint32 banditId) external view returns (uint32 previewClanId);
 
-    function quoteTravel(uint8 srcRegion, uint8 dstRegion)
-        external
-        view
-        returns (uint8 travelTicks, bytes8 path);
+    function quoteTravel(uint8 srcRegion, uint8 dstRegion) external view returns (uint8 travelTicks, bytes8 path);
 
     function quoteLootValueRaw(uint32 clanId) external view returns (uint256 lootValue);
 
@@ -810,8 +784,5 @@ interface IClanWorld is IClanWorldEvents {
 
     /// @notice Optional. List clansmen currently in a region for tap-to-inspect
     ///         tooltips. Can be derived clientside; included for completeness.
-    function getRegionPopulation(uint8 region)
-        external
-        view
-        returns (RegionOccupant[] memory);
+    function getRegionPopulation(uint8 region) external view returns (RegionOccupant[] memory);
 }
