@@ -31,6 +31,18 @@ const functionNames = [
   'getClanScore',
   'getRankings',
   'submitClanOrders',
+  'transferGold',
+  'transferVaultResource',
+  'transferBlueprint',
+  'transferBundle',
+  'transferClanOwnership',
+];
+
+const eventNames = [
+  'GoldTransferred',
+  'VaultResourceTransferred',
+  'BlueprintTransferred',
+  'ClanOwnershipTransferred',
 ];
 
 function readCanonicalAbi() {
@@ -44,15 +56,22 @@ function readCanonicalAbi() {
 
 function generatedBlock() {
   const abi = readCanonicalAbi();
-  const fragments = functionNames.map((name) => {
+  const functionFragments = functionNames.map((name) => {
     const fragment = abi.find((entry) => entry.type === 'function' && entry.name === name);
     if (!fragment) {
       throw new Error(`Missing ${name} in ${artifactPath}`);
     }
     return fragment;
   });
+  const eventFragments = eventNames.map((name) => {
+    const fragment = abi.find((entry) => entry.type === 'event' && entry.name === name);
+    if (!fragment) {
+      throw new Error(`Missing ${name} in ${artifactPath}`);
+    }
+    return fragment;
+  });
 
-  const json = JSON.stringify(fragments, null, 2);
+  const json = JSON.stringify([...functionFragments, ...eventFragments], null, 2);
 
   return [
     startMarker,

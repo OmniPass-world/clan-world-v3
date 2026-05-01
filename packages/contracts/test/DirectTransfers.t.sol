@@ -331,7 +331,7 @@ contract DirectTransfersTest is Test {
         world.setClanLastSettledTick(clan2, world.getWorldState().currentTick);
 
         vm.prank(owner1);
-        vm.expectRevert("ClanWorld: must settle first");
+        vm.expectRevert("ERR_MUST_SETTLE_FIRST");
         world.transferGold(clan1, clan2, 1e18);
     }
 
@@ -442,6 +442,22 @@ contract DirectTransfersTest is Test {
         vm.prank(owner1);
         vm.expectRevert("ClanWorld: same owner");
         world.transferClanOwnership(clan1, owner1);
+    }
+
+    function test_transferClanOwnership_dead_clan_reverts() public {
+        world.killClan(clan1);
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: clan dead");
+        world.transferClanOwnership(clan1, stranger);
+    }
+
+    function test_transferClanOwnership_dies_during_settle_reverts() public {
+        _setupDiesDuringSettle();
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: clan dead");
+        world.transferClanOwnership(clan1, stranger);
     }
 
     function test_old_owner_cannot_transferGold_after_ownership_transfer() public {
