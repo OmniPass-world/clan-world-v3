@@ -2,6 +2,9 @@
   "name": "@clan-world/contracts",
   "private": true,
   "version": "0.0.0",
+  "exports": {
+    "./abi/IClanWorld.json": "./abi/IClanWorld.json"
+  },
   "scripts": {
     "build": "if command -v forge >/dev/null 2>&1; then forge build; else echo 'forge not installed; skipping (install via foundryup)'; fi",
     "codegen": "forge_bin=$(command -v forge || command -v \"$HOME/.foundry/bin/forge\" || true); if [ -n \"$forge_bin\" ]; then \"$forge_bin\" build src/IClanWorld.sol && node ../../scripts/gen-contract-abi.mjs; else echo 'forge not installed; cannot generate ABI'; exit 1; fi",

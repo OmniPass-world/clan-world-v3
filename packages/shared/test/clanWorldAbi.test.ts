@@ -1,68 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { decodeFunctionResult, encodeAbiParameters } from 'viem';
+import canonicalAbi from '@clan-world/contracts/abi/IClanWorld.json' with { type: 'json' };
+import { decodeFunctionResult, encodeAbiParameters, getAbiItem, type Abi, type AbiFunction } from 'viem';
 import { CLAN_WORLD_ABI } from '../src/adapters/IChainClient';
 
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as `0x${string}`;
+const abi = canonicalAbi.abi as Abi;
 
-const worldStateTuple = [
-  {
-    type: 'tuple',
-    components: [
-      { name: 'currentTick', type: 'uint64' },
-      { name: 'seasonStartTick', type: 'uint64' },
-      { name: 'seasonEndTick', type: 'uint64' },
-      { name: 'seasonFinalized', type: 'bool' },
-      { name: 'currentSeasonNumber', type: 'uint64' },
-      { name: 'nextHeartbeatAtTick', type: 'uint64' },
-      { name: 'nextHeartbeatAtTs', type: 'uint64' },
-      { name: 'nextBanditSpawnEligibleTick', type: 'uint64' },
-      { name: 'currentBanditSpawnChanceBps', type: 'uint16' },
-      { name: 'currentTickSeed', type: 'bytes32' },
-      { name: 'activeBanditId', type: 'uint32' },
-      { name: 'winterActive', type: 'bool' },
-      { name: 'winterStartsAtTick', type: 'uint64' },
-      { name: 'winterEndsAtTick', type: 'uint64' },
-      { name: 'nextCommitSequence', type: 'uint64' },
-    ],
-  },
-] as const;
-
-const worldSnapshotTuple = [
-  {
-    type: 'tuple',
-    components: [
-      { name: 'currentTick', type: 'uint64' },
-      { name: 'seasonStartTick', type: 'uint64' },
-      { name: 'seasonEndTick', type: 'uint64' },
-      { name: 'seasonFinalized', type: 'bool' },
-      { name: 'currentSeasonNumber', type: 'uint64' },
-      { name: 'nextHeartbeatAtTick', type: 'uint64' },
-      { name: 'winterActive', type: 'bool' },
-      { name: 'winterStartsAtTick', type: 'uint64' },
-      { name: 'winterEndsAtTick', type: 'uint64' },
-      { name: 'activeBanditId', type: 'uint32' },
-      { name: 'currentTickSeed', type: 'bytes32' },
-      {
-        name: 'leaderboard',
-        type: 'tuple[]',
-        components: [
-          { name: 'clanId', type: 'uint32' },
-          { name: 'owner', type: 'address' },
-          { name: 'monumentLevel', type: 'uint8' },
-          { name: 'baseLevel', type: 'uint8' },
-          { name: 'wallLevel', type: 'uint8' },
-          { name: 'livingClansmen', type: 'uint8' },
-          { name: 'state', type: 'uint8' },
-          { name: 'lootValue', type: 'uint256' },
-        ],
-      },
-    ],
-  },
-] as const;
+const getFunctionOutputs = (name: string) => (getAbiItem({ abi, name }) as AbiFunction).outputs;
+const worldStateOutputs = getFunctionOutputs('getWorldState');
+const worldSnapshotOutputs = getFunctionOutputs('getWorldSnapshot');
 
 describe('ClanWorld generated ABI tuple decoding', () => {
   it('decodes a known-good getWorldState() result with the current Solidity order', () => {
-    const data = encodeAbiParameters(worldStateTuple, [
+    const data = encodeAbiParameters(worldStateOutputs, [
       {
         currentTick: 11n,
         seasonStartTick: 1n,
@@ -95,7 +45,7 @@ describe('ClanWorld generated ABI tuple decoding', () => {
   });
 
   it('decodes a known-good getWorldSnapshot() result with season fields before winter fields', () => {
-    const data = encodeAbiParameters(worldSnapshotTuple, [
+    const data = encodeAbiParameters(worldSnapshotOutputs, [
       {
         currentTick: 33n,
         seasonStartTick: 0n,
