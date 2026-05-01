@@ -44,6 +44,8 @@ import {
 contract ClanWorldStub is IClanWorld {
     WorldState private _world;
     TreasuryState private _treasury;
+    uint32 private _nextClanId = 1;
+    mapping(uint32 => Clan) private _clans;
 
     constructor(address[6] memory tokens, address[4] memory pools) {
         _world.currentTick = 0;
@@ -103,8 +105,25 @@ contract ClanWorldStub is IClanWorld {
     // Clan lifecycle
     // -------------------------------------------------------------------------
 
-    function mintClan(address) external override returns (uint32, uint256) {
-        return (1, 1);
+    function mintClan(address to) external override returns (uint32 clanId, uint256 iftTokenId) {
+        require(to != address(0), "ClanWorldStub: zero address");
+
+        clanId = _nextClanId++;
+        iftTokenId = uint256(clanId);
+
+        Clan storage clan = _clans[clanId];
+        clan.clanId = clanId;
+        clan.iftTokenId = iftTokenId;
+        clan.owner = to;
+        clan.clanState = ClanState.ACTIVE;
+        clan.lastSettledTick = _world.currentTick;
+        clan.livingClansmen = 4;
+        clan.goldBalance = 3e18;
+        clan.vaultWood = 20e18;
+        clan.vaultWheat = 20e18;
+        clan.vaultFish = 2e18;
+
+        emit ClanSpawned(clanId, to, iftTokenId, 0, _world.currentTick);
     }
 
     function submitClanOrders(uint32, ClanOrder[] calldata orders)
@@ -128,7 +147,16 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function transferClanOwnership(uint32 clanId, address newOwner) external override {
-        emit ClanOwnershipTransferred(clanId, msg.sender, newOwner, 1);
+        Clan storage clan = _clans[clanId];
+        require(clan.clanId != 0, "ClanWorldStub: clan not found");
+        require(clan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(newOwner != address(0), "ClanWorldStub: zero address");
+        require(newOwner != clan.owner, "ClanWorldStub: same owner");
+
+        address oldOwner = clan.owner;
+        clan.owner = newOwner;
+        clan.ownerNonce++;
+        emit ClanOwnershipTransferred(clanId, oldOwner, newOwner, clan.ownerNonce);
     }
 
     // -------------------------------------------------------------------------
@@ -136,6 +164,14 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external override {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+        require(fromClan.goldBalance >= amount, "ClanWorldStub: insufficient gold");
+
+        fromClan.goldBalance -= amount;
+        toClan.goldBalance += amount;
         emit GoldTransferred(fromClanId, toClanId, amount, _world.currentTick);
     }
 
@@ -143,10 +179,43 @@ contract ClanWorldStub is IClanWorld {
         external
         override
     {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+
+        if (resource == ResourceType.Wood) {
+            require(fromClan.vaultWood >= amount, "ClanWorldStub: insufficient wood");
+            fromClan.vaultWood -= amount;
+            toClan.vaultWood += amount;
+        } else if (resource == ResourceType.Iron) {
+            require(fromClan.vaultIron >= amount, "ClanWorldStub: insufficient iron");
+            fromClan.vaultIron -= amount;
+            toClan.vaultIron += amount;
+        } else if (resource == ResourceType.Wheat) {
+            require(fromClan.vaultWheat >= amount, "ClanWorldStub: insufficient wheat");
+            fromClan.vaultWheat -= amount;
+            toClan.vaultWheat += amount;
+        } else if (resource == ResourceType.Fish) {
+            require(fromClan.vaultFish >= amount, "ClanWorldStub: insufficient fish");
+            fromClan.vaultFish -= amount;
+            toClan.vaultFish += amount;
+        } else {
+            revert("ClanWorldStub: invalid resource");
+        }
+
         emit VaultResourceTransferred(fromClanId, toClanId, resource, amount, _world.currentTick);
     }
 
     function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external override {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+        require(fromClan.blueprintBalance >= amount, "ClanWorldStub: insufficient blueprints");
+
+        fromClan.blueprintBalance -= amount;
+        toClan.blueprintBalance += amount;
         emit BlueprintTransferred(fromClanId, toClanId, amount, _world.currentTick);
     }
 
@@ -160,6 +229,30 @@ contract ClanWorldStub is IClanWorld {
         uint256 wheat,
         uint256 fish
     ) external override {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+        require(fromClan.goldBalance >= gold, "ClanWorldStub: insufficient gold");
+        require(fromClan.blueprintBalance >= blueprint, "ClanWorldStub: insufficient blueprints");
+        require(fromClan.vaultWood >= wood, "ClanWorldStub: insufficient wood");
+        require(fromClan.vaultIron >= iron, "ClanWorldStub: insufficient iron");
+        require(fromClan.vaultWheat >= wheat, "ClanWorldStub: insufficient wheat");
+        require(fromClan.vaultFish >= fish, "ClanWorldStub: insufficient fish");
+
+        fromClan.goldBalance -= gold;
+        fromClan.blueprintBalance -= blueprint;
+        fromClan.vaultWood -= wood;
+        fromClan.vaultIron -= iron;
+        fromClan.vaultWheat -= wheat;
+        fromClan.vaultFish -= fish;
+        toClan.goldBalance += gold;
+        toClan.blueprintBalance += blueprint;
+        toClan.vaultWood += wood;
+        toClan.vaultIron += iron;
+        toClan.vaultWheat += wheat;
+        toClan.vaultFish += fish;
+
         if (gold > 0) emit GoldTransferred(fromClanId, toClanId, gold, _world.currentTick);
         if (blueprint > 0) emit BlueprintTransferred(fromClanId, toClanId, blueprint, _world.currentTick);
         if (wood > 0) {
@@ -208,28 +301,8 @@ contract ClanWorldStub is IClanWorld {
         return 0;
     }
 
-    function getClan(uint32) external pure override returns (Clan memory) {
-        return Clan({
-            clanId: 0,
-            iftTokenId: 0,
-            owner: address(0),
-            clanState: ClanState.ACTIVE,
-            baseRegion: 0,
-            baseLevel: 0,
-            wallLevel: 0,
-            monumentLevel: 0,
-            livingClansmen: 0,
-            lastSettledTick: 0,
-            starvationStartsAtTick: 0,
-            coldDamage: 0,
-            ownerNonce: 0,
-            goldBalance: 0,
-            blueprintBalance: 0,
-            vaultWood: 0,
-            vaultIron: 0,
-            vaultWheat: 0,
-            vaultFish: 0
-        });
+    function getClan(uint32 clanId) external view override returns (Clan memory) {
+        return _clans[clanId];
     }
 
     function getClansman(uint32) external pure override returns (Clansman memory) {

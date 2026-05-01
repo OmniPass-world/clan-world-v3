@@ -4504,6 +4504,13 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     // OTC TRANSFERS
     // =========================================================================
 
+    function _requireTransferSettlementComplete(Clan storage fromClan, Clan storage toClan) private view {
+        require(
+            fromClan.lastSettledTick == _world.currentTick && toClan.lastSettledTick == _world.currentTick,
+            "ClanWorld: must settle first"
+        );
+    }
+
     /// @notice Transfer gold from one clan to another. Caller must be owner of fromClan.
     function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external override nonReentrant {
         require(amount > 0, "ClanWorld: zero amount");
@@ -4519,6 +4526,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _settleClan(fromClanId);
         _settleClan(toClanId);
 
+        _requireTransferSettlementComplete(fromClan, toClan);
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         require(fromClan.goldBalance >= amount, "ClanWorld: insufficient gold");
 
@@ -4547,6 +4555,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _settleClan(fromClanId);
         _settleClan(toClanId);
 
+        _requireTransferSettlementComplete(fromClan, toClan);
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         if (resource == ResourceType.Wood) {
             require(fromClan.vaultWood >= amount, "ClanWorld: insufficient wood");
@@ -4560,10 +4569,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             require(fromClan.vaultWheat >= amount, "ClanWorld: insufficient wheat");
             fromClan.vaultWheat -= amount;
             toClan.vaultWheat += amount;
-        } else {
+        } else if (resource == ResourceType.Fish) {
             require(fromClan.vaultFish >= amount, "ClanWorld: insufficient fish");
             fromClan.vaultFish -= amount;
             toClan.vaultFish += amount;
+        } else {
+            revert("ClanWorld: invalid resource");
         }
 
         emit VaultResourceTransferred(fromClanId, toClanId, resource, amount, _world.currentTick);
@@ -4584,6 +4595,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _settleClan(fromClanId);
         _settleClan(toClanId);
 
+        _requireTransferSettlementComplete(fromClan, toClan);
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         require(fromClan.blueprintBalance >= amount, "ClanWorld: insufficient blueprints");
 
@@ -4594,7 +4606,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     }
 
     /// @notice Transfer a bundle of resources atomically. Caller must be owner of fromClan.
-    ///         At least one component must be non-zero. All checks run before any state mutation.
+    ///         At least one component must be non-zero. Component debits and credits are atomic after settlement.
     function transferBundle(
         uint32 fromClanId,
         uint32 toClanId,
@@ -4618,6 +4630,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _settleClan(fromClanId);
         _settleClan(toClanId);
 
+        _requireTransferSettlementComplete(fromClan, toClan);
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         // All balance checks before any mutation (atomic)
         if (gold > 0) require(fromClan.goldBalance >= gold, "ClanWorld: insufficient gold");

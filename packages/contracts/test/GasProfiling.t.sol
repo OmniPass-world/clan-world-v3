@@ -142,9 +142,7 @@ contract GasProfilingTest is Test {
         emit log_named_uint(
             "heartbeat gas (12 clans, 200-tick cap / 4320-tick lag) OPTIMIZATION NEEDED if > 5M", gasUsed
         );
-        emit log_named_uint(
-            "heartbeat gas over 5M budget by", gasUsed > 5_000_000 ? gasUsed - 5_000_000 : 0
-        );
+        emit log_named_uint("heartbeat gas over 5M budget by", gasUsed > 5_000_000 ? gasUsed - 5_000_000 : 0);
         // No assertLt — this scenario intentionally exceeds budget and is tracked in #322.
         // The log output provides the baseline for optimization work.
         assertTrue(true, "log-only test always passes");

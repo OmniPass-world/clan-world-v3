@@ -3,15 +3,7 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ClanWorld} from "../src/ClanWorld.sol";
-import {
-    ClanWorldConstants,
-    ClanState,
-    ClansmanState,
-    ResourceType,
-    Clan,
-    ClanOrder,
-    OrderResult
-} from "../src/IClanWorld.sol";
+import {ClanWorldConstants, ClanState, ClansmanState, ResourceType} from "../src/IClanWorld.sol";
 
 /// @dev Harness that exposes storage manipulation for tests.
 contract DirectTransferHarness is ClanWorld {
@@ -54,7 +46,6 @@ contract DirectTransferHarness is ClanWorld {
             }
         }
     }
-
 }
 
 contract DirectTransfersTest is Test {
@@ -218,6 +209,13 @@ contract DirectTransfersTest is Test {
         assertEq(world.getClan(clan2).vaultWood, to0 + amount);
     }
 
+    function test_transferVaultResource_invalid_resource_reverts() public {
+        vm.prank(owner1);
+        (bool ok,) = address(world)
+            .call(abi.encodeWithSelector(world.transferVaultResource.selector, clan1, clan2, uint8(99), uint256(1e18)));
+        assertFalse(ok, "invalid enum value must revert");
+    }
+
     // =========================================================================
     // transferBlueprint
     // =========================================================================
@@ -299,13 +297,14 @@ contract DirectTransfersTest is Test {
     function test_transferBundle_insufficient_one_component_entire_call_reverts() public {
         // Set clan1 iron = 0 explicitly (iron starts at 0 from mintClan)
         // Bundle asks for iron=50e18 which clan1 doesn't have, plus gold=1e18 which it does
-        uint256 gold0 = world.getClan(clan1).goldBalance;
+        uint256 fromGold0 = world.getClan(clan1).goldBalance;
+        uint256 toGold0 = world.getClan(clan2).goldBalance;
         vm.prank(owner1);
         vm.expectRevert("ClanWorld: insufficient iron");
         world.transferBundle(clan1, clan2, 1e18, 0, 0, 50e18, 0, 0);
         // gold unchanged (atomic)
-        assertEq(world.getClan(clan1).goldBalance, gold0);
-        assertEq(world.getClan(clan2).goldBalance, world.getClan(clan2).goldBalance);
+        assertEq(world.getClan(clan1).goldBalance, fromGold0);
+        assertEq(world.getClan(clan2).goldBalance, toGold0);
     }
 
     function test_transferBundle_dead_sender_reverts() public {
@@ -322,6 +321,18 @@ contract DirectTransfersTest is Test {
         vm.prank(owner1);
         world.transferBundle(clan1, clan2, amount, 0, 0, 0, 0, 0);
         assertEq(world.getClan(clan2).goldBalance, to0 + amount);
+    }
+
+    function test_transferGold_sender_must_be_fully_settled() public {
+        _advanceToTick(201);
+        world.setVaultBalances(clan1, 1000e18, 0, 1000e18, 1000e18);
+        world.setVaultBalances(clan2, 1000e18, 0, 1000e18, 1000e18);
+        world.setClanLastSettledTick(clan1, 0);
+        world.setClanLastSettledTick(clan2, world.getWorldState().currentTick);
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: must settle first");
+        world.transferGold(clan1, clan2, 1e18);
     }
 
     // =========================================================================
@@ -341,32 +352,21 @@ contract DirectTransfersTest is Test {
     /// @dev Put clan into a state where _settleClan will mark it DEAD on the next call.
     ///
     ///      Setup:
-    ///      1. Advance world to tick 112 (inside winter window 110-119).
-    ///      2. Kill 3 of clan1's 4 clansmen so only 1 lives (IDs 0-3 for clan1 which
-    ///         was minted first; setUp mints clan1 then clan2 so clan1 csm IDs = 0,1,2,3).
-    ///      3. Set last-settled tick back to 111 so _settleClan must process tick 111.
-    ///      4. Set starvationStartsAtTick=110 and zero food.
+    ///      1. Advance world to tick 115 (inside winter window 110-119).
+    ///      2. Set last-settled tick back to 110 so _settleClan must process ticks 110-114.
+    ///      3. Zero food so starvation starts at tick 110 and kills one clansman per later winter tick.
     ///
-    ///      During tick-111 settlement: winter=true, starving=true,
-    ///      effectiveStarvationStartsAtTick=110 < 111 → kills last clansman → _markClanDead.
+    ///      During ticks 111-114 settlement: winter=true, starving=true,
+    ///      effectiveStarvationStartsAtTick=110 < tick → kills all 4 clansmen → _markClanDead.
     ///
-    ///      The clan is ALIVE before the transfer call (not yet settled to 112),
+    ///      The clan is ALIVE before the transfer call (not yet settled to 115),
     ///      but DEAD after _settleClan runs inside the transfer function.
     function _setupDiesDuringSettle() internal {
-        // Advance world to tick 112 (deep winter) without settling clan1
-        // (clan1.lastSettledTick will be reset below to 111 after advance)
-        _advanceToTick(112);
+        _advanceToTick(ClanWorldConstants.WINTER_START_TICK + 5);
 
-        // clan1 clansmen IDs: 1,2,3,4 (_nextClansmanId starts at 1 per constructor)
-        world.killClansman(1);
-        world.killClansman(2);
-        world.killClansman(3);
-        // 1 clansman (ID=3) still alive
-
-        // Rewind lastSettledTick to 111 so _settleClan processes tick 111
-        world.setClanLastSettledTick(clan1, 111);
-        // Starvation started at winter onset (tick 110)
-        world.setClanStarvationStartsAtTick(clan1, 110);
+        // Rewind lastSettledTick so _settleClan processes the first 5 winter ticks.
+        world.setClanLastSettledTick(clan1, ClanWorldConstants.WINTER_START_TICK);
+        world.setClanStarvationStartsAtTick(clan1, 0);
         // Zero food so upkeep is failing
         world.setVaultBalances(clan1, 100e18, 0, 0, 0);
         // Also ensure goldBalance is non-zero for the transfer tests
