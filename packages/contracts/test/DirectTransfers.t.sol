@@ -3,7 +3,17 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ClanWorld} from "../src/ClanWorld.sol";
-import {ClanWorldConstants, ClanState, ClansmanState, ResourceType} from "../src/IClanWorld.sol";
+import {
+    ClanWorldConstants,
+    ClanState,
+    ClansmanState,
+    ResourceType,
+    ActionType,
+    StatusCode,
+    ClanOrder,
+    WithdrawResourcesData,
+    OrderResult
+} from "../src/IClanWorld.sol";
 
 /// @dev Harness that exposes storage manipulation for tests.
 contract DirectTransferHarness is ClanWorld {
@@ -20,6 +30,14 @@ contract DirectTransferHarness is ClanWorld {
         _clans[clanId].vaultIron = iron;
         _clans[clanId].vaultWheat = wheat;
         _clans[clanId].vaultFish = fish;
+    }
+
+    function setWallLevel(uint32 clanId, uint8 wallLevel) external {
+        _clans[clanId].wallLevel = wallLevel;
+    }
+
+    function setMonumentLevel(uint32 clanId, uint8 monumentLevel) external {
+        _clans[clanId].monumentLevel = monumentLevel;
     }
 
     function killClan(uint32 clanId) external {
@@ -66,6 +84,26 @@ contract DirectTransfersTest is Test {
 
         vm.prank(owner2);
         (clan2,) = world.mintClan(owner2);
+    }
+
+    function _firstCs(uint32 clanId) internal view returns (uint32) {
+        return world.getClanFullView(clanId).clansmen[0].clansman.clansman.clansmanId;
+    }
+
+    function _queueUpgrade(ActionType action) internal returns (OrderResult[] memory) {
+        ClanOrder[] memory orders = new ClanOrder[](1);
+        orders[0] = ClanOrder({
+            clansmanId: _firstCs(clan1),
+            gotoRegion: world.getClan(clan1).baseRegion,
+            action: action,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
+        });
+        vm.prank(owner1);
+        return world.submitClanOrders(clan1, orders);
     }
 
     // =========================================================================
@@ -134,6 +172,21 @@ contract DirectTransfersTest is Test {
         vm.prank(owner1);
         vm.expectRevert("ClanWorld: not clan owner");
         world.transferGold(clan1, clan2, 1e18);
+    }
+
+    function test_transferGold_ignoresVaultReservations() public {
+        world.setVaultBalances(clan1, 20e18, 0, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeWall);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        uint256 from0 = world.getClan(clan1).goldBalance;
+        uint256 to0 = world.getClan(clan2).goldBalance;
+
+        vm.prank(owner1);
+        world.transferGold(clan1, clan2, 1e18);
+
+        assertEq(world.getClan(clan1).goldBalance, from0 - 1e18, "gold debited");
+        assertEq(world.getClan(clan2).goldBalance, to0 + 1e18, "gold credited");
     }
 
     // =========================================================================
@@ -216,6 +269,61 @@ contract DirectTransfersTest is Test {
         assertFalse(ok, "invalid enum value must revert");
     }
 
+    function test_transferVaultResource_woodReservedByUpgrade_reverts() public {
+        world.setVaultBalances(clan1, 20e18, 0, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeWall);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: insufficient wood");
+        world.transferVaultResource(clan1, clan2, ResourceType.Wood, 1e18);
+    }
+
+    function test_transferVaultResource_ironReservedByUpgrade_reverts() public {
+        world.setWallLevel(clan1, 2);
+        world.setVaultBalances(clan1, 30e18, 5e18, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeWall);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: insufficient iron");
+        world.transferVaultResource(clan1, clan2, ResourceType.Iron, 1e18);
+    }
+
+    function test_transferVaultResource_wheatReservedByUpgrade_reverts() public {
+        world.setVaultBalances(clan1, 40e18, 0, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeBase);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: insufficient wheat");
+        world.transferVaultResource(clan1, clan2, ResourceType.Wheat, 1e18);
+    }
+
+    function test_transferVaultResource_fishIgnoresUpgradeReservations() public {
+        world.setVaultBalances(clan1, 20e18, 0, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeWall);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        world.transferVaultResource(clan1, clan2, ResourceType.Fish, 1e18);
+
+        assertEq(world.getClan(clan1).vaultFish, 1e18, "fish debited");
+        assertEq(world.getClan(clan2).vaultFish, 3e18, "fish credited");
+    }
+
+    function test_transferVaultResource_reservedWoodAllowsSurplusTransfer() public {
+        world.setVaultBalances(clan1, 50e18, 0, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeWall);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        world.transferVaultResource(clan1, clan2, ResourceType.Wood, 25e18);
+
+        assertEq(world.getClan(clan1).vaultWood, 25e18, "surplus wood transferred");
+        assertEq(world.getClan(clan2).vaultWood, 45e18, "recipient credited");
+    }
+
     // =========================================================================
     // transferBlueprint
     // =========================================================================
@@ -256,6 +364,32 @@ contract DirectTransfersTest is Test {
         vm.prank(owner1);
         vm.expectRevert("ClanWorld: clan dead");
         world.transferBlueprint(clan1, clan2, 5e18);
+    }
+
+    function test_transferBlueprint_reservedByUpgrade_reverts() public {
+        world.setMonumentLevel(clan1, 6);
+        world.setVaultBalances(clan1, 200e18, 25e18, 100e18, 2e18);
+        world.setBlueprintBalance(clan1, 1e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeMonument);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: insufficient blueprints");
+        world.transferBlueprint(clan1, clan2, 1e18);
+    }
+
+    function test_transferBlueprint_reservedByUpgradeAllowsSurplusTransfer() public {
+        world.setMonumentLevel(clan1, 6);
+        world.setVaultBalances(clan1, 200e18, 25e18, 100e18, 2e18);
+        world.setBlueprintBalance(clan1, 3e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeMonument);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        world.transferBlueprint(clan1, clan2, 2e18);
+
+        assertEq(world.getClan(clan1).blueprintBalance, 1e18, "surplus blueprints transferred");
+        assertEq(world.getClan(clan2).blueprintBalance, 2e18, "recipient credited");
     }
 
     // =========================================================================
@@ -321,6 +455,60 @@ contract DirectTransfersTest is Test {
         vm.prank(owner1);
         world.transferBundle(clan1, clan2, amount, 0, 0, 0, 0, 0);
         assertEq(world.getClan(clan2).goldBalance, to0 + amount);
+    }
+
+    function test_transferBundle_reservedWoodFailsAtomically() public {
+        world.setVaultBalances(clan1, 20e18, 0, 20e18, 2e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeWall);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        uint256 fromGold0 = world.getClan(clan1).goldBalance;
+        uint256 toGold0 = world.getClan(clan2).goldBalance;
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: insufficient wood");
+        world.transferBundle(clan1, clan2, 1e18, 0, 1e18, 0, 0, 0);
+
+        assertEq(world.getClan(clan1).goldBalance, fromGold0, "sender gold unchanged");
+        assertEq(world.getClan(clan2).goldBalance, toGold0, "recipient gold unchanged");
+    }
+
+    function test_transferBundle_reservedBlueprintFailsAtomically() public {
+        world.setMonumentLevel(clan1, 6);
+        world.setVaultBalances(clan1, 200e18, 25e18, 100e18, 2e18);
+        world.setBlueprintBalance(clan1, 1e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeMonument);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        uint256 fromGold0 = world.getClan(clan1).goldBalance;
+        uint256 toGold0 = world.getClan(clan2).goldBalance;
+
+        vm.prank(owner1);
+        vm.expectRevert("ClanWorld: insufficient blueprints");
+        world.transferBundle(clan1, clan2, 1e18, 1e18, 0, 0, 0, 0);
+
+        assertEq(world.getClan(clan1).goldBalance, fromGold0, "sender gold unchanged");
+        assertEq(world.getClan(clan2).goldBalance, toGold0, "recipient gold unchanged");
+    }
+
+    function test_transferBundle_reservedResourcesAllowSurplusTransfer() public {
+        world.setMonumentLevel(clan1, 6);
+        world.setVaultBalances(clan1, 250e18, 40e18, 125e18, 2e18);
+        world.setBlueprintBalance(clan1, 3e18);
+        OrderResult[] memory result = _queueUpgrade(ActionType.UpgradeMonument);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade queued");
+
+        vm.prank(owner1);
+        world.transferBundle(clan1, clan2, 1e18, 2e18, 25e18, 10e18, 20e18, 1e18);
+
+        assertEq(world.getClan(clan1).goldBalance, 2e18, "gold debited");
+        assertEq(world.getClan(clan1).blueprintBalance, 1e18, "blueprint surplus debited");
+        assertEq(world.getClan(clan1).vaultWood, 225e18, "wood surplus debited");
+        assertEq(world.getClan(clan1).vaultIron, 30e18, "iron surplus debited");
+        assertEq(world.getClan(clan1).vaultWheat, 105e18, "wheat surplus debited");
+        assertEq(world.getClan(clan1).vaultFish, 1e18, "fish debited");
+        assertEq(world.getClan(clan2).blueprintBalance, 2e18, "blueprint credited");
+        assertEq(world.getClan(clan2).vaultIron, 10e18, "iron credited");
     }
 
     function test_transferGold_sender_must_be_fully_settled() public {

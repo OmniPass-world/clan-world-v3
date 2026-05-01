@@ -3723,6 +3723,60 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return false;
     }
 
+    function _spendableVaultResource(uint32 clanId, Clan storage clan, ResourceType resource)
+        internal
+        view
+        returns (uint256)
+    {
+        if (resource == ResourceType.Wood) {
+            return _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clanId], 0);
+        }
+        if (resource == ResourceType.Iron) {
+            return _spendableAfterReleasing(clan.vaultIron, _reservedIronByClan[clanId], 0);
+        }
+        if (resource == ResourceType.Wheat) {
+            return _spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clanId], 0);
+        }
+        if (resource == ResourceType.Fish) {
+            return clan.vaultFish;
+        }
+        return 0;
+    }
+
+    function _deductVaultResource(uint32 clanId, Clan storage clan, ResourceType resource, uint256 amount)
+        internal
+        returns (bool)
+    {
+        if (_spendableVaultResource(clanId, clan, resource) < amount) return false;
+        if (resource == ResourceType.Wood) {
+            clan.vaultWood -= amount;
+            return true;
+        }
+        if (resource == ResourceType.Iron) {
+            clan.vaultIron -= amount;
+            return true;
+        }
+        if (resource == ResourceType.Wheat) {
+            clan.vaultWheat -= amount;
+            return true;
+        }
+        if (resource == ResourceType.Fish) {
+            clan.vaultFish -= amount;
+            return true;
+        }
+        return false;
+    }
+
+    function _spendableBlueprint(uint32 clanId, Clan storage clan) internal view returns (uint256) {
+        return _spendableAfterReleasing(clan.blueprintBalance, _reservedBlueprintByClan[clanId], 0);
+    }
+
+    function _deductBlueprint(uint32 clanId, Clan storage clan, uint256 amount) internal returns (bool) {
+        if (_spendableBlueprint(clanId, clan) < amount) return false;
+        clan.blueprintBalance -= amount;
+        return true;
+    }
+
     function _hasCarryBalance(Clansman storage cs, address token, uint256 amount) internal view returns (bool) {
         if (token == _treasury.woodToken) return cs.carryWood >= amount;
         if (token == _treasury.ironToken) return cs.carryIron >= amount;
@@ -4654,20 +4708,16 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _requireTransferSettlementComplete(fromClan, toClan);
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         if (resource == ResourceType.Wood) {
-            require(fromClan.vaultWood >= amount, "ClanWorld: insufficient wood");
-            fromClan.vaultWood -= amount;
+            require(_deductVaultResource(fromClanId, fromClan, resource, amount), "ClanWorld: insufficient wood");
             toClan.vaultWood += amount;
         } else if (resource == ResourceType.Iron) {
-            require(fromClan.vaultIron >= amount, "ClanWorld: insufficient iron");
-            fromClan.vaultIron -= amount;
+            require(_deductVaultResource(fromClanId, fromClan, resource, amount), "ClanWorld: insufficient iron");
             toClan.vaultIron += amount;
         } else if (resource == ResourceType.Wheat) {
-            require(fromClan.vaultWheat >= amount, "ClanWorld: insufficient wheat");
-            fromClan.vaultWheat -= amount;
+            require(_deductVaultResource(fromClanId, fromClan, resource, amount), "ClanWorld: insufficient wheat");
             toClan.vaultWheat += amount;
         } else if (resource == ResourceType.Fish) {
-            require(fromClan.vaultFish >= amount, "ClanWorld: insufficient fish");
-            fromClan.vaultFish -= amount;
+            require(_deductVaultResource(fromClanId, fromClan, resource, amount), "ClanWorld: insufficient fish");
             toClan.vaultFish += amount;
         } else {
             revert("ClanWorld: invalid resource");
@@ -4693,9 +4743,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         _requireTransferSettlementComplete(fromClan, toClan);
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
-        require(fromClan.blueprintBalance >= amount, "ClanWorld: insufficient blueprints");
+        require(_deductBlueprint(fromClanId, fromClan, amount), "ClanWorld: insufficient blueprints");
 
-        fromClan.blueprintBalance -= amount;
         toClan.blueprintBalance += amount;
 
         emit BlueprintTransferred(fromClanId, toClanId, amount, _world.currentTick);
@@ -4730,19 +4779,51 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         // All balance checks before any mutation (atomic)
         if (gold > 0) require(fromClan.goldBalance >= gold, "ClanWorld: insufficient gold");
-        if (blueprint > 0) require(fromClan.blueprintBalance >= blueprint, "ClanWorld: insufficient blueprints");
-        if (wood > 0) require(fromClan.vaultWood >= wood, "ClanWorld: insufficient wood");
-        if (iron > 0) require(fromClan.vaultIron >= iron, "ClanWorld: insufficient iron");
-        if (wheat > 0) require(fromClan.vaultWheat >= wheat, "ClanWorld: insufficient wheat");
-        if (fish > 0) require(fromClan.vaultFish >= fish, "ClanWorld: insufficient fish");
+        if (blueprint > 0) {
+            require(_spendableBlueprint(fromClanId, fromClan) >= blueprint, "ClanWorld: insufficient blueprints");
+        }
+        if (wood > 0) {
+            require(
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Wood) >= wood,
+                "ClanWorld: insufficient wood"
+            );
+        }
+        if (iron > 0) {
+            require(
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Iron) >= iron,
+                "ClanWorld: insufficient iron"
+            );
+        }
+        if (wheat > 0) {
+            require(
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Wheat) >= wheat,
+                "ClanWorld: insufficient wheat"
+            );
+        }
+        if (fish > 0) {
+            require(
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Fish) >= fish,
+                "ClanWorld: insufficient fish"
+            );
+        }
 
         // Apply debits
         if (gold > 0) fromClan.goldBalance -= gold;
-        if (blueprint > 0) fromClan.blueprintBalance -= blueprint;
-        if (wood > 0) fromClan.vaultWood -= wood;
-        if (iron > 0) fromClan.vaultIron -= iron;
-        if (wheat > 0) fromClan.vaultWheat -= wheat;
-        if (fish > 0) fromClan.vaultFish -= fish;
+        if (blueprint > 0) {
+            require(_deductBlueprint(fromClanId, fromClan, blueprint), "ClanWorld: insufficient blueprints");
+        }
+        if (wood > 0) {
+            require(_deductVaultResource(fromClanId, fromClan, ResourceType.Wood, wood), "ClanWorld: insufficient wood");
+        }
+        if (iron > 0) {
+            require(_deductVaultResource(fromClanId, fromClan, ResourceType.Iron, iron), "ClanWorld: insufficient iron");
+        }
+        if (wheat > 0) {
+            require(_deductVaultResource(fromClanId, fromClan, ResourceType.Wheat, wheat), "ClanWorld: insufficient wheat");
+        }
+        if (fish > 0) {
+            require(_deductVaultResource(fromClanId, fromClan, ResourceType.Fish, fish), "ClanWorld: insufficient fish");
+        }
 
         // Apply credits
         if (gold > 0) toClan.goldBalance += gold;
