@@ -140,7 +140,7 @@ enum ActionType {
     FishDeepSea,
     HarvestWheat,
     DepositResources,
-    BuildWall,
+    UpgradeWall,
     UpgradeBase,
     UpgradeMonument,
     DefendBase,
@@ -746,6 +746,15 @@ interface IClanWorld is IClanWorldEvents {
     /// @notice True iff currentTick is inside the recurring winter window.
     function isWinter() external view returns (bool);
 
+    function getWallUpgradeCost(uint8 currentLevel) external pure returns (uint256 wood, uint256 iron);
+
+    function getBaseUpgradeCost(uint8 currentLevel) external pure returns (uint256 wood, uint256 iron, uint256 wheat);
+
+    function getMonumentUpgradeCost(uint8 currentLevel)
+        external
+        pure
+        returns (uint256 wood, uint256 iron, uint256 wheat, uint256 blueprint);
+
     function getActionDuration(ActionType action) external pure returns (uint64);
 
     function getTravelTicks(uint8 fromRegion, uint8 toRegion) external pure returns (uint64);
@@ -784,6 +793,13 @@ interface IClanWorld is IClanWorldEvents {
     function quoteLootValueRaw(uint32 clanId) external view returns (uint256 lootValue);
 
     function quoteLootValueSettled(uint32 clanId) external view returns (uint256 lootValue);
+
+    function getClanScore(uint32 clanId)
+        external
+        view
+        returns (uint256 score, uint64 monumentReachedAtTick, uint8 monumentLevel);
+
+    function getRankings() external view returns (uint32[] memory clanIdsRanked, uint256[] memory scores);
 
     // -------------------------------------------------------------------------
     // UI indexer aggregator getters (v4.4 additions)

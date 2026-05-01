@@ -45,14 +45,14 @@ contract ClanWorldStub is IClanWorld {
     TreasuryState private _treasury;
 
     constructor(address[6] memory tokens, address[4] memory pools) {
-        _world.currentTick = 0;
+        _world.currentTick = 1;
         _world.nextHeartbeatAtTs = uint64(block.timestamp);
         _world.seasonStartTick = 0;
         _world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
         _world.currentSeasonNumber = 1;
         _world.nextHeartbeatAtTick = _world.currentTick + 1;
         _world.winterStartsAtTick = ClanWorldConstants.WINTER_START_TICK;
-        _world.winterEndsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
+        _world.winterEndsAtTick = 0;
         _world.winterActive = false;
 
         _treasury.woodToken = tokens[0];
@@ -75,21 +75,10 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function heartbeat() external override {
-        require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
-
         uint64 closed = _world.currentTick;
-        _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
-
         _world.currentTick += 1;
         _world.nextHeartbeatAtTick = _world.currentTick + 1;
-        bool wasWinter = _isWinterActiveAt(closed);
-        bool nowWinter = _isWinterActiveAt(_world.currentTick);
-        if (!wasWinter && nowWinter) {
-            emit WinterStarted(_winterEventTick(_world.currentTick));
-        }
-        if (wasWinter && !nowWinter) {
-            emit WinterEnded(_winterEventTick(_world.currentTick));
-        }
+        _world.nextHeartbeatAtTs = uint64(block.timestamp);
         emit TickAdvanced(closed, _world.currentTick, bytes32(0));
     }
 
@@ -140,7 +129,7 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function getWorldState() external view override returns (WorldState memory) {
-        return _worldStateView();
+        return _world;
     }
 
     function getTreasuryState() external view override returns (TreasuryState memory) {
@@ -217,8 +206,46 @@ contract ClanWorldStub is IClanWorld {
         return (0, 0, 0);
     }
 
-    function isWinter() external view override returns (bool) {
-        return _isWinterActiveAt(_world.currentTick);
+    function isWinter() external pure override returns (bool) {
+        return false;
+    }
+
+    function getWallUpgradeCost(uint8 currentLevel) external pure override returns (uint256 wood, uint256 iron) {
+        if (currentLevel == 0) return (20e18, 0);
+        if (currentLevel == 1) return (35e18, 0);
+        if (currentLevel == 2) return (30e18, 5e18);
+        if (currentLevel == 3) return (40e18, 10e18);
+        if (currentLevel == 4) return (50e18, 15e18);
+        return (0, 0);
+    }
+
+    function getBaseUpgradeCost(uint8 currentLevel)
+        external
+        pure
+        override
+        returns (uint256 wood, uint256 iron, uint256 wheat)
+    {
+        if (currentLevel == 1) return (40e18, 0, 20e18);
+        if (currentLevel == 2) return (60e18, 5e18, 30e18);
+        if (currentLevel == 3) return (80e18, 10e18, 40e18);
+        if (currentLevel == 4) return (100e18, 15e18, 50e18);
+        return (0, 0, 0);
+    }
+
+    function getMonumentUpgradeCost(uint8 currentLevel)
+        external
+        pure
+        override
+        returns (uint256 wood, uint256 iron, uint256 wheat, uint256 blueprint)
+    {
+        if (currentLevel == 0) return (30e18, 0, 20e18, 0);
+        if (currentLevel == 1) return (50e18, 0, 30e18, 0);
+        if (currentLevel == 2) return (70e18, 5e18, 40e18, 0);
+        if (currentLevel == 3) return (90e18, 10e18, 50e18, 0);
+        if (currentLevel == 4) return (120e18, 15e18, 60e18, 0);
+        if (currentLevel == 5) return (150e18, 20e18, 80e18, 0);
+        if (currentLevel >= 6 && currentLevel < 10) return (200e18, 25e18, 100e18, 1e18);
+        return (0, 0, 0, 0);
     }
 
     function getActionDuration(ActionType) external pure override returns (uint64) {
@@ -306,22 +333,29 @@ contract ClanWorldStub is IClanWorld {
         return 0;
     }
 
+    function getClanScore(uint32) external pure override returns (uint256, uint64, uint8) {
+        return (0, 0, 0);
+    }
+
+    function getRankings() external pure override returns (uint32[] memory, uint256[] memory) {
+        return (new uint32[](0), new uint256[](0));
+    }
+
     // -------------------------------------------------------------------------
     // UI indexer aggregator getters
     // -------------------------------------------------------------------------
 
     function getWorldSnapshot() external view override returns (WorldSnapshot memory) {
-        WorldState memory ws = _worldStateView();
         return WorldSnapshot({
-            currentTick: ws.currentTick,
-            seasonStartTick: ws.seasonStartTick,
-            seasonEndTick: ws.seasonEndTick,
+            currentTick: _world.currentTick,
+            seasonStartTick: _world.seasonStartTick,
+            seasonEndTick: _world.seasonEndTick,
             seasonFinalized: false,
-            currentSeasonNumber: ws.currentSeasonNumber,
-            nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
-            winterActive: ws.winterActive,
-            winterStartsAtTick: ws.winterStartsAtTick,
-            winterEndsAtTick: ws.winterEndsAtTick,
+            currentSeasonNumber: _world.currentSeasonNumber,
+            nextHeartbeatAtTick: _world.nextHeartbeatAtTick,
+            winterActive: _world.winterActive,
+            winterStartsAtTick: _world.winterStartsAtTick,
+            winterEndsAtTick: _world.winterEndsAtTick,
             activeBanditId: 0,
             currentTickSeed: bytes32(0),
             leaderboard: new LeaderboardEntry[](0)
@@ -384,41 +418,5 @@ contract ClanWorldStub is IClanWorld {
 
     function getRegionPopulation(uint8) external pure override returns (RegionOccupant[] memory) {
         return new RegionOccupant[](0);
-    }
-
-    function _isWinterActiveAt(uint64 tick) internal pure returns (bool) {
-        if (tick < ClanWorldConstants.WINTER_START_TICK) {
-            return false;
-        }
-        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
-        return elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
-    }
-
-    function _winterEventTick(uint64 tick) internal pure returns (uint64) {
-        return tick;
-    }
-
-    function _winterWindowForTick(uint64 tick)
-        internal
-        pure
-        returns (bool active, uint64 startsAtTick, uint64 endsAtTick)
-    {
-        if (tick < ClanWorldConstants.WINTER_START_TICK) {
-            startsAtTick = ClanWorldConstants.WINTER_START_TICK;
-            endsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
-            return (false, startsAtTick, endsAtTick);
-        }
-
-        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
-        uint64 cycleIndex = elapsed / ClanWorldConstants.WINTER_PERIOD_TICKS;
-        uint64 cycleStart = ClanWorldConstants.WINTER_START_TICK + cycleIndex * ClanWorldConstants.WINTER_PERIOD_TICKS;
-        active = elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
-        startsAtTick = active ? cycleStart : cycleStart + ClanWorldConstants.WINTER_PERIOD_TICKS;
-        endsAtTick = startsAtTick + ClanWorldConstants.WINTER_DURATION_TICKS;
-    }
-
-    function _worldStateView() internal view returns (WorldState memory ws) {
-        ws = _world;
-        (ws.winterActive, ws.winterStartsAtTick, ws.winterEndsAtTick) = _winterWindowForTick(_world.currentTick);
     }
 }
