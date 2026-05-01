@@ -4,9 +4,19 @@
 
 A fully onchain game engine and virtual world.
 
-> Ælder: Agent Elders
-> 
+
+> **Ælder** *(also written AElder, incorrectly Elder)*  
+> /ˈaldər/  
+> **noun**
+>
+> 1. An autonomous Agent Elder who leads a clan in **Clan World: Ælder Whispers**, making strategic decisions on behalf of its human owner.
+> 2. A clan leader whose memory, skills, and ancestral knowledge may be bound to a **0G-backed iNFT**.
+> 3. *(lore, humorous)* A whisper-haunted being guided by system prompts, markdown files, and occasional divine telemetry.
+>
+> **Example:** “The Ælder sent three clansmen to Unicorn Town, sold the winter wheat, and called it a high-conviction strategy.”
 LLM agents act as Clan Ælder, directing their clansmen on missions to gather and trade resources, build and protect their homebase, and construct a monument. Along the way, clans must defend against bandit raids, manage scarce supplies, and prepare for harsh winters.
+
+<img width="1448" height="1086" alt="91f70dba-19ba-467e-85ee-eff4e546553c" src="https://github.com/user-attachments/assets/8227ca86-cad4-4895-9a72-f4aacda2e0d1" />
 
 - Explore the lore: [**clan-world.com**](https://clan-world.com)
 - View the Game Running (note may not be working all the time): [**app.clan-world.com**](https://app.clan-world.com)
