@@ -26,8 +26,10 @@ pragma solidity ^0.8.34;
 library ClanWorldConstants {
     // World cadence
     uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 60;
-    uint64 internal constant TICKS_PER_WINTER_CYCLE = 110;
+    // First winter opens at tick 110; ticks [100,110) remain pre-winter runway.
+    uint64 internal constant WINTER_START_TICK = 110;
     uint64 internal constant WINTER_DURATION_TICKS = 10;
+    uint64 internal constant WINTER_PERIOD_TICKS = 110;
     uint64 internal constant SEASON_DURATION_TICKS = 360;
 
     // Bandit cadence
@@ -40,16 +42,14 @@ library ClanWorldConstants {
     uint64 internal constant CLANSMAN_COOLDOWN_SECONDS = 60;
 
     // Carry caps (per clansman)
-    uint256 internal constant CLANSMAN_CARRY_CAP = 10e18;
     uint256 internal constant WOOD_CAP = 15e18;
     uint256 internal constant IRON_CAP = 5e18;
     uint256 internal constant WHEAT_CAP = 40e18;
     uint256 internal constant FISH_CAP = 8e18;
 
     // Gathering yields
-    uint256 internal constant WOOD_YIELD_PER_TICK = 1e18;
     uint256 internal constant WOOD_BASE_YIELD = 2e18;
-    uint256 internal constant WOOD_CRIT_BONUS = WOOD_YIELD_PER_TICK;
+    uint256 internal constant WOOD_CRIT_BONUS = 1e18;
     uint16 internal constant WOOD_CRIT_BPS = 2000; // 20%
 
     uint256 internal constant IRON_BASE_YIELD = 5e17; // 0.5e18
@@ -62,8 +62,11 @@ library ClanWorldConstants {
     // Upkeep
     uint256 internal constant WHEAT_UPKEEP_PER_CLANSMAN = 1e18;
     uint256 internal constant FISH_UPKEEP_PER_CLANSMAN = 1e17; // 0.1
+    uint256 internal constant WINTER_WOOD_BURN_PER_CLANSMAN = 5e17; // 0.5
     uint256 internal constant WINTER_WOOD_BURN_PER_BASE = 1e18;
     uint16 internal constant WINTER_UPKEEP_MULTIPLIER_BPS = 20000; // 2x
+    uint16 internal constant COLD_DAMAGE_PER_WALL_DEGRADATION = 2;
+    uint16 internal constant COLD_DAMAGE_PER_CLANSMAN_DEATH = 2;
 
     // Wheat plots
     uint64 internal constant WHEAT_PLOT_REGROW_TICKS = 4;
@@ -105,13 +108,15 @@ enum ClansmanState {
     DEAD
 }
 
+// v1 ABI: Bandit state machine redesigned in Phase 9. ABI consumers must regenerate.
 enum BanditState {
-    NONE,
-    CAMPING,
-    RESTING,
-    ATTACKING,
-    DEFEATED,
-    ESCAPED
+    None,
+    Spawned,
+    Camped,
+    Resting,
+    Attacking,
+    Defeated,
+    Escaped
 }
 
 enum WheatPlotState {
@@ -135,14 +140,13 @@ enum ActionType {
     FishDeepSea,
     HarvestWheat,
     DepositResources,
-    BuildWall,
+    UpgradeWall,
     UpgradeBase,
     UpgradeMonument,
     DefendBase,
     MarketBuy,
     MarketSell,
-    Wait,
-    UpgradeWall
+    Wait
 }
 
 enum MarketExecutionMode {
@@ -179,11 +183,13 @@ enum StatusCode {
     ERR_NO_ACTIVE_BANDIT,
     ERR_SEASON_ENDED,
     ERR_NOT_ENOUGH_GOLD,
-    ERR_CARRY_FULL
+    ERR_CARRY_FULL,
+    ERR_WINTER_LOCKED,
+    ERR_MUST_SETTLE_FIRST
 }
 
 // =============================================================================
-// CORE STATE STRUCTS (raw storage shape)
+// CORE STATE STRUCTS (canonical ABI shape; implementations may derive view-only fields)
 // =============================================================================
 
 struct WorldState {
@@ -191,6 +197,8 @@ struct WorldState {
     uint64 seasonStartTick;
     uint64 seasonEndTick;
     bool seasonFinalized;
+    uint64 currentSeasonNumber; // 1-indexed; incremented each time seasonEndTick is crossed
+    uint64 nextHeartbeatAtTick; // estimated tick that will be opened by the next heartbeat (for off-chain UI)
 
     uint64 nextHeartbeatAtTs;
     uint64 nextBanditSpawnEligibleTick;
@@ -198,15 +206,12 @@ struct WorldState {
     bytes32 currentTickSeed;
 
     uint32 activeBanditId; // 0 if none
+    // Derived view fields. ClanWorld.sol intentionally does not store these as source-of-truth.
     bool winterActive;
     uint64 winterStartsAtTick;
     uint64 winterEndsAtTick; // 0 if not active
 
     uint64 nextCommitSequence; // global FIFO sequence for scheduled market actions
-
-    // appended fields — do not insert before this line
-    uint64 currentSeasonNumber;   // 1-indexed; incremented each time seasonEndTick is crossed
-    uint64 nextHeartbeatAtTick;   // estimated tick that will be opened by the next heartbeat (for off-chain UI)
 }
 
 struct TreasuryState {
@@ -302,22 +307,21 @@ struct Mission {
     uint256 maxGoldIn; // market_buy only, 0 otherwise
 }
 
+// v1 ABI: Bandit troop layout redesigned in Phase 9. ABI consumers must regenerate.
 struct BanditTroop {
-    uint32 banditId;
+    uint32 id;
+    uint8 region;
     BanditState state;
-
-    uint8 currentRegion;
-    uint8 attackAttemptsMade;
-    uint64 stateEnteredTick;
-    uint64 nextActionTick;
-
+    uint32 targetClanId; // 0 if not attacking
+    uint64 tickEnteredState;
+    uint32 strength; // hp / combat power
     uint8 tier;
-    uint16 attackPower; // derived from tier; tier is canonical (v4.3 §G)
-
+    uint8 attackAttemptsMade;
     uint256 carryWood;
     uint256 carryIron;
     uint256 carryWheat;
     uint256 carryFish;
+    uint256 carryGold;
 }
 
 struct ScheduledMarketAction {
@@ -463,7 +467,9 @@ struct ActiveBanditView {
     uint32 banditId;
     BanditState state;
     uint8 currentRegion;
+    /// @dev Attacks the bandit has already made this state.
     uint8 attackAttemptsMade;
+    /// @dev Attacks the bandit can still make before state transition.
     uint8 maxAttemptsRemaining;
     uint64 stateEnteredTick;
     uint64 nextActionTick;
@@ -476,6 +482,7 @@ struct ActiveBanditView {
     uint256 carryFish;
 
     uint32 projectedTargetClanId; // 0 if no eligible target in current region
+    /// @dev Estimated loot value of the projected target clan (0 if no eligible target).
     uint256 projectedTargetLootValue;
 }
 
@@ -504,7 +511,11 @@ interface IClanWorldEvents {
     );
     event ClanSettled(uint32 indexed clanId, uint64 settledToTick);
     event ClanEliminated(uint32 indexed clanId, uint64 indexed tick);
+    event ClanDied(uint32 indexed clanId, uint64 tick, string reason);
     event ClanStarvationChanged(uint32 indexed clanId, bool isStarving, uint64 atTick);
+    event ClanColdShortage(uint32 indexed clanId, uint64 tick, uint256 woodShort);
+    event WallDegradedByCold(uint32 indexed clanId, uint8 newWallLevel, uint64 tick);
+    event ClansmanColdDeath(uint32 indexed clanId, uint32 csId, uint64 tick);
 
     // ----- missions -----
     event MissionAssigned(
@@ -538,10 +549,10 @@ interface IClanWorldEvents {
     event ResourcesDeposited(
         uint32 indexed clanId,
         uint32 indexed clansmanId,
-        uint256 woodDelta,
-        uint256 ironDelta,
-        uint256 wheatDelta,
-        uint256 fishDelta,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
         uint64 atTick
     );
 
@@ -602,8 +613,29 @@ interface IClanWorldEvents {
         uint64 atTick
     );
     event BanditDefeated(uint32 indexed banditId, uint32 indexed targetClanId, uint64 atTick);
+    /// @dev atTick / tick is the caller-provided tick for replay-determinism:
+    ///      closedTick in heartbeat context, or historical settlement tick in lazy-settlement context.
+    ///      Always use this value (not block.timestamp) when reconstructing state at a specific tick.
     event BanditEscaped(uint32 indexed banditId, uint64 atTick);
+    event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
+    event WallDamagedByBandit(uint32 indexed clanId, uint8 newLevel, uint32 indexed banditId);
+    event ClansmanKilledByBandit(uint32 indexed clanId, uint32 indexed clansmanId, uint32 indexed banditId);
     event BlueprintAwarded(uint32 indexed clanId, uint32 indexed banditId, uint256 amount);
+    event BlueprintEarned(uint32 indexed clanId, uint32 indexed banditId, uint256 amount, uint64 tick);
+    event LootDistributed(
+        uint32 indexed banditId,
+        uint32[] clanIdsRewarded,
+        uint256 perClanWood,
+        uint256 perClanWheat,
+        uint256 perClanFish,
+        uint256 perClanIron,
+        uint256 perClanGold,
+        uint256 burnedWood,
+        uint256 burnedWheat,
+        uint256 burnedFish,
+        uint256 burnedIron,
+        uint256 burnedGold
+    );
     event LootDistributedToDefender(
         uint32 indexed banditId,
         uint32 indexed clanId,
@@ -613,10 +645,6 @@ interface IClanWorldEvents {
         uint256 wheat,
         uint256 fish
     );
-
-    // ----- winter cold damage -----
-    event ColdDamageApplied(uint32 indexed clanId, uint16 oldDamage, uint16 newDamage, uint64 atTick);
-    event ClansmanDiedFromCold(uint32 indexed clanId, uint64 atTick);
 
     // ----- OTC transfers -----
     event GoldTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
@@ -715,6 +743,9 @@ interface IClanWorld is IClanWorldEvents {
         view
         returns (uint64 submitted, uint64 executes, uint64 settles);
 
+    /// @notice True iff currentTick is inside the recurring winter window.
+    function isWinter() external view returns (bool);
+
     function getWallUpgradeCost(uint8 currentLevel) external pure returns (uint256 wood, uint256 iron);
 
     function getBaseUpgradeCost(uint8 currentLevel) external pure returns (uint256 wood, uint256 iron, uint256 wheat);
@@ -728,7 +759,11 @@ interface IClanWorld is IClanWorldEvents {
 
     function getTravelTicks(uint8 fromRegion, uint8 toRegion) external pure returns (uint64);
 
+    function getBandit(uint32 banditId) external view returns (BanditTroop memory);
+
     function getBanditTroop(uint32 banditId) external view returns (BanditTroop memory);
+
+    function getBanditsInRegion(uint8 region) external view returns (uint32[] memory);
 
     function getWheatPlots(uint32 clanId) external view returns (WheatPlot memory west, WheatPlot memory east);
 
@@ -759,16 +794,11 @@ interface IClanWorld is IClanWorldEvents {
 
     function quoteLootValueSettled(uint32 clanId) external view returns (uint256 lootValue);
 
-    /// @notice Ranking score preview for a clan.
-    /// @dev Score is ordered by monument level, then earliest first-reached tick for that level,
-    ///      then settled vault loot value, then wall level. The loot component matches
-    ///      quoteLootValueSettled's read-only settled-vault basis.
     function getClanScore(uint32 clanId)
         external
         view
         returns (uint256 score, uint64 monumentReachedAtTick, uint8 monumentLevel);
 
-    /// @notice Live clans sorted by score descending, with clanId ascending for exact ties.
     function getRankings() external view returns (uint32[] memory clanIdsRanked, uint256[] memory scores);
 
     // -------------------------------------------------------------------------

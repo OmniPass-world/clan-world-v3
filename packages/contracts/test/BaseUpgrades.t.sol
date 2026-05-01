@@ -152,7 +152,7 @@ contract BaseUpgradesTest is Test {
         assertEq(world.getClan(clanId).baseLevel, 2, "base level after settle");
         assertEq(world.getClan(clanId).vaultWood, 100e18 - woodCost, "wood deducted at settle");
         assertEq(world.getClan(clanId).vaultIron, 100e18 - ironCost, "iron deducted at settle");
-        assertEq(world.getClan(clanId).vaultWheat, 100e18 - wheatCost - 8e18, "wheat upkeep and upgrade cost deducted");
+        assertEq(world.getClan(clanId).vaultWheat, 100e18 - wheatCost, "reserved wheat is protected from upkeep");
     }
 
     function test_upgradeBase_rejectsInsufficientVaultAtQueueTime() public {
@@ -357,7 +357,7 @@ contract BaseUpgradesTest is Test {
         assertEq(uint8(next[0].status), uint8(StatusCode.OK), "pending count released");
     }
 
-    function test_upgradeBase_reversedClansmanSettlementInvalidatesFutureReservation() public {
+    function test_upgradeBase_reversedClansmanSettlementAppliesSequentialReservations() public {
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
@@ -370,7 +370,7 @@ contract BaseUpgradesTest is Test {
 
         _advanceTicks(world.getActionDuration(ActionType.UpgradeBase) + 2);
 
-        assertEq(world.getClan(clanId).baseLevel, 2, "only current-level reservation settles");
+        assertEq(world.getClan(clanId).baseLevel, 3, "future-level reservation retries after prerequisite lands");
     }
 
     function test_upgradeBase_simAndRealScoresMatchAfterOutOfOrderCancellation() public {

@@ -8,9 +8,7 @@ import {
     ClanWorldConstants,
     Clan,
     ClanOrder,
-    Mission,
     ClansmanState,
-    MarketExecutionMode,
     OrderResult,
     StatusCode,
     ActionType
@@ -44,31 +42,6 @@ contract WallUpgradeHarness is ClanWorld {
         wallLevel = clan.wallLevel;
     }
 
-    function installDeprecatedBuildWallMission(uint32 clanId, uint32 clansmanId, uint64 settlesAtTick) external {
-        Clan storage clan = _clans[clanId];
-        _clansmen[clansmanId].state = ClansmanState.ACTING;
-        _clansmen[clansmanId].currentRegion = clan.baseRegion;
-        _missions[clansmanId] = Mission({
-            active: true,
-            nonce: 99,
-            submittedAtTick: 0,
-            executesAtTick: 0,
-            settlesAtTick: settlesAtTick,
-            clansmanId: clansmanId,
-            startRegion: clan.baseRegion,
-            targetRegion: clan.baseRegion,
-            action: ActionType.BuildWall,
-            startTick: 0,
-            arrivalTick: 0,
-            actionStartTick: 0,
-            missionSeed: bytes32(0),
-            marketMode: MarketExecutionMode.None,
-            targetClanId: 0,
-            marketToken: address(0),
-            marketAmount: 0,
-            maxGoldIn: 0
-        });
-    }
 }
 
 contract WallUpgradesTest is Test {
@@ -176,18 +149,6 @@ contract WallUpgradesTest is Test {
         assertEq(world.getClan(clanId).wallLevel, 1, "wall level after settle");
         assertEq(world.getClan(clanId).vaultWood, 100e18 - woodCost, "wood deducted at settle");
         assertEq(world.getClan(clanId).vaultIron, 100e18 - ironCost, "iron deducted at settle");
-    }
-
-    function test_buildWall_isDeprecatedAndRejected() public {
-        uint32 clanId = _mintClan(elder);
-        uint32 csId = _firstCs(clanId);
-        world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
-
-        OrderResult[] memory result = _submitOrder(elder, clanId, csId, ActionType.BuildWall);
-
-        assertEq(uint8(result[0].status), uint8(StatusCode.ERR_INVALID_ACTION), "build wall rejected");
-        assertFalse(world.getActiveMission(csId).active, "no mission queued");
-        assertEq(world.getClan(clanId).wallLevel, 0, "wall unchanged");
     }
 
     function test_upgradeWall_deadClansmanReleasesReservationAndAllowsRequeue() public {
@@ -308,18 +269,6 @@ contract WallUpgradesTest is Test {
         assertEq(wallLevel, 2, "both reservations apply sequentially");
         assertEq(realLoot, simLoot, "sim and real loot match");
         assertEq(realScore, simScore, "sim and real score match");
-    }
-
-    function test_deprecatedBuildWallFlightedMissionCompletes() public {
-        uint32 clanId = _mintClan(elder);
-        uint32 csId = _firstCs(clanId);
-
-        world.installDeprecatedBuildWallMission(clanId, csId, 0);
-        world.setCurrentTick(1);
-        world.settleClan(clanId);
-
-        assertFalse(world.getActiveMission(csId).active, "legacy BuildWall mission completed");
-        assertEq(uint8(world.getClansman(csId).state), uint8(ClansmanState.WAITING), "worker released");
     }
 
     function test_upgradeWall_rejectsInsufficientVaultAtQueueTime() public {

@@ -2029,7 +2029,7 @@ contract ClanWorldTest is Test {
         assertEq(ws.seasonStartTick, 0);
         assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS);
         assertEq(
-            ws.winterStartsAtTick, ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS
+            ws.winterStartsAtTick, ClanWorldConstants.WINTER_PERIOD_TICKS - ClanWorldConstants.WINTER_DURATION_TICKS
         );
         assertFalse(ws.winterActive);
     }
@@ -2038,7 +2038,7 @@ contract ClanWorldTest is Test {
         // winterStartsAtTick = 100; WinterStarted fires on the heartbeat that opens tick 100
         // i.e. when closedTick=99, newTick=100 >= winterStartsAtTick=100.
         // Advance 99 heartbeats so currentTick=99, then one more heartbeat fires WinterStarted at tick 100.
-        uint64 winterStart = ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS; // = 100
+        uint64 winterStart = ClanWorldConstants.WINTER_PERIOD_TICKS - ClanWorldConstants.WINTER_DURATION_TICKS; // = 100
         for (uint64 i = 0; i < winterStart - 1; i++) {
             vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
             world.heartbeat();
@@ -2064,7 +2064,7 @@ contract ClanWorldTest is Test {
 
     function test_winter_end_and_next_cycle() public {
         // Advance past first winter end tick (= 110)
-        uint64 winterEnd = ClanWorldConstants.TICKS_PER_WINTER_CYCLE; // = 110
+        uint64 winterEnd = ClanWorldConstants.WINTER_PERIOD_TICKS; // = 110
         for (uint64 i = 0; i <= winterEnd; i++) {
             vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
             world.heartbeat();
@@ -2074,7 +2074,7 @@ contract ClanWorldTest is Test {
         // next winter at [210, 220)
         assertEq(
             ws.winterStartsAtTick,
-            ClanWorldConstants.TICKS_PER_WINTER_CYCLE * 2 - ClanWorldConstants.WINTER_DURATION_TICKS
+            ClanWorldConstants.WINTER_PERIOD_TICKS * 2 - ClanWorldConstants.WINTER_DURATION_TICKS
         );
     }
 
@@ -2090,7 +2090,7 @@ contract ClanWorldTest is Test {
         assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS * 2);
         // winter reset for new season
         uint64 expectedWinterStart = ClanWorldConstants.SEASON_DURATION_TICKS
-            + ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS;
+            + ClanWorldConstants.WINTER_PERIOD_TICKS - ClanWorldConstants.WINTER_DURATION_TICKS;
         assertEq(ws.winterStartsAtTick, expectedWinterStart);
     }
 

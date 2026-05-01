@@ -165,7 +165,7 @@ contract MonumentUpgradesTest is Test {
         assertEq(world.getClanFullView(clanId).clan.clan.monumentLevel, 1, "monument level after settle");
         assertEq(world.getClan(clanId).vaultWood, 100e18 - woodCost, "wood deducted at settle");
         assertEq(world.getClan(clanId).vaultIron, 100e18 - ironCost, "iron deducted at settle");
-        assertEq(world.getClan(clanId).vaultWheat, 100e18 - wheatCost - 8e18, "wheat upkeep and monument cost deducted");
+        assertEq(world.getClan(clanId).vaultWheat, 100e18 - wheatCost, "reserved wheat is protected from upkeep");
         assertEq(world.getClan(clanId).blueprintBalance, 5e18 - blueprintCost, "blueprint deducted at settle");
     }
 
@@ -305,7 +305,7 @@ contract MonumentUpgradesTest is Test {
         assertEq(uint8(next[0].status), uint8(StatusCode.OK), "pending count released");
     }
 
-    function test_upgradeMonument_reversedClansmanSettlementInvalidatesFutureReservation() public {
+    function test_upgradeMonument_reversedClansmanSettlementAppliesSequentialReservations() public {
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
@@ -318,7 +318,7 @@ contract MonumentUpgradesTest is Test {
 
         _advanceTicks(world.getActionDuration(ActionType.UpgradeMonument) + 2);
 
-        assertEq(world.getClan(clanId).monumentLevel, 1, "only current-level reservation settles");
+        assertEq(world.getClan(clanId).monumentLevel, 2, "future-level reservation retries after prerequisite lands");
     }
 
     function test_upgradeMonument_simAndRealScoresMatchAfterOutOfOrderCancellation() public {

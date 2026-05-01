@@ -73,6 +73,16 @@ export const CLAN_WORLD_ABI = [
             "internalType": "bool"
           },
           {
+            "name": "currentSeasonNumber",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "nextHeartbeatAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
             "name": "nextHeartbeatAtTs",
             "type": "uint64",
             "internalType": "uint64"
@@ -114,16 +124,6 @@ export const CLAN_WORLD_ABI = [
           },
           {
             "name": "nextCommitSequence",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "currentSeasonNumber",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextHeartbeatAtTick",
             "type": "uint64",
             "internalType": "uint64"
           }
@@ -442,9 +442,14 @@ export const CLAN_WORLD_ABI = [
         "internalType": "struct BanditTroop",
         "components": [
           {
-            "name": "banditId",
+            "name": "id",
             "type": "uint32",
             "internalType": "uint32"
+          },
+          {
+            "name": "region",
+            "type": "uint8",
+            "internalType": "uint8"
           },
           {
             "name": "state",
@@ -452,24 +457,19 @@ export const CLAN_WORLD_ABI = [
             "internalType": "enum BanditState"
           },
           {
-            "name": "currentRegion",
-            "type": "uint8",
-            "internalType": "uint8"
+            "name": "targetClanId",
+            "type": "uint32",
+            "internalType": "uint32"
           },
           {
-            "name": "attackAttemptsMade",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "stateEnteredTick",
+            "name": "tickEnteredState",
             "type": "uint64",
             "internalType": "uint64"
           },
           {
-            "name": "nextActionTick",
-            "type": "uint64",
-            "internalType": "uint64"
+            "name": "strength",
+            "type": "uint32",
+            "internalType": "uint32"
           },
           {
             "name": "tier",
@@ -477,9 +477,9 @@ export const CLAN_WORLD_ABI = [
             "internalType": "uint8"
           },
           {
-            "name": "attackPower",
-            "type": "uint16",
-            "internalType": "uint16"
+            "name": "attackAttemptsMade",
+            "type": "uint8",
+            "internalType": "uint8"
           },
           {
             "name": "carryWood",
@@ -498,6 +498,11 @@ export const CLAN_WORLD_ABI = [
           },
           {
             "name": "carryFish",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryGold",
             "type": "uint256",
             "internalType": "uint256"
           }
