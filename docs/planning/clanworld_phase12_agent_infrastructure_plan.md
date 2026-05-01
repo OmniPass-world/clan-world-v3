@@ -160,10 +160,10 @@ These are elder-specific and must remain in run.sh because settings.json `env` b
 
 ### Proposed A/B split
 
-- **Group A** (elders 1 and 3): launch with `--system-prompt ""` flag
+- **Group A** (elders 1 and 3): launch with `--append-system-prompt "<elder strategic flavor — TBD per-elder>"` flag
 - **Group B** (elders 2 and 4): launch with no flag (current default behavior)
 
-> **Resolved 2026-04-30 — Liam directive:** `--output-format` takes only `text`, `json`, or `stream-json` (output format only — does NOT remove the coding system prompt). Verified against `claude --help`. For the A/B experiment, the correct flag is `--system-prompt ""` which **replaces the default coding system prompt with an empty string**, removing Claude Code assistant framing from elder responses. `--bare` was evaluated but rejected — it also disables CLAUDE.md auto-discovery and hooks, which breaks the elder config setup.
+> **Resolved 2026-05-01 — Liam directive:** the experiment APPENDS to the default system prompt, not REPLACES it. The flag is `--append-system-prompt "<text>"` (verified via `claude --help`). This adds elder strategic flavor on top of the default Claude Code system prompt rather than removing it. Tool-use discipline + JSON output capability + filesystem constraints all remain intact. Hypothesis: appended elder-narrative context produces stronger clan-voice prose layered over the default coding harness, without sacrificing the tool/JSON contracts the order-submit pipeline depends on. (Earlier framing tried `--system-prompt ""` to REPLACE the default; rejected because it would strip tool schemas + JSON discipline alongside the coding persona, breaking elder runtime.) `--bare` was also evaluated but rejected — it disables CLAUDE.md auto-discovery and hooks, which breaks the elder config setup.
 
 ### How to observe behavior delta
 
@@ -176,11 +176,11 @@ Both groups write all responses to `state/outbox/` already (outbox dir created i
 Compare across groups:
 1. **Response length** — token count per tick response (Group A expected shorter if coding prompt removed)
 2. **Code-block frequency** — count of triple-backtick blocks per tick response
-3. **Strategic narrative depth** — qualitative: does Group A produce more clan-voice prose and fewer implementation details?
+3. **Strategic narrative depth** — qualitative: does Group A produce stronger clan-voice prose alongside the same baseline tool-use + order-submission?
 
 ### What to measure
 
-Collect a minimum of 10 ticks per elder before drawing conclusions. The coding system prompt removal hypothesis is that elder responses shift from tool-use + code-heavy to narrative + order-submission only.
+Collect a minimum of 10 ticks per elder before drawing conclusions. The append-system-prompt hypothesis is that elder responses gain elder-narrative strategic content while still retaining tool-use + JSON output capability — code blocks may still appear, that is not a failure. Group B is the narrative-strength baseline.
 
 ---
 
@@ -346,9 +346,9 @@ Execute in order. Stop at any failing step — do not proceed to the next elder 
    - No cross-contamination: elder-1 does not see elder-2's state outbox files
    - Plugin cache dirs are separate (`state/plugin-cache` in each elder's own dir)
 
-8. **`--system-prompt ""` flag (Group A test)** — boot elder-1 with `--system-prompt ""`. Issue a tick response prompt.
+8. **`--append-system-prompt` flag (Group A test)** — boot elder-1 with `--append-system-prompt "<elder strategic flavor — TBD per-elder>"`. Issue a tick response prompt.
 
-   Pass criterion: elder-1 (with `--system-prompt ""` flag) produces ≥2 consecutive responses that contain NO markdown code blocks (``` fences) when given a purely strategic prompt (e.g., "what resources should we prioritize this tick?"). Elder-2 (without flag) produces ≥1 code block in same scenario. Log to `state/outbox/` for comparison.
+   Pass criterion: elder-1 (with `--append-system-prompt` flag) produces ≥2 consecutive responses with elder-narrative strategic content while still retaining tool-use and JSON output capability when given a purely strategic prompt (e.g., "what resources should we prioritize this tick?"). Markdown code blocks may still appear; that is not a failure. Elder-2 (without flag) is the baseline for narrative strength. Log to `state/outbox/` for comparison.
 
 9. **Credentials symlink** — confirm `/home/claude/clan-world/agents/.claude/.credentials.json` resolves to `/home/claude/.claude/.credentials.json` and elder-1 authenticates without the interactive OAuth wizard.
 
@@ -364,7 +364,7 @@ Execute in order. Stop at any failing step — do not proceed to the next elder 
 | Shared `CLAUDE_CONFIG_DIR` breaks per-elder OAuth refresh (race on `.credentials.json`) | Med | High | Use Section 8 options a/b/c (OAUTH_TOKEN env var suppresses writes; flock; or keep per-elder files). Do not rely on stagger-by-5s alone. Test 2 concurrent elders before running all 4. | Revert `CLAUDE_CONFIG_DIR` to per-elder in each run.sh; re-create per-elder `.credentials.json` symlinks |
 | Parent-walk does not union `settings.json` correctly (per-elder overrides too aggressively) | Med | High | Test elder-1 alone first; inspect loaded config with `claude config list` or equivalent; verify shared env vars are active | Revert directory layout for that elder; debug settings merge before migrating others |
 | Per-elder `skills/` directory not auto-discovered by Claude Code | Low | Med | Run `/skill-creator` test (step 6 of test plan); skills are discovered by convention (`skills/<name>/SKILL.md`) relative to `.claude/` dirs on parent-walk path — no `skillsDirectory` settings key exists | Symlink `agents/elder-N/.claude/skills/` into `agents/.claude/skills/` under a namespaced subdirectory |
-| `--system-prompt ""` produces unexpected behavior (interactive mode ignores it, or CLAUDE.md still loaded) | Low | Low | Verify Group A (elder-1) responses lack code-block artifacts in first 3 ticks; fall back to `--append-system-prompt` with an explicit override instruction if needed | Remove flag from Group A run.sh; A/B experiment degrades gracefully to baseline |
+| `--append-system-prompt` produces unexpected behavior (interactive mode ignores it, or appended flavor is too weak to shift narrative) | Low | Low | Verify Group A (elder-1) responses show stronger elder-narrative strategic content while retaining tool-use and JSON output capability in first 3 ticks | Remove flag from Group A run.sh; A/B experiment degrades gracefully to baseline |
 | Plugin pollers cross-kill when sharing config dir | Low | High | Keep `CLAUDE_CODE_PLUGIN_CACHE_DIR` per-elder regardless of `CLAUDE_CONFIG_DIR` change; test concurrent boot (step 7 of test plan) | Already mitigated by per-elder plugin cache — if issues persist, investigate plugin-specific state files in the shared dir |
 | Makefile elder targets break after path migration | Med | Low | Update Makefile paths as part of migration step 14; test `make elder-1` before declaring migration done | Revert Makefile to old paths; old paths still exist in backup |
 | Old `elder-N/` dirs deleted before backup verified | Low | Critical | Backup step is step 1; old dirs deleted only after ALL 4 elders pass test plan | Restore from `/home/claude/clan-world.bak-phase12/` |
