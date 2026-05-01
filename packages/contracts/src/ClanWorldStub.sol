@@ -124,16 +124,57 @@ contract ClanWorldStub is IClanWorld {
     function seedPools(PoolSeedConfig calldata) external override {}
 
     // -------------------------------------------------------------------------
+    // Clan ownership transfer
+    // -------------------------------------------------------------------------
+
+    function transferClanOwnership(uint32 clanId, address newOwner) external override {
+        emit ClanOwnershipTransferred(clanId, msg.sender, newOwner, 1);
+    }
+
+    // -------------------------------------------------------------------------
     // OTC transfers
     // -------------------------------------------------------------------------
 
-    function transferGold(uint32, uint32, uint256) external override {}
+    function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external override {
+        emit GoldTransferred(fromClanId, toClanId, amount, _world.currentTick);
+    }
 
-    function transferVaultResource(uint32, uint32, ResourceType, uint256) external override {}
+    function transferVaultResource(uint32 fromClanId, uint32 toClanId, ResourceType resource, uint256 amount)
+        external
+        override
+    {
+        emit VaultResourceTransferred(fromClanId, toClanId, resource, amount, _world.currentTick);
+    }
 
-    function transferBlueprint(uint32, uint32, uint256) external override {}
+    function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external override {
+        emit BlueprintTransferred(fromClanId, toClanId, amount, _world.currentTick);
+    }
 
-    function transferBundle(uint32, uint32, uint256, uint256, uint256, uint256, uint256, uint256) external override {}
+    function transferBundle(
+        uint32 fromClanId,
+        uint32 toClanId,
+        uint256 gold,
+        uint256 blueprint,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish
+    ) external override {
+        if (gold > 0) emit GoldTransferred(fromClanId, toClanId, gold, _world.currentTick);
+        if (blueprint > 0) emit BlueprintTransferred(fromClanId, toClanId, blueprint, _world.currentTick);
+        if (wood > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Wood, wood, _world.currentTick);
+        }
+        if (iron > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Iron, iron, _world.currentTick);
+        }
+        if (wheat > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Wheat, wheat, _world.currentTick);
+        }
+        if (fish > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Fish, fish, _world.currentTick);
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Raw read getters
@@ -181,6 +222,7 @@ contract ClanWorldStub is IClanWorld {
             lastSettledTick: 0,
             starvationStartsAtTick: 0,
             coldDamage: 0,
+            ownerNonce: 0,
             goldBalance: 0,
             blueprintBalance: 0,
             vaultWood: 0,
