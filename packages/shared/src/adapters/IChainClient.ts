@@ -2224,6 +2224,276 @@ export const CLAN_WORLD_ABI = [
       }
     ],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferGold",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferVaultResource",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "resource",
+        "type": "uint8",
+        "internalType": "enum ResourceType"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferBlueprint",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferBundle",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "gold",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "blueprint",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "wood",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "iron",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "wheat",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "fish",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferClanOwnership",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "GoldTransferred",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "VaultResourceTransferred",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "resource",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum ResourceType"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "BlueprintTransferred",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClanOwnershipTransferred",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "oldOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwnerNonce",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
   }
 ] as const;
 // END GENERATED CLAN_WORLD_ABI
