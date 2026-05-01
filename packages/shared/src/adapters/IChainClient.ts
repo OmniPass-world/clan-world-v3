@@ -455,6 +455,16 @@ export const CLAN_WORLD_ABI = [
             "internalType": "uint32"
           },
           {
+            "name": "tier",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "attackAttemptsMade",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
             "name": "carryWood",
             "type": "uint256",
             "internalType": "uint256"
