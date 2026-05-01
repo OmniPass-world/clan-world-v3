@@ -798,6 +798,95 @@ contract ClanWorldTest is Test {
         assertEq(cs.carryFish, 1e18, "fish enters carry");
     }
 
+    function test_withdrawResources_rejectsReservedWheat() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
+        uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
+        uint8 homeRegion = harness.getClan(clanId).baseRegion;
+        harness.setVault(clanId, 100e18, 100e18, 50e18, 0);
+
+        OrderResult[] memory upgrade =
+            _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeBase);
+        assertEq(uint8(upgrade[0].status), uint8(StatusCode.OK), "base upgrade reserves wheat");
+
+        OrderResult[] memory withdraw = _submitWithdrawOrder(harness, clanId, withdrawCsId, homeRegion, 0, 0, 35e18, 0);
+
+        assertEq(uint8(withdraw[0].status), uint8(StatusCode.ERR_MISSING_RESOURCES), "reserved wheat is unavailable");
+        assertFalse(harness.getActiveMission(withdrawCsId).active, "rejected withdraw should not install mission");
+    }
+
+    function test_withdrawResources_rejectsReservedWood() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
+        uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
+        uint8 homeRegion = harness.getClan(clanId).baseRegion;
+        harness.setVault(clanId, 30e18, 100e18, 100e18, 0);
+
+        OrderResult[] memory upgrade =
+            _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeWall);
+        assertEq(uint8(upgrade[0].status), uint8(StatusCode.OK), "wall upgrade reserves wood");
+
+        OrderResult[] memory withdraw = _submitWithdrawOrder(harness, clanId, withdrawCsId, homeRegion, 11e18, 0, 0, 0);
+
+        assertEq(uint8(withdraw[0].status), uint8(StatusCode.ERR_MISSING_RESOURCES), "reserved wood is unavailable");
+        assertFalse(harness.getActiveMission(withdrawCsId).active, "rejected withdraw should not install mission");
+    }
+
+    function test_withdrawResources_rejectsReservedIron() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
+        uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
+        uint8 homeRegion = harness.getClan(clanId).baseRegion;
+        harness.setClanWallLevel(clanId, 2);
+        harness.setVault(clanId, 40e18, 7e18, 100e18, 0);
+
+        OrderResult[] memory upgrade =
+            _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeWall);
+        assertEq(uint8(upgrade[0].status), uint8(StatusCode.OK), "wall upgrade reserves iron");
+
+        OrderResult[] memory withdraw = _submitWithdrawOrder(harness, clanId, withdrawCsId, homeRegion, 0, 3e18, 0, 0);
+
+        assertEq(uint8(withdraw[0].status), uint8(StatusCode.ERR_MISSING_RESOURCES), "reserved iron is unavailable");
+        assertFalse(harness.getActiveMission(withdrawCsId).active, "rejected withdraw should not install mission");
+    }
+
+    function test_withdrawResources_allowsFishWithActiveReservation() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
+        uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
+        uint8 homeRegion = harness.getClan(clanId).baseRegion;
+        harness.setVault(clanId, 100e18, 100e18, 100e18, 8e18);
+
+        OrderResult[] memory upgrade =
+            _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeBase);
+        assertEq(uint8(upgrade[0].status), uint8(StatusCode.OK), "base upgrade reserves non-fish resources");
+
+        OrderResult[] memory withdraw = _submitWithdrawOrder(harness, clanId, withdrawCsId, homeRegion, 0, 0, 0, 8e18);
+        assertEq(uint8(withdraw[0].status), uint8(StatusCode.OK), "fish has no reservation surface");
+
+        _advanceTickHarness(harness);
+        _advanceTickHarness(harness);
+
+        assertEq(harness.getClan(clanId).vaultFish, 0, "fish leaves vault");
+        assertEq(harness.getClansman(withdrawCsId).carryFish, 8e18, "fish enters carry");
+    }
+
+    function test_withdrawResources_allowsWheatSurplusAboveReservation() public {
+        (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
+        uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
+        uint8 homeRegion = harness.getClan(clanId).baseRegion;
+        harness.setVault(clanId, 100e18, 100e18, 50e18, 0);
+
+        OrderResult[] memory upgrade =
+            _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeBase);
+        assertEq(uint8(upgrade[0].status), uint8(StatusCode.OK), "base upgrade reserves wheat");
+
+        OrderResult[] memory withdraw = _submitWithdrawOrder(harness, clanId, withdrawCsId, homeRegion, 0, 0, 25e18, 0);
+        assertEq(uint8(withdraw[0].status), uint8(StatusCode.OK), "spendable wheat surplus can be withdrawn");
+
+        _advanceTickHarness(harness);
+        _advanceTickHarness(harness);
+
+        assertEq(harness.getClan(clanId).vaultWheat, 5e18, "wheat withdraw and reserved upgrade both settle");
+        assertEq(harness.getClansman(withdrawCsId).carryWheat, 25e18, "wheat enters carry");
+    }
+
     function test_withdrawResources_failsWhenInsufficientVault() public {
         (ClanWorldTestHarness harness, uint32 clanId, uint32 csId) = _setupHarness();
         uint8 homeRegion = harness.getClan(clanId).baseRegion;
@@ -2392,6 +2481,10 @@ contract ClanWorldTest is Test {
         vm.prank(elder);
         (clanId,) = harness.mintClan(elder);
         csId = harness.getClanFullView(clanId).clansmen[0].clansman.clansman.clansmanId;
+    }
+
+    function _harnessCsAt(ClanWorldTestHarness harness, uint32 clanId, uint256 index) internal view returns (uint32) {
+        return harness.getClanFullView(clanId).clansmen[index].clansman.clansman.clansmanId;
     }
 
     // Helper: submit an order on a harness-based world

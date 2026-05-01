@@ -1075,7 +1075,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
 
         WithdrawResourcesData memory req = m.withdrawResources;
-        if (!_hasWithdrawRequest(req) || !_hasVaultResources(clan, req) || !_hasCarryCapacityForWithdraw(cs, req)) {
+        HeldUpgradeResources memory released;
+        if (
+            !_hasWithdrawRequest(req) || !_hasSpendableForWithdraw(clanId, clan, req, released)
+                || !_hasCarryCapacityForWithdraw(cs, req)
+        ) {
             _completeMission(cs, m);
             return;
         }
@@ -3787,9 +3791,23 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return req.wood > 0 || req.iron > 0 || req.wheat > 0 || req.fish > 0;
     }
 
-    function _hasVaultResources(Clan storage clan, WithdrawResourcesData memory req) internal view returns (bool) {
-        return clan.vaultWood >= req.wood && clan.vaultIron >= req.iron && clan.vaultWheat >= req.wheat
-            && clan.vaultFish >= req.fish;
+    function _hasSpendableForWithdraw(
+        uint32 clanId,
+        Clan storage clan,
+        WithdrawResourcesData memory req,
+        HeldUpgradeResources memory released
+    ) internal view returns (bool) {
+        if (_spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clanId], released.wood) < req.wood) {
+            return false;
+        }
+        if (_spendableAfterReleasing(clan.vaultIron, _reservedIronByClan[clanId], released.iron) < req.iron) {
+            return false;
+        }
+        if (_spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clanId], released.wheat) < req.wheat) {
+            return false;
+        }
+        if (clan.vaultFish < req.fish) return false;
+        return true;
     }
 
     function _hasCarryCapacityForWithdraw(Clansman storage cs, WithdrawResourcesData memory req)
@@ -4151,7 +4169,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             if (gotoRegion != clan.baseRegion) return StatusCode.ERR_NOT_AT_HOMEBASE;
             WithdrawResourcesData memory req = order.withdrawResources;
             if (!_hasWithdrawRequest(req)) return StatusCode.ERR_EMPTY_CARGO;
-            if (!_hasVaultResources(clan, req)) return StatusCode.ERR_MISSING_RESOURCES;
+            HeldUpgradeResources memory released = _releasedUpgradeResources(clan.clanId, cs.clansmanId);
+            if (!_hasSpendableForWithdraw(clan.clanId, clan, req, released)) {
+                return StatusCode.ERR_MISSING_RESOURCES;
+            }
             if (!_hasCarryCapacityForWithdraw(cs, req)) return StatusCode.ERR_CARRY_FULL;
         }
 
