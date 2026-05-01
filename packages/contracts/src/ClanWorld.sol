@@ -1553,6 +1553,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             (cs, m) = _simulateGatherWheat(sim, cs, m, tick, starving);
         } else if (action == ActionType.DepositResources) {
             (cs, m) = _simulateDoDeposit(sim, cs, m);
+        } else if (action == ActionType.WithdrawResources) {
+            (cs, m) = _simulateDoWithdrawResources(sim, cs, m);
         } else if (
             action == ActionType.UpgradeWall || action == ActionType.UpgradeBase || action == ActionType.UpgradeMonument
         ) {
@@ -1702,6 +1704,47 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         cs.carryIron = 0;
         cs.carryWheat = 0;
         cs.carryFish = 0;
+
+        return _simulateCompleteMission(cs, m);
+    }
+
+    function _simulateDoWithdrawResources(SettlementSimulation memory sim, Clansman memory cs, Mission memory m)
+        internal
+        view
+        returns (Clansman memory, Mission memory)
+    {
+        if (cs.currentRegion != sim.clan.baseRegion) return _simulateCompleteMission(cs, m);
+
+        WithdrawResourcesData memory req = m.withdrawResources;
+        if (!_hasWithdrawRequest(req)) return _simulateCompleteMission(cs, m);
+
+        uint256 spendableWood =
+            _spendableAfterReleasing(sim.clan.vaultWood, _reservedWoodByClan[sim.clan.clanId], 0);
+        uint256 spendableIron =
+            _spendableAfterReleasing(sim.clan.vaultIron, _reservedIronByClan[sim.clan.clanId], 0);
+        uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
+
+        if (
+            spendableWood < req.wood || spendableIron < req.iron || spendableWheat < req.wheat
+                || sim.clan.vaultFish < req.fish
+        ) return _simulateCompleteMission(cs, m);
+
+        if (
+            req.wood > _remainingCapacity(cs.carryWood, ClanWorldConstants.WOOD_CAP)
+                || req.iron > _remainingCapacity(cs.carryIron, ClanWorldConstants.IRON_CAP)
+                || req.wheat > _remainingCapacity(cs.carryWheat, ClanWorldConstants.WHEAT_CAP)
+                || req.fish > _remainingCapacity(cs.carryFish, ClanWorldConstants.FISH_CAP)
+        ) return _simulateCompleteMission(cs, m);
+
+        sim.clan.vaultWood -= req.wood;
+        sim.clan.vaultIron -= req.iron;
+        sim.clan.vaultWheat -= req.wheat;
+        sim.clan.vaultFish -= req.fish;
+
+        cs.carryWood += req.wood;
+        cs.carryIron += req.iron;
+        cs.carryWheat += req.wheat;
+        cs.carryFish += req.fish;
 
         return _simulateCompleteMission(cs, m);
     }
