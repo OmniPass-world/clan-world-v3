@@ -25,15 +25,21 @@ const functionNames = [
   'getClanFullView',
   'getMarketState',
   'getActiveBanditView',
+  'getWallUpgradeCost',
+  'getBaseUpgradeCost',
+  'getMonumentUpgradeCost',
+  'getClanScore',
+  'getRankings',
   'submitClanOrders',
 ];
 
 function readCanonicalAbi() {
   const parsed = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
-  if (!Array.isArray(parsed.abi)) {
-    throw new Error(`${artifactPath} must contain an "abi" array`);
+  const abi = Array.isArray(parsed) ? parsed : parsed.abi;
+  if (!Array.isArray(abi)) {
+    throw new Error(`${artifactPath} must contain an ABI array or an "abi" array`);
   }
-  return parsed.abi;
+  return abi;
 }
 
 function generatedBlock() {
@@ -59,10 +65,22 @@ function generatedBlock() {
 
 function replaceGeneratedBlock(source, replacement) {
   const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker);
+  const end = source.lastIndexOf(endMarker);
   if (start === -1 || end === -1 || end < start) {
-    throw new Error(`Could not find generated ABI markers in ${targetPath}`);
+    const legacyStart = source.indexOf('// Minimal ABI');
+    const legacyEnd = source.indexOf('class StubChainClient');
+    if (legacyStart === -1 || legacyEnd === -1 || legacyEnd < legacyStart) {
+      throw new Error(`Could not find generated ABI markers in ${targetPath}`);
+    }
+    return `${source.slice(0, legacyStart)}${replacement}\n\n${source.slice(legacyEnd)}`;
   }
+  const conflictMarker = /^(<{7}|={7}|>{7})/m;
+  const before = source.slice(0, start);
+  const after = source.slice(end + endMarker.length);
+  if (conflictMarker.test(before) || conflictMarker.test(after)) {
+    throw new Error(`Resolve non-generated merge conflicts in ${targetPath} before regenerating.`);
+  }
+
   return `${source.slice(0, start)}${replacement}${source.slice(end + endMarker.length)}`;
 }
 
