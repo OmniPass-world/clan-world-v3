@@ -92,6 +92,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     uint8 internal constant MAX_BANDITS_PER_REGION = 1;
     uint8 internal constant MAX_TOTAL_BANDITS = 1;
     uint8 internal constant MAX_CLANS = 12;
+    uint64 internal constant MAX_LAZY_SETTLE_BACKLOG = 200;
     /// @dev Bandit spawn weights are a heartbeat-time heuristic. V1 has
     ///      MAX_CLANS = 12, so scanning 8 clans per tick covers the live cap in
     ///      at most two rotating heartbeats while keeping heartbeat gas bounded.
@@ -405,9 +406,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (fromTick >= curTick) return;
 
         // Cap ticks settled per call to prevent block gas limit issues
-        uint64 maxSettleTicks = 200;
-        if (curTick > fromTick + maxSettleTicks) {
-            curTick = fromTick + maxSettleTicks;
+        if (curTick > fromTick + MAX_LAZY_SETTLE_BACKLOG) {
+            curTick = fromTick + MAX_LAZY_SETTLE_BACKLOG;
         }
 
         uint32[] storage clansmanIds = _clanClansmanIds[clanId];
@@ -1850,6 +1850,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             emit BanditEscaped(banditId, closedTick);
             return;
         }
+        if (targetClan.lastSettledTick < _world.currentTick) {
+            _transitionBanditState(banditId, BanditState.Resting);
+            return;
+        }
 
         _eagerSettleActiveDefendersForBase(targetClanId, targetClan.baseRegion);
         if (
@@ -2779,7 +2783,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         // ERR_MUST_SETTLE_FIRST not in StatusCode enum — using ERR_INVALID_ACTION as the closest proxy
         {
             uint64 lastSettled = _clans[clanId].lastSettledTick;
-            if (_world.currentTick > lastSettled + 200) {
+            if (_world.currentTick > lastSettled + MAX_LAZY_SETTLE_BACKLOG) {
                 results = new OrderResult[](orders.length);
                 for (uint256 i = 0; i < orders.length; i++) {
                     results[i] = OrderResult({

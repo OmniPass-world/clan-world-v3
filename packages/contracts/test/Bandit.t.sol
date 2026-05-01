@@ -70,6 +70,26 @@ contract BanditTest is Test {
         assertEq(state.activeBanditId, id, "active bandit");
     }
 
+    function test_getBanditAbiDecodeIncludesTierAndAttackAttempts() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_MOUNTAINS, 45);
+
+        (bool getBanditOk, bytes memory getBanditData) =
+            address(world).staticcall(abi.encodeWithSelector(world.getBandit.selector, id));
+        assertTrue(getBanditOk, "getBandit call");
+        BanditTroop memory bandit = abi.decode(getBanditData, (BanditTroop));
+        assertEq(bandit.id, id, "getBandit id");
+        assertEq(bandit.tier, 2, "getBandit tier");
+        assertEq(bandit.attackAttemptsMade, 0, "getBandit attempts");
+
+        (bool getTroopOk, bytes memory getTroopData) =
+            address(world).staticcall(abi.encodeWithSignature("getBanditTroop(uint32)", id));
+        assertTrue(getTroopOk, "getBanditTroop call");
+        BanditTroop memory troop = abi.decode(getTroopData, (BanditTroop));
+        assertEq(troop.id, id, "getBanditTroop id");
+        assertEq(troop.tier, 2, "getBanditTroop tier");
+        assertEq(troop.attackAttemptsMade, 0, "getBanditTroop attempts");
+    }
+
     function test_getBanditMissingIdReturnsNoneState() public view {
         BanditTroop memory bandit = world.getBandit(999);
 

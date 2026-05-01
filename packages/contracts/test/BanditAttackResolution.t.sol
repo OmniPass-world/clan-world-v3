@@ -552,6 +552,29 @@ contract BanditAttackResolutionTest is Test {
         assertEq(world.getBandit(banditId).targetClanId, 0, "bandit target cleared");
     }
 
+    function test_banditAttackDefersWhenTargetStillStaleAfterCappedSettlement() public {
+        _advanceUntil(251);
+
+        uint32 targetClanId = _mintClan();
+        uint64 attackTick = world.getWorldState().currentTick;
+        world.setClanUpkeepState(targetClanId, attackTick - 250, 1000e18, 100e18);
+
+        Clan memory beforeClan = world.getClan(targetClanId);
+        uint32 banditId = _forceAttack(targetClanId, 100);
+
+        _advanceTick();
+
+        Clan memory afterClan = world.getClan(targetClanId);
+        assertEq(afterClan.lastSettledTick, attackTick - 50, "settlement capped before attack tick");
+        assertEq(afterClan.vaultWood, beforeClan.vaultWood, "no combat loot stolen");
+        assertEq(afterClan.wallLevel, beforeClan.wallLevel, "no wall damage");
+        assertEq(uint8(afterClan.clanState), uint8(ClanState.ACTIVE), "target remains alive");
+        assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit deferred to resting");
+        assertEq(world.getBandit(banditId).targetClanId, 0, "target cleared for later pick");
+        assertEq(world.getBandit(banditId).attackAttemptsMade, 0, "deferred attack not counted");
+        assertEq(world.getBandit(banditId).carryWood, 0, "bandit carry unchanged");
+    }
+
     function test_defeatedBanditLootBurnsDropRemainderAndCarryOverflow() public {
         uint32[] memory clanIds = _mintClans(3);
         _activateTargetDefenders(clanIds[0], clanIds, 1);
@@ -641,7 +664,7 @@ contract BanditAttackResolutionTest is Test {
 
     function test_sixthFailedAttackTerminallyEscapesAndBurnsCarry() public {
         uint32 clanId = _mintClan();
-        uint32 banditId = _forceAttack(clanId, 1);
+        uint32 banditId = _forceAttack(clanId, 100);
         world.setBanditCarry(banditId, 100e18, 100e18, 100e18, 100e18, 100e18);
 
         for (uint8 attempt = 1; attempt <= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS; attempt++) {

@@ -220,7 +220,7 @@ contract BanditSpawnTest is Test {
 
         _advanceTicks(world, world.minSpawnCooldownTicks() - 1);
 
-        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 1, "cooldown blocks second spawn");
+        assertEq(world.activeBanditCount(), 1, "cooldown blocks second spawn");
         (, uint16 probabilityAccum) = world.getBanditSpawnState(ClanWorldConstants.REGION_FOREST);
         assertEq(probabilityAccum, 0, "cooldown does not accumulate chance");
     }
