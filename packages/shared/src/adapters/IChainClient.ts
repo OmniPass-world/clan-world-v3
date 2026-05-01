@@ -80,6 +80,13 @@ export const baseSepolia = defineChain({
 export const CLAN_WORLD_ABI = [
   {
     "type": "function",
+    "name": "heartbeat",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "getWorldState",
     "inputs": [],
     "outputs": [
