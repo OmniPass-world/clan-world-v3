@@ -16,6 +16,7 @@
       "outputs": [
         "abi/IClanWorld.json",
         "src/adapters/IChainClient.ts",
+        "src/generated/enums.ts",
         "convex/_generated/**"
       ]
     },

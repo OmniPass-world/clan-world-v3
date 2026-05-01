@@ -9,6 +9,7 @@
     "dev": "turbo run dev",
     "gen:chainclient-abi": "node scripts/gen-chainclient-abi.mjs",
     "gen:contract-abi": "node scripts/gen-contract-abi.mjs",
+    "gen:enums": "node scripts/gen-enums.mjs",
     "lint": "turbo run lint",
     "test:chainclient-abi": "node scripts/gen-chainclient-abi.mjs --check",
     "test": "turbo run test",
