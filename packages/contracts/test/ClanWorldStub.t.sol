@@ -25,14 +25,29 @@ contract ClanWorldStubTest is Test {
     }
 
     function test_heartbeat_increments_tick() public {
-        assertEq(stub.getWorldState().currentTick, 1);
+        assertEq(stub.getWorldState().currentTick, 0);
         stub.heartbeat();
-        assertEq(stub.getWorldState().currentTick, 2);
+        assertEq(stub.getWorldState().currentTick, 1);
     }
 
     function test_getWorldSnapshot_returns_current_tick() public {
         stub.heartbeat();
-        assertEq(stub.getWorldSnapshot().currentTick, 2);
+        assertEq(stub.getWorldSnapshot().currentTick, 1);
+    }
+
+    function test_heartbeat_rateLimit_matches_ClanWorld() public {
+        stub.heartbeat();
+
+        vm.expectRevert("ClanWorld: heartbeat rate limited");
+        stub.heartbeat();
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        stub.heartbeat();
+
+        WorldState memory ws = stub.getWorldState();
+        assertEq(ws.currentTick, 2);
+        assertEq(ws.nextHeartbeatAtTick, 3);
+        assertEq(ws.nextHeartbeatAtTs, block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
     }
 
     function test_getBanditMissingIdReturnsNoneState() public view {
@@ -49,11 +64,9 @@ contract ClanWorldStubTest is Test {
         assertEq(ws.seasonStartTick, 0);
         assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS);
         assertEq(ws.nextHeartbeatAtTick, ws.currentTick + 1, "next heartbeat opens currentTick + 1");
-        assertEq(
-            ws.winterStartsAtTick,
-            ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS
-        );
-        assertEq(ws.winterEndsAtTick, ClanWorldConstants.TICKS_PER_WINTER_CYCLE);
+        assertEq(ws.winterStartsAtTick, ClanWorldConstants.WINTER_START_TICK);
+        assertEq(ws.winterEndsAtTick, ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS);
         assertFalse(ws.winterActive);
+        assertFalse(stub.isWinter());
     }
 }

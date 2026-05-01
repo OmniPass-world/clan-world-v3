@@ -26,8 +26,10 @@ pragma solidity ^0.8.34;
 library ClanWorldConstants {
     // World cadence
     uint64 internal constant HEARTBEAT_INTERVAL_SECONDS = 60;
-    uint64 internal constant TICKS_PER_WINTER_CYCLE = 110;
+    // First winter opens at tick 110; ticks [100,110) remain pre-winter runway.
+    uint64 internal constant WINTER_START_TICK = 110;
     uint64 internal constant WINTER_DURATION_TICKS = 10;
+    uint64 internal constant WINTER_PERIOD_TICKS = 110;
     uint64 internal constant SEASON_DURATION_TICKS = 360;
 
     // Bandit cadence
@@ -60,8 +62,11 @@ library ClanWorldConstants {
     // Upkeep
     uint256 internal constant WHEAT_UPKEEP_PER_CLANSMAN = 1e18;
     uint256 internal constant FISH_UPKEEP_PER_CLANSMAN = 1e17; // 0.1
+    uint256 internal constant WINTER_WOOD_BURN_PER_CLANSMAN = 5e17; // 0.5
     uint256 internal constant WINTER_WOOD_BURN_PER_BASE = 1e18;
     uint16 internal constant WINTER_UPKEEP_MULTIPLIER_BPS = 20000; // 2x
+    uint16 internal constant COLD_DAMAGE_PER_WALL_DEGRADATION = 2;
+    uint16 internal constant COLD_DAMAGE_PER_CLANSMAN_DEATH = 2;
 
     // Wheat plots
     uint64 internal constant WHEAT_PLOT_REGROW_TICKS = 4;
@@ -178,11 +183,13 @@ enum StatusCode {
     ERR_NO_ACTIVE_BANDIT,
     ERR_SEASON_ENDED,
     ERR_NOT_ENOUGH_GOLD,
-    ERR_CARRY_FULL
+    ERR_CARRY_FULL,
+    ERR_WINTER_LOCKED,
+    ERR_MUST_SETTLE_FIRST
 }
 
 // =============================================================================
-// CORE STATE STRUCTS (raw storage shape)
+// CORE STATE STRUCTS (canonical ABI shape; implementations may derive view-only fields)
 // =============================================================================
 
 struct WorldState {
@@ -199,6 +206,7 @@ struct WorldState {
     bytes32 currentTickSeed;
 
     uint32 activeBanditId; // 0 if none
+    // Derived view fields. ClanWorld.sol intentionally does not store these as source-of-truth.
     bool winterActive;
     uint64 winterStartsAtTick;
     uint64 winterEndsAtTick; // 0 if not active
@@ -498,7 +506,11 @@ interface IClanWorldEvents {
     );
     event ClanSettled(uint32 indexed clanId, uint64 settledToTick);
     event ClanEliminated(uint32 indexed clanId, uint64 indexed tick);
+    event ClanDied(uint32 indexed clanId, uint64 tick, string reason);
     event ClanStarvationChanged(uint32 indexed clanId, bool isStarving, uint64 atTick);
+    event ClanColdShortage(uint32 indexed clanId, uint64 tick, uint256 woodShort);
+    event WallDegradedByCold(uint32 indexed clanId, uint8 newWallLevel, uint64 tick);
+    event ClansmanColdDeath(uint32 indexed clanId, uint32 csId, uint64 tick);
 
     // ----- missions -----
     event MissionAssigned(
@@ -626,10 +638,6 @@ interface IClanWorldEvents {
         uint256 fish
     );
 
-    // ----- winter cold damage -----
-    event ColdDamageApplied(uint32 indexed clanId, uint16 oldDamage, uint16 newDamage, uint64 atTick);
-    event ClansmanDiedFromCold(uint32 indexed clanId, uint64 atTick);
-
     // ----- OTC transfers -----
     event GoldTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
     event VaultResourceTransferred(
@@ -726,6 +734,9 @@ interface IClanWorld is IClanWorldEvents {
         external
         view
         returns (uint64 submitted, uint64 executes, uint64 settles);
+
+    /// @notice True iff currentTick is inside the recurring winter window.
+    function isWinter() external view returns (bool);
 
     function getActionDuration(ActionType action) external pure returns (uint64);
 

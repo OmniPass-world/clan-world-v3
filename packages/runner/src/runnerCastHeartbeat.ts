@@ -4,19 +4,59 @@ import {
   createWalletClient,
   http,
   type Account,
-  type Abi,
   type PublicClient,
   type WalletClient,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import IClanWorldArtifact from '../../contracts/abi/IClanWorld.json';
 import { baseSepolia } from '@clan-world/shared/adapters';
 import {
   HeartbeatRateLimitedError,
   type IHeartbeatCaller,
 } from '@clan-world/agents/seams';
 
-export const HEARTBEAT_ABI = IClanWorldArtifact.abi as Abi;
+/**
+ * Minimal ABI: only the `heartbeat()` write and the `nextHeartbeatAtTs` field
+ * we read out of `getWorldState()`. We avoid pulling in the full IClanWorld
+ * ABI here so the runner stays decoupled from contract-package versioning.
+ */
+const HEARTBEAT_ABI = [
+  {
+    type: 'function',
+    name: 'heartbeat',
+    inputs: [],
+    outputs: [],
+    stateMutability: 'nonpayable',
+  },
+  {
+    type: 'function',
+    name: 'getWorldState',
+    inputs: [],
+    outputs: [
+      {
+        name: '',
+        type: 'tuple',
+        components: [
+          { name: 'currentTick', type: 'uint64' },
+          { name: 'seasonStartTick', type: 'uint64' },
+          { name: 'seasonEndTick', type: 'uint64' },
+          { name: 'seasonFinalized', type: 'bool' },
+          { name: 'currentSeasonNumber', type: 'uint64' },
+          { name: 'nextHeartbeatAtTick', type: 'uint64' },
+          { name: 'nextHeartbeatAtTs', type: 'uint64' },
+          { name: 'nextBanditSpawnEligibleTick', type: 'uint64' },
+          { name: 'currentBanditSpawnChanceBps', type: 'uint16' },
+          { name: 'currentTickSeed', type: 'bytes32' },
+          { name: 'activeBanditId', type: 'uint32' },
+          { name: 'winterActive', type: 'bool' },
+          { name: 'winterStartsAtTick', type: 'uint64' },
+          { name: 'winterEndsAtTick', type: 'uint64' },
+          { name: 'nextCommitSequence', type: 'uint64' },
+        ],
+      },
+    ],
+    stateMutability: 'view',
+  },
+] as const;
 
 export interface RunnerHeartbeatConfig {
   /** Hex-encoded 64-char private key, optionally 0x-prefixed. */

@@ -253,82 +253,6 @@
     },
     {
       "type": "function",
-      "name": "getBandit",
-      "inputs": [
-        {
-          "name": "banditId",
-          "type": "uint32",
-          "internalType": "uint32"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "tuple",
-          "internalType": "struct BanditTroop",
-          "components": [
-            {
-              "name": "id",
-              "type": "uint32",
-              "internalType": "uint32"
-            },
-            {
-              "name": "region",
-              "type": "uint8",
-              "internalType": "uint8"
-            },
-            {
-              "name": "state",
-              "type": "uint8",
-              "internalType": "enum BanditState"
-            },
-            {
-              "name": "targetClanId",
-              "type": "uint32",
-              "internalType": "uint32"
-            },
-            {
-              "name": "tickEnteredState",
-              "type": "uint64",
-              "internalType": "uint64"
-            },
-            {
-              "name": "strength",
-              "type": "uint32",
-              "internalType": "uint32"
-            },
-            {
-              "name": "carryWood",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "carryIron",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "carryWheat",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "carryFish",
-              "type": "uint256",
-              "internalType": "uint256"
-            },
-            {
-              "name": "carryGold",
-              "type": "uint256",
-              "internalType": "uint256"
-            }
-          ]
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
       "name": "getBanditTargetPreview",
       "inputs": [
         {
@@ -363,14 +287,9 @@
           "internalType": "struct BanditTroop",
           "components": [
             {
-              "name": "id",
+              "name": "banditId",
               "type": "uint32",
               "internalType": "uint32"
-            },
-            {
-              "name": "region",
-              "type": "uint8",
-              "internalType": "uint8"
             },
             {
               "name": "state",
@@ -378,19 +297,34 @@
               "internalType": "enum BanditState"
             },
             {
-              "name": "targetClanId",
-              "type": "uint32",
-              "internalType": "uint32"
+              "name": "currentRegion",
+              "type": "uint8",
+              "internalType": "uint8"
             },
             {
-              "name": "tickEnteredState",
+              "name": "attackAttemptsMade",
+              "type": "uint8",
+              "internalType": "uint8"
+            },
+            {
+              "name": "stateEnteredTick",
               "type": "uint64",
               "internalType": "uint64"
             },
             {
-              "name": "strength",
-              "type": "uint32",
-              "internalType": "uint32"
+              "name": "nextActionTick",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
+              "name": "tier",
+              "type": "uint8",
+              "internalType": "uint8"
+            },
+            {
+              "name": "attackPower",
+              "type": "uint16",
+              "internalType": "uint16"
             },
             {
               "name": "carryWood",
@@ -411,32 +345,8 @@
               "name": "carryFish",
               "type": "uint256",
               "internalType": "uint256"
-            },
-            {
-              "name": "carryGold",
-              "type": "uint256",
-              "internalType": "uint256"
             }
           ]
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "getBanditsInRegion",
-      "inputs": [
-        {
-          "name": "region",
-          "type": "uint8",
-          "internalType": "uint8"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint32[]",
-          "internalType": "uint32[]"
         }
       ],
       "stateMutability": "view"
@@ -2223,6 +2133,19 @@
     },
     {
       "type": "function",
+      "name": "isWinter",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "mintClan",
       "inputs": [
         {
@@ -2816,31 +2739,6 @@
     },
     {
       "type": "event",
-      "name": "BanditTargetDied",
-      "inputs": [
-        {
-          "name": "banditId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "deadClanId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "tick",
-          "type": "uint64",
-          "indexed": false,
-          "internalType": "uint64"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
       "name": "BaseLevelChanged",
       "inputs": [
         {
@@ -2897,37 +2795,6 @@
     },
     {
       "type": "event",
-      "name": "BlueprintEarned",
-      "inputs": [
-        {
-          "name": "clanId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "banditId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "tick",
-          "type": "uint64",
-          "indexed": false,
-          "internalType": "uint64"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
       "name": "BlueprintTransferred",
       "inputs": [
         {
@@ -2953,6 +2820,56 @@
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ClanColdShortage",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "indexed": true,
+          "internalType": "uint32"
+        },
+        {
+          "name": "tick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        },
+        {
+          "name": "woodShort",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ClanDied",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "indexed": true,
+          "internalType": "uint32"
+        },
+        {
+          "name": "tick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        },
+        {
+          "name": "reason",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
         }
       ],
       "anonymous": false
@@ -3059,7 +2976,7 @@
     },
     {
       "type": "event",
-      "name": "ClansmanDiedFromCold",
+      "name": "ClansmanColdDeath",
       "inputs": [
         {
           "name": "clanId",
@@ -3068,63 +2985,13 @@
           "internalType": "uint32"
         },
         {
-          "name": "atTick",
-          "type": "uint64",
+          "name": "csId",
+          "type": "uint32",
           "indexed": false,
-          "internalType": "uint64"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "ClansmanKilledByBandit",
-      "inputs": [
-        {
-          "name": "clanId",
-          "type": "uint32",
-          "indexed": true,
           "internalType": "uint32"
         },
         {
-          "name": "clansmanId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "banditId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "ColdDamageApplied",
-      "inputs": [
-        {
-          "name": "clanId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "oldDamage",
-          "type": "uint16",
-          "indexed": false,
-          "internalType": "uint16"
-        },
-        {
-          "name": "newDamage",
-          "type": "uint16",
-          "indexed": false,
-          "internalType": "uint16"
-        },
-        {
-          "name": "atTick",
+          "name": "tick",
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
@@ -3208,85 +3075,6 @@
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "LootDistributed",
-      "inputs": [
-        {
-          "name": "banditId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
-        },
-        {
-          "name": "clanIdsRewarded",
-          "type": "uint32[]",
-          "indexed": false,
-          "internalType": "uint32[]"
-        },
-        {
-          "name": "perClanWood",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "perClanWheat",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "perClanFish",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "perClanIron",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "perClanGold",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "burnedWood",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "burnedWheat",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "burnedFish",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "burnedIron",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "burnedGold",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
         }
       ],
       "anonymous": false
@@ -3853,7 +3641,7 @@
     },
     {
       "type": "event",
-      "name": "WallDamagedByBandit",
+      "name": "WallDegradedByCold",
       "inputs": [
         {
           "name": "clanId",
@@ -3862,16 +3650,16 @@
           "internalType": "uint32"
         },
         {
-          "name": "newLevel",
+          "name": "newWallLevel",
           "type": "uint8",
           "indexed": false,
           "internalType": "uint8"
         },
         {
-          "name": "banditId",
-          "type": "uint32",
-          "indexed": true,
-          "internalType": "uint32"
+          "name": "tick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
         }
       ],
       "anonymous": false
