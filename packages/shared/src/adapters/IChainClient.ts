@@ -15,6 +15,7 @@ export interface SubmitOrderResult {
   status: number;
   cooldownEndsAtTs: string;
   missionNonce: string;
+  marketMode: number;
 }
 
 export interface SubmitOrdersResult {
@@ -2707,6 +2708,7 @@ class RealChainClient implements IChainClient {
       status: Number(result.status),
       cooldownEndsAtTs: result.cooldownEndsAtTs.toString(),
       missionNonce: result.missionNonce.toString(),
+      marketMode: Number(result.marketMode),
     }));
 
     const walletClient = createWalletClient({

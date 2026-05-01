@@ -450,8 +450,8 @@ contract ClanWorldStub is IClanWorld {
     // Derived read getters
     // -------------------------------------------------------------------------
 
-    function getDerivedClanState(uint32) external view override returns (DerivedClanState memory) {
-        Clan memory c = this.getClan(0);
+    function getDerivedClanState(uint32 clanId) external view override returns (DerivedClanState memory) {
+        Clan memory c = this.getClan(clanId);
         return DerivedClanState({clan: c, isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick});
     }
 
@@ -510,10 +510,10 @@ contract ClanWorldStub is IClanWorld {
         });
     }
 
-    function getClanFullView(uint32) external view override returns (ClanFullView memory) {
+    function getClanFullView(uint32 clanId) external view override returns (ClanFullView memory) {
         return ClanFullView({
             clan: DerivedClanState({
-                clan: this.getClan(0), isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick
+                clan: this.getClan(clanId), isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick
             }),
             clansmen: new ClansmanFullView[](0),
             westPlot: WheatPlot({state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0}),
