@@ -51,6 +51,9 @@ const HEARTBEAT_ABI = [
           { name: 'winterStartsAtTick', type: 'uint64' },
           { name: 'winterEndsAtTick', type: 'uint64' },
           { name: 'nextCommitSequence', type: 'uint64' },
+          // appended fields — must match IClanWorld.sol WorldState layout
+          { name: 'currentSeasonNumber', type: 'uint64' },
+          { name: 'nextHeartbeatAtTick', type: 'uint64' },
         ],
       },
     ],

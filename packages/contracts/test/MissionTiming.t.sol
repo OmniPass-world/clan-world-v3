@@ -113,9 +113,14 @@ contract MissionTimingTest is Test {
 
         Clansman memory settled = world.getClansman(csId);
         assertGt(settled.carryIron, 0, "iron granted at settlesAtTick");
-        assertEq(uint8(settled.state), uint8(ClansmanState.WAITING), "mission completed");
-        assertFalse(world.getActiveMission(csId).active, "mission inactive after settlement");
-        assertGt(settled.cooldownEndsAtTs, block.timestamp, "cooldown starts on settlement");
+        assertEq(uint8(settled.state), uint8(ClansmanState.ACTING), "continuous gather keeps acting");
+        Mission memory rescheduled = world.getActiveMission(csId);
+        assertTrue(rescheduled.active, "mission remains active after non-full gather");
+        assertEq(
+            rescheduled.settlesAtTick,
+            mission.settlesAtTick + world.getActionDuration(ActionType.MineIron),
+            "next gather tick scheduled"
+        );
     }
 
     function test_getActionDuration_eachActionType() public view {
@@ -126,13 +131,14 @@ contract MissionTimingTest is Test {
         assertEq(world.getActionDuration(ActionType.FishDeepSea), 4, "fish deep sea");
         assertEq(world.getActionDuration(ActionType.HarvestWheat), 4, "harvest wheat");
         assertEq(world.getActionDuration(ActionType.DepositResources), 1, "deposit");
-        assertEq(world.getActionDuration(ActionType.BuildWall), 1, "build wall");
+        assertEq(world.getActionDuration(ActionType.BuildWall), 0, "build wall deprecated");
         assertEq(world.getActionDuration(ActionType.UpgradeBase), 1, "upgrade base");
         assertEq(world.getActionDuration(ActionType.UpgradeMonument), 1, "upgrade monument");
         assertEq(world.getActionDuration(ActionType.DefendBase), 0, "defend base");
         assertEq(world.getActionDuration(ActionType.MarketBuy), 1, "market buy");
         assertEq(world.getActionDuration(ActionType.MarketSell), 1, "market sell");
         assertEq(world.getActionDuration(ActionType.Wait), 0, "wait");
+        assertEq(world.getActionDuration(ActionType.UpgradeWall), 1, "upgrade wall");
     }
 
     function test_getTravelTicks_adjacentAndDistantMatchTable() public view {
