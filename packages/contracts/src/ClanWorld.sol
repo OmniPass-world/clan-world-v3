@@ -4484,27 +4484,187 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     }
 
     // =========================================================================
+    // CLAN OWNERSHIP TRANSFER
+    // =========================================================================
+
+    /// @notice Transfer clan ownership to a new address. Increments ownerNonce.
+    function transferClanOwnership(uint32 clanId, address newOwner) external override nonReentrant {
+        Clan storage clan = _clans[clanId];
+        require(clan.clanId != 0, "ClanWorld: clan not found");
+        require(clan.owner == msg.sender, "ClanWorld: not clan owner");
+        require(newOwner != address(0), "ClanWorld: zero address");
+        require(newOwner != clan.owner, "ClanWorld: same owner");
+        address oldOwner = clan.owner;
+        clan.owner = newOwner;
+        clan.ownerNonce++;
+        emit ClanOwnershipTransferred(clanId, oldOwner, newOwner, clan.ownerNonce);
+    }
+
+    // =========================================================================
     // OTC TRANSFERS
     // =========================================================================
 
-    function transferGold(uint32, uint32, uint256) external pure override {
-        revert("OTC transfers not implemented");
+    function _requireTransferSettlementComplete(Clan storage fromClan, Clan storage toClan) private view {
+        require(
+            fromClan.lastSettledTick == _world.currentTick && toClan.lastSettledTick == _world.currentTick,
+            "ClanWorld: must settle first"
+        );
     }
 
-    function transferVaultResource(uint32, uint32, ResourceType, uint256) external pure override {
-        revert("OTC transfers not implemented");
+    /// @notice Transfer gold from one clan to another. Caller must be owner of fromClan.
+    function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external override nonReentrant {
+        require(amount > 0, "ClanWorld: zero amount");
+        require(fromClanId != toClanId, "ClanWorld: same clan");
+
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+
+        require(fromClan.clanId != 0, "ClanWorld: from clan not found");
+        require(fromClan.owner == msg.sender, "ClanWorld: not clan owner");
+        require(toClan.clanId != 0, "ClanWorld: to clan not found");
+
+        _settleClan(fromClanId);
+        _settleClan(toClanId);
+
+        _requireTransferSettlementComplete(fromClan, toClan);
+        require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
+        require(fromClan.goldBalance >= amount, "ClanWorld: insufficient gold");
+
+        fromClan.goldBalance -= amount;
+        toClan.goldBalance += amount;
+
+        emit GoldTransferred(fromClanId, toClanId, amount, _world.currentTick);
     }
 
-    function transferBlueprint(uint32, uint32, uint256) external pure override {
-        revert("OTC transfers not implemented");
-    }
-
-    function transferBundle(uint32, uint32, uint256, uint256, uint256, uint256, uint256, uint256)
+    /// @notice Transfer a vault resource from one clan to another. Caller must be owner of fromClan.
+    function transferVaultResource(uint32 fromClanId, uint32 toClanId, ResourceType resource, uint256 amount)
         external
-        pure
         override
+        nonReentrant
     {
-        revert("OTC transfers not implemented");
+        require(amount > 0, "ClanWorld: zero amount");
+        require(fromClanId != toClanId, "ClanWorld: same clan");
+
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+
+        require(fromClan.clanId != 0, "ClanWorld: from clan not found");
+        require(fromClan.owner == msg.sender, "ClanWorld: not clan owner");
+        require(toClan.clanId != 0, "ClanWorld: to clan not found");
+
+        _settleClan(fromClanId);
+        _settleClan(toClanId);
+
+        _requireTransferSettlementComplete(fromClan, toClan);
+        require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
+        if (resource == ResourceType.Wood) {
+            require(fromClan.vaultWood >= amount, "ClanWorld: insufficient wood");
+            fromClan.vaultWood -= amount;
+            toClan.vaultWood += amount;
+        } else if (resource == ResourceType.Iron) {
+            require(fromClan.vaultIron >= amount, "ClanWorld: insufficient iron");
+            fromClan.vaultIron -= amount;
+            toClan.vaultIron += amount;
+        } else if (resource == ResourceType.Wheat) {
+            require(fromClan.vaultWheat >= amount, "ClanWorld: insufficient wheat");
+            fromClan.vaultWheat -= amount;
+            toClan.vaultWheat += amount;
+        } else if (resource == ResourceType.Fish) {
+            require(fromClan.vaultFish >= amount, "ClanWorld: insufficient fish");
+            fromClan.vaultFish -= amount;
+            toClan.vaultFish += amount;
+        } else {
+            revert("ClanWorld: invalid resource");
+        }
+
+        emit VaultResourceTransferred(fromClanId, toClanId, resource, amount, _world.currentTick);
+    }
+
+    /// @notice Transfer blueprints from one clan to another. Caller must be owner of fromClan.
+    function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external override nonReentrant {
+        require(amount > 0, "ClanWorld: zero amount");
+        require(fromClanId != toClanId, "ClanWorld: same clan");
+
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+
+        require(fromClan.clanId != 0, "ClanWorld: from clan not found");
+        require(fromClan.owner == msg.sender, "ClanWorld: not clan owner");
+        require(toClan.clanId != 0, "ClanWorld: to clan not found");
+
+        _settleClan(fromClanId);
+        _settleClan(toClanId);
+
+        _requireTransferSettlementComplete(fromClan, toClan);
+        require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
+        require(fromClan.blueprintBalance >= amount, "ClanWorld: insufficient blueprints");
+
+        fromClan.blueprintBalance -= amount;
+        toClan.blueprintBalance += amount;
+
+        emit BlueprintTransferred(fromClanId, toClanId, amount, _world.currentTick);
+    }
+
+    /// @notice Transfer a bundle of resources atomically. Caller must be owner of fromClan.
+    ///         At least one component must be non-zero. Component debits and credits are atomic after settlement.
+    function transferBundle(
+        uint32 fromClanId,
+        uint32 toClanId,
+        uint256 gold,
+        uint256 blueprint,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish
+    ) external override nonReentrant {
+        require(gold > 0 || blueprint > 0 || wood > 0 || iron > 0 || wheat > 0 || fish > 0, "ClanWorld: empty bundle");
+        require(fromClanId != toClanId, "ClanWorld: same clan");
+
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+
+        require(fromClan.clanId != 0, "ClanWorld: from clan not found");
+        require(fromClan.owner == msg.sender, "ClanWorld: not clan owner");
+        require(toClan.clanId != 0, "ClanWorld: to clan not found");
+
+        _settleClan(fromClanId);
+        _settleClan(toClanId);
+
+        _requireTransferSettlementComplete(fromClan, toClan);
+        require(fromClan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
+        // All balance checks before any mutation (atomic)
+        if (gold > 0) require(fromClan.goldBalance >= gold, "ClanWorld: insufficient gold");
+        if (blueprint > 0) require(fromClan.blueprintBalance >= blueprint, "ClanWorld: insufficient blueprints");
+        if (wood > 0) require(fromClan.vaultWood >= wood, "ClanWorld: insufficient wood");
+        if (iron > 0) require(fromClan.vaultIron >= iron, "ClanWorld: insufficient iron");
+        if (wheat > 0) require(fromClan.vaultWheat >= wheat, "ClanWorld: insufficient wheat");
+        if (fish > 0) require(fromClan.vaultFish >= fish, "ClanWorld: insufficient fish");
+
+        // Apply debits
+        if (gold > 0) fromClan.goldBalance -= gold;
+        if (blueprint > 0) fromClan.blueprintBalance -= blueprint;
+        if (wood > 0) fromClan.vaultWood -= wood;
+        if (iron > 0) fromClan.vaultIron -= iron;
+        if (wheat > 0) fromClan.vaultWheat -= wheat;
+        if (fish > 0) fromClan.vaultFish -= fish;
+
+        // Apply credits
+        if (gold > 0) toClan.goldBalance += gold;
+        if (blueprint > 0) toClan.blueprintBalance += blueprint;
+        if (wood > 0) toClan.vaultWood += wood;
+        if (iron > 0) toClan.vaultIron += iron;
+        if (wheat > 0) toClan.vaultWheat += wheat;
+        if (fish > 0) toClan.vaultFish += fish;
+
+        // Emit per-component events
+        if (gold > 0) emit GoldTransferred(fromClanId, toClanId, gold, _world.currentTick);
+        if (blueprint > 0) emit BlueprintTransferred(fromClanId, toClanId, blueprint, _world.currentTick);
+        if (wood > 0) emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Wood, wood, _world.currentTick);
+        if (iron > 0) emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Iron, iron, _world.currentTick);
+        if (wheat > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Wheat, wheat, _world.currentTick);
+        }
+        if (fish > 0) emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Fish, fish, _world.currentTick);
     }
 
     // =========================================================================

@@ -594,6 +594,11 @@
               "internalType": "uint16"
             },
             {
+              "name": "ownerNonce",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
               "name": "goldBalance",
               "type": "uint256",
               "internalType": "uint256"
@@ -713,6 +718,11 @@
                       "name": "coldDamage",
                       "type": "uint16",
                       "internalType": "uint16"
+                    },
+                    {
+                      "name": "ownerNonce",
+                      "type": "uint64",
+                      "internalType": "uint64"
                     },
                     {
                       "name": "goldBalance",
@@ -1360,6 +1370,11 @@
                   "name": "coldDamage",
                   "type": "uint16",
                   "internalType": "uint16"
+                },
+                {
+                  "name": "ownerNonce",
+                  "type": "uint64",
+                  "internalType": "uint64"
                 },
                 {
                   "name": "goldBalance",
@@ -2918,6 +2933,24 @@
     },
     {
       "type": "function",
+      "name": "transferClanOwnership",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "internalType": "uint32"
+        },
+        {
+          "name": "newOwner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
       "name": "transferGold",
       "inputs": [
         {
@@ -3390,6 +3423,37 @@
           "name": "tick",
           "type": "uint64",
           "indexed": true,
+          "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "ClanOwnershipTransferred",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "indexed": true,
+          "internalType": "uint32"
+        },
+        {
+          "name": "oldOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newOwnerNonce",
+          "type": "uint64",
+          "indexed": false,
           "internalType": "uint64"
         }
       ],

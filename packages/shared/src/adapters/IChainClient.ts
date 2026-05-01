@@ -244,6 +244,11 @@ export const CLAN_WORLD_ABI = [
             "internalType": "uint16"
           },
           {
+            "name": "ownerNonce",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
             "name": "goldBalance",
             "type": "uint256",
             "internalType": "uint256"
@@ -721,6 +726,11 @@ export const CLAN_WORLD_ABI = [
                 "internalType": "uint16"
               },
               {
+                "name": "ownerNonce",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
                 "name": "goldBalance",
                 "type": "uint256",
                 "internalType": "uint256"
@@ -1186,6 +1196,11 @@ export const CLAN_WORLD_ABI = [
                     "name": "coldDamage",
                     "type": "uint16",
                     "internalType": "uint16"
+                  },
+                  {
+                    "name": "ownerNonce",
+                    "type": "uint64",
+                    "internalType": "uint64"
                   },
                   {
                     "name": "goldBalance",

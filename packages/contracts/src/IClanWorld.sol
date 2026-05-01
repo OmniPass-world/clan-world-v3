@@ -257,6 +257,8 @@ struct Clan {
 
     uint16 coldDamage; // resets to 0 at winter end
 
+    uint64 ownerNonce; // incremented on every ownership transfer
+
     uint256 goldBalance;
     uint256 blueprintBalance;
 
@@ -691,6 +693,11 @@ interface IClanWorldEvents {
         uint256 fish
     );
 
+    // ----- clan ownership -----
+    event ClanOwnershipTransferred(
+        uint32 indexed clanId, address indexed oldOwner, address indexed newOwner, uint64 newOwnerNonce
+    );
+
     // ----- OTC transfers -----
     event GoldTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
     event VaultResourceTransferred(
@@ -768,6 +775,14 @@ interface IClanWorld is IClanWorldEvents {
         uint256 wheat,
         uint256 fish
     ) external;
+
+    // -------------------------------------------------------------------------
+    // Clan ownership transfer
+    // -------------------------------------------------------------------------
+
+    /// @notice Transfer clan ownership to a new address. Increments ownerNonce.
+    ///         Caller must be current owner.
+    function transferClanOwnership(uint32 clanId, address newOwner) external;
 
     // -------------------------------------------------------------------------
     // Raw read getters (committed storage, no settlement simulation)
