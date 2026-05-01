@@ -151,8 +151,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     uint256 private constant WHEAT_HARVEST_RATE = 20e18;
     uint256 private constant RESOURCE_UNIT = 1e18;
     uint256 internal constant BLUEPRINT_UNIT = 1e18;
-    /// @dev Caps market queue work per heartbeat; overflow is deferred to the next tick.
-    uint256 public constant MAX_MARKET_ACTIONS_PER_TICK = 32;
     /// @dev Caps winter crop boundary work; current clan cap keeps transitions within this budget.
     uint256 public constant MAX_CROP_TRANSITION_PER_TICK = 48;
     uint256 internal constant DOMAIN_BANDIT_SPAWN = uint256(keccak256("clanworld.bandit.spawn.v1"));
@@ -1296,14 +1294,27 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             }
         }
 
+        if (toTick > fromTick && !_isWinterActiveAt(toTick) && _isWinterActiveAt(toTick - 1)) {
+            sim.clan.coldDamage = 0;
+        }
+
         sim.clan.lastSettledTick = toTick;
     }
 
     function _simulateApplyUpkeep(SettlementSimulation memory sim, uint64 tick) internal view {
+        bool winter = _isWinterActiveAt(tick);
+        if (!winter && tick > 0 && _isWinterActiveAt(tick - 1)) {
+            sim.clan.coldDamage = 0;
+        }
+
         if (sim.clan.livingClansmen == 0) return;
 
         uint256 wheatNeeded = uint256(sim.clan.livingClansmen) * ClanWorldConstants.WHEAT_UPKEEP_PER_CLANSMAN;
         uint256 fishNeeded = uint256(sim.clan.livingClansmen) * ClanWorldConstants.FISH_UPKEEP_PER_CLANSMAN;
+        if (winter) {
+            wheatNeeded = wheatNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
+            fishNeeded = fishNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
+        }
 
         uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
         bool hadEnoughWheat = spendableWheat >= wheatNeeded;
@@ -1323,8 +1334,94 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             sim.clan.starvationStartsAtTick = 0;
         }
 
-        if (starving && _isWinterActiveAt(tick) && sim.clan.starvationStartsAtTick <= tick) {
-            _simulateKillNextClansmanFromStarvation(sim);
+        uint8 livingBeforeStarvation = sim.clan.livingClansmen;
+        if (winter && starving) {
+            (, uint64 winterStartsAtTick,) = _winterWindowForTick(tick);
+            uint64 effectiveStarvationStartsAtTick =
+                sim.clan.starvationStartsAtTick > winterStartsAtTick ? sim.clan.starvationStartsAtTick : winterStartsAtTick;
+            if (effectiveStarvationStartsAtTick < tick) {
+                _simulateKillNextClansmanFromStarvation(sim);
+            }
+        }
+        if (sim.clan.clanState == ClanState.DEAD) return;
+
+        if (winter) {
+            uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
+                * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
+            if (sim.clan.vaultWood >= woodNeeded) {
+                sim.clan.vaultWood -= woodNeeded;
+            } else {
+                sim.clan.vaultWood = 0;
+                uint16 oldColdDamage = sim.clan.coldDamage;
+                if (sim.clan.coldDamage < type(uint16).max) {
+                    sim.clan.coldDamage += 1;
+                }
+                _simulateApplyColdDamageConsequence(sim, tick, oldColdDamage);
+            }
+        }
+    }
+
+    function _simulateApplyColdDamageConsequence(
+        SettlementSimulation memory sim,
+        uint64 tick,
+        uint16 oldColdDamage
+    ) internal view {
+        uint16 newColdDamage = sim.clan.coldDamage;
+        if (newColdDamage == oldColdDamage) return;
+
+        if (sim.clan.wallLevel > 0) {
+            if (
+                newColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_WALL_DEGRADATION
+                    <= oldColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_WALL_DEGRADATION
+            ) return;
+
+            sim.clan.wallLevel--;
+            return;
+        }
+
+        if (
+            newColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_CLANSMAN_DEATH
+                <= oldColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_CLANSMAN_DEATH
+        ) return;
+
+        _simulateKillRandomClansmanFromCold(sim, tick, newColdDamage);
+    }
+
+    function _simulateKillRandomClansmanFromCold(
+        SettlementSimulation memory sim,
+        uint64 tick,
+        uint16 coldDamage
+    ) internal view {
+        if (sim.clan.livingClansmen == 0) return;
+
+        uint256 livingCount = 0;
+        for (uint256 i = 0; i < sim.clansmen.length; i++) {
+            if (sim.clansmen[i].state != ClansmanState.DEAD) {
+                livingCount++;
+            }
+        }
+        if (livingCount == 0) return;
+
+        uint256 pick = RNG.rngBounded(
+            _tickSeeds[tick],
+            RNG.DOMAIN_COLD_DAMAGE,
+            uint256(keccak256(abi.encodePacked(sim.clan.clanId, tick, coldDamage))),
+            livingCount
+        );
+
+        uint256 seen = 0;
+        for (uint256 i = 0; i < sim.clansmen.length; i++) {
+            if (sim.clansmen[i].state == ClansmanState.DEAD) continue;
+            if (seen != pick) {
+                seen++;
+                continue;
+            }
+
+            _simulateMarkClansmanDead(sim, i);
+            if (sim.clan.livingClansmen == 0) {
+                _simulateMarkClanDead(sim);
+            }
+            return;
         }
     }
 

@@ -3077,6 +3077,50 @@ contract ClanWorldTest is Test {
         assertEq(deadCount, 1, "exactly one stored clansman should be dead");
     }
 
+    function test_simulatedWinterUpkeepMatchesManualSettleForViewAndRankings() public {
+        ClanWorldTestHarness harness = new ClanWorldTestHarness();
+        world = harness;
+        uint32 clanId = _mintClan();
+        uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
+        _advanceToTick(winterStart + 1);
+
+        harness.setClanWallLevel(clanId, 2);
+        harness.setClanUpkeepState(clanId, winterStart, 0, 100e18, 100e18, 1);
+
+        Clan memory storedBefore = world.getClan(clanId);
+        assertEq(storedBefore.wallLevel, 2, "stored wall starts above simulated winter degradation");
+        assertEq(storedBefore.coldDamage, 1, "stored cold damage starts below degradation threshold");
+
+        ClanFullView memory preview = world.getClanFullView(clanId);
+        (uint32[] memory rankedPreview, uint256[] memory scoresPreview) = world.getRankings();
+        uint256 lootPreview = world.quoteLootValueSettled(clanId);
+
+        assertEq(preview.clan.clan.wallLevel, 1, "preview applies winter wall degradation");
+        assertEq(preview.clan.clan.coldDamage, 2, "preview applies winter cold damage");
+        assertEq(preview.clan.clan.vaultWheat, 92e18, "preview applies winter wheat multiplier");
+        assertEq(preview.clan.clan.vaultFish, 100e18 - 8e17, "preview applies winter fish multiplier");
+        assertEq(preview.clan.clan.vaultWood, 0, "preview consumes short winter wood");
+        assertEq(preview.clan.clan.livingClansmen, 4, "wall absorbs cold before clansmen die");
+        assertEq(rankedPreview.length, 1, "preview rankings include active clan");
+        assertEq(rankedPreview[0], clanId, "preview ranking clan id");
+
+        world.settleClan(clanId);
+
+        Clan memory settled = world.getClan(clanId);
+        (uint32[] memory rankedSettled, uint256[] memory scoresSettled) = world.getRankings();
+        uint256 lootSettled = world.quoteLootValueSettled(clanId);
+
+        assertEq(preview.clan.clan.wallLevel, settled.wallLevel, "preview wall matches settled wall");
+        assertEq(preview.clan.clan.coldDamage, settled.coldDamage, "preview cold damage matches settled cold damage");
+        assertEq(preview.clan.clan.vaultWheat, settled.vaultWheat, "preview wheat matches settled wheat");
+        assertEq(preview.clan.clan.vaultFish, settled.vaultFish, "preview fish matches settled fish");
+        assertEq(preview.clan.clan.vaultWood, settled.vaultWood, "preview wood matches settled wood");
+        assertEq(lootPreview, lootSettled, "settled loot quote matches preview");
+        assertEq(rankedPreview.length, rankedSettled.length, "ranking length matches after settle");
+        assertEq(rankedPreview[0], rankedSettled[0], "ranking clan matches after settle");
+        assertEq(scoresPreview[0], scoresSettled[0], "ranking score matches after settle");
+    }
+
     function test_coldDamage_victimIsStableAcrossDelayedSettlement() public {
         ClanWorldTestHarness immediate = new ClanWorldTestHarness();
         ClanWorldTestHarness delayed = new ClanWorldTestHarness();
