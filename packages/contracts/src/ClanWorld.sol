@@ -151,6 +151,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     uint256 private constant WHEAT_HARVEST_RATE = 20e18;
     uint256 private constant RESOURCE_UNIT = 1e18;
     uint256 internal constant BLUEPRINT_UNIT = 1e18;
+    /// @dev Caps market queue work per heartbeat; overflow is deferred to the next tick.
+    uint256 public constant MAX_MARKET_ACTIONS_PER_TICK = 32;
     /// @dev Caps winter crop boundary work; current clan cap keeps transitions within this budget.
     uint256 public constant MAX_CROP_TRANSITION_PER_TICK = 48;
     uint256 internal constant DOMAIN_BANDIT_SPAWN = uint256(keccak256("clanworld.bandit.spawn.v1"));
