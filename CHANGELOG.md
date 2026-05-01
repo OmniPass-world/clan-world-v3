@@ -12,179 +12,347 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 - Full on-chain game engine: 10 contract phases covering gathering, markets, buildings, bandits, winter, and clan death — 310/310 Forge tests green at ship
 - Four AI Elder agents run autonomously on Base Sepolia, each submitting real transactions via `RealChainClient` on every heartbeat tick
-- Resource reservation invariant enforced: `WithdrawResources` and all OTC transfer paths are now reservation-aware, closing a class of vault-drain exploits found during pre-release audit
-- ABI drift is now structurally impossible: generated `CLAN_WORLD_ABI` replaces every hand-rolled tuple; `gen-enums.mjs` and `gen-constants.mjs` codegen scripts keep TypeScript in sync with Solidity
+- Resource reservation invariant enforced: `WithdrawResources` and all OTC transfer paths are reservation-aware, closing a class of vault-drain exploits found during pre-release audit
+- ABI drift is structurally impossible: generated `CLAN_WORLD_ABI` replaces every hand-rolled tuple; `gen-enums.mjs` and `gen-constants.mjs` keep TypeScript in sync with Solidity
 - Pixi.js canvas world map with 8 regions, isometric base sprites at five upgrade levels, clansman walking animations, speech bubbles, pinch-to-zoom, and a live scoreboard
 - World ID humanity verification at clan mint via MiniKit + IDKit integration
 - Convex real-time backend with heartbeat webhook, safety-net cron, and mock-mode for offline development
 - ABI parity test wired into CI — contract shape drift fails the build automatically
 
+---
+
+## Game Engine — Phases 1 through 10
+
+The contract evolved through ten ordered phases. Each phase is its own ratcheted-up version of the engine, with its own super-swarm review pass, its own fix-rounds, and its own integration tests. They merge sequentially: each phase's `dev-phase-N-*` integration branch lands into `dev-merge` only after the prior phase is green.
+
+### Phase 1 — Real ClanWorld engine (#79, #98)
+
 > [!NOTE]
-> **The Whole Game Shipped:**
-> 1. **10 contract phases** end-to-end — gathering, markets, OTC transfers, building upgrades, bandits, winter, clan death
-> 2. **4 autonomous AI Elders** on Base Sepolia via `RealChainClient` — *real on-chain transactions* every heartbeat
-> 3. **Pixi.js canvas world map** — 8 regions, isometric bases at 5 upgrade levels, walking clansmen, speech bubbles, pinch-to-zoom
-> 4. **World ID humanity verification** at clan mint via MiniKit + IDKit
-> 5. **Convex real-time backend** — `getSnapshot`, heartbeat webhook, safety-net cron, `MOCK_MODE` for offline dev
-> 6. **Permissionless heartbeat + lazy settlement** — anyone can fire ticks, clans settle on touch
-> 7. **Carry-based market trades** — workers *physically haul* resources to and from market (no teleport)
-> 8. **`gen-chainclient-abi` + `gen-enums` + `gen-constants`** — full TS-from-Solidity codegen pipeline
+> **Foundation Engine Online:**
+> 1. **`ClanWorld.sol`** — the real on-chain game contract replacing the planning stubs
+> 2. **`mintClan`** — clan creation with World ID verification handle
+> 3. **Order submission** — clansman action queue with explicit `ClanOrder` struct
+> 4. **Heartbeat skeleton** — the tick-advancement entry point for the world
+> 5. **Lazy settlement core** — clans replay tick-by-tick when next touched (the central performance pattern)
+> 6. **View-only simulation** — derived getters can preview state without writing (#261)
 >
-> Together these turn ClanWorld from a flat resource-loop into a **living strategic world**: AI Elders making real-money decisions on a public chain, a watchable canvas where every tick is *their* tick, and an engine that scales to new actions without rewriting the off-chain glue every time.
+> Phase 1 is the *substrate*. Without lazy settlement and without the on-chain entry point, none of the later phases compose. Everything from gathering to bandits assumes "I can read the freshest derived state without paying gas," and Phase 1 is what makes that affordable.
 
-#### Contract engine (Phases 1–10)
+- Phase 1 real engine: `mintClan`, order submission, heartbeat, lazy settlement core (#79, #98)
+- View-only settlement simulation for derived getters (#261)
 
-- Phase 1: `ClanWorld.sol` real engine — `mintClan`, order submission, heartbeat, lazy settlement core (#79, #98)
-- Phase 3: mission assignment + lazy settlement engine — `submitOrders`, `defend_base`, mission timing rules (#176, #177, #178, #179, #180, #181)
-- Phase 4: permissionless heartbeat, domain-separated RNG helpers, winter/season timers, heartbeat ordering fix (#173, #174, #175, #182, #183, #239)
-- Phase 5: wood gathering, deposit action, per-tick yield, starvation next-tick, wood carry cap, `ResourcesDeposited` event ordering (#188, #190, #234, #298, #371)
-- Phase 6: resource boundary tokens + treasury seeder, seed pools, immediate and scheduled market actions, carry-based market trades, market failure semantics, market events surface, `StatusCode` enum stability, ABI `uint64` revert (#228, #240, #257, #260, #263, #262, #284, #324, #298)
-- Phase 7: gold transfer OTC, vault resource transfer OTC, blueprint transfer OTC, bundled transfer convenience, OTC expiry restriction for dead clans, direct transfers replace OTC model, `transferClanOwnership` (#243, #246, #248, #252, #256, #389, #397)
-- Phase 8: wall upgrades, base upgrades, monument upgrades, score and rank getters, upgrade reservation coverage, dead internal function cleanup, `MAX_CLAN_SCAN_FOR_RANKING` derivation (#236, #238, #242, #251, #360, #361, #364)
-- Phase 9: bandit troop state machine, bandit spawn chance logic, eager-settle scope, deterministic attack resolution, defender reward split, blueprint reward on successful defense, cleanup on bandit target death, vault loot theft + rampage path + WAITING-at-home defense (#189, #191, #244, #247, #253, #255, #258, #374)
-- Phase 10: winter schedule, winter upkeep, cold damage, crop winter transitions, clan death, starvation and cold-reset semantics (#235, #237, #241, #245, #249, #289, #293, #383, #363)
-- Phase 1 view-only settlement simulation for derived getters (#261)
-- `ERR_MUST_SETTLE_FIRST` + `winterStartsAtTick` initialization fix (#259)
+### Phase 2 — Economy foundation (bundle E, #91, #137)
 
-#### Agents and orchestrator
+> [!NOTE]
+> **First Resource Loop:**
+> 1. **Initial economy types** — `ResourceType` enum (Wood / Iron / Wheat / Fish), `Vault` struct, vault accounting
+> 2. **Resource flows** — gather → vault → carry primitives that later phases extend
+> 3. **`bundle E`** — collapses the post-rebase Phase 2 implementation onto the pre-Phase-3 substrate
+>
+> Phase 2 is the *vocabulary*. Once it landed, every subsequent phase could speak in terms of "wood, iron, wheat, fish" instead of inventing its own resource shapes.
 
-- Elder CLI full subcommand coverage — status, orders, submit (#71)
+- Bundle E: Phase 2 economy (#91 post-rebase, #137)
+
+### Phase 3 — Mission assignment + lazy settlement (#176–#181, #115)
+
+> [!NOTE]
+> **Missions Have Time:**
+> 1. **`submitOrders`** — the public order queue API used by Elders + UI
+> 2. **`defend_base`** — first defensive mission type, prerequisite for the bandit phase
+> 3. **Mission timing rules** — every action gets a duration, a `settlesAtTick`, and a settle path
+> 4. **39-case Foundry test spec** — exhaustive coverage scaffold for mission state transitions (#115)
+> 5. **Bundle A `feat/phase-3-test-spec`** — the test spec that locked Phase 3 mechanics into the contract
+> 6. **Orch-r1 integration fixes** — review-driven correctness pass (#181)
+>
+> Phase 3 is when the engine *gains time*. Before this, every action was instantaneous; after this, missions take ticks to complete and clansmen can be in flight. This is the substrate for everything that *waits* — bandits camping, walls building, winter approaching.
+
+- Phase 3 mission assignment + lazy settlement: `submitOrders`, `defend_base`, mission timing rules (#176, #177, #178, #179, #180, #181)
+- Phase 3 integration fixes from orch-r1 review (#181)
+- Phase 3 Foundry test specification — 39 cases (#115)
+- Bundle A: `feat/phase-3-test-spec`
+
+### Phase 4 — Heartbeat + progression (#173–#175, #182, #183, #239)
+
+> [!NOTE]
+> **The World's Pulse:**
+> 1. **Permissionless heartbeat** — anyone can fire ticks; rate-limited via `nextHeartbeatAtTs`
+> 2. **Domain-separated RNG** — `keccak256(seed, clan, csId, nonce)` per use site, no cross-contamination
+> 3. **Winter + season timers** — the calendar machinery that Phase 10 hangs winter mechanics on
+> 4. **Heartbeat ordering fix** — HIGH spec drift between heartbeat and lazy paths corrected (#239)
+> 5. **Tick seed publication** — every tick commits a fresh RNG seed visible to indexers and views
+>
+> Phase 4 is *autonomy*. Once the heartbeat is permissionless, the game runs whether or not any specific keeper is alive — multiple keepers can race, the rate-limit handles contention, and the off-chain runner becomes a *helper* instead of a *requirement*.
+
+- Phase 4 permissionless heartbeat, RNG helpers, winter/season timers, heartbeat ordering fix (#173, #174, #175, #182, #183, #239)
+- Phase 4 heartbeat ordering (HIGH spec drift) (#239)
+
+### Phase 5 — Gathering + deposit (#188, #190, #234, #298, #371, #356)
+
+> [!NOTE]
+> **Resources Move:**
+> 1. **Wood gathering** at forest regions — the first real resource action
+> 2. **Deposit action** — vault-to-base resource transfer that settles at clan's home region
+> 3. **Per-tick yield** with carry-cap enforcement
+> 4. **Starvation next-tick semantics** — first-tick starvation flags, second-tick kills (#234)
+> 5. **`ResourcesDeposited` event ordering** — explicit `atTick` field for indexers (#234, #298)
+> 6. **Wood carry cap clamping** — clansman can't over-carry forest yield (#234)
+> 7. **v4.6 Phase 5 economy alignment addendum** — spec-vs-impl reconciliation (#356)
+>
+> Phase 5 is the moment ClanWorld stops being a planning doc and *starts working*. A clansman walks to the forest, chops wood, walks home, deposits — every step settles on-chain and emits an event a UI can render.
+
+- Wood gathering, deposit action, per-tick yield, starvation next-tick, wood carry cap, `ResourcesDeposited` event ordering (#188, #190, #234, #298, #371)
+- Phase 5 R1 fixes — `ResourcesDeposited` event order + tick + four medium fixes (#234)
+- Phase 5 ABI `uint64` revert + per-tick yield migration + `ERR_NOT_AT_HOMEBASE` (#298)
+- v4.6 Phase 5 economy alignment addendum (#356)
+
+### Phase 6 — Markets + pools (#228, #240, #257, #260, #263, #262, #284, #324, #298, #270, #294, #295, #380, #357)
+
+> [!NOTE]
+> **Liquid Economy Online:**
+> 1. **Resource-bound ERC20 tokens + treasury seeder** — wood/iron/wheat/fish each get a token (#228)
+> 2. **Seeded constant-product pools** — wood/gold, iron/gold, wheat/gold, fish/gold (#240)
+> 3. **Immediate + scheduled market actions** — clansmen can buy/sell now or queue for next heartbeat
+> 4. **Carry-based market trades** — workers *physically haul* the resource to/from the market (#284)
+> 5. **`StatusCode` enum stability** — locked by Solidity test, off-chain consumers can rely on ordinals (#324)
+> 6. **`MarketBuy` error path + `uintValue` robustness** (#295)
+> 7. **Market failure observability** — distinct status codes per failure mode for indexers (#283, #294)
+>
+> Phase 6 is when ClanWorld becomes a *trading game*. Resources can be *converted* now, not just gathered — and the carry-based mechanic means a clan can be raided mid-trade, which is the seam Phase 9 (bandits) exploits.
+
+- Resource boundary tokens + treasury seeder (#228)
+- Seed pools, immediate and scheduled market actions, carry-based market trades, market failure semantics, market events surface (#240, #257, #260, #263, #262, #284, #283)
+- `StatusCode` enum stability (#324)
+- Phase 6 cloud-review fix-round (#270)
+- Phase 6 R3 wheelbarrow vault-carry + sell validation (#294)
+- Phase 6 R4 `ActionType` enum stability + `MarketBuy` error + `uintValue` robustness (#295)
+- Phase 6B market spec cleanup — seed ratios, `executeAtTick`, slippage alignment (#380, #357)
+- Phase 5/6 ABI `uint64` revert + per-tick migration (#298)
+
+### Phase 7 — OTC transfers + ownership (#243, #246, #248, #252, #256, #389, #397, #292)
+
+> [!NOTE]
+> **Inter-Clan Diplomacy:**
+> 1. **`transferGold`, `transferVaultResource`, `transferBlueprint`, `transferBundle`** — five direct transfer functions for cross-clan resource flows
+> 2. **`transferClanOwnership`** — explicit owner handoff with settle + dead-clan guard (#397)
+> 3. **OTC strip-out** — replaced the legacy OTC order type with direct transfers (#389)
+> 4. **Phase 7 R3 stale OTC + `expiryTick uint64` + cap reap + access cleanup** (#292)
+> 5. **OTC dead-clan restriction** (#256)
+> 6. **Codegen allowlist updated** for the 5 new transfer functions (#397)
+>
+> Phase 7 turns ClanWorld into a *negotiation game*. Two clans can now form alliances, fund each other's upgrades, or pay tribute — and the contract enforces the *atomic guarantees* (settle-then-debit, dead-clan checks) so the negotiation can't be exploited.
+
+- Gold, vault, blueprint, bundle transfer functions (#243, #246, #248, #252)
+- OTC dead-clan restriction (#256)
+- Phase 7 OTC strip-out — direct transfers replace OTC orders (#389)
+- `transferClanOwnership` (#397)
+- Phase 7 R3 stale OTC + `expiryTick uint64` + cap reap + access cleanup (#292)
+
+### Phase 8 — Buildings + upgrades (#236, #238, #242, #251, #360, #361, #364, #291, #296, #391, #355)
+
+> [!NOTE]
+> **Bases Grow:**
+> 1. **Wall, base, monument upgrades** — three building tracks each with multiple levels (#236, #238, #242)
+> 2. **Score + rank getters** — `getRankings`, `_getClanScore`, `quoteLootValueSettled` derive from monument level + vault (#251)
+> 3. **Upgrade reservation system** — wood/iron/wheat/blueprints are *held* in `_reserved*ByClan` from queue-time to settle-time (#236, #238, #242)
+> 4. **`MAX_CLAN_SCAN_FOR_RANKING`** derived from `MAX_CLANS` (#360)
+> 5. **8 HIGH findings** from super-swarm review fixed in one round (#291)
+> 6. **Sim/real `fromLevel` parity + ABI pretty-print** (#296)
+> 7. **Phase 8B v4.6 buildings alignment addendum** — spec-vs-impl reconciliation (#355)
+>
+> Phase 8 introduces *time-locked capital*. A clan that queues a wall upgrade has committed wood for the next N ticks — that wood is *no longer spendable* even though it shows in the vault total. This is the invariant that the Tier A reservation-bypass fixes had to retroactively defend.
+
+- Wall, base, monument upgrades; score + rank getters; upgrade reservation coverage (#236, #238, #242, #251, #364)
+- Dead internal function cleanup (#361)
+- `MAX_CLAN_SCAN_FOR_RANKING` derivation (#360)
+- Phase 8 R4 — eight HIGHs from super-swarm review (#291)
+- Phase 8 R5 sim/real `fromLevel` parity + ABI pretty-print (#296)
+- Phase 8 dev-merge test regressions — winter init + assertion alignment (#391)
+- Phase 8B v4.6 buildings alignment addendum (#355)
+
+### Phase 9 — Bandits (#189, #191, #244, #247, #253, #255, #258, #374, #266, #265, #341)
+
+> [!NOTE]
+> **Existential Threat Delivered:**
+> 1. **Bandit troop state machine** — `Spawned → Camped → Attacking → Resting → Escaped` lifecycle (#189, #244)
+> 2. **Spawn chance logic** with global cap and per-region eligibility (#191)
+> 3. **Eager-settle scope** — base + defenders in spawn-candidate regions get refreshed pre-spawn (#247)
+> 4. **Deterministic attack resolution** — settled defense vs bandit attack power, with two outcomes per spec §6.15 (#253)
+> 5. **Defender reward split + blueprint reward on successful defense** (#255, #258)
+> 6. **Vault loot theft + rampage path + WAITING-at-home defense** (#374)
+> 7. **Cleanup on bandit target death** — defender release + state cleanup (#258)
+> 8. **5 HIGH findings** from super-swarm review fixed in one round (#266)
+>
+> Phase 9 turns boring resource collection into a *strategic shared experience of existential threat*. A bandit can spawn in any region, target the highest-loot clan there, and either steal vault resources or deal damage on attack. Plus the **Phase 9 redesign addendum (#341)** locked v4.6 mechanics. **This is the suspense mechanism** that forces Elders to communicate and cooperate — without bandits, ClanWorld is a flat optimization game; with them, it's a story.
+
+- Bandit troop state machine, spawn chance logic, eager-settle scope, deterministic attack resolution, defender reward split, blueprint reward on successful defense (#189, #191, #244, #247, #253, #255, #258)
+- Vault loot theft + rampage path + WAITING-at-home defense (#374)
+- Cleanup on bandit target death (#258)
+- Phase 9 super-swarm R2 — five HIGH findings (#266)
+- Phase 9 cloud-review fix-round (#265)
+- v4.6 Phase 9 bandit redesign addendum (#341)
+
+### Phase 10 — Winter + cold + clan death (#235, #237, #241, #245, #249, #289, #293, #383, #363, #287, #345)
+
+> [!NOTE]
+> **Seasons Have Consequences:**
+> 1. **Winter schedule** — explicit ranges within the season calendar (#235)
+> 2. **Winter upkeep** — wheat consumption *doubles*, fish consumption doubles, wood burn for warmth (#237)
+> 3. **Cold damage** — clansmen can take cold damage from insufficient wood, accumulates per-tick (#241)
+> 4. **Crop winter transitions** — wheat plots `Harvestable → WinterLocked → Regrowing` (#245)
+> 5. **Clan death** — starvation or all-clansmen-cold-death marks `clanState = DEAD`, vault burned, gold preserved (#249)
+> 6. **Starvation + cold-reset semantics** — first-tick flag, second-tick kill; reset on winter exit (#289)
+> 7. **3 super-swarm HIGHs + cleanups** (#293)
+> 8. **Sim/winter parity** — `_simulateApplyUpkeep` mirrors real winter logic (#393)
+>
+> Phase 10 is the *clock that punishes complacency*. A clan that hoards gold but neglects wheat will starve in winter; a clan with no wood will freeze. Phase 10 is what makes the game's resource priorities *time-dependent* instead of static.
+
+- Winter schedule, winter upkeep, cold damage, crop winter transitions, clan death, starvation + cold-reset semantics (#235, #237, #241, #245, #249, #289, #293, #383, #363)
+- Phase 10 super-swarm R2 fixes (#287)
+- Phase 10 R3 cold-reset regression + cloud findings (#289)
+- Phase 10 R4 three super-swarm HIGHs + cleanups (#293)
+- Phase 10 spec-compliance UAT review (#345)
+- Phase 10 dev-merge follow-ups — dead constant + sim/winter parity (#393)
+
+---
+
+## Pre-Release Hardening (2026-05-01)
+
+After all 10 phases landed in `dev-merge`, an 8–11 reviewer super-swarm (codex 5.3 + 5.4 + 5.5, Claude Opus 4.6 + 4.7, Sonnet 4.6, Gemini 3.1 Pro, plus per-PR cloud reviewers) audited the integrated state. Three tiers of fixes followed.
+
+### Tier A — Reservation-bypass criticals (#394, #395, #397)
+
+> [!NOTE]
+> **Vault-Drain Class Closed:**
+> 1. **`WithdrawResources` reservation-aware** — adds `_hasSpendableForWithdraw` helper, blocks withdraws of wood/iron/wheat/blueprints already reserved for upgrades (#394)
+> 2. **Phase 7 OTC transfers reservation-aware** — `transferVaultResource`, `transferBlueprint`, `transferBundle` all routed through `_deductFromVault` instead of raw subtraction (#395)
+> 3. **`transferClanOwnership` dead-clan guard** — was allowed on dead clans, now settles-then-dead-checks (#397)
+> 4. **5 + 49 + new exploit tests** added to lock these regressions out
+>
+> An entire *class* of vault-drain exploits would have shipped silently with v1.0.0 if the super-swarm hadn't caught the pattern. Tier A is the win that justified the audit-after-merge cadence as a permanent practice.
+
+- WithdrawResources reservation-aware: blocks reserved-resource withdraws (#394)
+- Phase 7 OTC transfers reservation-aware: vault transfers route through `_deductFromVault` (#395)
+- `transferClanOwnership` settle-then-dead-check + codegen allowlist + `ERR_MUST_SETTLE_FIRST` consistency (#397)
+
+### Tier B — 6-item surgical bundle (#407)
+
+> [!NOTE]
+> **Surgical Cleanup:**
+> 1. **`HEARTBEAT_ABI` duplicate fields deleted** — silent runtime decode bug caught by *8 of 8 reviewers*
+> 2. **`marketMode` field added** to TS `SubmitOrderResult` to match on-chain 5-field struct
+> 3. **Fake parity test deleted** — `check-chain-abi-parity.test.ts` was self-tautology (compared two fixtures to each other)
+> 4. **Duplicate `cli.test.ts` deleted** — canonical copy lives elsewhere
+> 5. **Stub `getDerivedClanState` clanId fix** — multi-clan callers were getting clan 0's data
+> 6. **`WithdrawResources` simulation branch wired** — `_simulateResolveAction` now mirrors `_resolveAction`
+>
+> All six were trivial individually, but each was a surface where *the same kind of bug* could have hidden in production. Tier B is the *cheap good move*.
+
+- 6 surgical fixes from PR #396 superswarm (#407)
+
+### Audit — Hand-coded types (#408, #409)
+
+> [!NOTE]
+> **Drift Hazards Eliminated:**
+> 1. **`HEARTBEAT_ABI` fully replaced with generated import** — `heartbeat()` added to codegen allowlist, runner now imports `CLAN_WORLD_ABI` (audit MUST 1, #408)
+> 2. **`gen-enums.mjs` shipped** — regex-parses `IClanWorld.sol` for all 8 contract enums, emits TS `as const` lookup tables (audit MUST 2, #409)
+> 3. **Orchestrator `action: 1` literal becomes `ActionType.ChopWood`** — out-of-band knowledge becomes compile-checked (#409)
+> 4. **Parity test refactored** — encoder side now reads canonical `IClanWorld.json` via `getAbiItem` (audit MUST 3, #409)
+> 5. **`gen-constants.mjs` shipped** — `ClanWorldConstants.sol` → TS `bigint` exports (#409)
+> 6. **`anyApi` casts replaced** with generated Convex API types in `IConvexClient.ts` + `useAgentLogs.ts` (#409)
+> 7. **Heartbeat-interval values aligned** across `start-heartbeat-loop.sh` + `getSnapshot.ts` empty-state (#409)
+> 8. **`check-chain-abi-parity.mjs` extended + wired into CI** — drift fails the build (#409)
+>
+> The audit asked *"are there other places like the HEARTBEAT_ABI bug?"* — answer was yes, three more, plus six soft-drift surfaces. **Hand-rolled type mirrors are no longer a viable shortcut** in this codebase. The new `handcoded-types-audit` skill captures the methodology so future pre-release moments re-run the same scan.
+
+- Audit MUST 1 — Replace runner `HEARTBEAT_ABI` with generated `CLAN_WORLD_ABI` import (#408)
+- Audit phase 2 — `gen-enums.mjs` + `gen-constants.mjs` + parity test refactor + anyApi cleanup + heartbeat-interval alignment (#409)
+- Audit `handcoded-types-audit` skill captured for future pre-releases
+
+---
+
+## Cross-Phase Infrastructure
+
+### Agents and orchestrator
+
+> [!NOTE]
+> **Autonomous AI Players:**
+> 1. **Elder CLI** — full `status`, `orders`, `submit` subcommand coverage (#71)
+> 2. **`RealChainClient` integration** — Elder clan submits real on-chain transactions every heartbeat tick (#32)
+> 3. **Elder harness in-repo** with `make install` — sandboxed Claude Code agent per Elder (#154)
+> 4. **Orchestrator REGION_FOREST routing + `submitOrders` sim semantics** (#383)
+> 5. **`ActionType` enum import** replaces bare numeric literal (#409)
+>
+> Each clan has an *Elder* — an autonomous Claude Code agent with its own wallet, its own private key, its own `submitOrders` cadence. The orchestrator coordinates them; the harness sandboxes them; the CLI lets a human poke at any of them mid-game.
+
+- Elder CLI full subcommand coverage (#71)
 - Elder clan `submitOrders` with real on-chain transactions via `RealChainClient` (#32)
-- Elder harness in-repo with `make install` — sandboxed Claude Code agent per elder (#154)
+- Elder harness in-repo with `make install` (#154)
 - Orchestrator `REGION_FOREST` routing + `submitOrders` sim semantics (#383)
-- `ActionType` enum replaces bare numeric literal `action: 1` in orchestrator (#409)
+- `ActionType` enum replaces bare numeric literal `action: 1` (#409)
 
-#### Shared / infrastructure
+### Shared / adapters
 
 - `RealChainClient` with viem — full typed on-chain interface (#27)
 - `IChainClient` adapter interface + codegen pipeline (#362, #385)
-- Cross-phase hygiene bundle: stub heartbeat parity, ABI parity broadening, `IChainClient` codegen (#362, #385)
+- Cross-phase hygiene bundle: stub heartbeat parity, ABI parity broadening (#362, #385)
 
-#### Web app
+### Web app — Pixi.js canvas
+
+> [!NOTE]
+> **The World You Watch:**
+> 1. **8-region canvas world map** with clan flags + speech bubbles (#19)
+> 2. **`agentLogs` speech bubbles on canvas** — Elder reasoning surfaces visually (#33)
+> 3. **MiniKit + IDKit clan-join + World ID verify endpoint** (#34)
+> 4. **Isometric base sprites at 5 upgrade levels** + region zones + floating level labels + fullscreen mode (#52, #161)
+> 5. **Walking clansman sprites** replace worker dots (#59)
+> 6. **Pinch-to-zoom via `pixi-viewport`** — multi-touch + Pixi v8 EventSystem fix (#50, #51, #53)
+> 7. **Bubble polish** — clan-colored Elder header, backdrop, tail, fade (#43, #55, #99)
+> 8. **Worker travel dot animation** along routes (#45)
+>
+> Pixi gives ClanWorld its *spectator surface*. You don't need to read JSON to know what's happening — a clansman is walking from the forest to base, the wall just leveled up, an Elder said *"I'm worried about winter."*
 
 - Pixi.js canvas shell — 8 regions, clan flags, speech bubbles (#19)
-- Convex `agentLogs` speech bubbles on canvas (#33)
+- Convex `agentLogs` speech bubbles (#33)
 - MiniKit + IDKit clan-join + World ID verify endpoint (#34)
 - Visual rework — isometric base sprites, region zones, floating level labels, fullscreen mode (#52, #161)
-- Clansman walking sprites replace worker dots (#59)
-- Speech bubble polish — clan-colored Elder header, backdrop, tail, fade (#43, #55, #99)
-- Pinch-to-zoom via `pixi-viewport` — multi-touch + Pixi v8 EventSystem fix (#50, #51, #53)
-- Bubble tails pointing to source, world notice panel, live tick counter (#54)
-- Demo bypass env (`VITE_DEMO_BYPASS_WORLD_GUARD`) for offline/demo recording (#37)
+- Clansman walking sprites (#59)
+- Speech bubble polish (#43, #55, #99)
+- Pinch-to-zoom (#50, #51, #53)
+- Bubble tails, world notice panel, live tick counter (#54)
+- Demo bypass env for offline recording (#37)
 - Graceful render fallback (#35)
-- Worker travel dot animation along routes (#45)
+- Worker travel dot animation (#45)
 - Monument visual + wall opacity by building level (#44)
 
-#### Landing page and docs
+### Server / backend
 
-- `clan-world.com` landing page — full copy, palette, tale frames, sponsor logos (#30, #48)
-- Hackathon judge quick-start banner and submission video embed (#61, #62)
-- README polish — hero copy, tech stack, sponsor framing (#31)
-
-#### Server / backend
-
-- Convex MOCK_MODE backend — `getSnapshot` + `agentLogs` (#20)
+- Convex `MOCK_MODE` backend — `getSnapshot` + `agentLogs` (#20)
 - Convex heartbeat-webhook HTTP action + safety-net cron (#25)
 - Foundry `Heartbeat` script + `start-heartbeat-loop.sh` (#29)
 
-#### Tooling and codegen
+### Tooling and codegen
 
 - `gen-chainclient-abi.mjs` — allowlist-driven ABI extraction to TypeScript (#385)
 - `gen-enums.mjs` — regex-parses `IClanWorld.sol` for all 8 contract enums, outputs `as const` lookup tables (#409)
 - `gen-constants.mjs` — `ClanWorldConstants.sol` → TypeScript `bigint` exports (#409)
-- `check-chain-abi-parity.mjs` extended to cover all major struct getters; wired into `pnpm test` (#409)
+- `check-chain-abi-parity.mjs` extended + wired into CI (#409)
 - Playwright e2e harness for `apps/web` (#88)
-- Elder vitest suite for CLI subcommands + regression coverage (#105)
+- Elder vitest CLI suite + regression coverage (#105)
 - Vite dev servers default to `port-for` slots (#139)
 - Post-bundle-A dev-tooling follow-ups (#140)
 
-> [!NOTE]
-> **Critical Pre-Release Saves:**
-> 1. **Reservation-bypass closed** in `WithdrawResources` and all 4 Phase 7 OTC transfer paths — entire class of *vault-drain exploits* caught and fixed (#394, #395)
-> 2. **`transferClanOwnership` dead-clan guard** — was allowed on dead clans, now settles-then-dead-checks (#397)
-> 3. **Phase 4 heartbeat ordering bug** — HIGH spec divergence between heartbeat and lazy paths fixed (#239)
-> 4. **`StatusCode` + `ActionType` enum stability** locked by Solidity tests (#324, #295)
-> 5. **Phase 6 market** — wheelbarrow vault-carry semantics + sell validation + scheduled-execution observability (#294)
-> 6. **5 HIGH bandit findings** from super-swarm review fixed in one round (#266)
-> 7. **8 HIGH building findings** from Phase 8 super-swarm review (#291)
-> 8. **Phase 10 cold-reset regression** + super-swarm HIGHs (#289, #293)
->
-> The vault-drain exploits would have **silently broken upgrade economics** in production — a clan could queue a wall upgrade, transfer the reserved wood to a sibling clan, and watch the upgrade fail at settle while the wood was already gone. Caught by a 4-reviewer cross-validation sweep on PR #396 *before* tagging v1.0.0.
+### Landing page and docs
 
-#### Pre-release reservation bypass (Tier A — critical)
-
-- `WithdrawResources` bypassed Phase 8 upgrade reservations — a clansman could drain wheat, wood, or iron that an active upgrade had already reserved (#394)
-- Phase 7 OTC transfer functions (`transferVaultResource`, `transferBundle`, `transferBlueprint`) were reservation-blind, allowing reserved resources to be transferred out before settlement (#395)
-
-#### Contract correctness
-
-- Phase 4 heartbeat ordering (HIGH spec drift) (#239)
-- Phase 5 `ResourcesDeposited` event order + tick + four medium fixes (#234)
-- Phase 6 cloud-review fix-round (#270)
-- Phase 6 R3 wheelbarrow vault-carry + sell validation (#294)
-- Phase 6 R4 `ActionType` enum stability + `MarketBuy` error + `uintValue` robustness (#295)
-- Phase 6 R5 `StatusCode` enum stability (#324)
-- Phase 7 R3 stale OTC + `expiryTick uint64` + cap reap + access cleanup (#292)
-- Phase 8 R4 eight HIGHs from super-swarm review (#291)
-- Phase 8 R5 sim/real `fromLevel` parity + ABI pretty-print (#296)
-- Phase 9 super-swarm R2 — five HIGH findings (#266)
-- Phase 9 cloud-review fix-round (#265)
-- Phase 10 super-swarm R2 fixes (#287)
-- Phase 10 R3 cold-reset regression + cloud findings (#289)
-- Phase 10 R4 three super-swarm HIGHs + cleanups (#293)
-- Phase 8 dev-merge test regressions — winter init + assertion alignment (#391)
-- Phase 10 dev-merge follow-ups — dead constant + sim/winter parity (#393)
-- Phase 3 integration fixes from orch-r1 review (#181)
-- PR #153 review must-fix/should-fix slices across contracts, runner, web, and agents (#170, #171, #172)
-- `transferClanOwnership` allowed on DEAD clans — settle-then-DEAD-check guard added (S-1 fix, #397)
-- Codegen allowlist missing the five new Phase 7 transfer functions (S-2 fix, #397)
-- `transferClanOwnership` missing from ABI + `IChainClient` (S-3 fix, #397)
-- Phase 5 ABI `uint64` revert + per-tick yield migration + `ERR_NOT_AT_HOMEBASE` (#298)
-
-#### Web fixes
-
-- Pinch-zoom — override Pixi v8 `EventSystem` `touchAction='none'` (#51)
-- Bubble tails point to source, world notice panel, tick counter live (#54)
-- Demo bypass also skips IDKit verified gate (#39)
+- `clan-world.com` landing page — full copy, palette, tale frames, sponsor logos (#30, #48)
+- Hackathon judge quick-start banner + submission video embed (#61, #62)
+- README polish — hero copy, tech stack, sponsor framing (#31)
 - Landing factual corrections — clan count + winter cadence (#36)
-- Graceful render fallback on canvas load failure (#35)
 
-#### Runner / agents
+---
 
-- Elder sandbox tightened; live config improvements mirrored in-repo (#160)
+## Cross-cutting
 
-### Hardening pre-release (post-merge audit, 2026-05-01)
-
-> [!NOTE]
-> **Audit-Driven Cleanup of the Release Branch:**
-> 1. **`HEARTBEAT_ABI` duplicate fields deleted** — silent runtime decode bug caught by *8 of 8 reviewers* (#407)
-> 2. **`HEARTBEAT_ABI` fully replaced with generated import** — drift hazard *structurally eliminated* (#408)
-> 3. **`gen-enums.mjs` + `gen-constants.mjs` shipped** — TypeScript now generated from Solidity for enums + constants (#409)
-> 4. **Parity test refactored** — encoder side now reads canonical `IClanWorld.json` instead of hand-rolled fixture (#409)
-> 5. **`anyApi` casts replaced** with generated Convex API types in `IConvexClient.ts` + `useAgentLogs.ts` (#409)
-> 6. **`marketMode` field added** to TS `SubmitOrderResult` to match on-chain 5-field struct (#407)
-> 7. **Stub `getDerivedClanState` clanId fix** — multi-clan callers were getting clan 0's data (#407)
->
-> A parallel codex+claude audit asked the question *"are there other places like the HEARTBEAT_ABI bug?"* — answer was yes, and they're all gone now. **Hand-rolled type mirrors are no longer a viable shortcut** in this codebase: the codegen pipeline + parity check covers every drift surface that matters.
-
-These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) after an 8–11 reviewer superswarm pass:
-
-- **PR #407** — Tier B 6-item bundle:
-  - Delete duplicate `currentSeasonNumber` / `nextHeartbeatAtTick` fields from runner `HEARTBEAT_ABI` tuple (caused silent runtime decode bug; flagged by 8/8 reviewers)
-  - Add `marketMode` field to `SubmitOrderResult` TypeScript interface to match on-chain 5-field struct
-  - Delete fake parity test that compared two literal fixtures to each other (self-tautology)
-  - Delete duplicate `cli.test.ts` (canonical copy lived elsewhere)
-  - Fix stub `clanId` assignment in simulation path
-  - Wire `WithdrawResources` branch into simulation settlement
-
-- **PR #408** — Replace hand-rolled `HEARTBEAT_ABI` viem tuple in runner with import of generated `CLAN_WORLD_ABI`; add `heartbeat` to codegen allowlist (audit MUST 1/3)
-
-- **PR #409** — Phase 2 of hand-coded types audit:
-  - New `gen-enums.mjs` generates TypeScript enum lookup tables from Solidity source; replaces `action: 1` literal with `ActionType.ChopWood` (audit MUST 2/3)
-  - Parity test refactored to use `getAbiItem` from canonical `IClanWorld.json` — test now verifies generated vs. canonical shapes, not fixture vs. fixture (audit MUST 3/3)
-  - New `gen-constants.mjs` for Solidity constants → TypeScript `bigint` exports
-  - `anyApi` casts in `IConvexClient.ts` and `useAgentLogs.ts` replaced with generated Convex API types
-  - Heartbeat-interval constant unified across runner and contract
+### Refactor
 
 > [!NOTE]
 > **Cleaner Surfaces:**
@@ -196,39 +364,43 @@ These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) 
 > 6. **Orchestrator enum literals** — `action: 1` becomes `ActionType.ChopWood` (#409)
 > 7. **4 dead internal contract functions deleted** (#361)
 >
-> The OTC strip-out and the chain pivot were the two big *spec-vs-impl* alignments — once they landed, every downstream phase had a *consistent* substrate to build on instead of routing around legacy assumptions.
+> The OTC strip-out and chain pivot were the two big *spec-vs-impl* alignments — once they landed, every downstream phase had a *consistent* substrate to build on.
 
-- Drop `*Upgraded` events, keep `*LevelChanged` — cleaner event surface (#365)
-- Delete four dead internal contract functions (#361)
-- `MAX_CLAN_SCAN_FOR_RANKING` derived from `MAX_CLANS` constant rather than hardcoded (#360)
-- Base Sepolia chain pivot — replaces earlier World Chain Sepolia config (bundle B, #132)
-- Phase 7 OTC strip-out — replaces OTC order type with direct transfer functions (#389)
-- Phase 6B market spec cleanup — seed ratios, `executeAtTick`, slippage alignment (#380, #357)
-- Phase 6B carry-based market trades — workers carry resources to market rather than teleporting (#284)
+- Phase 7 OTC strip-out (#389)
+- Base Sepolia chain pivot (#132)
+- Drop `*Upgraded` events, keep `*LevelChanged` (#365)
+- `MAX_CLAN_SCAN_FOR_RANKING` derivation (#360)
+- Carry-based market trades (#284)
 - Orchestrator action literals replaced with `ActionType` enum (#409)
+- 4 dead internal contract functions deleted (#361)
+
+### Tests
 
 > [!NOTE]
-> **Validation Footprint At Ship:**
+> **Validation Footprint at Ship:**
 > 1. **310/310 Forge tests green** at release HEAD
 > 2. **WithdrawResources exploit test** + wood/iron/fish/surplus-ok variants (#394)
 > 3. **Phase 7 transfer reservation tests** (#395)
-> 4. **Heartbeat + `getRankings` gas profiling** (#359)
-> 5. **ABI parity test wired into CI** — reads canonical `IClanWorld.json` (#409)
-> 6. **Playwright e2e harness** for `apps/web` (#88)
-> 7. **Phase 3 Foundry spec** — *39 cases* (#115)
-> 8. **Elder vitest CLI suite** + issue #94 regression (#105)
+> 4. **`transferClanOwnership` dead-clan revert test** (#397)
+> 5. **Heartbeat + `getRankings` gas profiling** (#359)
+> 6. **ABI parity test wired into CI** — reads canonical `IClanWorld.json` (#409)
+> 7. **Playwright e2e harness** for `apps/web` (#88)
+> 8. **Phase 3 Foundry spec** — *39 cases* (#115)
 >
-> Every reservation-bypass exploit and every cross-tier integration shape has a *named test* — regressions can't sneak back in. CI now fails the build the moment the contract ABI drifts from the TypeScript adapter, which means **future drift is a compile-time problem, not a production incident**.
+> Every reservation-bypass exploit and every cross-tier integration shape has a *named test* — regressions can't sneak back in. CI fails the build the moment the contract ABI drifts from the TypeScript adapter.
 
-- Heartbeat + `getRankings` gas profiling (#359)
-- Upgrade reservation coverage strengthened (#364)
-- Phase 3 Foundry test specification — 39 cases (#115)
-- Elder vitest suite for CLI subcommands + issue #94 regression (#105)
-- Playwright e2e harness (#88)
-- WithdrawResources exploit test + wood/iron/fish/surplus-ok cases added — 310/310 Forge tests at release (#394)
+- 310/310 Forge tests at release
+- WithdrawResources exploit test (#394)
 - Phase 7 transfer reservation tests (#395)
 - `transferClanOwnership` dead-clan revert test (#397)
+- Heartbeat + `getRankings` gas profiling (#359)
+- Upgrade reservation coverage strengthened (#364)
+- Phase 3 Foundry test specification (#115)
+- Elder vitest CLI suite + regression (#105)
+- Playwright e2e harness (#88)
 - ABI parity test refactored to canonical-derived shapes, wired into CI (#409)
+
+### Docs
 
 > [!NOTE]
 > **Spec + Planning Artifacts Shipped:**
@@ -236,19 +408,21 @@ These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) 
 > 2. **v4.1–v4.5 engine spec copies** (#70)
 > 3. **v4.6 Phase 5 economy alignment addendum** (#356)
 > 4. **Phase 8B v4.6 buildings alignment addendum** (#355)
-> 5. **Phase 10 spec-compliance UAT review** (#345)
-> 6. **Phase 3 Foundry test specification** (#115)
-> 7. **Hackathon coding rules** — minimal tests + env var simplicity (#18)
+> 5. **v4.6 Phase 9 bandit redesign addendum** (#341)
+> 6. **Phase 10 spec-compliance UAT review** (#345)
+> 7. **Phase 3 Foundry test specification** (#115)
+> 8. **Hackathon coding rules** — minimal tests + env var simplicity (#18)
 >
-> The spec evolved through 5 named versions during the build — `CANONICAL_SPEC` is the *current source of truth* for every conflict, and the alignment addenda capture *exactly* what changed between versions and *why*. Future agents reading the docs will know which version supersedes which.
+> The spec evolved through 5 named versions during the build — `CANONICAL_SPEC` is the *current source of truth* for every conflict, and the alignment addenda capture *exactly* what changed between versions and *why*.
 
 - `CANONICAL_SPEC`, `DEMO_DRIFT`, v4.1–v4.5 engine spec copies (#70)
 - Phase 3 Foundry test specification (#115)
 - v4.6 Phase 5 economy alignment addendum (#356)
 - Phase 8B v4.6 buildings alignment addendum (#355)
+- v4.6 Phase 9 bandit redesign addendum (#341)
 - Phase 10 spec-compliance UAT review (#345)
 - Hackathon coding rules — minimal tests + env var simplicity (#18)
 
 ---
 
-[1.0.0]: https://github.com/OmniPass-world/clan-world/compare/world-build-submission-1...release/v1.0.0
+[1.0.0]: https://github.com/OmniPass-world/clan-world/compare/world-build-submission-1...v1.0.0
