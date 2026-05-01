@@ -50,6 +50,16 @@ contract ClanWorldTestHarness is ClanWorld {
         _clansmen[csId].state = ClansmanState.DEAD;
     }
 
+    function suppressBanditsForUnitTests() public {
+        WorldState memory ws = IClanWorld(address(this)).getWorldState();
+        _activeBanditCount = 0;
+        for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
+            delete _banditsByRegion[region];
+            _banditSpawnByRegion[region] =
+                BanditSpawnState({lastSpawnTick: ws.currentTick, probabilityAccum: 0});
+        }
+    }
+
     function setClanUpkeepState(
         uint32 clanId,
         uint64 lastSettledTick,
@@ -59,11 +69,22 @@ contract ClanWorldTestHarness is ClanWorld {
         uint16 coldDamage
     ) external {
         Clan storage clan = _clans[clanId];
+        clan.clanState = ClanState.ACTIVE;
+        clan.livingClansmen = 4;
         clan.lastSettledTick = lastSettledTick;
         clan.vaultWood = vaultWood;
         clan.vaultWheat = vaultWheat;
         clan.vaultFish = vaultFish;
         clan.coldDamage = coldDamage;
+
+        uint32 firstClansmanId = ((clanId - 1) * 4) + 1;
+        for (uint32 clansmanId = firstClansmanId; clansmanId < firstClansmanId + 4; clansmanId++) {
+            Clansman storage cs = _clansmen[clansmanId];
+            cs.state = ClansmanState.WAITING;
+            cs.cooldownEndsAtTs = 0;
+        }
+
+        suppressBanditsForUnitTests();
     }
 
     function setClanWallLevel(uint32 clanId, uint8 wallLevel) external {
@@ -98,7 +119,7 @@ contract ClanWorldTest is Test {
     StubPool fishPool;
 
     function setUp() public {
-        world = new ClanWorld();
+        world = new ClanWorldTestHarness();
     }
 
     /// @dev Deploy tokens + pools, call initTreasury + seedPools. Returns wood token address.
@@ -153,6 +174,7 @@ contract ClanWorldTest is Test {
     function _advanceTick() internal {
         vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
         world.heartbeat();
+        ClanWorldTestHarness(address(world)).suppressBanditsForUnitTests();
     }
 
     function _advanceToTick(uint64 targetTick) internal {
@@ -165,6 +187,7 @@ contract ClanWorldTest is Test {
         while (target.getWorldState().currentTick < targetTick) {
             vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
             target.heartbeat();
+            ClanWorldTestHarness(address(target)).suppressBanditsForUnitTests();
         }
     }
 
