@@ -1337,8 +1337,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint8 livingBeforeStarvation = sim.clan.livingClansmen;
         if (winter && starving) {
             (, uint64 winterStartsAtTick,) = _winterWindowForTick(tick);
-            uint64 effectiveStarvationStartsAtTick =
-                sim.clan.starvationStartsAtTick > winterStartsAtTick ? sim.clan.starvationStartsAtTick : winterStartsAtTick;
+            uint64 effectiveStarvationStartsAtTick = sim.clan.starvationStartsAtTick > winterStartsAtTick
+                ? sim.clan.starvationStartsAtTick
+                : winterStartsAtTick;
             if (effectiveStarvationStartsAtTick < tick) {
                 _simulateKillNextClansmanFromStarvation(sim);
             }
@@ -1361,11 +1362,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
     }
 
-    function _simulateApplyColdDamageConsequence(
-        SettlementSimulation memory sim,
-        uint64 tick,
-        uint16 oldColdDamage
-    ) internal view {
+    function _simulateApplyColdDamageConsequence(SettlementSimulation memory sim, uint64 tick, uint16 oldColdDamage)
+        internal
+        view
+    {
         uint16 newColdDamage = sim.clan.coldDamage;
         if (newColdDamage == oldColdDamage) return;
 
@@ -1387,11 +1387,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _simulateKillRandomClansmanFromCold(sim, tick, newColdDamage);
     }
 
-    function _simulateKillRandomClansmanFromCold(
-        SettlementSimulation memory sim,
-        uint64 tick,
-        uint16 coldDamage
-    ) internal view {
+    function _simulateKillRandomClansmanFromCold(SettlementSimulation memory sim, uint64 tick, uint16 coldDamage)
+        internal
+        view
+    {
         if (sim.clan.livingClansmen == 0) return;
 
         uint256 livingCount = 0;
