@@ -1,5 +1,4 @@
-# **Clan World: Ælder Whispers** 
-<img width="1916" height="821" alt="C71F823D-B0FA-43B7-B337-D8A0B619E0ED" src="https://github.com/user-attachments/assets/d5d3e907-cbc3-4fff-ad0c-cbc227360070" />
+<img width="1916" height="821" alt="Clan World: Ælder Whispers Banner" src="https://github.com/user-attachments/assets/d5d3e907-cbc3-4fff-ad0c-cbc227360070" />
 
 # **Clan World: Ælder Whispers** 
 
