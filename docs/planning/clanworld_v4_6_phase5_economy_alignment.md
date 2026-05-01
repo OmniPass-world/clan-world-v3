@@ -192,13 +192,13 @@ Upkeep applies only when `clan.livingClansmen > 0`. If the vault cannot fully sa
 
 Execution order in `_settleClan` (per tick): `_applyUpkeep` → wheat-plot regrow → per-clansman mission settlement. Upkeep fires before any mission resolution in that tick, which means same-tick deposit cannot rescue that tick's upkeep (A6 compliant).
 
-### 5.2 Starvation onset — same-tick ratification
+### 5.2 Starvation onset — next-tick ratification
 
-**Ratified design decision:** starvation activates on the **same tick** as the upkeep failure (not the "next tick" specified in v4 §4.11).
+**Ratified design decision:** starvation activates on the **next tick** after the upkeep failure, matching v4 §4.11.
 
-v4 §4.11 states: "If the vault cannot satisfy both wheat and fish demands in full, **starvation status begins on the next tick**." The implementation sets `clan.starvationStartsAtTick = tick` (i.e., the current tick) inside `_applyUpkeep`, and derives `_isStarving = starvationStartsAtTick != 0 && starvationStartsAtTick <= currentTick`. This means `_isStarving == true` at the end of the tick the upkeep fails.
+v4 §4.11 states: "If the vault cannot satisfy both wheat and fish demands in full, **starvation status begins on the next tick**." The implementation sets `clan.starvationStartsAtTick = tick + 1` inside `_applyUpkeep`.
 
-**Rationale for ratifying same-tick:** simpler state derivation; defenders contributing 0 takes effect immediately on the failure tick (cleaner UX for players — starvation is visible at the tick where it happens, not one tick later). This also directly affects the bandit combat path: `_resolveBanditAttack` calls `_isStarving` to zero-out defender contribution, so same-tick starvation means a clan that runs out of food mid-attack loses its defense that same tick rather than the next. Restoration to next-tick semantics is tracked as item #14 in §10.
+Starvation effects are evaluated against the tick being resolved. During lazy settlement, mission resolution uses the loop's `tick`, not live `_world.currentTick`, so an upkeep failure on tick `T` does not penalize actions resolved on tick `T`; penalties begin for actions resolved on tick `T + 1`.
 
 ### 5.3 Starvation effects (unchanged from spec, A10)
 
@@ -293,7 +293,7 @@ The following 14 drift items are tracked for evaluation under the `spec-v4-resto
 | 11 | **Winter wheat plot lockdown** (§7.4) — plots enter `WinterLocked` at winter start; no harvest | `WinterLocked` enum state declared, not wired | Small–Medium — wire winter-start heartbeat to set plot state; add check in `_gatherWheat`; wire winter-end → Regrowing |
 | 12 | **Winter upkeep 2× multiplier** (§7.3) — wheat + fish consumption doubles in winter | Flat rate; `WINTER_UPKEEP_MULTIPLIER_BPS = 20000` declared, unused | Small — multiply upkeep by `WINTER_UPKEEP_MULTIPLIER_BPS` when `winterActive` in `_applyUpkeep` |
 | 13 | **Winter wood burn 1e18/base/tick** (§7.3) | Not implemented; `WINTER_WOOD_BURN_PER_BASE = 1e18` declared, unused | Small — add wood burn branch in `_applyUpkeep` when `winterActive` |
-| 14 | **Starvation onset next-tick** (§4.11) — starvation begins on the tick after upkeep failure | Starvation activates same tick as failure (`starvationStartsAtTick = tick`) | Small — change to `starvationStartsAtTick = tick + 1`; audit consumers for off-by-one |
+| 14 | **Starvation onset next-tick** (§4.11) — starvation begins on the tick after upkeep failure | IMPLEMENTED — `_applyUpkeep` records `starvationStartsAtTick = tick + 1`; settlement checks starvation against the tick being resolved | Done |
 
 Items 11–13 partially overlap with Phase 10 (winter / elimination) scope. Those phases will address them regardless.
 
@@ -339,7 +339,7 @@ When running interactive UAT against this contract, **expect the as-built mechan
 - ✅ Fish deep sea: 75% × 1e18 per batch — NOT 75% × 1e18/tick
 - ✅ Wheat: 20e18 per batch — NOT 20e18/tick continuous
 - ✅ Wood carry cap is 10e18 (NOT 15e18)
-- ✅ Starvation activates on the SAME TICK as upkeep failure (NOT next tick)
+- ✅ Starvation activates on the NEXT TICK after upkeep failure, matching v4 §4.11
 - ✅ Wheat plots remain harvestable during winter (WinterLocked NOT wired)
 - ✅ Winter upkeep doubling NOT active; flat upkeep rates apply year-round
 - ✅ Winter wood burn NOT active

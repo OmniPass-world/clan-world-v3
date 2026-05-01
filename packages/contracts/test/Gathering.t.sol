@@ -12,7 +12,8 @@ import {
     Mission,
     ClanFullView,
     ClanOrder,
-    OrderResult
+    OrderResult,
+    MarketExecutionMode
 } from "../src/IClanWorld.sol";
 
 contract GatheringHarness is ClanWorld {
@@ -23,6 +24,35 @@ contract GatheringHarness is ClanWorld {
     function setVaultFood(uint32 clanId, uint256 wheat, uint256 fish) external {
         _clans[clanId].vaultWheat = wheat;
         _clans[clanId].vaultFish = fish;
+    }
+
+    function seedLazyHarvestAtTick(uint32 clanId, uint32 csId, uint64 tick) external {
+        _clans[clanId].lastSettledTick = tick;
+
+        Clansman storage cs = _clansmen[csId];
+        cs.state = ClansmanState.ACTING;
+        cs.currentRegion = ClanWorldConstants.REGION_WEST_FARMS;
+
+        _missions[csId] = Mission({
+            active: true,
+            nonce: cs.lastMissionNonce + 1,
+            submittedAtTick: tick,
+            executesAtTick: tick,
+            settlesAtTick: tick,
+            clansmanId: csId,
+            startRegion: ClanWorldConstants.REGION_WEST_FARMS,
+            targetRegion: ClanWorldConstants.REGION_WEST_FARMS,
+            action: ActionType.HarvestWheat,
+            startTick: tick,
+            arrivalTick: tick,
+            actionStartTick: tick,
+            missionSeed: bytes32(0),
+            marketMode: MarketExecutionMode.None,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0
+        });
     }
 }
 
@@ -142,6 +172,33 @@ contract GatheringTest is Test {
 
         ClanFullView memory nextTick = world.getClanFullView(clanId);
         assertTrue(nextTick.clan.isStarving, "starvation remains active without food");
+    }
+
+    function test_starvationPenaltyUsesLazySettledTick() public {
+        uint32 clanId = _mintClan();
+        uint32 csId = _firstCs(clanId);
+        uint256 fullYield =
+            ClanWorldConstants.WHEAT_YIELD_PER_TICK * uint256(world.getActionDuration(ActionType.HarvestWheat));
+
+        world.setVaultFood(clanId, 0, 0);
+        _advanceUntilCurrentTick(6);
+
+        world.seedLazyHarvestAtTick(clanId, csId, 5);
+        world.settleClan(clanId);
+
+        Clansman memory failureTickHarvest = world.getClansman(csId);
+        ClanFullView memory failureTickClan = world.getClanFullView(clanId);
+        assertEq(failureTickClan.clan.clan.starvationStartsAtTick, 6, "starvation starts next tick");
+        assertTrue(failureTickClan.clan.isStarving, "live view is starving at tick 6");
+        assertEq(failureTickHarvest.carryWheat, fullYield, "failure tick harvest is not penalized");
+
+        _advanceUntilCurrentTick(7);
+
+        world.seedLazyHarvestAtTick(clanId, csId, 6);
+        world.settleClan(clanId);
+
+        Clansman memory nextTickHarvest = world.getClansman(csId);
+        assertEq(nextTickHarvest.carryWheat, fullYield + fullYield / 2, "next tick harvest is penalized");
     }
 
     function test_chopWoodAppliesCooldownPostSettle() public {

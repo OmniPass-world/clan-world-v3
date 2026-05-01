@@ -55,7 +55,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     mapping(uint32 => Clan) internal _clans;
     mapping(uint32 => Clansman) internal _clansmen;
-    mapping(uint32 => Mission) private _missions; // keyed by clansmanId
+    mapping(uint32 => Mission) internal _missions; // keyed by clansmanId
     mapping(uint32 => WheatPlot[2]) private _wheatPlots; // [0]=west [1]=east
     mapping(uint64 => ScheduledMarketAction[]) private _scheduledMarketActions; // keyed by tick
     mapping(uint8 => uint32[]) private _defendingClansByRegion; // home region => unique defending clanIds
@@ -426,7 +426,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @dev Check if a clan is currently starving (lazy read).
     function _isStarving(Clan storage clan) internal view returns (bool) {
-        return clan.starvationStartsAtTick != 0 && clan.starvationStartsAtTick <= _world.currentTick;
+        return _isStarvingAtTick(clan, _world.currentTick);
+    }
+
+    /// @dev Check starvation against the tick being settled, not necessarily live currentTick.
+    function _isStarvingAtTick(Clan storage clan, uint64 tick) internal view returns (bool) {
+        return clan.starvationStartsAtTick != 0 && clan.starvationStartsAtTick <= tick;
     }
 
     /// @dev Resolve an action for a clansman that is in ACTING state.
@@ -438,7 +443,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint64 tick,
         bytes32 tickSeed
     ) internal {
-        bool starving = _isStarving(clan);
+        bool starving = _isStarvingAtTick(clan, tick);
         ActionType action = m.action;
 
         if (action == ActionType.ChopWood) {
