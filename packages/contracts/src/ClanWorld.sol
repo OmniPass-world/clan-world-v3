@@ -41,6 +41,22 @@ import {RNG} from "./lib/RNG.sol";
 import {StubPool} from "./StubPool.sol";
 import {ReentrancyGuard} from "./util/ReentrancyGuard.sol";
 
+/// @dev Production storage excludes derived winter fields; _worldStateView() synthesizes the public ABI shape.
+struct StoredWorldState {
+    uint64 currentTick;
+    uint64 seasonStartTick;
+    uint64 seasonEndTick;
+    bool seasonFinalized;
+    uint64 currentSeasonNumber;
+    uint64 nextHeartbeatAtTick;
+    uint64 nextHeartbeatAtTs;
+    uint64 nextBanditSpawnEligibleTick;
+    uint16 currentBanditSpawnChanceBps;
+    bytes32 currentTickSeed;
+    uint32 activeBanditId;
+    uint64 nextCommitSequence;
+}
+
 /// @title ClanWorld
 /// @notice Phase 1–9 real engine implementation of IClanWorld v4.
 ///         Implements: world clock, clan lifecycle, lazy settlement, resource gathering,
@@ -51,7 +67,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     // STORAGE
     // =========================================================================
 
-    WorldState private _world;
+    StoredWorldState private _world;
     TreasuryState private _treasury;
 
     mapping(uint32 => Clan) internal _clans;
@@ -85,6 +101,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     uint256 internal constant BLUEPRINT_UNIT = 1e18;
     /// @dev Caps market queue work per heartbeat; overflow is deferred to the next tick.
     uint256 public constant MAX_MARKET_ACTIONS_PER_TICK = 32;
+    /// @dev Caps winter crop boundary work; current clan cap keeps transitions within this budget.
+    uint256 public constant MAX_CROP_TRANSITION_PER_TICK = 48;
     uint256 internal constant DOMAIN_BANDIT_SPAWN = uint256(keccak256("clanworld.bandit.spawn.v1"));
     uint64 internal constant MIN_SPAWN_COOLDOWN_TICKS = ClanWorldConstants.BANDIT_COOLDOWN_TICKS;
     uint16 internal constant BANDIT_SPAWN_PROBABILITY_INCREMENT_BPS = 1000;
@@ -136,11 +154,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
         _world.currentSeasonNumber = 1;
         _world.nextHeartbeatAtTick = 1; // first heartbeat will open tick 1
-        // First winter: last WINTER_DURATION_TICKS of first TICKS_PER_WINTER_CYCLE cycle
-        // i.e. ticks [100, 110)
-        _world.winterStartsAtTick = ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS; // = 100
-        _world.winterEndsAtTick = ClanWorldConstants.TICKS_PER_WINTER_CYCLE; // = 110
-        _world.winterActive = false;
         _treasury.treasuryOwner = msg.sender;
         _nextClanId = 1;
         _nextClansmanId = 1;
@@ -436,16 +449,29 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             }
         }
 
+        if (curTick > fromTick && !_isWinterActiveAt(curTick) && _isWinterActiveAt(curTick - 1)) {
+            clan.coldDamage = 0;
+        }
+
         clan.lastSettledTick = curTick;
         emit ClanSettled(clanId, curTick);
     }
 
-    /// @dev Apply one tick of upkeep. Marks starvation if insufficient food.
+    /// @dev Apply one tick of upkeep. Marks starvation if insufficient food and cold damage if winter wood is short.
     function _applyUpkeep(Clan storage clan, uint64 tick) internal {
+        bool winter = _isWinterActiveAt(tick);
+        if (!winter && tick > 0 && _isWinterActiveAt(tick - 1)) {
+            clan.coldDamage = 0;
+        }
+
         if (clan.livingClansmen == 0) return;
 
         uint256 wheatNeeded = uint256(clan.livingClansmen) * ClanWorldConstants.WHEAT_UPKEEP_PER_CLANSMAN;
         uint256 fishNeeded = uint256(clan.livingClansmen) * ClanWorldConstants.FISH_UPKEEP_PER_CLANSMAN;
+        if (winter) {
+            wheatNeeded = wheatNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
+            fishNeeded = fishNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
+        }
 
         bool hadEnoughWheat = clan.vaultWheat >= wheatNeeded;
         bool hadEnoughFish = clan.vaultFish >= fishNeeded;
@@ -463,6 +489,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         bool starving = !hadEnoughWheat || !hadEnoughFish;
         if (starving && clan.starvationStartsAtTick == 0) {
+            /// @dev Same-tick onset is canonical; see docs/planning/clanworld_v4_6_phase5_economy_alignment.md §5.2.
+            ///      This also makes bandit-defense starvation effects apply on the upkeep-failure tick.
             clan.starvationStartsAtTick = tick;
             emit ClanStarvationChanged(clan.clanId, true, tick);
         } else if (!starving && clan.starvationStartsAtTick != 0) {
@@ -470,21 +498,89 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             emit ClanStarvationChanged(clan.clanId, false, tick);
         }
 
-        if (starving && _isWinterTick(tick) && clan.starvationStartsAtTick <= tick) {
-            _killNextClansmanFromStarvation(clan, tick);
+        uint8 livingBeforeStarvation = clan.livingClansmen;
+        if (winter && starving) {
+            (, uint64 winterStartsAtTick,) = _winterWindowForTick(tick);
+            uint64 effectiveStarvationStartsAtTick =
+                clan.starvationStartsAtTick > winterStartsAtTick ? clan.starvationStartsAtTick : winterStartsAtTick;
+            if (effectiveStarvationStartsAtTick < tick) {
+                _killNextClansmanFromStarvation(clan, tick);
+            }
+        }
+        if (clan.clanState == ClanState.DEAD) return;
+
+        if (winter) {
+            uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
+                * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
+            if (clan.vaultWood >= woodNeeded) {
+                clan.vaultWood -= woodNeeded;
+            } else {
+                uint256 woodShort = woodNeeded - clan.vaultWood;
+                clan.vaultWood = 0;
+                uint16 oldColdDamage = clan.coldDamage;
+                if (clan.coldDamage < type(uint16).max) {
+                    clan.coldDamage += 1;
+                }
+                emit ClanColdShortage(clan.clanId, tick, woodShort);
+                _applyColdDamageConsequence(clan, tick, oldColdDamage);
+            }
         }
     }
 
-    function _isWinterTick(uint64 tick) internal pure returns (bool) {
-        uint64 seasonOffset = tick % ClanWorldConstants.SEASON_DURATION_TICKS;
-        uint64 cycleOffset = seasonOffset % ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
-        uint64 cycleStart = seasonOffset - cycleOffset;
-        uint64 winterStart =
-            cycleStart + ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS;
-        uint64 winterEnd = cycleStart + ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
+    function _applyColdDamageConsequence(Clan storage clan, uint64 tick, uint16 oldColdDamage) internal {
+        uint16 newColdDamage = clan.coldDamage;
+        if (newColdDamage == oldColdDamage) return;
 
-        return winterStart < ClanWorldConstants.SEASON_DURATION_TICKS && seasonOffset >= winterStart
-            && seasonOffset < winterEnd;
+        if (clan.wallLevel > 0) {
+            if (
+                newColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_WALL_DEGRADATION
+                    <= oldColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_WALL_DEGRADATION
+            ) return;
+
+            clan.wallLevel--;
+            emit WallDegradedByCold(clan.clanId, clan.wallLevel, tick);
+            return;
+        }
+
+        if (
+            newColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_CLANSMAN_DEATH
+                <= oldColdDamage / ClanWorldConstants.COLD_DAMAGE_PER_CLANSMAN_DEATH
+        ) return;
+
+        _killRandomClansmanFromCold(clan, tick, newColdDamage);
+    }
+
+    function _killRandomClansmanFromCold(Clan storage clan, uint64 tick, uint16 coldDamage) internal {
+        if (clan.livingClansmen == 0) return;
+
+        uint32[] storage csIds = _clanClansmanIds[clan.clanId];
+        uint256 livingCount = 0;
+        for (uint256 i = 0; i < csIds.length; i++) {
+            if (_clansmen[csIds[i]].state != ClansmanState.DEAD) {
+                livingCount++;
+            }
+        }
+        if (livingCount == 0) return;
+
+        uint256 pick = RNG.rngBounded(
+            _tickSeeds[tick],
+            RNG.DOMAIN_COLD_DAMAGE,
+            uint256(keccak256(abi.encodePacked(clan.clanId, tick, coldDamage))),
+            livingCount
+        );
+
+        uint256 seen = 0;
+        for (uint256 i = 0; i < csIds.length; i++) {
+            Clansman storage cs = _clansmen[csIds[i]];
+            if (cs.state == ClansmanState.DEAD) continue;
+            if (seen != pick) {
+                seen++;
+                continue;
+            }
+
+            _markClansmanDeadFromCold(clan, cs, tick);
+            return;
+        }
     }
 
     function _killNextClansmanFromStarvation(Clan storage clan, uint64 tick) internal {
@@ -503,6 +599,15 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
     }
 
+    function _markClansmanDeadFromCold(Clan storage clan, Clansman storage cs, uint64 tick) internal {
+        _markClansmanDead(clan, cs);
+
+        emit ClansmanColdDeath(clan.clanId, cs.clansmanId, tick);
+        if (clan.livingClansmen == 0) {
+            _markClanDead(clan.clanId, "cold", tick);
+        }
+    }
+
     function _markClansmanDead(Clan storage clan, Clansman storage cs) internal {
         if (cs.state == ClansmanState.DEAD) return;
 
@@ -512,12 +617,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             clan.livingClansmen--;
         }
 
-        Mission storage mission = _missions[cs.clansmanId];
-        if (mission.active) {
-            if (mission.action == ActionType.DefendBase) {
+        Mission storage m = _missions[cs.clansmanId];
+        if (m.active) {
+            if (m.action == ActionType.DefendBase) {
                 _clearDefender(cs.clansmanId);
             }
-            mission.active = false;
+            m.active = false;
         }
     }
 
@@ -529,7 +634,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _markClanDead(clanId, reason, tick, ClanWorldConstants.BANDIT_ID_NULL);
     }
 
-    function _markClanDead(uint32 clanId, string memory, uint64 tick, uint32 excludedBanditId) internal {
+    function _markClanDead(uint32 clanId, string memory reason, uint64 tick, uint32 excludedBanditId) internal {
         Clan storage clan = _clans[clanId];
         if (clan.clanId == ClanWorldConstants.CLAN_ID_NULL || clan.clanState == ClanState.DEAD) return;
 
@@ -547,12 +652,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             Clansman storage cs = _clansmen[csIds[i]];
             cs.state = ClansmanState.DEAD;
             cs.cooldownEndsAtTs = 0;
-            Mission storage mission = _missions[csIds[i]];
-            if (mission.active) {
-                if (mission.action == ActionType.DefendBase) {
+            Mission storage m = _missions[csIds[i]];
+            if (m.active) {
+                if (m.action == ActionType.DefendBase) {
                     _clearDefender(csIds[i]);
                 }
-                mission.active = false;
+                m.active = false;
             }
         }
 
@@ -560,6 +665,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _abortBanditAttacksForDeadTarget(clanId, excludedBanditId, tick);
 
         emit ClanEliminated(clanId, tick);
+        emit ClanDied(clanId, tick, reason);
     }
 
     function _releaseDefendersForDeadTarget(uint32 deadClanId, uint8 baseRegion) internal {
@@ -819,6 +925,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
 
         WheatPlot storage plot = _wheatPlots[clanId][plotIdx];
+        if (plot.state == WheatPlotState.WinterLocked) {
+            // Winter-locked plots cannot be harvested; queued missions end with no yield.
+            _completeMission(cs, m);
+            return;
+        }
         if (plot.state != WheatPlotState.Harvestable || plot.remainingWheat == 0) {
             // Plot not ready — worker waits
             _completeMission(cs, m);
@@ -1100,7 +1211,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             sim.clan.starvationStartsAtTick = 0;
         }
 
-        if (starving && _isWinterTick(tick) && sim.clan.starvationStartsAtTick <= tick) {
+        if (starving && _isWinterActiveAt(tick) && sim.clan.starvationStartsAtTick <= tick) {
             _simulateKillNextClansmanFromStarvation(sim);
         }
     }
@@ -2632,37 +2743,98 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _world.currentSeasonNumber += 1;
             _world.seasonStartTick = _world.seasonEndTick;
             _world.seasonEndTick = _world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
-            // reset winter timers for new season
-            _world.winterActive = false;
-            _world.winterStartsAtTick = _world.seasonStartTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE
-                - ClanWorldConstants.WINTER_DURATION_TICKS;
-            _world.winterEndsAtTick = _world.seasonStartTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
         }
 
         // --- winter transitions (timer only; mechanics = Phase 10) ---
-        if (
-            !_world.winterActive && newTick >= _world.winterStartsAtTick
-                && _world.winterStartsAtTick < _world.seasonEndTick
-        ) {
-            _world.winterActive = true;
-            emit WinterStarted(newTick);
+        bool wasWinter = _isWinterActiveAt(closedTick);
+        bool nowWinter = _isWinterActiveAt(newTick);
+        if (!wasWinter && nowWinter) {
+            _lockWheatPlotsForWinter();
+            emit WinterStarted(_winterEventTick(newTick));
         }
-        if (_world.winterActive && newTick >= _world.winterEndsAtTick) {
-            _world.winterActive = false;
-            emit WinterEnded(newTick);
-            // schedule next winter cycle within this season
-            uint64 nextWinterStart = _world.winterEndsAtTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE
-                - ClanWorldConstants.WINTER_DURATION_TICKS;
-            uint64 nextWinterEnd = _world.winterEndsAtTick + ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
-            if (nextWinterStart < _world.seasonEndTick) {
-                _world.winterStartsAtTick = nextWinterStart;
-                _world.winterEndsAtTick = nextWinterEnd;
-            } else {
-                // no more winters this season; sentinel = seasonEndTick so guard never fires
-                _world.winterStartsAtTick = _world.seasonEndTick;
-                _world.winterEndsAtTick = _world.seasonEndTick;
+        if (wasWinter && !nowWinter) {
+            _restartWheatPlotsAfterWinter(newTick);
+            emit WinterEnded(_winterEventTick(newTick));
+        }
+    }
+
+    function _lockWheatPlotsForWinter() internal {
+        uint256 transitions;
+        for (uint256 i = 0; i < _allClanIds.length; i++) {
+            uint32 clanId = _allClanIds[i];
+            for (uint256 pi = 0; pi < 2; pi++) {
+                require(transitions < MAX_CROP_TRANSITION_PER_TICK, "ClanWorld: crop transition cap");
+                WheatPlot storage plot = _wheatPlots[clanId][pi];
+                plot.state = WheatPlotState.WinterLocked;
+                plot.remainingWheat = 0;
+                plot.regrowUntilTick = 0;
+                transitions++;
             }
         }
+    }
+
+    function _restartWheatPlotsAfterWinter(uint64 currentTick) internal {
+        uint256 transitions;
+        for (uint256 i = 0; i < _allClanIds.length; i++) {
+            uint32 clanId = _allClanIds[i];
+            for (uint256 pi = 0; pi < 2; pi++) {
+                require(transitions < MAX_CROP_TRANSITION_PER_TICK, "ClanWorld: crop transition cap");
+                WheatPlot storage plot = _wheatPlots[clanId][pi];
+                if (plot.state == WheatPlotState.WinterLocked) {
+                    plot.state = WheatPlotState.Regrowing;
+                    plot.remainingWheat = 0;
+                    plot.regrowUntilTick = currentTick + ClanWorldConstants.WHEAT_PLOT_REGROW_TICKS;
+                }
+                transitions++;
+            }
+        }
+    }
+
+    function _winterEventTick(uint64 tick) internal pure returns (uint64) {
+        return tick;
+    }
+
+    function _isWinterActiveAt(uint64 tick) internal pure returns (bool) {
+        if (tick < ClanWorldConstants.WINTER_START_TICK) {
+            return false;
+        }
+        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
+        return elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
+    }
+
+    function _winterWindowForTick(uint64 tick)
+        internal
+        pure
+        returns (bool active, uint64 startsAtTick, uint64 endsAtTick)
+    {
+        if (tick < ClanWorldConstants.WINTER_START_TICK) {
+            startsAtTick = ClanWorldConstants.WINTER_START_TICK;
+            endsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
+            return (false, startsAtTick, endsAtTick);
+        }
+
+        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
+        uint64 cycleIndex = elapsed / ClanWorldConstants.WINTER_PERIOD_TICKS;
+        uint64 cycleStart = ClanWorldConstants.WINTER_START_TICK + cycleIndex * ClanWorldConstants.WINTER_PERIOD_TICKS;
+        active = elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
+        startsAtTick = active ? cycleStart : cycleStart + ClanWorldConstants.WINTER_PERIOD_TICKS;
+        endsAtTick = startsAtTick + ClanWorldConstants.WINTER_DURATION_TICKS;
+    }
+
+    function _worldStateView() internal view returns (WorldState memory ws) {
+        ws.currentTick = _world.currentTick;
+        ws.seasonStartTick = _world.seasonStartTick;
+        ws.seasonEndTick = _world.seasonEndTick;
+        ws.seasonFinalized = _world.seasonFinalized;
+        ws.currentSeasonNumber = _world.currentSeasonNumber;
+        ws.nextHeartbeatAtTick = _world.nextHeartbeatAtTick;
+        ws.nextHeartbeatAtTs = _world.nextHeartbeatAtTs;
+        ws.nextBanditSpawnEligibleTick = _world.nextBanditSpawnEligibleTick;
+        ws.currentBanditSpawnChanceBps = _world.currentBanditSpawnChanceBps;
+        ws.currentTickSeed = _world.currentTickSeed;
+        ws.activeBanditId = _world.activeBanditId;
+        ws.nextCommitSequence = _world.nextCommitSequence;
+        (ws.winterActive, ws.winterStartsAtTick, ws.winterEndsAtTick) = _winterWindowForTick(_world.currentTick);
     }
 
     /// @notice Public settlement trigger — lazily settle a clan.
@@ -2729,17 +2901,22 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         clan.vaultWheat = 20e18;
         clan.vaultFish = 2e18;
 
+        WheatPlotState startingPlotState =
+            _isWinterActiveAt(_world.currentTick) ? WheatPlotState.WinterLocked : WheatPlotState.Harvestable;
+        uint256 startingWheat =
+            startingPlotState == WheatPlotState.WinterLocked ? 0 : ClanWorldConstants.WHEAT_PLOT_STARTING_WHEAT;
+
         // Wheat plots
         _wheatPlots[clanId][0] = WheatPlot({
-            state: WheatPlotState.Harvestable,
+            state: startingPlotState,
             region: ClanWorldConstants.REGION_WEST_FARMS,
-            remainingWheat: ClanWorldConstants.WHEAT_PLOT_STARTING_WHEAT,
+            remainingWheat: startingWheat,
             regrowUntilTick: 0
         });
         _wheatPlots[clanId][1] = WheatPlot({
-            state: WheatPlotState.Harvestable,
+            state: startingPlotState,
             region: ClanWorldConstants.REGION_EAST_FARMS,
-            remainingWheat: ClanWorldConstants.WHEAT_PLOT_STARTING_WHEAT,
+            remainingWheat: startingWheat,
             regrowUntilTick: 0
         });
 
@@ -2780,7 +2957,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         // Guard: if clan is more than 200 ticks behind, caller must call settleClan() first
         // (_settleClan caps at 200 ticks per call; submitting into a partially-settled clan corrupts invariants)
-        // ERR_MUST_SETTLE_FIRST not in StatusCode enum — using ERR_INVALID_ACTION as the closest proxy
         {
             uint64 lastSettled = _clans[clanId].lastSettledTick;
             if (_world.currentTick > lastSettled + MAX_LAZY_SETTLE_BACKLOG) {
@@ -2788,7 +2964,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 for (uint256 i = 0; i < orders.length; i++) {
                     results[i] = OrderResult({
                         clansmanId: orders[i].clansmanId,
-                        status: StatusCode.ERR_INVALID_ACTION,
+                        status: StatusCode.ERR_MUST_SETTLE_FIRST,
                         cooldownEndsAtTs: 0,
                         missionNonce: 0
                     });
@@ -2801,6 +2977,17 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _settleClan(clanId);
 
         results = new OrderResult[](orders.length);
+        if (clan.clanState == ClanState.DEAD) {
+            for (uint256 i = 0; i < orders.length; i++) {
+                results[i] = OrderResult({
+                    clansmanId: orders[i].clansmanId,
+                    status: StatusCode.ERR_CLAN_DEAD,
+                    cooldownEndsAtTs: 0,
+                    missionNonce: 0
+                });
+            }
+            return results;
+        }
 
         for (uint256 i = 0; i < orders.length; i++) {
             results[i] = _processOrder(clanId, clan, orders[i]);
@@ -3336,6 +3523,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             ) {
                 return StatusCode.ERR_INVALID_REGION;
             }
+            if (_isWinterActiveAt(_world.currentTick)) {
+                return StatusCode.ERR_WINTER_LOCKED;
+            }
         }
 
         if (action == ActionType.DefendBase) {
@@ -3455,7 +3645,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     // =========================================================================
 
     function getWorldState() external view override returns (WorldState memory) {
-        return _world;
+        return _worldStateView();
     }
 
     function getTreasuryState() external view override returns (TreasuryState memory) {
@@ -3485,6 +3675,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return (0, 0, 0);
         }
         return (m.submittedAtTick, m.executesAtTick, m.settlesAtTick);
+    }
+
+    function isWinter() external view override returns (bool) {
+        return _isWinterActiveAt(_world.currentTick);
     }
 
     function getActionDuration(ActionType action) public pure override returns (uint64) {
@@ -3722,18 +3916,19 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             });
         }
 
+        WorldState memory ws = _worldStateView();
         return WorldSnapshot({
-            currentTick: _world.currentTick,
-            seasonStartTick: _world.seasonStartTick,
-            seasonEndTick: _world.seasonEndTick,
-            seasonFinalized: _world.seasonFinalized,
-            currentSeasonNumber: _world.currentSeasonNumber,
-            nextHeartbeatAtTick: _world.nextHeartbeatAtTick,
-            winterActive: _world.winterActive,
-            winterStartsAtTick: _world.winterStartsAtTick,
-            winterEndsAtTick: _world.winterEndsAtTick,
-            activeBanditId: _world.activeBanditId,
-            currentTickSeed: _world.currentTickSeed,
+            currentTick: ws.currentTick,
+            seasonStartTick: ws.seasonStartTick,
+            seasonEndTick: ws.seasonEndTick,
+            seasonFinalized: ws.seasonFinalized,
+            currentSeasonNumber: ws.currentSeasonNumber,
+            nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
+            winterActive: ws.winterActive,
+            winterStartsAtTick: ws.winterStartsAtTick,
+            winterEndsAtTick: ws.winterEndsAtTick,
+            activeBanditId: ws.activeBanditId,
+            currentTickSeed: ws.currentTickSeed,
             leaderboard: lb
         });
     }

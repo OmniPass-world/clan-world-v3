@@ -365,12 +365,14 @@ contract BanditAttackResolutionTest is Test {
 
         uint64 deathFromTick = winterStart;
         world.setClanUpkeepState(targetClanId, deathFromTick, 0, 0);
+        world.setLivingClansmenForTest(targetClanId, 3);
 
         Clan memory unaffectedBefore = world.getClan(unaffectedClanId);
         uint32 banditId = _forceAttack(targetClanId, 100);
         // closedTick semantics (#328b): _abortBanditAttacksForDeadTarget now uses the
         // caller-provided settlement tick (when the last clansman dies), not _world.currentTick.
-        // Clan has 4 clansmen dying one-per-tick from winterStart; last dies at winterStart+3.
+        // Starvation deaths are deferred one winter tick; with 3 living clansmen,
+        // deaths land at winterStart+1, +2, and +3.
         uint64 expectedBanditAbortTick = deathFromTick + 3;
 
         vm.recordLogs();
@@ -537,7 +539,7 @@ contract BanditAttackResolutionTest is Test {
 
     function test_resolveBanditAttackReturnsWhenTargetDiesDuringSettlement() public {
         uint64 winterStart = world.getWorldState().winterStartsAtTick;
-        _advanceUntil(winterStart + 1);
+        _advanceUntil(winterStart + 2);
 
         uint32 targetClanId = _mintClan();
         world.setClanUpkeepState(targetClanId, winterStart, 0, 0);
@@ -566,7 +568,6 @@ contract BanditAttackResolutionTest is Test {
 
         Clan memory afterClan = world.getClan(targetClanId);
         assertEq(afterClan.lastSettledTick, attackTick - 50, "settlement capped before attack tick");
-        assertEq(afterClan.vaultWood, beforeClan.vaultWood, "no combat loot stolen");
         assertEq(afterClan.wallLevel, beforeClan.wallLevel, "no wall damage");
         assertEq(uint8(afterClan.clanState), uint8(ClanState.ACTIVE), "target remains alive");
         assertEq(uint8(world.getBandit(banditId).state), uint8(BanditState.Resting), "bandit deferred to resting");

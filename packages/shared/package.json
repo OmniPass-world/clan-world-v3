@@ -11,14 +11,13 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "test": "pnpm -w test:chainclient-abi",
     "lint": "echo 'lint stub'",
     "clean": "rm -rf dist .turbo"
   },
   "devDependencies": {
-    "typescript": "5.9.3",
-    "vitest": "^3.2.0"
+    "typescript": "5.9.3"
   },
   "dependencies": {
     "convex": "1.17.4",
