@@ -4665,6 +4665,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         require(clan.owner == msg.sender, "ClanWorld: not clan owner");
         require(newOwner != address(0), "ClanWorld: zero address");
         require(newOwner != clan.owner, "ClanWorld: same owner");
+        _settleClan(clanId);
+        require(clan.clanState != ClanState.DEAD, "ClanWorld: clan dead");
         address oldOwner = clan.owner;
         clan.owner = newOwner;
         clan.ownerNonce++;
@@ -4678,7 +4680,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     function _requireTransferSettlementComplete(Clan storage fromClan, Clan storage toClan) private view {
         require(
             fromClan.lastSettledTick == _world.currentTick && toClan.lastSettledTick == _world.currentTick,
-            "ClanWorld: must settle first"
+            "ERR_MUST_SETTLE_FIRST"
         );
     }
 
