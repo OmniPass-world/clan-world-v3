@@ -19,17 +19,18 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 - Convex real-time backend with heartbeat webhook, safety-net cron, and mock-mode for offline development
 - ABI parity test wired into CI — contract shape drift fails the build automatically
 
-### Features
-
-> **The whole game shipped:**
+> [!NOTE]
+> **The Whole Game Shipped:**
 > 1. **10 contract phases** end-to-end — gathering, markets, OTC transfers, building upgrades, bandits, winter, clan death
-> 2. **4 autonomous AI Elders** running on Base Sepolia via `RealChainClient` — real on-chain transactions every heartbeat
-> 3. **Pixi.js canvas world map** — 8 regions, isometric base sprites at 5 levels, walking clansmen, speech bubbles, pinch-to-zoom
+> 2. **4 autonomous AI Elders** on Base Sepolia via `RealChainClient` — *real on-chain transactions* every heartbeat
+> 3. **Pixi.js canvas world map** — 8 regions, isometric bases at 5 upgrade levels, walking clansmen, speech bubbles, pinch-to-zoom
 > 4. **World ID humanity verification** at clan mint via MiniKit + IDKit
 > 5. **Convex real-time backend** — `getSnapshot`, heartbeat webhook, safety-net cron, `MOCK_MODE` for offline dev
 > 6. **Permissionless heartbeat + lazy settlement** — anyone can fire ticks, clans settle on touch
-> 7. **Carry-based market trades** — workers physically haul resources to and from market (no teleport)
+> 7. **Carry-based market trades** — workers *physically haul* resources to and from market (no teleport)
 > 8. **`gen-chainclient-abi` + `gen-enums` + `gen-constants`** — full TS-from-Solidity codegen pipeline
+>
+> Together these turn ClanWorld from a flat resource-loop into a **living strategic world**: AI Elders making real-money decisions on a public chain, a watchable canvas where every tick is *their* tick, and an engine that scales to new actions without rewriting the off-chain glue every time.
 
 #### Contract engine (Phases 1–10)
 
@@ -97,10 +98,9 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 - Vite dev servers default to `port-for` slots (#139)
 - Post-bundle-A dev-tooling follow-ups (#140)
 
-### Fixes
-
-> **Critical pre-release saves:**
-> 1. **Reservation-bypass closed** in `WithdrawResources` and all 4 Phase 7 OTC transfer paths — class of vault-drain exploits caught and fixed (#394, #395)
+> [!NOTE]
+> **Critical Pre-Release Saves:**
+> 1. **Reservation-bypass closed** in `WithdrawResources` and all 4 Phase 7 OTC transfer paths — entire class of *vault-drain exploits* caught and fixed (#394, #395)
 > 2. **`transferClanOwnership` dead-clan guard** — was allowed on dead clans, now settles-then-dead-checks (#397)
 > 3. **Phase 4 heartbeat ordering bug** — HIGH spec divergence between heartbeat and lazy paths fixed (#239)
 > 4. **`StatusCode` + `ActionType` enum stability** locked by Solidity tests (#324, #295)
@@ -108,6 +108,8 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 > 6. **5 HIGH bandit findings** from super-swarm review fixed in one round (#266)
 > 7. **8 HIGH building findings** from Phase 8 super-swarm review (#291)
 > 8. **Phase 10 cold-reset regression** + super-swarm HIGHs (#289, #293)
+>
+> The vault-drain exploits would have **silently broken upgrade economics** in production — a clan could queue a wall upgrade, transfer the reserved wood to a sibling clan, and watch the upgrade fail at settle while the wood was already gone. Caught by a 4-reviewer cross-validation sweep on PR #396 *before* tagging v1.0.0.
 
 #### Pre-release reservation bypass (Tier A — critical)
 
@@ -153,14 +155,17 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ### Hardening pre-release (post-merge audit, 2026-05-01)
 
-> **Audit-driven cleanup of the release branch:**
-> 1. **`HEARTBEAT_ABI` duplicate fields deleted** — silent runtime decode bug caught by 8/8 reviewers (#407)
-> 2. **`HEARTBEAT_ABI` fully replaced with generated import** — drift hazard structurally eliminated (#408)
+> [!NOTE]
+> **Audit-Driven Cleanup of the Release Branch:**
+> 1. **`HEARTBEAT_ABI` duplicate fields deleted** — silent runtime decode bug caught by *8 of 8 reviewers* (#407)
+> 2. **`HEARTBEAT_ABI` fully replaced with generated import** — drift hazard *structurally eliminated* (#408)
 > 3. **`gen-enums.mjs` + `gen-constants.mjs` shipped** — TypeScript now generated from Solidity for enums + constants (#409)
-> 4. **Parity test refactored** — encoder side now reads from canonical `IClanWorld.json` instead of hand-rolled fixture (#409)
+> 4. **Parity test refactored** — encoder side now reads canonical `IClanWorld.json` instead of hand-rolled fixture (#409)
 > 5. **`anyApi` casts replaced** with generated Convex API types in `IConvexClient.ts` + `useAgentLogs.ts` (#409)
-> 6. **`marketMode` field added** to TS `SubmitOrderResult` interface to match on-chain 5-field struct (#407)
+> 6. **`marketMode` field added** to TS `SubmitOrderResult` to match on-chain 5-field struct (#407)
 > 7. **Stub `getDerivedClanState` clanId fix** — multi-clan callers were getting clan 0's data (#407)
+>
+> A parallel codex+claude audit asked the question *"are there other places like the HEARTBEAT_ABI bug?"* — answer was yes, and they're all gone now. **Hand-rolled type mirrors are no longer a viable shortcut** in this codebase: the codegen pipeline + parity check covers every drift surface that matters.
 
 These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) after an 8–11 reviewer superswarm pass:
 
@@ -181,16 +186,17 @@ These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) 
   - `anyApi` casts in `IConvexClient.ts` and `useAgentLogs.ts` replaced with generated Convex API types
   - Heartbeat-interval constant unified across runner and contract
 
-### Refactor
-
-> **Cleaner surfaces:**
-> 1. **Phase 7 OTC strip-out** — OTC order type replaced with 5 direct transfer functions (#389)
+> [!NOTE]
+> **Cleaner Surfaces:**
+> 1. **Phase 7 OTC strip-out** — OTC order type replaced with 5 *direct transfer functions* (#389)
 > 2. **Base Sepolia chain pivot** — replaces earlier World Chain Sepolia config (#132)
 > 3. **`*Upgraded` events dropped**, `*LevelChanged` kept — cleaner event surface (#365)
 > 4. **`MAX_CLAN_SCAN_FOR_RANKING` derived** from `MAX_CLANS` instead of hardcoded (#360)
 > 5. **Carry-based market trades** — workers haul resources, no teleport (#284)
 > 6. **Orchestrator enum literals** — `action: 1` becomes `ActionType.ChopWood` (#409)
 > 7. **4 dead internal contract functions deleted** (#361)
+>
+> The OTC strip-out and the chain pivot were the two big *spec-vs-impl* alignments — once they landed, every downstream phase had a *consistent* substrate to build on instead of routing around legacy assumptions.
 
 - Drop `*Upgraded` events, keep `*LevelChanged` — cleaner event surface (#365)
 - Delete four dead internal contract functions (#361)
@@ -201,17 +207,18 @@ These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) 
 - Phase 6B carry-based market trades — workers carry resources to market rather than teleporting (#284)
 - Orchestrator action literals replaced with `ActionType` enum (#409)
 
-### Tests
-
-> **Validation footprint at ship:**
+> [!NOTE]
+> **Validation Footprint At Ship:**
 > 1. **310/310 Forge tests green** at release HEAD
 > 2. **WithdrawResources exploit test** + wood/iron/fish/surplus-ok variants (#394)
 > 3. **Phase 7 transfer reservation tests** (#395)
 > 4. **Heartbeat + `getRankings` gas profiling** (#359)
 > 5. **ABI parity test wired into CI** — reads canonical `IClanWorld.json` (#409)
 > 6. **Playwright e2e harness** for `apps/web` (#88)
-> 7. **Phase 3 Foundry spec** — 39 cases (#115)
+> 7. **Phase 3 Foundry spec** — *39 cases* (#115)
 > 8. **Elder vitest CLI suite** + issue #94 regression (#105)
+>
+> Every reservation-bypass exploit and every cross-tier integration shape has a *named test* — regressions can't sneak back in. CI now fails the build the moment the contract ABI drifts from the TypeScript adapter, which means **future drift is a compile-time problem, not a production incident**.
 
 - Heartbeat + `getRankings` gas profiling (#359)
 - Upgrade reservation coverage strengthened (#364)
@@ -223,9 +230,8 @@ These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) 
 - `transferClanOwnership` dead-clan revert test (#397)
 - ABI parity test refactored to canonical-derived shapes, wired into CI (#409)
 
-### Docs
-
-> **Spec + planning artifacts shipped:**
+> [!NOTE]
+> **Spec + Planning Artifacts Shipped:**
 > 1. **`CANONICAL_SPEC.md`** with precedence + conflict resolutions (#70)
 > 2. **v4.1–v4.5 engine spec copies** (#70)
 > 3. **v4.6 Phase 5 economy alignment addendum** (#356)
@@ -233,6 +239,8 @@ These PRs all targeted reviewer findings on the `dev-merge` release gate (#396) 
 > 5. **Phase 10 spec-compliance UAT review** (#345)
 > 6. **Phase 3 Foundry test specification** (#115)
 > 7. **Hackathon coding rules** — minimal tests + env var simplicity (#18)
+>
+> The spec evolved through 5 named versions during the build — `CANONICAL_SPEC` is the *current source of truth* for every conflict, and the alignment addenda capture *exactly* what changed between versions and *why*. Future agents reading the docs will know which version supersedes which.
 
 - `CANONICAL_SPEC`, `DEMO_DRIFT`, v4.1–v4.5 engine spec copies (#70)
 - Phase 3 Foundry test specification (#115)
