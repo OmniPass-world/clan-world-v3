@@ -9,6 +9,7 @@ import {
     ClanWorldConstants,
     Clansman,
     Mission,
+    ResourceType,
     ScheduledMarketAction,
     TreasuryState,
     WheatPlot,
@@ -17,6 +18,7 @@ import {
 import {LibSeason} from "../lib/LibSeason.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 import {LibTravel} from "../../lib/LibTravel.sol";
+import {StubPool} from "../../StubPool.sol";
 
 contract RawViewsFacet {
     uint64 private constant DEPOSIT_DURATION_TICKS = 1;
@@ -43,6 +45,23 @@ contract RawViewsFacet {
 
     function getTreasuryState() external view returns (TreasuryState memory) {
         return LibStorage.appStorage().treasury;
+    }
+
+    function getResourceToken(uint8 resourceType) external view returns (address) {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        if (resourceType == uint8(ResourceType.Wood)) return s.treasury.woodToken;
+        if (resourceType == uint8(ResourceType.Iron)) return s.treasury.ironToken;
+        if (resourceType == uint8(ResourceType.Wheat)) return s.treasury.wheatToken;
+        if (resourceType == uint8(ResourceType.Fish)) return s.treasury.fishToken;
+        revert("ClanWorld: invalid resource");
+    }
+
+    function getPool(uint8 resourceType) external view returns (address) {
+        return _poolForResourceType(resourceType);
+    }
+
+    function getPrice(uint8 resourceType, uint256 amountIn) external view returns (uint256 amountOut) {
+        amountOut = StubPool(_poolForResourceType(resourceType)).getAmountOutForExactIn(amountIn);
     }
 
     function getClan(uint32 clanId) external view returns (Clan memory) {
@@ -175,6 +194,35 @@ contract RawViewsFacet {
         return LibStorage.appStorage().scheduledMarketActions[tick];
     }
 
+    function getActiveDefenders(uint32 targetClanId) external view returns (uint32[] memory clansmanIds) {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        uint32[] storage defendingClans = s.defendingClansByRegion[s.clans[targetClanId].baseRegion];
+        uint256 count = 0;
+
+        for (uint256 i = 0; i < defendingClans.length; i++) {
+            uint32[] storage clanClansmen = s.clanClansmanIds[defendingClans[i]];
+            for (uint256 j = 0; j < clanClansmen.length; j++) {
+                Mission storage mission = s.missions[clanClansmen[j]];
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    count++;
+                }
+            }
+        }
+
+        clansmanIds = new uint32[](count);
+        uint256 out = 0;
+        for (uint256 i = 0; i < defendingClans.length; i++) {
+            uint32[] storage clanClansmen = s.clanClansmanIds[defendingClans[i]];
+            for (uint256 j = 0; j < clanClansmen.length; j++) {
+                uint32 clansmanId = clanClansmen[j];
+                Mission storage mission = s.missions[clansmanId];
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    clansmanIds[out++] = clansmanId;
+                }
+            }
+        }
+    }
+
     function getDefendingClans(uint8 region) external view returns (uint32[] memory clanIds) {
         return LibStorage.appStorage().defendingClansByRegion[region];
     }
@@ -193,5 +241,14 @@ contract RawViewsFacet {
 
     function getMonumentLevelReachedAt(uint32 clanId, uint8 level) external view returns (uint64 reachedAtTick) {
         return LibStorage.appStorage().monumentLevelReachedAt[clanId][level];
+    }
+
+    function _poolForResourceType(uint8 resourceType) private view returns (address) {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        if (resourceType == uint8(ResourceType.Wood)) return s.treasury.woodGoldPool;
+        if (resourceType == uint8(ResourceType.Iron)) return s.treasury.ironGoldPool;
+        if (resourceType == uint8(ResourceType.Wheat)) return s.treasury.wheatGoldPool;
+        if (resourceType == uint8(ResourceType.Fish)) return s.treasury.fishGoldPool;
+        revert("ClanWorld: invalid resource");
     }
 }

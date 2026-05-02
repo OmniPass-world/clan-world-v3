@@ -99,6 +99,8 @@ contract DiamondSkeletonTest is Test {
         assertEq(diamondWorld.isWinter(), core.isWinter());
         assertEq(diamondWorld.getActionDuration(ActionType.ChopWood), core.getActionDuration(ActionType.ChopWood));
         assertEq(diamondWorld.getTravelTicks(1, 8), core.getTravelTicks(1, 8));
+        assertEq(diamondWorld.getResourceToken(0), core.getResourceToken(0));
+        assertEq(diamondWorld.getPool(0), core.getPool(0));
 
         (uint256 wallWood, uint256 wallIron) = diamondWorld.getWallUpgradeCost(2);
         (uint256 coreWallWood, uint256 coreWallIron) = core.getWallUpgradeCost(2);
@@ -145,6 +147,7 @@ contract DiamondSkeletonTest is Test {
         assertEq(diamondIftTokenId, coreIftTokenId);
         _assertClanEq(IClanWorld(address(diamond)).getClan(diamondClanId), core.getClan(coreClanId));
         assertEq(IClanWorld(address(diamond)).getClanIds().length, core.getClanIds().length);
+        assertEq(IClanWorld(address(diamond)).getActiveDefenders(diamondClanId).length, 0);
 
         uint32[] memory diamondClansmen = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId);
         uint32[] memory coreClansmen = core.getClanClansmanIds(coreClanId);
@@ -164,29 +167,33 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        bytes4[] memory selectors = new bytes4[](22);
+        bytes4[] memory selectors = new bytes4[](26);
         selectors[0] = IClanWorld.getWorldState.selector;
         selectors[1] = IClanWorld.getTreasuryState.selector;
-        selectors[2] = IClanWorld.getClan.selector;
-        selectors[3] = IClanWorld.getClansman.selector;
-        selectors[4] = IClanWorld.getActiveMission.selector;
-        selectors[5] = IClanWorld.getMissionTiming.selector;
-        selectors[6] = IClanWorld.isWinter.selector;
-        selectors[7] = IClanWorld.getWallUpgradeCost.selector;
-        selectors[8] = IClanWorld.getBaseUpgradeCost.selector;
-        selectors[9] = IClanWorld.getMonumentUpgradeCost.selector;
-        selectors[10] = IClanWorld.getActionDuration.selector;
-        selectors[11] = IClanWorld.getTravelTicks.selector;
-        selectors[12] = IClanWorld.getBandit.selector;
-        selectors[13] = IClanWorld.getBanditTroop.selector;
-        selectors[14] = IClanWorld.getBanditsInRegion.selector;
-        selectors[15] = IClanWorld.getWheatPlots.selector;
-        selectors[16] = IClanWorld.getScheduledMarketActionsForTick.selector;
-        selectors[17] = IClanWorld.getDefendingClans.selector;
-        selectors[18] = IClanWorld.getClanIds.selector;
-        selectors[19] = IClanWorld.getClanClansmanIds.selector;
-        selectors[20] = IClanWorld.getClansmanDefendingRegion.selector;
-        selectors[21] = IClanWorld.getMonumentLevelReachedAt.selector;
+        selectors[2] = IClanWorld.getResourceToken.selector;
+        selectors[3] = IClanWorld.getPool.selector;
+        selectors[4] = IClanWorld.getPrice.selector;
+        selectors[5] = IClanWorld.getClan.selector;
+        selectors[6] = IClanWorld.getClansman.selector;
+        selectors[7] = IClanWorld.getActiveMission.selector;
+        selectors[8] = IClanWorld.getMissionTiming.selector;
+        selectors[9] = IClanWorld.isWinter.selector;
+        selectors[10] = IClanWorld.getWallUpgradeCost.selector;
+        selectors[11] = IClanWorld.getBaseUpgradeCost.selector;
+        selectors[12] = IClanWorld.getMonumentUpgradeCost.selector;
+        selectors[13] = IClanWorld.getActionDuration.selector;
+        selectors[14] = IClanWorld.getTravelTicks.selector;
+        selectors[15] = IClanWorld.getBandit.selector;
+        selectors[16] = IClanWorld.getBanditTroop.selector;
+        selectors[17] = IClanWorld.getBanditsInRegion.selector;
+        selectors[18] = IClanWorld.getWheatPlots.selector;
+        selectors[19] = IClanWorld.getScheduledMarketActionsForTick.selector;
+        selectors[20] = IClanWorld.getActiveDefenders.selector;
+        selectors[21] = IClanWorld.getDefendingClans.selector;
+        selectors[22] = IClanWorld.getClanIds.selector;
+        selectors[23] = IClanWorld.getClanClansmanIds.selector;
+        selectors[24] = IClanWorld.getClansmanDefendingRegion.selector;
+        selectors[25] = IClanWorld.getMonumentLevelReachedAt.selector;
 
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
