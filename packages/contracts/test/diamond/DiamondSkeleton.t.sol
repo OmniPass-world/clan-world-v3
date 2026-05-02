@@ -11,6 +11,7 @@ import {
     ActiveBanditView,
     ActionType,
     Clan,
+    ClanFullView,
     Clansman,
     DerivedClanState,
     DerivedClansmanState,
@@ -26,6 +27,7 @@ import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {BanditViewsFacet} from "../../src/diamond/facets/BanditViewsFacet.sol";
+import {ClanFullViewFacet} from "../../src/diamond/facets/ClanFullViewFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
@@ -320,6 +322,28 @@ contract DiamondSkeletonTest is Test {
         _assertWorldSnapshotEq(IClanWorld(address(diamond)).getWorldSnapshot(), core.getWorldSnapshot());
     }
 
+    function testDiamondClanFullViewMatchesCoreAfterMint() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        ClanFullViewFacet clanFullViewFacet = new ClanFullViewFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_clanFullViewCut(address(clanFullViewFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        _assertClanFullViewEq(
+            IClanWorld(address(diamond)).getClanFullView(diamondClanId), core.getClanFullView(coreClanId)
+        );
+    }
+
     function testDiamondQuoteViewsMatchCoreAfterMint() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
@@ -439,6 +463,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.snapshotViewsSelectors()
+        });
+    }
+
+    function _clanFullViewCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.clanFullViewSelectors()
         });
     }
 
@@ -660,5 +693,24 @@ contract DiamondSkeletonTest is Test {
             assertEq(uint8(actual.leaderboard[i].state), uint8(expected.leaderboard[i].state), "leaderboard state");
             assertEq(actual.leaderboard[i].lootValue, expected.leaderboard[i].lootValue, "leaderboard loot");
         }
+    }
+
+    function _assertClanFullViewEq(ClanFullView memory actual, ClanFullView memory expected) internal pure {
+        _assertDerivedClanStateEq(actual.clan, expected.clan);
+        assertEq(actual.clansmen.length, expected.clansmen.length, "full clansmen length");
+        for (uint256 i = 0; i < expected.clansmen.length; i++) {
+            _assertDerivedClansmanStateEq(actual.clansmen[i].clansman, expected.clansmen[i].clansman);
+            assertEq(actual.clansmen[i].activeMission.active, expected.clansmen[i].activeMission.active, "full active");
+            assertEq(actual.clansmen[i].activeMission.nonce, expected.clansmen[i].activeMission.nonce, "full nonce");
+            assertEq(
+                uint8(actual.clansmen[i].activeMission.action),
+                uint8(expected.clansmen[i].activeMission.action),
+                "full action"
+            );
+        }
+        _assertWheatPlotEq(actual.westPlot, expected.westPlot);
+        _assertWheatPlotEq(actual.eastPlot, expected.eastPlot);
+        assertEq(actual.incomingDefenderIds.length, expected.incomingDefenderIds.length, "incoming defenders");
+        assertEq(actual.thisClanDefendingBaseId, expected.thisClanDefendingBaseId, "defending base");
     }
 }

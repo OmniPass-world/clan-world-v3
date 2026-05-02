@@ -122,6 +122,11 @@ library DiamondSelectors {
         selectors[0] = IClanWorld.getWorldSnapshot.selector;
     }
 
+    function clanFullViewSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](1);
+        selectors[0] = IClanWorld.getClanFullView.selector;
+    }
+
     function quoteViewsSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](3);
         selectors[0] = IClanWorld.getBanditTargetPreview.selector;
