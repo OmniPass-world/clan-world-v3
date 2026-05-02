@@ -1,0 +1,599 @@
+import { v } from "convex/values";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
+import { baseSepolia, CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
+import {
+  createPublicClient,
+  http,
+  parseEventLogs,
+  type Hex,
+  type Log,
+} from "viem";
+
+const MAX_CLANS = 12;
+const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
+const DEFAULT_CONFIRMATION_DEPTH = 5;
+const MAX_LOG_BLOCK_RANGE = 9_999n;
+const DEFAULT_COLD_START_LOOKBACK = 1_000n;
+const LEGACY_REGIONS = [
+  { id: "forest", name: "Forest", ownerClanId: null },
+  { id: "mountains", name: "Mountains", ownerClanId: null },
+  { id: "unicorn-town", name: "Unicorn Town", ownerClanId: null },
+  { id: "west-farmland", name: "West Farmland", ownerClanId: null },
+  { id: "east-farmland", name: "East Farmland", ownerClanId: null },
+  { id: "west-docks", name: "West Docks", ownerClanId: null },
+  { id: "east-docks", name: "East Docks", ownerClanId: null },
+  { id: "deep-sea", name: "Deep Sea", ownerClanId: null },
+];
+const indexerApi = (internal as any).indexer;
+
+type ParsedIndexerEvent = {
+  eventName: string;
+  args: Record<string, unknown>;
+  address?: string;
+  blockHash?: string | null;
+  blockNumber?: bigint | number | null;
+  transactionHash?: string | null;
+  transactionIndex?: number | null;
+  logIndex?: number | null;
+};
+
+type SnapshotPayload = {
+  blockNumber?: number;
+  txHash?: string;
+  world: Record<string, unknown>;
+  market?: Record<string, unknown>;
+  bandit?: Record<string, unknown>;
+  clans: Record<string, unknown>[];
+};
+
+export function bigintSafe(value: unknown): unknown {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(bigintSafe);
+  if (!value || typeof value !== "object") return value;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    out[key] = bigintSafe(nested);
+  }
+  return out;
+}
+
+export function decodeClanWorldLogs(
+  logs: readonly Log[],
+): ParsedIndexerEvent[] {
+  return parseEventLogs({
+    abi: CLAN_WORLD_ABI,
+    logs: [...logs],
+    strict: false,
+  }).map((event) => ({
+    eventName: event.eventName,
+    args: bigintSafe(event.args ?? {}) as Record<string, unknown>,
+    address: event.address,
+    blockHash: event.blockHash,
+    blockNumber: event.blockNumber,
+    transactionHash: event.transactionHash,
+    transactionIndex: event.transactionIndex,
+    logIndex: event.logIndex,
+  }));
+}
+
+const asNumber = (value: unknown, fallback = 0): number => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "string" && value !== "") return Number(value);
+  return fallback;
+};
+
+const asString = (value: unknown, fallback = "0"): string =>
+  typeof value === "string"
+    ? value
+    : value === undefined || value === null
+      ? fallback
+      : String(value);
+
+const asBool = (value: unknown, fallback = false): boolean =>
+  typeof value === "boolean" ? value : fallback;
+
+const objectAt = (value: unknown, key: string): Record<string, unknown> => {
+  if (!value || typeof value !== "object") return {};
+  const nested = (value as Record<string, unknown>)[key];
+  return nested && typeof nested === "object"
+    ? (nested as Record<string, unknown>)
+    : {};
+};
+
+function createClient() {
+  const rpcUrl = process.env.RPC_URL_PRIMARY;
+  if (!rpcUrl)
+    throw new Error(
+      "RPC_URL_PRIMARY is required for CLANWORLD_USE_REAL_INDEXER",
+    );
+  return createPublicClient({ chain: baseSepolia, transport: http(rpcUrl) });
+}
+
+function engineAddress(): Hex {
+  const address = process.env.CLAN_WORLD_CONTRACT_ADDRESS;
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    throw new Error(
+      "CLAN_WORLD_CONTRACT_ADDRESS must be a 0x-prefixed 20-byte address",
+    );
+  }
+  return address as Hex;
+}
+
+function eventNumber(
+  event: ParsedIndexerEvent,
+  key: string,
+): number | undefined {
+  const value = event.args[key];
+  if (value === undefined || value === null) return undefined;
+  return asNumber(value);
+}
+
+export function pricePointFromEvent(
+  event: ParsedIndexerEvent,
+  blockNumber: number,
+) {
+  if (
+    event.eventName !== "ImmediateMarketActionExecuted" &&
+    event.eventName !== "ScheduledMarketActionExecuted"
+  ) {
+    return undefined;
+  }
+  const resourceIn = asNumber(event.args.resourceIn, 0);
+  const resourceOut = asNumber(event.args.resourceOut, 0);
+  const amountIn = BigInt(asString(event.args.amountIn, "0"));
+  const amountOut = BigInt(asString(event.args.amountOut, "0"));
+  const goldResourceType = 4;
+  const isBuy = resourceIn === goldResourceType;
+  const resourceType = isBuy ? resourceOut : resourceIn;
+  const resourceAmount = isBuy ? amountOut : amountIn;
+  const goldAmount = isBuy ? amountIn : amountOut;
+  const price =
+    resourceAmount > 0n
+      ? ((goldAmount * 1_000_000_000_000_000_000n) / resourceAmount).toString()
+      : "0";
+  return {
+    tick: asNumber(event.args.tick ?? event.args.settledAtTick),
+    resourceType: String(resourceType),
+    priceWoodGold: price,
+    blockNumber,
+    observedAt: Date.now(),
+  };
+}
+
+const envBigInt = (key: string): bigint | undefined => {
+  const value = process.env[key];
+  if (!value) return undefined;
+  try {
+    const parsed = BigInt(value);
+    return parsed >= 0n ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const indexerConfirmationDepth = (): bigint =>
+  envBigInt("INDEXER_CONFIRMATION_DEPTH") ?? BigInt(DEFAULT_CONFIRMATION_DEPTH);
+
+export function planPollLogRange(
+  checkpoint: { lastBlock: number } | null,
+  latest: bigint,
+): {
+  fromBlock: bigint;
+  toBlock: bigint;
+  safeLatest: bigint;
+  shouldPoll: boolean;
+} {
+  const depth = indexerConfirmationDepth();
+  const safeLatest = latest > depth ? latest - depth : 0n;
+  const coldStartBlock =
+    envBigInt("INDEXER_START_BLOCK") ??
+    (latest > DEFAULT_COLD_START_LOOKBACK
+      ? latest - DEFAULT_COLD_START_LOOKBACK
+      : 1n);
+  const fromBlock = checkpoint
+    ? BigInt(checkpoint.lastBlock + 1)
+    : coldStartBlock;
+  const toBlock =
+    fromBlock + MAX_LOG_BLOCK_RANGE < safeLatest
+      ? fromBlock + MAX_LOG_BLOCK_RANGE
+      : safeLatest;
+
+  return {
+    fromBlock,
+    toBlock,
+    safeLatest,
+    shouldPoll: fromBlock <= safeLatest,
+  };
+}
+
+type LegacyClanView = { clanId: number; goldBalance?: string };
+
+export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
+  clanViews
+    .filter((view) => view.clanId > 0)
+    .sort((a, b) => a.clanId - b.clanId)
+    .map((view) => ({
+      id: String(view.clanId),
+      name: `Clan ${view.clanId}`,
+      treasury: asString(view.goldBalance),
+    }));
+
+export const ingestEvents = internalMutation({
+  args: {
+    events: v.array(v.any()),
+    blockNumber: v.number(),
+    txHash: v.optional(v.string()),
+    firedAtTs: v.optional(v.number()),
+    advanceCheckpoint: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    let inserted = 0;
+    for (const raw of args.events as ParsedIndexerEvent[]) {
+      const logIndex = raw.logIndex ?? 0;
+      const txHash = raw.transactionHash ?? args.txHash;
+      if (!txHash) continue;
+      const blockNumber = asNumber(raw.blockNumber, args.blockNumber);
+      const existing = await ctx.db
+        .query("chainEvents")
+        .withIndex("by_tx_log", (q) =>
+          q.eq("txHash", txHash).eq("logIndex", logIndex),
+        )
+        .first();
+      if (existing) continue;
+
+      await ctx.db.insert("chainEvents", {
+        txHash,
+        logIndex,
+        blockNumber,
+        eventName: raw.eventName,
+        args: bigintSafe(raw.args),
+        decodedAt: Date.now(),
+        blockHash: raw.blockHash ?? undefined,
+        transactionIndex: raw.transactionIndex ?? undefined,
+        tick:
+          eventNumber(raw, "tick") ??
+          eventNumber(raw, "atTick") ??
+          eventNumber(raw, "openedTick"),
+        clanId: eventNumber(raw, "clanId") ?? eventNumber(raw, "targetClanId"),
+        clansmanId: eventNumber(raw, "clansmanId"),
+        banditId: eventNumber(raw, "banditId"),
+        source: "real-indexer",
+      });
+      inserted++;
+
+      if (raw.eventName === "TickAdvanced") {
+        await ctx.db.insert("tickHistory", {
+          closedTick: asNumber(raw.args.closedTick),
+          openedTick: asNumber(raw.args.openedTick),
+          tickSeed: asString(raw.args.tickSeed),
+          blockNumber,
+          txHash,
+          firedAtTs: args.firedAtTs,
+          observedAt: Date.now(),
+        });
+      }
+
+      const pricePoint = pricePointFromEvent(raw, blockNumber);
+      if (pricePoint) await ctx.db.insert("pricePoint", pricePoint);
+    }
+
+    if (args.advanceCheckpoint === true) {
+      const checkpoint = await ctx.db.query("eventCheckpoint").first();
+      const nextCheckpoint = {
+        lastBlock: args.blockNumber,
+        lastTxHash: args.txHash,
+        lastSeenAt: Date.now(),
+      };
+      if (checkpoint) {
+        if (args.blockNumber >= checkpoint.lastBlock) {
+          await ctx.db.patch(checkpoint._id, nextCheckpoint);
+        }
+      } else {
+        await ctx.db.insert("eventCheckpoint", nextCheckpoint);
+      }
+    }
+
+    return { inserted };
+  },
+});
+
+export const commitSnapshot = internalMutation({
+  args: {
+    snapshot: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const snapshot = args.snapshot as SnapshotPayload;
+    const now = Date.now();
+    const world = snapshot.world;
+    const tick = asNumber(world.currentTick);
+
+    if (snapshot.market) {
+      const market = snapshot.market;
+      await ctx.db.insert("marketState", {
+        pools: RESOURCE_NAMES.map((resourceType) => {
+          const pool = objectAt(market, resourceType);
+          return {
+            resourceType,
+            resourceToken: asString(
+              pool.resourceToken,
+              "0x0000000000000000000000000000000000000000",
+            ),
+            reserveResource: asString(pool.resourceReserve),
+            reserveGold: asString(pool.goldReserve),
+            spotPriceGoldPerResource: asString(pool.spotPriceGoldPerResource),
+          };
+        }),
+        currentTick: asNumber(market.currentTick, tick),
+        currentTickQueue: bigintSafe(
+          market.currentTickQueue ?? [],
+        ) as unknown[],
+        nextTickQueue: bigintSafe(market.nextTickQueue ?? []) as unknown[],
+        lastUpdatedTick: tick,
+        lastUpdatedBlock: snapshot.blockNumber,
+        refreshedAt: now,
+      });
+    }
+
+    if (snapshot.bandit) {
+      const bandit = snapshot.bandit;
+      await ctx.db.insert("banditView", {
+        exists: asBool(bandit.exists),
+        id: asNumber(bandit.banditId),
+        region: asNumber(bandit.currentRegion),
+        state: asNumber(bandit.state),
+        attackPower: asNumber(bandit.attackPower),
+        tier: asNumber(bandit.tier),
+        attemptsMade: asNumber(bandit.attackAttemptsMade),
+        maxAttemptsRemaining: asNumber(bandit.maxAttemptsRemaining),
+        stateEnteredTick: asNumber(bandit.stateEnteredTick),
+        nextActionTick: asNumber(bandit.nextActionTick),
+        carryWood: asString(bandit.carryWood),
+        carryIron: asString(bandit.carryIron),
+        carryWheat: asString(bandit.carryWheat),
+        carryFish: asString(bandit.carryFish),
+        projectedTargetClanId: asNumber(bandit.projectedTargetClanId),
+        projectedTargetLootValue: asString(bandit.projectedTargetLootValue),
+        refreshedAt: now,
+        lastUpdatedBlock: snapshot.blockNumber,
+      });
+    }
+
+    for (const view of snapshot.clans) {
+      const derived = objectAt(view, "clan");
+      const clan = objectAt(derived, "clan");
+      const clanId = asNumber(clan.clanId);
+      if (clanId <= 0) continue;
+
+      const nextView = {
+        clanId,
+        owner: asString(
+          clan.owner,
+          "0x0000000000000000000000000000000000000000",
+        ),
+        baseRegion: asNumber(clan.baseRegion),
+        clanState: asNumber(clan.clanState),
+        baseLevel: asNumber(clan.baseLevel),
+        wallLevel: asNumber(clan.wallLevel),
+        monumentLevel: asNumber(clan.monumentLevel),
+        livingClansmen: asNumber(clan.livingClansmen),
+        isStarving: asBool(derived.isStarving),
+        starvationStartsAtTick: asNumber(clan.starvationStartsAtTick),
+        coldDamage: asNumber(clan.coldDamage),
+        goldBalance: asString(clan.goldBalance),
+        blueprintBalance: asString(clan.blueprintBalance),
+        vaultWood: asString(clan.vaultWood),
+        vaultIron: asString(clan.vaultIron),
+        vaultWheat: asString(clan.vaultWheat),
+        vaultFish: asString(clan.vaultFish),
+        lootValue: asString(derived.lootValue),
+        incomingDefenderIds: Array.isArray(view.incomingDefenderIds)
+          ? view.incomingDefenderIds.map((id) => asNumber(id))
+          : [],
+        thisClanDefendingBaseId: asNumber(view.thisClanDefendingBaseId),
+        westPlot: bigintSafe(view.westPlot),
+        eastPlot: bigintSafe(view.eastPlot),
+        clansmen: bigintSafe(view.clansmen ?? []) as unknown[],
+        derivedAtTick: asNumber(derived.derivedAtTick, tick),
+        refreshedAt: now,
+        lastUpdatedBlock: snapshot.blockNumber,
+      };
+
+      const previous = await ctx.db
+        .query("clanView")
+        .withIndex("by_clanId", (q) => q.eq("clanId", clanId))
+        .order("desc")
+        .first();
+      const previousComparable = previous
+        ? {
+            ...previous,
+            _id: undefined,
+            _creationTime: undefined,
+            refreshedAt: undefined,
+          }
+        : undefined;
+      if (
+        JSON.stringify(previousComparable) !==
+        JSON.stringify({ ...nextView, refreshedAt: undefined })
+      ) {
+        await ctx.db.insert("clanView", nextView);
+      }
+    }
+
+    const latestClanViews = await Promise.all(
+      Array.from(
+        { length: MAX_CLANS },
+        async (_, index) =>
+          await ctx.db
+            .query("clanView")
+            .withIndex("by_clanId", (q) => q.eq("clanId", index + 1))
+            .order("desc")
+            .first(),
+      ),
+    );
+    const legacyClans = legacyClansFromClanViews(
+      latestClanViews.filter(Boolean) as LegacyClanView[],
+    );
+    const worldSnapshot = {
+      tick,
+      tickEpochStartedAt: Math.floor(now / 1000),
+      tickEpochDurationMs: 20_000,
+      currentSeasonNumber: asNumber(world.currentSeasonNumber),
+      seasonStartTick: asNumber(world.seasonStartTick),
+      seasonEndTick: asNumber(world.seasonEndTick),
+      winterActive: asBool(world.winterActive),
+      winterStartsAtTick: asNumber(world.winterStartsAtTick),
+      winterEndsAtTick: asNumber(world.winterEndsAtTick),
+      nextHeartbeatAtTick: asNumber(world.nextHeartbeatAtTick),
+      regions: LEGACY_REGIONS,
+      clans: legacyClans,
+      seasonFinalized: asBool(world.seasonFinalized),
+      activeBanditId: asNumber(world.activeBanditId),
+      currentTickSeed: asString(world.currentTickSeed),
+      lastUpdatedAt: now,
+      lastUpdatedBlock: snapshot.blockNumber,
+      txHash: snapshot.txHash,
+      leaderboard: (Array.isArray(world.leaderboard)
+        ? world.leaderboard
+        : []
+      ).map((entry) => {
+        const item = entry as Record<string, unknown>;
+        return {
+          clanId: asNumber(item.clanId),
+          owner: asString(
+            item.owner,
+            "0x0000000000000000000000000000000000000000",
+          ),
+          monumentLevel: asNumber(item.monumentLevel),
+          baseLevel: asNumber(item.baseLevel),
+          wallLevel: asNumber(item.wallLevel),
+          livingClansmen: asNumber(item.livingClansmen),
+          state: asNumber(item.state),
+          lootValue: asString(item.lootValue),
+        };
+      }),
+    };
+    const previousWorldSnapshot = await ctx.db
+      .query("worldSnapshot")
+      .order("desc")
+      .first();
+    if (previousWorldSnapshot) {
+      await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
+    } else {
+      await ctx.db.insert("worldSnapshot", worldSnapshot);
+    }
+
+    return { tick, clans: snapshot.clans.length };
+  },
+});
+
+export const refreshSnapshot = internalAction({
+  args: {
+    blockNumber: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<unknown> => {
+    const client = createClient();
+    const address = engineAddress();
+    const pinnedBlockNumber =
+      args.blockNumber === undefined ? undefined : BigInt(args.blockNumber);
+    const blockNumber =
+      args.blockNumber ?? Number(await client.getBlockNumber());
+
+    const [world, market, bandit] = await Promise.all([
+      client.readContract({
+        address,
+        abi: CLAN_WORLD_ABI,
+        functionName: "getWorldSnapshot",
+        blockNumber: pinnedBlockNumber,
+      }),
+      client
+        .readContract({
+          address,
+          abi: CLAN_WORLD_ABI,
+          functionName: "getMarketState",
+          blockNumber: pinnedBlockNumber,
+        })
+        .catch(() => undefined),
+      client
+        .readContract({
+          address,
+          abi: CLAN_WORLD_ABI,
+          functionName: "getActiveBanditView",
+          blockNumber: pinnedBlockNumber,
+        })
+        .catch(() => undefined),
+    ]);
+
+    const clans = await Promise.all(
+      Array.from({ length: MAX_CLANS }, async (_, index) => {
+        const clanId = index + 1;
+        return client
+          .readContract({
+            address,
+            abi: CLAN_WORLD_ABI,
+            functionName: "getClanFullView",
+            args: [clanId],
+            blockNumber: pinnedBlockNumber,
+          })
+          .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
+          .catch(() => undefined);
+      }),
+    );
+
+    return await ctx.runMutation(indexerApi.commitSnapshot, {
+      snapshot: {
+        blockNumber,
+        world: bigintSafe(world),
+        market: bigintSafe(market),
+        bandit: bigintSafe(bandit),
+        clans: clans.filter(Boolean),
+      },
+    });
+  },
+});
+
+export const pollLogs = internalAction({
+  args: {},
+  handler: async (ctx): Promise<unknown> => {
+    const client = createClient();
+    const address = engineAddress();
+    const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
+      lastBlock: number;
+      lastTxHash?: string;
+    } | null;
+    const latest = await client.getBlockNumber();
+    const { fromBlock, toBlock, safeLatest, shouldPoll } = planPollLogRange(
+      checkpoint,
+      latest,
+    );
+    if (!shouldPoll) {
+      return {
+        inserted: 0,
+        fromBlock: Number(fromBlock),
+        toBlock: Number(safeLatest),
+      };
+    }
+
+    const logs = await client.getLogs({ address, fromBlock, toBlock });
+    const events = decodeClanWorldLogs(logs);
+    return await ctx.runMutation(indexerApi.ingestEvents, {
+      events,
+      blockNumber: Number(toBlock),
+      txHash: events.at(-1)?.transactionHash ?? checkpoint?.lastTxHash,
+      advanceCheckpoint: true,
+    });
+  },
+});
+
+export const readCheckpoint = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("eventCheckpoint").first();
+  },
+});

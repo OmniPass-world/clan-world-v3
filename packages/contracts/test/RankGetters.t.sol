@@ -127,9 +127,12 @@ contract RankGettersTest is Test {
         world.setVault(clanB, 300e18, 100e18, 300e18, 0);
         world.setVault(clanC, 300e18, 100e18, 300e18, 0);
 
-        _assertAllOk(_submitUpgradeBatch(elderA, clanA, 2));
+        _assertAllOk(_submitUpgradeBatch(elderA, clanA, 1));
         _assertAllOk(_submitUpgradeBatch(elderB, clanB, 1));
+        _advanceTicks(world.getActionDuration(ActionType.UpgradeMonument) + 1);
 
+        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS);
+        _assertAllOk(_submitUpgradeBatch(elderA, clanA, 1));
         _advanceTick();
         _assertAllOk(_submitUpgradeBatch(elderC, clanC, 1));
         _advanceTicks(world.getActionDuration(ActionType.UpgradeMonument) + 1);
@@ -141,9 +144,9 @@ contract RankGettersTest is Test {
         assertEq(levelA, 2, "A level");
         assertEq(levelB, 1, "B level");
         assertEq(levelC, 1, "C level");
-        assertEq(reachedA, 1, "A reached level 2");
         assertEq(reachedB, 1, "B reached level 1");
-        assertEq(reachedC, 2, "C reached level 1");
+        assertGt(reachedA, reachedB, "A reached level 2 after its first upgrade");
+        assertGt(reachedC, reachedB, "C reached level 1 after B");
         assertEq(scoreA, _expectedScore(levelA, reachedA, world.quoteLootValueSettled(clanA)), "A score");
         assertEq(scoreB, _expectedScore(levelB, reachedB, world.quoteLootValueSettled(clanB)), "B score");
         assertEq(scoreC, _expectedScore(levelC, reachedC, world.quoteLootValueSettled(clanC)), "C score");

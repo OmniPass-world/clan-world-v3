@@ -175,68 +175,46 @@ contract WallUpgradesTest is Test {
         assertEq(uint8(second[0].status), uint8(StatusCode.OK), "reservation released for requeue");
     }
 
-    function test_upgradeWall_invalidatesFutureReservationAfterEarlierReservationCancelled() public {
+    function test_upgradeWall_rejectsSecondPendingReservation() public {
+        uint32 clanId = _mintClan(elder);
+        uint32 secondCsId = _csAt(clanId, 1);
+        world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
+
+        OrderResult[] memory first = _submitOrder(elder, clanId, _csAt(clanId, 0), ActionType.UpgradeWall);
+        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first queue");
+
+        OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
+        assertEq(uint8(second[0].status), uint8(StatusCode.ERR_INVALID_ACTION), "second queue blocked");
+        assertFalse(world.getActiveMission(secondCsId).active, "blocked mission not queued");
+    }
+
+    function test_upgradeWall_onePendingRuleAllowsRequeueAfterSettle() public {
         uint32 clanId = _mintClan(elder);
         uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
         world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
 
-        OrderResult[] memory batch = _submitUpgradeBatch(elder, clanId, 2);
-        assertEq(uint8(batch[0].status), uint8(StatusCode.OK), "first queue");
-        assertEq(uint8(batch[1].status), uint8(StatusCode.OK), "second queue");
+        OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeWall);
+        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 1");
 
-        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS);
-        OrderResult[] memory cancelFirst = _submitOrder(elder, clanId, firstCsId, ActionType.Wait);
-        assertEq(uint8(cancelFirst[0].status), uint8(StatusCode.OK), "cancel first");
+        OrderResult[] memory blocked = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
+        assertEq(uint8(blocked[0].status), uint8(StatusCode.ERR_INVALID_ACTION), "second pending blocked");
 
         _advanceTicks(world.getActionDuration(ActionType.UpgradeWall) + 1);
 
-        assertEq(world.getClan(clanId).wallLevel, 0, "future-level reservation does not reprice");
-        assertEq(world.getClan(clanId).vaultWood, 100e18, "stale reservation does not debit wood");
-        assertEq(world.getClan(clanId).vaultIron, 100e18, "stale reservation does not debit iron");
-        assertTrue(world.getActiveMission(secondCsId).active, "stale mission stays pending for retry pass");
-
-        _advanceTicks(2);
-        OrderResult[] memory next = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeWall);
-        assertEq(uint8(next[0].status), uint8(StatusCode.OK), "pending count released");
+        OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
+        assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second queues after first settles");
     }
 
-    function test_upgradeWall_reversedClansmanSettlementBothApply() public {
-        // SHOULD FIX 5: higher-level reservation is retained (not refunded) when lower-level worker hasn't
-        // settled yet. Once the lower-level worker settles, the higher-level worker retries and also applies.
+    function test_upgradeWall_simAndRealScoresMatchAfterPendingRejection() public {
         uint32 clanId = _mintClan(elder);
-        uint32 firstCsId = _csAt(clanId, 0);
         uint32 secondCsId = _csAt(clanId, 1);
         world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
 
-        // secondCsId queues level 0→1 (fromLevel=0, runs first in _clanClansmanIds order)
+        OrderResult[] memory first = _submitOrder(elder, clanId, _csAt(clanId, 0), ActionType.UpgradeWall);
+        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 1");
         OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
-        assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second clansman queues level 1");
-        // firstCsId queues level 1→2 (fromLevel=1, runs second but is index 0)
-        OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeWall);
-        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 2");
-
-        _advanceTicks(world.getActionDuration(ActionType.UpgradeWall) + 2);
-
-        // Both reservations apply: level-0→1 first, then level-1→2 on retry pass.
-        assertEq(world.getClan(clanId).wallLevel, 2, "both reservations apply");
-        assertEq(world.getClan(clanId).vaultWood, 45e18, "both upgrade costs debited (20+35)");
-    }
-
-    function test_upgradeWall_simAndRealScoresMatchAfterOutOfOrderCancellation() public {
-        uint32 clanId = _mintClan(elder);
-        uint32 firstCsId = _csAt(clanId, 0);
-        uint32 secondCsId = _csAt(clanId, 1);
-        world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
-
-        OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
-        assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second clansman queues level 1");
-        OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeWall);
-        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 2");
-
-        vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS);
-        OrderResult[] memory cancelSecond = _submitOrder(elder, clanId, secondCsId, ActionType.Wait);
-        assertEq(uint8(cancelSecond[0].status), uint8(StatusCode.OK), "cancel current-level reservation");
+        assertEq(uint8(second[0].status), uint8(StatusCode.ERR_INVALID_ACTION), "second clansman rejected");
 
         world.setCurrentTick(2);
         uint256 simLoot = world.quoteLootValueSettled(clanId);
@@ -246,21 +224,16 @@ contract WallUpgradesTest is Test {
 
         assertEq(realLoot, simLoot, "sim and real loot match");
         assertEq(realScore, simScore, "sim and real score match");
-        assertEq(wallLevel, 0, "stale future reservation did not apply");
-        assertTrue(world.getActiveMission(firstCsId).active, "failed upgrade remains pending for retry pass");
+        assertEq(wallLevel, 1, "only accepted reservation applies");
+        assertFalse(world.getActiveMission(secondCsId).active, "rejected upgrade has no mission");
     }
 
-    function test_upgradeWall_simAndRealBothApplySequentially() public {
-        // SHOULD FIX 5: both reservations apply when settled. Sim and real agree.
+    function test_upgradeWall_simAndRealMatchSinglePendingUpgrade() public {
         uint32 clanId = _mintClan(elder);
-        uint32 firstCsId = _csAt(clanId, 0);
-        uint32 secondCsId = _csAt(clanId, 1);
         world.setVault(clanId, 100e18, 100e18, 100e18, 100e18);
 
-        OrderResult[] memory second = _submitOrder(elder, clanId, secondCsId, ActionType.UpgradeWall);
-        assertEq(uint8(second[0].status), uint8(StatusCode.OK), "second clansman queues level 1");
-        OrderResult[] memory first = _submitOrder(elder, clanId, firstCsId, ActionType.UpgradeWall);
-        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 2");
+        OrderResult[] memory first = _submitOrder(elder, clanId, _csAt(clanId, 0), ActionType.UpgradeWall);
+        assertEq(uint8(first[0].status), uint8(StatusCode.OK), "first clansman queues level 1");
 
         world.setCurrentTick(world.getActionDuration(ActionType.UpgradeWall) + 2);
         uint256 simLoot = world.quoteLootValueSettled(clanId);
@@ -268,7 +241,7 @@ contract WallUpgradesTest is Test {
 
         (uint256 realScore, uint256 realLoot, uint8 wallLevel) = world.settleClanAndGetStoredScore(clanId);
 
-        assertEq(wallLevel, 2, "both reservations apply sequentially");
+        assertEq(wallLevel, 1, "single pending reservation applies");
         assertEq(realLoot, simLoot, "sim and real loot match");
         assertEq(realScore, simScore, "sim and real score match");
     }
@@ -287,23 +260,17 @@ contract WallUpgradesTest is Test {
 
     function test_upgradeWall_rejectsAboveMaxLevel() public {
         uint32 clanId = _mintClan(elder);
-        world.setVault(clanId, 300e18, 100e18, 100e18, 100e18);
-
-        OrderResult[] memory firstFour = _submitUpgradeBatch(elder, clanId, 4);
-        for (uint256 i = 0; i < 4; i++) {
-            assertEq(uint8(firstFour[i].status), uint8(StatusCode.OK), "first batch status");
-        }
-        _advanceTicks(world.getActionDuration(ActionType.UpgradeWall) + 1);
-        assertEq(world.getClan(clanId).wallLevel, 4, "first four upgrades settled");
-
-        _advanceTicks(3);
         uint32 csId = _firstCs(clanId);
-        OrderResult[] memory fifth = _submitOrder(elder, clanId, csId, ActionType.UpgradeWall);
-        assertEq(uint8(fifth[0].status), uint8(StatusCode.OK), "fifth status");
-        _advanceTicks(world.getActionDuration(ActionType.UpgradeWall) + 1);
+        world.setVault(clanId, 300e18, 100e18, 500e18, 100e18);
+
+        for (uint256 i = 0; i < 5; i++) {
+            OrderResult[] memory result = _submitOrder(elder, clanId, csId, ActionType.UpgradeWall);
+            assertEq(uint8(result[0].status), uint8(StatusCode.OK), "upgrade status");
+            _advanceTicks(world.getActionDuration(ActionType.UpgradeWall) + 1);
+            vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS);
+        }
         assertEq(world.getClan(clanId).wallLevel, 5, "max wall level");
 
-        _advanceTicks(3);
         OrderResult[] memory sixth = _submitOrder(elder, clanId, csId, ActionType.UpgradeWall);
         assertEq(uint8(sixth[0].status), uint8(StatusCode.ERR_INVALID_ACTION), "max level rejects");
         assertEq(world.getClan(clanId).wallLevel, 5, "wall remains max");

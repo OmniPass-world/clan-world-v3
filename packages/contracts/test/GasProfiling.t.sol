@@ -108,7 +108,8 @@ contract GasProfilingTest is Test {
     // =========================================================================
 
     /// @notice Profile heartbeat() with 45 ticks of lag per clan.
-    ///         At ~87K gas/tick across all 12 clans, 45 ticks ~= 3.9M gas.
+    ///         Heartbeat now eagerly applies canonical upkeep-before-action settlement
+    ///         across all clans, so this is an intermediate reference point.
     ///         Provides a scaling reference point between 1-tick and 200-tick cases.
     function test_heartbeat_gas45TickLag() public {
         world.setCurrentTick(45);
@@ -118,7 +119,7 @@ contract GasProfilingTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         emit log_named_uint("heartbeat gas (12 clans, 45-tick lag)", gasUsed);
-        assertLt(gasUsed, 5_000_000, "45-tick lag must stay under 5M gas");
+        assertLt(gasUsed, 6_000_000, "45-tick lag must stay under 6M gas after canonical settlement rewrite");
     }
 
     // =========================================================================

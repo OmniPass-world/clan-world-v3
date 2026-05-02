@@ -18,5 +18,16 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - name: Verify Foundry
+        run: |
+          command -v forge >/dev/null 2>&1 || {
+            echo "::error::forge is not installed after foundry-toolchain action — CI cannot validate contract ABI drift. Check the foundry-toolchain action output above."
+            exit 1
+          }
+          forge --version
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:chainclient-abi

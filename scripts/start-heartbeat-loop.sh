@@ -38,6 +38,10 @@ if [ "$missing" -eq 1 ]; then
   done
   exit 1
 fi
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: required executable jq is not installed" >&2
+  exit 1
+fi
 
 HEARTBEAT_INTERVAL=$(grep "^export const HEARTBEAT_INTERVAL_SECONDS" packages/shared/src/generated/constants.ts | grep -oE '[0-9]+')
 HEARTBEAT_SLEEP_SECONDS=$((HEARTBEAT_INTERVAL + 5))
@@ -49,24 +53,45 @@ echo "  convex: $CONVEX_DEPLOY_URL"
 
 while true; do
   heartbeat_stderr="$(mktemp)"
+  heartbeat_json="$(mktemp)"
   if ! forge script packages/contracts/script/Heartbeat.s.sol \
     --root packages/contracts \
     --broadcast \
     --rpc-url "$RPC_URL_PRIMARY" \
+    --json \
+    > "$heartbeat_json" \
     2> >(tee "$heartbeat_stderr" >&2); then
     if grep -qi "RateLimited" "$heartbeat_stderr"; then
       echo "heartbeat rate-limited; continuing" >&2
     else
-      rm -f "$heartbeat_stderr"
+      rm -f "$heartbeat_stderr" "$heartbeat_json"
       exit 1
     fi
   fi
   rm -f "$heartbeat_stderr"
 
+  tx_hash="$(jq -r '[
+      .. | objects | .transactionHash? // empty,
+      .. | objects | .hash? // empty
+    ] | map(select(type == "string" and test("^0x[0-9a-fA-F]{64}$"))) | last // empty' "$heartbeat_json")"
+  block_number="$(jq -r '[
+      .. | objects | .blockNumber? // empty
+    ] | map(select(. != null)) | last // empty' "$heartbeat_json")"
+  rm -f "$heartbeat_json"
+
+  if [ -z "$tx_hash" ]; then
+    echo "heartbeat tx hash unavailable from forge JSON; webhook POST skipped" >&2
+    sleep "$HEARTBEAT_SLEEP_SECONDS"
+    continue
+  fi
+  if [ -z "$block_number" ]; then
+    block_number="null"
+  fi
+
   curl -sS --fail -X POST "$CONVEX_DEPLOY_URL/api/heartbeat-webhook" \
     -H "Authorization: Bearer $WEBHOOK_SHARED_SECRET" \
     -H "Content-Type: application/json" \
-    -d "{\"chain\":\"base-sepolia\",\"engineAddress\":\"$CLAN_WORLD_CONTRACT_ADDRESS\",\"firedAtTs\":$(date +%s),\"source\":\"foundry-loop\"}" \
+    -d "{\"chain\":\"base-sepolia\",\"engineAddress\":\"$CLAN_WORLD_CONTRACT_ADDRESS\",\"txHash\":\"$tx_hash\",\"blockNumber\":$block_number,\"firedAtTs\":$(date +%s),\"source\":\"foundry-loop\"}" \
     || echo "webhook POST failed (continuing)" >&2
 
   # Add a small cushion to avoid rate-limit collisions with the on-chain heartbeat guard.
