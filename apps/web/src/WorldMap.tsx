@@ -1502,8 +1502,12 @@ export function WorldMap() {
         bg.stroke({ color: clan.color, width: 1.5, alpha: 0.95 });
       });
 
-      // Bandit redraw uses live tick — recompute alongside layout
-      redrawBandit();
+      // Bandit redraw uses live tick — recompute alongside layout.
+      // Skip during active vignette so a snapshot.clans-driven relayout
+      // doesn't snap the reparented bandit back to home anchor mid-
+      // choreography (opus 4.7 r4 LOW). The vignette ticker self-corrects
+      // on the next frame anyway, but a one-frame snap is visible.
+      if (!combatVignetteRef.current) redrawBandit();
     } // end DEMO_MODE relayout block
   }
 
@@ -1880,6 +1884,11 @@ export function WorldMap() {
     if (!app) return;
 
     const resetBanditAlpha = () => {
+      // Defeated bandit stays alpha=0 — don't reset to 1 (opus 4.6/4.7 r4
+      // defensive). Currently masked by visible=false but enforces the
+      // "stay hidden post-defeat" invariant against future writers that
+      // might flip visible back to true.
+      if (banditDefeatedRef.current) return;
       const icon = drawnRef.current.banditIcon;
       const sprite = drawnRef.current.banditSprite;
       if (icon) icon.alpha = 1;
