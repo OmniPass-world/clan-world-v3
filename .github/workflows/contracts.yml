@@ -32,6 +32,7 @@ jobs:
         working-directory: packages/contracts
         run: |
           bash scripts/forge.sh test --match-path test/diamond/DiamondSkeleton.t.sol
+          bash scripts/forge.sh test --match-path test/diamond/DiamondEventParity.t.sol
           bash scripts/forge.sh test --match-path test/diamond/StorageLayoutGuard.t.sol
           bash scripts/forge.sh test --match-path test/SeasonFinalization.t.sol
           bash scripts/forge.sh test --match-path test/HeartbeatOrdering.t.sol
