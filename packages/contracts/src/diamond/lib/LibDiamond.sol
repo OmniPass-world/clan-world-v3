@@ -146,12 +146,9 @@ library LibDiamond {
         ds.facetAddresses.push(facetAddress);
     }
 
-    function addFunction(
-        DiamondStorage storage ds,
-        bytes4 selector,
-        uint96 selectorPosition,
-        address facetAddress
-    ) private {
+    function addFunction(DiamondStorage storage ds, bytes4 selector, uint96 selectorPosition, address facetAddress)
+        private
+    {
         ds.selectorToFacetAndPosition[selector].selectorPosition = selectorPosition;
         ds.facetFunctionSelectors[facetAddress].functionSelectors.push(selector);
         ds.selectorToFacetAndPosition[selector].facetAddress = facetAddress;
@@ -191,7 +188,10 @@ library LibDiamond {
 
         (bool success,) = init.delegatecall(data);
         if (!success) {
-            revert DiamondInitFailed(init, data);
+            assembly {
+                returndatacopy(0, 0, returndatasize())
+                revert(0, returndatasize())
+            }
         }
     }
 }

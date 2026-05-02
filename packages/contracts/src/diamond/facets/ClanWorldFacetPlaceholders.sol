@@ -16,6 +16,5 @@ contract DirectTransfersFacet {}
 contract BanditStateFacet {}
 contract BanditTargetingFacet {}
 contract BanditCombatFacet {}
-contract RawViewsFacet {}
 contract MarketViewsFacet {}
 contract BanditViewsFacet {}
