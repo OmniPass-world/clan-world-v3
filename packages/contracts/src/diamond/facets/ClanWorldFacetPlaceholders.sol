@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.34;
+
+contract WorldClockFacet {}
+
+contract SeasonFacet {}
+
+contract OrdersFacet {}
+
+contract UpkeepFacet {}
+
+contract GatheringFacet {}
+
+contract DepositWithdrawFacet {}
+
+contract UpgradesFacet {}
+
+contract MarketFacet {}
+
+contract DirectTransfersFacet {}
+
+contract BanditStateFacet {}
+
+contract BanditTargetingFacet {}
+
+contract BanditCombatFacet {}

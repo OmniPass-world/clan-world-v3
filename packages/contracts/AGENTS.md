@@ -70,8 +70,10 @@ Recommended initial slices:
   `OrdersFacet`, `SettlementFacet`, `UpkeepFacet`, `GatheringFacet`,
   `DepositWithdrawFacet`, `UpgradesFacet`, `MarketFacet`, `TreasuryFacet`,
   `DirectTransfersFacet`, `BanditStateFacet`, `BanditTargetingFacet`,
-  `BanditCombatFacet`, `RawViewsFacet`, `DerivedViewsFacet`,
-  `MarketViewsFacet`, `BanditViewsFacet`.
+  `BanditCombatFacet`, `RawWorldViewsFacet`, `RawTreasuryViewsFacet`,
+  `RawClanViewsFacet`, `RawBanditViewsFacet`, `DerivedViewsFacet`,
+  `MarketViewsFacet`, `BanditViewsFacet`, `RegionViewsFacet`,
+  `SnapshotViewsFacet`, `QuoteViewsFacet`.
 - Libraries: `LibStorage`, `LibTravel`, `LibResourceAccounting`, `LibRules`.
 
 High-risk facets for size creep: `SettlementFacet`, `UpgradesFacet`,

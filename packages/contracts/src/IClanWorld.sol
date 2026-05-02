@@ -848,6 +848,14 @@ interface IClanWorld is IClanWorldEvents {
 
     function getDefendingClans(uint8 region) external view returns (uint32[] memory clanIds);
 
+    function getClanIds() external view returns (uint32[] memory clanIds);
+
+    function getClanClansmanIds(uint32 clanId) external view returns (uint32[] memory clansmanIds);
+
+    function getClansmanDefendingRegion(uint32 clansmanId) external view returns (uint8 region);
+
+    function getMonumentLevelReachedAt(uint32 clanId, uint8 level) external view returns (uint64 reachedAtTick);
+
     // -------------------------------------------------------------------------
     // Derived read getters (read-only simulation forward to current tick)
     //

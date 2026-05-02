@@ -150,6 +150,20 @@ Cross-facet calls are allowed but should be rare.
    - Deploy to local Anvil, then Base Sepolia.
    - Archive or remove the monolith only after parity is proven.
 
+## Known Intentional Divergence
+
+The monolith contains narrower eager-settle hooks for bandit-related shared
+state. The diamond heartbeat currently settles every live clan before market,
+bandit, and season logic runs, so the same correctness invariant is met for
+normal heartbeat execution without adding another cross-cutting settlement hook
+during the first migration pass.
+
+This is intentionally not final policy. Track the follow-up as a gas and backlog
+hardening item: restore or replace the narrower bandit eager-settle hooks if
+testnet/mainnet profiling shows the global heartbeat settlement pass is too
+expensive or if partial-backlog scenarios need tighter compatibility with the
+monolith implementation.
+
 ## Acceptance Criteria
 
 - Every facet runtime is below `20 KB`; target is below `16 KB`.
