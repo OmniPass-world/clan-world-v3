@@ -6,6 +6,116 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.1.0] — 2026-05-02
+
+### Highlights
+
+> [!NOTE]
+> **GOLD Bridge workspace + GPT-5.5 Pro audit hotfix bundle.** v1.1.0 introduces the cross-chain GOLD bridge as a sibling workspace and lands 13 MUST-fix findings from external static review across 8 wave-stack fixes:
+>
+> - **GOLD Bridge workspace (#412)** — standalone `gold-bridge-monorepo/` with the 9-decimal upgradeable Base GOLD token, NTT (Wormhole Native Token Transfer) deployment helpers, recovery/timelock tooling, deployment cockpit UI, and Reown wallet integration. Wired into the root pnpm/turbo workspace. **Not yet integrated into ClanWorld game flows** — bridge ships first, integration follows in v1.2.
+> - **`finalizeSeason()` now actually finalizes** — emits `SeasonFinalized(tick, rankedClanIds, scores)` per spec §13. Was previously dead code (`// TODO Phase 3`). Boundary-freeze guard at the top of `heartbeat()` ensures the engine cannot replay closed ticks while limbo-pending. All 9 clan-state mutators reject submissions during frozen-unfinalized limbo.
+> - **Heartbeat upkeep-before-mission ordering** — `_settleClanThroughTick` mirrors lazy-settle path. Heartbeat advances `lastSettledTick`. New `HeartbeatLazyParity.t.sol` proves both paths converge.
+> - **Cooldown is submit-side only** — stripped erroneous cooldown reset on natural mission completion. Elders chaining gather→deposit→gather no longer pay ~50% extra wall-clock per cycle.
+> - **Convex real-indexer rolled out** behind `CLANWORLD_USE_REAL_INDEXER` flag — webhook tx-decoder, idempotent `(txHash, logIndex)` dedup, 5-block confirmation depth, 8 dedicated tables (`chainEvents`, `tickHistory`, `clanView`, `marketState`, `banditView`, `pricePoint`, `eventCheckpoint`, slim `worldSnapshot`). Webhook validates `receipt.status`, `receipt.to`, payload `engineAddress`; filters logs to engine before parseEventLogs. Mutually exclusive with v1.0.0 fake heartbeat. Indexer cursor isolation: webhook ingests events but only `pollLogs` advances the contiguous-scan cursor — closes a permanent-event-loss class.
+> - **Reservation-aware vault primitives** — `_spendableAfterReleasing` + `_deductFromVault`. Bandit theft and winter wood burn now respect resource reservations.
+> - **Demo-mode default flipped to opt-in** — `DEMO_MODE` is OFF by default. Prepares for live-chain UAT.
+> - **Phase 5B v4.6 economy alignment** — clan death from starvation with next-tick semantic, traveling defender cleanup on dead target, treasury init validation, bandit forbidden region spawn ban (UnicornTown/DeepSea), bandit defeat 1e18 Gold reward, `RealChainClient.submitOrders` field preservation.
+> - **CI hardening** — `chainclient-abi.yml` now installs `foundry-rs/foundry-toolchain@v1` AND hard-fails if forge missing. Loud-warns to stderr if dev runs without forge instead of silent-skip. Closes a class of ABI drift that v1.0.0's silent-skip masked.
+>
+> *v1.0.0 shipped a feature-complete game. v1.1.0 adds cross-chain bridge plumbing for cross-game GOLD flows, lands 13 MUST-fix findings from external GPT-5.5 Pro static review, and hardens the on-chain contract through 8 sequential review-and-fix waves — the last work before live UAT.*
+
+---
+
+### Audit-Driven Hotfixes (8 Waves)
+
+13 MUST findings from GPT-5.5 Pro external static review of v1.0.0, validated by parallel codex + Claude validators (12/13 confirmed by codex; 13/13 confirmed by Claude with 2 forge tests proving bugs present). Implemented as 8 sequential codex waves with super-swarm review rounds catching fix-introduced regressions.
+
+#### Wave 1 — silent-skip → loud-warn + demo-default flip + RealChainClient fields
+- **MUST-12** `9af9834` + `a98f66b` — `pnpm test/build/check:abi` loud-warns when forge missing instead of silent-skip; `chainclient-abi.yml` adds hard-fail Foundry guard + foundry-toolchain install step
+- **MUST-13** `7e97f7a` → `c635e8f` — flip `DEMO_MODE` default to opt-in (was always-on); gate fake heartbeat cron behind `CLANWORLD_USE_FAKE_HEARTBEAT`; webhook reads tx data instead of calling fake mutation
+- **MUST-11** `cd10fba` → `6256043` — `RealChainClient.submitOrders` preserves `targetClanId`, `marketToken`, `marketAmount`, `maxGoldIn`, withdraw fields (was hardcoded to zero)
+
+#### Convex real-indexer rollout
+- **C1 schema** `0af22f9` — 8 new Convex tables
+- **C2-C8 bulk** `4ba21c8` — webhook decoder + cron pollers + cutover plan, feature-flagged behind `CLANWORLD_USE_REAL_INDEXER`
+- **Critical fix-round** `7e298bb` — addresses 5 critical findings from claude reviewer (cold-start RPC bomb prevention, 15s receipt timeout, async snapshot scheduling, 5-block confirmation depth, frontend-compat `clans[]` backfill)
+
+#### Wave 2 — Phase 9 bandit + treasury (4 fixes bundled)
+- **MUST-4** `fb399bb` → `58436d2` — bandit forbidden region spawn ban (UnicornTown, DeepSea)
+- **MUST-9** — dead-target traveling defender cleanup
+- **MUST-10** — treasury init validation (zero/duplicate guards)
+- **Synthesis Gap 9.5** — bandit defeat reward includes 1e18 Gold per spec §6.17
+
+#### Wave 3 — heartbeat upkeep-before-mission ordering (MUST-2)
+- **`0b2830c`** — `_settleClanThroughTick(clanId, throughTick)` mirrors `_settleClan` upkeep-then-mission ordering. Heartbeat now advances `lastSettledTick`. 7 existing tests updated (they had codified the buggy ordering); new `HeartbeatLazyParity.t.sol` verifies path equivalence.
+
+#### Wave 4 — Phase 9 candidate eager-settle + reservation primitives + upgrade queue
+- **`e466189`** — `_eagerSettleBanditCandidateRegion` settles candidates before pickTarget (MUST-5); one-pending-upgrade-per-type guard replaces multi-pending dependency chain (MUST-7); reservation-aware vault primitives — bandit theft + winter wood burn now respect reservations (MUST-8)
+
+#### Wave 5 — `finalizeSeason()` emit-only + auto-roll guard (MUST-1)
+- **`3c086d7`** → **`82d0d44`** — `finalizeSeason()` body implements eager-settle + rankings + `SeasonFinalized(tick, rankedClanIds, scores)` emit. Per Liam Decision 0.3, no payout in v1.1.0 (deferred to v1.2+). `_resolveWorldEvents` only auto-rolls when `seasonFinalized == true` — prevents bypass.
+
+#### Wave 6 — strip cooldown on natural completion (MUST-3)
+- **`f1e8bfd`** → **`98521ff`** — Per spec v4.2 §10.2, cooldown is a submit-side rate-limit only. Stripped the erroneous reset in `_completeMission`. Saves Elders ~50% wall-clock on chained gather→deposit→gather cycles.
+
+#### Wave 7 — round-1 super-swarm fix bundle (4 MUSTs + 3 SHOULDs)
+Round-1 super-swarm (codex 5-3 + 5-4 + 5-5 + Gemini 3.1 Pro) on the post-Wave-6 state caught 4 convergent HIGH bugs, all addressed in Wave 7 `5c68235`:
+- **MUST-7.1** — `SeasonFinalized` event ABI drift; regenerated artifacts; new `SeasonFinalizedAbi.t.sol` topic-hash test
+- **MUST-7.2** — `finalizeSeason` boundary off-by-one; freeze heartbeat at `seasonEndTick - 1` until finalized
+- **MUST-7.3** — Indexer cursor isolation (webhook does NOT advance `eventCheckpoint`) + auth validation (`receipt.status`, `receipt.to`, payload `engineAddress`, log filtering)
+- **MUST-7.4** — `validateSubmitOrderPayload` allows `DefendBase` self-orders
+- **SHOULD-7.5/7.6** — snapshot block pinning + `pricePointFromEvent` direction
+
+#### Wave 8 — round-2 super-swarm regression fix
+Round-2 super-swarm caught Wave 7's MUST-7.2 freeze placement bug (freeze at end of heartbeat → repeated tick replay → bandit `probabilityAccum` runaway). Wave 8 `d6dd56b`:
+- **MUST-8.1** — moved boundary freeze to TOP of `heartbeat()`; engine never re-enters same closed tick
+- **MUST-8.2** — `_requireNoPendingSeasonFinalization()` guard added to all 9 clan-state mutators (`submitClanOrders`, `settleClan`, `settleClansman`, `mintClan`, `transferClanOwnership`, `transferGold`, `transferVaultResource`, `transferBlueprint`, `transferBundle`)
+- **SHOULD-8.3** — snapshot pinning unconditionally uses `receipt.blockNumber` (not payload override)
+
+---
+
+### Phase 5B Economy Alignment (#378)
+
+Path A canonization of v4.6 economy semantics:
+- **Clan death from starvation** with `tick+1` next-tick onset semantic (`starvationStartsAtTick = tick + 1` on first detection during settlement)
+- **Strict less-than kill check** — `effectiveStarvationStartsAtTick < tick` (kill fires only AFTER onset tick); deferred kill cadence
+- **Winter mechanics** — wheat plot lock at winter start (`_lockWheatPlotsForWinter`), restart after winter end (`_restartWheatPlotsAfterWinter`), winter doubles wheat+fish upkeep, winter wood burn per base + per living clansman, cold damage accrual that can degrade walls or kill clansmen
+- **Gather actions** — reschedule until carry cap or plot depletion (was: single 4-tick batches always terminate to WAITING)
+- **`ResourcesDeposited` event rename** — `wood/iron/wheat/fish` → `*Delta` (clarity-first, per ClanWorld no-backcompat policy; pre-prod GA)
+- **`WOOD_CAP = 15e18`** distinct from `CLANSMAN_CARRY_CAP = 10e18` (wood uses WOOD_CAP)
+
+---
+
+### Cross-Phase Plan + Spec Doc Updates
+
+- **Phase 9 v4.6 bandit redesign addendum** (#341) — Path A canonize impl
+- **Phase 12 agent infrastructure rework plan** (#373) — design doc for hybrid `CLAUDE_CONFIG_DIR` (shared `agents/.claude` + per-elder `elder-N/.claude`); 376 lines; ready for v1.2 implementation
+- **Phase 5B economy alignment doc** (#378) — UAT checklist updated to validate current code; doc accuracy fixes for winter mechanics, gather rescheduling, wood cap, starvation timing
+
+---
+
+### Validation at Release HEAD
+
+- forge test: **352/352 passing** (was 318 baseline at v1.0.0; +34 from waves 1-8 + Phase 5B)
+- pnpm typecheck green
+- pnpm test:chainclient-abi green
+- pnpm test:abi-parity green
+- pnpm -F @clan-world/{shared,runner,agents,server,web} all green
+- ABI parity test wired in CI; SeasonFinalized topic-hash directly verified
+
+### Sources
+
+- GPT-5.5 Pro static review of v1.0.0 main — 13 MUST-fix release blockers
+- Codex validator (12/13 confirmed) + Claude validator (13/13 + 2 proof tests)
+- Round-1 super-swarm: 6 LLMs (codex 5-3 + 5-4 + 5-5 + Opus 4.6/4.7 silent-failed + Gemini 3.1 Pro) — `docs/reviews/pr413-codereview-*.md`
+- Round-1 synthesis: `docs/reviews/pr413-synthesis.md`
+- Round-2 focused review on Wave 7 deltas (codex 5-4 + 5-5 + Claude) — `docs/reviews/pr413-synthesis-round2.md`
+- Convex indexer hybrid plan synthesized from parallel codex + Claude planners
+- Merge-fix diagnose-only convergence (codex 5-5 + Claude feature-dev:code-reviewer) — both ROOT_CAUSE_FOUND identifying test fixture issues, not contract bugs
+
+---
+
 ## [1.0.0] — 2026-05-01
 
 ### Highlights

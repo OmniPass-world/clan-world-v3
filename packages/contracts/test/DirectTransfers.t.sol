@@ -54,6 +54,12 @@ contract DirectTransferHarness is ClanWorld {
         _clans[clanId].lastSettledTick = tick;
     }
 
+    function setCurrentTick(uint64 tick) external {
+        _world.currentTick = tick;
+        _world.nextHeartbeatAtTick = tick + 1;
+        _world.nextHeartbeatAtTs = 0;
+    }
+
     /// @dev Kill a clansman by ID (for reducing living count to 1).
     function killClansman(uint32 clansmanId) external {
         if (_clansmen[clansmanId].state != ClansmanState.DEAD) {
@@ -540,17 +546,17 @@ contract DirectTransfersTest is Test {
     /// @dev Put clan into a state where _settleClan will mark it DEAD on the next call.
     ///
     ///      Setup:
-    ///      1. Advance world to tick 115 (inside winter window 110-119).
-    ///      2. Set last-settled tick back to 110 so _settleClan must process ticks 110-114.
+    ///      1. Advance world to tick 116 (inside winter window 110-119).
+    ///      2. Set last-settled tick back to 110 so _settleClan must process ticks 110-115.
     ///      3. Zero food so starvation starts at tick 110 and kills one clansman per later winter tick.
     ///
-    ///      During ticks 111-114 settlement: winter=true, starving=true,
+    ///      During ticks 112-115 settlement: winter=true, starving=true,
     ///      effectiveStarvationStartsAtTick=110 < tick → kills all 4 clansmen → _markClanDead.
     ///
-    ///      The clan is ALIVE before the transfer call (not yet settled to 115),
+    ///      The clan is ALIVE before the transfer call (not yet settled to 116),
     ///      but DEAD after _settleClan runs inside the transfer function.
     function _setupDiesDuringSettle() internal {
-        _advanceToTick(ClanWorldConstants.WINTER_START_TICK + 5);
+        world.setCurrentTick(ClanWorldConstants.WINTER_START_TICK + 6);
 
         // Rewind lastSettledTick so _settleClan processes the first 5 winter ticks.
         world.setClanLastSettledTick(clan1, ClanWorldConstants.WINTER_START_TICK);

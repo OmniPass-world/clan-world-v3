@@ -1,5 +1,114 @@
+// v1.0.1: webhook accepts tx pings and logs them; chain state is read by
+// runner/Elder paths via getWorldSnapshot/getRankings. v1.1 will replace
+// this with a real event-decoder that reads logs from the heartbeat tx
+// and refreshes Convex snapshots from chain state. Tracked: GH issue #TBD
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
+import { baseSepolia, CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
+import {
+  createPublicClient,
+  http,
+  parseEventLogs,
+  WaitForTransactionReceiptTimeoutError,
+  type Hex,
+  type Log,
+} from "viem";
+
+const indexerApi = (internal as any).indexer;
+
+type HeartbeatWebhookPayload = {
+  txHash?: unknown;
+  blockNumber?: unknown;
+  engineAddress?: unknown;
+  firedAtTs?: unknown;
+  chain?: unknown;
+  source?: unknown;
+};
+
+const isHexHash = (value: unknown): value is Hex =>
+  typeof value === "string" && /^0x[0-9a-fA-F]{64}$/.test(value);
+
+const numberFromPayload = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value !== "") return Number(value);
+  return undefined;
+};
+
+export const snapshotRefreshBlockFromReceipt = (receipt: ReceiptLike): number =>
+  Number(receipt.blockNumber);
+
+const bigintSafe = (value: unknown): unknown => {
+  if (typeof value === "bigint") return value.toString();
+  if (Array.isArray(value)) return value.map(bigintSafe);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [key, bigintSafe(nested)]),
+  );
+};
+
+type ReceiptLike = {
+  status: "success" | "reverted";
+  to?: string | null;
+  logs: readonly Log[];
+  blockNumber: bigint | number;
+};
+
+export function validateHeartbeatReceipt(
+  receipt: ReceiptLike,
+  expectedEngine: string,
+  payloadEngine?: unknown,
+):
+  | { ok: true; engineLogs: readonly Log[] }
+  | { ok: false; status: number; body: string } {
+  if (receipt.status !== "success") {
+    console.warn("[heartbeat] tx reverted, skipping");
+    return { ok: false, status: 200, body: "tx reverted" };
+  }
+
+  const normalizedExpectedEngine = expectedEngine.toLowerCase();
+  const receiptTo = receipt.to?.toLowerCase();
+  if (receiptTo !== normalizedExpectedEngine) {
+    console.warn(
+      `[heartbeat] tx not to engine (${receiptTo} != ${normalizedExpectedEngine})`,
+    );
+    return { ok: false, status: 200, body: "not engine tx" };
+  }
+
+  if (
+    typeof payloadEngine === "string" &&
+    payloadEngine.toLowerCase() !== normalizedExpectedEngine
+  ) {
+    console.warn("[heartbeat] payload engineAddress mismatch");
+    return { ok: false, status: 400, body: "engine mismatch" };
+  }
+
+  const engineLogs = receipt.logs.filter(
+    (log) => log.address.toLowerCase() === normalizedExpectedEngine,
+  );
+  if (engineLogs.length === 0) {
+    console.log("[heartbeat] tx has no engine logs, skipping");
+    return { ok: false, status: 200, body: "no engine logs" };
+  }
+
+  return { ok: true, engineLogs };
+}
+
+export function parseHeartbeatEngineEvents(engineLogs: readonly Log[]) {
+  return parseEventLogs({
+    abi: CLAN_WORLD_ABI,
+    logs: [...engineLogs],
+    strict: false,
+  }).map((event) => ({
+    eventName: event.eventName,
+    args: bigintSafe(event.args ?? {}),
+    address: event.address,
+    blockHash: event.blockHash,
+    blockNumber: event.blockNumber,
+    transactionHash: event.transactionHash,
+    transactionIndex: event.transactionIndex,
+    logIndex: event.logIndex,
+  }));
+}
 
 export const heartbeatWebhook = httpAction(async (ctx, request) => {
   if (request.method !== "POST") {
@@ -18,9 +127,108 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
     });
   }
 
-  const result = await ctx.runMutation(internal.heartbeat.advanceTick, {});
+  const payload = (await request.json()) as HeartbeatWebhookPayload;
+  const txData = {
+    txHash: payload.txHash,
+    blockNumber: payload.blockNumber,
+    engineAddress: payload.engineAddress,
+    chain: payload.chain,
+    source: payload.source,
+  };
 
-  return new Response(JSON.stringify(result), {
+  console.log("heartbeat webhook tx ping", txData);
+
+  if (process.env.CLANWORLD_USE_REAL_INDEXER === "true") {
+    if (!isHexHash(payload.txHash)) {
+      return new Response(JSON.stringify({ error: "txHash is required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const rpcUrl = process.env.RPC_URL_PRIMARY;
+    if (!rpcUrl) {
+      return new Response(
+        JSON.stringify({ error: "RPC_URL_PRIMARY is required" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const publicClient = createPublicClient({
+      chain: baseSepolia,
+      transport: http(rpcUrl),
+    });
+    const receipt = await publicClient
+      .waitForTransactionReceipt({ hash: payload.txHash, timeout: 15_000 })
+      .catch((error: unknown) => {
+        if (error instanceof WaitForTransactionReceiptTimeoutError) {
+          return undefined;
+        }
+        throw error;
+      });
+    if (!receipt) {
+      return new Response(
+        JSON.stringify({
+          error: "Timed out waiting for transaction receipt",
+          txHash: payload.txHash,
+          timeoutMs: 15_000,
+        }),
+        {
+          status: 408,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const expectedEngine = process.env.CLAN_WORLD_CONTRACT_ADDRESS;
+    if (!expectedEngine) {
+      return new Response(
+        JSON.stringify({ error: "CLAN_WORLD_CONTRACT_ADDRESS is required" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    const validation = validateHeartbeatReceipt(
+      receipt,
+      expectedEngine,
+      payload.engineAddress,
+    );
+    if (!validation.ok) {
+      return new Response(validation.body, { status: validation.status });
+    }
+
+    const parsed = parseHeartbeatEngineEvents(validation.engineLogs);
+    // Receipt blockNumber is the chain fact; payload blockNumber is keeper metadata.
+    const blockNumber = snapshotRefreshBlockFromReceipt(receipt);
+    await ctx.runMutation(indexerApi.ingestEvents, {
+      events: parsed,
+      blockNumber,
+      txHash: payload.txHash,
+      firedAtTs: numberFromPayload(payload.firedAtTs),
+      advanceCheckpoint: false,
+    });
+    await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {
+      blockNumber,
+    });
+
+    return new Response(
+      JSON.stringify({
+        status: "ok",
+        received: txData,
+        decodedEvents: parsed.length,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+  }
+
+  return new Response(JSON.stringify({ status: "ok", received: txData }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
@@ -40,8 +248,7 @@ export const advanceTick = internalMutation({
     // calls from inserting duplicate tick rows.
     const nowSeconds = Math.floor(Date.now() / 1000);
     const epochEndSeconds =
-      snap.tickEpochStartedAt +
-      Math.floor(snap.tickEpochDurationMs / 1000);
+      snap.tickEpochStartedAt + Math.floor(snap.tickEpochDurationMs / 1000);
     if (nowSeconds < epochEndSeconds) {
       return { status: "no-op", reason: "epoch not yet elapsed" };
     }

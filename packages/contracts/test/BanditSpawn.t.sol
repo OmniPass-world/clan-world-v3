@@ -336,8 +336,8 @@ contract BanditSpawnTest is Test {
         _advanceTick(world);
 
         uint64 closedTick = world.getWorldState().currentTick;
-        assertEq(world.getClan(clanId1).lastSettledTick, closedTick - 1, "clan 1 setup: unsettled");
-        assertEq(world.getClan(clanId2).lastSettledTick, closedTick - 1, "clan 2 setup: unsettled");
+        assertEq(world.getClan(clanId1).lastSettledTick, closedTick, "clan 1 setup: heartbeat-settled");
+        assertEq(world.getClan(clanId2).lastSettledTick, closedTick, "clan 2 setup: heartbeat-settled");
         assertTrue(world.getActiveMission(workerId1).active, "clan 1 worker has pending mission");
         assertTrue(world.getActiveMission(workerId2).active, "clan 2 worker has pending mission");
         assertEq(world.getActiveDefenders(clanId1)[0], defenderId1, "clan 1 defender registered");
@@ -347,16 +347,16 @@ contract BanditSpawnTest is Test {
         world.setBanditSpawnState(ClanWorldConstants.REGION_FOREST, 0, 10000);
 
         vm.expectEmit(true, false, false, true);
-        emit ClanSettled(clanId1, closedTick);
+        emit ClanSettled(clanId1, closedTick + 1);
         vm.expectEmit(true, false, false, true);
-        emit ClanSettled(clanId2, closedTick);
+        emit ClanSettled(clanId2, closedTick + 1);
         vm.expectEmit(true, false, false, false);
         emit BanditSpawned(1, 0, 0, 0);
 
         _advanceTick(world);
 
-        assertEq(world.getClan(clanId1).lastSettledTick, closedTick, "clan 1 eager-settled");
-        assertEq(world.getClan(clanId2).lastSettledTick, closedTick, "clan 2 eager-settled");
+        assertEq(world.getClan(clanId1).lastSettledTick, closedTick + 1, "clan 1 heartbeat-settled");
+        assertEq(world.getClan(clanId2).lastSettledTick, closedTick + 1, "clan 2 heartbeat-settled");
 
         Mission memory defenderMission1 = world.getActiveMission(defenderId1);
         Mission memory defenderMission2 = world.getActiveMission(defenderId2);
