@@ -71,6 +71,9 @@ library LibSettlement {
 
         uint64 fromTick = sim.clan.lastSettledTick;
         if (fromTick >= toTick) return sim;
+        if (toTick > fromTick + LibGameRules.MAX_LAZY_SETTLE_BACKLOG) {
+            toTick = fromTick + LibGameRules.MAX_LAZY_SETTLE_BACKLOG;
+        }
 
         for (uint64 tick = fromTick; tick < toTick; tick++) {
             applyUpkeep(s, sim, tick);
@@ -86,6 +89,38 @@ library LibSettlement {
         }
 
         sim.clan.lastSettledTick = toTick;
+    }
+
+    function commitSimulation(LibStorage.AppStorage storage s, SettlementSimulation memory sim) internal {
+        uint32 clanId = sim.clan.clanId;
+        if (clanId == ClanWorldConstants.CLAN_ID_NULL) return;
+
+        s.clans[clanId] = sim.clan;
+        s.wheatPlots[clanId][0] = sim.wheatPlots[0];
+        s.wheatPlots[clanId][1] = sim.wheatPlots[1];
+
+        for (uint256 i = 0; i < sim.clansmen.length; i++) {
+            uint32 clansmanId = sim.clansmen[i].clansmanId;
+            s.clansmen[clansmanId] = sim.clansmen[i];
+            s.missions[clansmanId] = sim.missions[i];
+
+            if (sim.simWallReservationCleared[i]) {
+                clearWallUpgradeReservation(s, clansmanId);
+            }
+            if (sim.simBaseReservationCleared[i]) {
+                clearBaseUpgradeReservation(s, clansmanId);
+            }
+            if (sim.simMonumentReservationCleared[i]) {
+                clearMonumentUpgradeReservation(s, clansmanId);
+            }
+        }
+
+        s.reservedWheatByClan[clanId] = sim.reservedWheat;
+        for (uint8 level = 1; level < sim.simMonumentReachedAt.length; level++) {
+            if (sim.simMonumentReachedAt[level] != 0 && s.monumentLevelReachedAt[clanId][level] == 0) {
+                s.monumentLevelReachedAt[clanId][level] = sim.simMonumentReachedAt[level];
+            }
+        }
     }
 
     function applyUpkeep(LibStorage.AppStorage storage s, SettlementSimulation memory sim, uint64 tick) internal view {
@@ -576,7 +611,10 @@ library LibSettlement {
         if (upgradeReservationCleared(sim, clansmanId, ActionType.UpgradeWall)) return true;
         LibStorage.WallUpgradeReservation memory held = s.wallUpgradeReservations[clansmanId];
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
-        if (sim.clan.wallLevel >= WALL_MAX_LEVEL) return true;
+        if (sim.clan.wallLevel >= WALL_MAX_LEVEL) {
+            clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            return true;
+        }
         if (held.fromLevel != sim.clan.wallLevel) {
             if (held.fromLevel < sim.clan.wallLevel) {
                 clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
@@ -589,6 +627,7 @@ library LibSettlement {
         uint256 ironDebit = LibSettlementMath.min(held.ironCost, ironCost);
         if (sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit) return false;
 
+        clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.wallLevel += 1;
@@ -604,7 +643,11 @@ library LibSettlement {
         if (upgradeReservationCleared(sim, clansmanId, ActionType.UpgradeBase)) return true;
         LibStorage.BaseUpgradeReservation memory held = s.baseUpgradeReservations[clansmanId];
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
-        if (sim.clan.baseLevel >= BASE_MAX_LEVEL) return true;
+        if (sim.clan.baseLevel >= BASE_MAX_LEVEL) {
+            clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+            sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+            return true;
+        }
         if (held.fromLevel != sim.clan.baseLevel) {
             if (held.fromLevel < sim.clan.baseLevel) {
                 clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
@@ -621,6 +664,7 @@ library LibSettlement {
             return false;
         }
 
+        clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
@@ -641,7 +685,11 @@ library LibSettlement {
         }
         LibStorage.MonumentUpgradeReservation memory held = s.monumentUpgradeReservations[clansmanId];
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
-        if (sim.clan.monumentLevel >= LibGameRules.MONUMENT_MAX_LEVEL) return true;
+        if (sim.clan.monumentLevel >= LibGameRules.MONUMENT_MAX_LEVEL) {
+            clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+            sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+            return true;
+        }
         if (held.fromLevel != sim.clan.monumentLevel) {
             if (held.fromLevel < sim.clan.monumentLevel) {
                 clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
@@ -661,6 +709,7 @@ library LibSettlement {
                 || sim.clan.blueprintBalance < blueprintDebit
         ) return false;
 
+        clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
@@ -719,5 +768,59 @@ library LibSettlement {
         cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
         m.active = false;
         return (cs, m);
+    }
+
+    function clearWallUpgradeReservation(LibStorage.AppStorage storage s, uint32 clansmanId) internal {
+        LibStorage.WallUpgradeReservation storage reservation = s.wallUpgradeReservations[clansmanId];
+        if (!reservation.active) return;
+
+        uint32 clanId = reservation.clanId;
+        if (s.pendingWallUpgradesByClan[clanId] > 0) {
+            s.pendingWallUpgradesByClan[clanId] -= 1;
+        }
+        s.reservedWoodByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedWoodByClan[clanId], reservation.woodCost);
+        s.reservedIronByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedIronByClan[clanId], reservation.ironCost);
+
+        delete s.wallUpgradeReservations[clansmanId];
+    }
+
+    function clearBaseUpgradeReservation(LibStorage.AppStorage storage s, uint32 clansmanId) internal {
+        LibStorage.BaseUpgradeReservation storage reservation = s.baseUpgradeReservations[clansmanId];
+        if (!reservation.active) return;
+
+        uint32 clanId = reservation.clanId;
+        if (s.pendingBaseUpgradesByClan[clanId] > 0) {
+            s.pendingBaseUpgradesByClan[clanId] -= 1;
+        }
+        s.reservedWoodByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedWoodByClan[clanId], reservation.woodCost);
+        s.reservedIronByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedIronByClan[clanId], reservation.ironCost);
+        s.reservedWheatByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedWheatByClan[clanId], reservation.wheatCost);
+
+        delete s.baseUpgradeReservations[clansmanId];
+    }
+
+    function clearMonumentUpgradeReservation(LibStorage.AppStorage storage s, uint32 clansmanId) internal {
+        LibStorage.MonumentUpgradeReservation storage reservation = s.monumentUpgradeReservations[clansmanId];
+        if (!reservation.active) return;
+
+        uint32 clanId = reservation.clanId;
+        if (s.pendingMonumentUpgradesByClan[clanId] > 0) {
+            s.pendingMonumentUpgradesByClan[clanId] -= 1;
+        }
+        s.reservedWoodByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedWoodByClan[clanId], reservation.woodCost);
+        s.reservedIronByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedIronByClan[clanId], reservation.ironCost);
+        s.reservedWheatByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedWheatByClan[clanId], reservation.wheatCost);
+        s.reservedBlueprintByClan[clanId] =
+            LibSettlementMath.subtractHeld(s.reservedBlueprintByClan[clanId], reservation.blueprintCost);
+
+        delete s.monumentUpgradeReservations[clansmanId];
     }
 }

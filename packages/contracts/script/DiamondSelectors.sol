@@ -96,6 +96,12 @@ library DiamondSelectors {
         selectors[1] = IClanWorld.seedPools.selector;
     }
 
+    function settlementSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](2);
+        selectors[0] = IClanWorld.settleClan.selector;
+        selectors[1] = IClanWorld.settleClansman.selector;
+    }
+
     function derivedViewsSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](2);
         selectors[0] = IClanWorld.getDerivedClanState.selector;

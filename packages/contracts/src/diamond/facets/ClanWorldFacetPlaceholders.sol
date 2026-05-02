@@ -7,8 +7,6 @@ contract SeasonFacet {}
 
 contract OrdersFacet {}
 
-contract SettlementFacet {}
-
 contract UpkeepFacet {}
 
 contract GatheringFacet {}

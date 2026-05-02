@@ -12,6 +12,7 @@ import {
     ActionType,
     Clan,
     ClanFullView,
+    ClanWorldConstants,
     Clansman,
     DerivedClanState,
     DerivedClansmanState,
@@ -40,9 +41,11 @@ import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFa
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
 import {ScoringViewsFacet} from "../../src/diamond/facets/ScoringViewsFacet.sol";
+import {SettlementFacet} from "../../src/diamond/facets/SettlementFacet.sol";
 import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
 import {StubPool} from "../../src/StubPool.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
+import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 
 contract PingFacet {
     function ping() external pure returns (uint256) {
@@ -52,6 +55,37 @@ contract PingFacet {
 
 interface IPing {
     function ping() external view returns (uint256);
+}
+
+interface ISetWorldClock {
+    function setWorldClock(
+        uint64 currentTick,
+        uint64 nextHeartbeatAtTick,
+        uint64 nextHeartbeatAtTs,
+        uint64 nextBanditSpawnEligibleTick,
+        uint16 currentBanditSpawnChanceBps,
+        bytes32 tickSeed
+    ) external;
+}
+
+contract SetWorldClockFacet {
+    function setWorldClock(
+        uint64 currentTick,
+        uint64 nextHeartbeatAtTick,
+        uint64 nextHeartbeatAtTs,
+        uint64 nextBanditSpawnEligibleTick,
+        uint16 currentBanditSpawnChanceBps,
+        bytes32 tickSeed
+    ) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        s.world.currentTick = currentTick;
+        s.world.nextHeartbeatAtTick = nextHeartbeatAtTick;
+        s.world.nextHeartbeatAtTs = nextHeartbeatAtTs;
+        s.world.nextBanditSpawnEligibleTick = nextBanditSpawnEligibleTick;
+        s.world.currentBanditSpawnChanceBps = currentBanditSpawnChanceBps;
+        s.world.currentTickSeed = tickSeed;
+        s.tickSeeds[currentTick] = tickSeed;
+    }
 }
 
 contract DiamondSkeletonTest is Test {
@@ -415,6 +449,49 @@ contract DiamondSkeletonTest is Test {
         }
     }
 
+    function testDiamondSettleClanMatchesCoreAfterHeartbeatUpkeep() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        SettlementFacet settlementFacet = new SettlementFacet();
+        SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_settlementCut(address(settlementFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        WorldState memory coreWorld = core.getWorldState();
+        ISetWorldClock(address(diamond))
+            .setWorldClock(
+                coreWorld.currentTick,
+                coreWorld.nextHeartbeatAtTick,
+                coreWorld.nextHeartbeatAtTs,
+                coreWorld.nextBanditSpawnEligibleTick,
+                coreWorld.currentBanditSpawnChanceBps,
+                coreWorld.currentTickSeed
+            );
+        IClanWorld(address(diamond)).settleClan(diamondClanId);
+
+        _assertClanEq(IClanWorld(address(diamond)).getClan(diamondClanId), core.getClan(coreClanId));
+        _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+        uint32[] memory coreClansmen = core.getClanClansmanIds(coreClanId);
+        for (uint256 i = 0; i < coreClansmen.length; i++) {
+            _assertClansmanEq(
+                IClanWorld(address(diamond)).getClansman(coreClansmen[i]), core.getClansman(coreClansmen[i])
+            );
+        }
+    }
+
     function _rawViewsCut() internal returns (IDiamondCut.FacetCut[] memory cut) {
         RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
         RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
@@ -459,6 +536,25 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.treasurySelectors()
+        });
+    }
+
+    function _settlementCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.settlementSelectors()
+        });
+    }
+
+    function _setWorldClockCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = SetWorldClockFacet.setWorldClock.selector;
+
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
         });
     }
 
