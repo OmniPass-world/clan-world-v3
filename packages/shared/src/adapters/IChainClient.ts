@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import clanWorldLensAbi from '@clan-world/contracts/abi/IClanWorldLens.json' with { type: 'json' };
 import {
   createPublicClient,
   createWalletClient,
@@ -12,6 +13,8 @@ import { privateKeyToAccount } from 'viem/accounts';
 import type { ClanFullView, ClanOrder, Tick } from '../types';
 import { ActionType } from '../generated/enums';
 import { readEnv } from './_env';
+
+const CLAN_WORLD_LENS_ABI = clanWorldLensAbi.abi;
 
 export interface SubmitOrderResult {
   clansmanId: number;
@@ -4044,6 +4047,7 @@ class StubChainClient implements IChainClient {
 class RealChainClient implements IChainClient {
   private readonly client: ReturnType<typeof createPublicClient>;
   private readonly contractAddress: `0x${string}`;
+  private readonly lensAddress: `0x${string}`;
   private readonly transport:
     | ReturnType<typeof http>
     | ReturnType<typeof fallback>;
@@ -4057,8 +4061,18 @@ class RealChainClient implements IChainClient {
         ? fallback([http(primaryRpc), http(fallbackRpc)])
         : http(primaryRpc ?? fallbackRpc);
 
-    this.contractAddress = (readEnv('CLAN_WORLD_CONTRACT_ADDRESS') ??
-      DEFAULT_CONTRACT_ADDRESS) as `0x${string}`;
+    const configuredContractAddress = readEnv('CLAN_WORLD_CONTRACT_ADDRESS');
+    const configuredLensAddress = readEnv('CLAN_WORLD_LENS_ADDRESS');
+    this.contractAddress = (
+      configuredContractAddress && configuredContractAddress.trim()
+        ? configuredContractAddress
+        : DEFAULT_CONTRACT_ADDRESS
+    ) as `0x${string}`;
+    this.lensAddress = (
+      configuredLensAddress && configuredLensAddress.trim()
+        ? configuredLensAddress
+        : this.contractAddress
+    ) as `0x${string}`;
 
     this.client = createPublicClient({
       chain: baseSepolia,
@@ -4068,8 +4082,8 @@ class RealChainClient implements IChainClient {
 
   async getCurrentTick(): Promise<Tick> {
     const snapshot = await this.client.readContract({
-      address: this.contractAddress,
-      abi: CLAN_WORLD_ABI,
+      address: this.lensAddress,
+      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
       functionName: 'getWorldSnapshot',
     });
     return Number(snapshot.currentTick); // safe: tick values are small enough to fit Number precisely in Wave 0
@@ -4207,8 +4221,8 @@ class RealChainClient implements IChainClient {
 
   async getClanFullView(clanId: string): Promise<ClanFullView> {
     const result = await this.client.readContract({
-      address: this.contractAddress,
-      abi: CLAN_WORLD_ABI,
+      address: this.lensAddress,
+      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
       functionName: 'getClanFullView',
       args: [parseClanId(clanId, 'getClanFullView')],
     });
@@ -4259,8 +4273,8 @@ class RealChainClient implements IChainClient {
 
   async getClanScore(clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }> {
     const [score, monumentReachedAtTick, monumentLevel] = await this.client.readContract({
-      address: this.contractAddress,
-      abi: CLAN_WORLD_ABI,
+      address: this.lensAddress,
+      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
       functionName: 'getClanScore',
       args: [parseClanId(clanId, 'getClanScore')],
     });
@@ -4269,8 +4283,8 @@ class RealChainClient implements IChainClient {
 
   async getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }> {
     const [clanIdsRanked, scores] = await this.client.readContract({
-      address: this.contractAddress,
-      abi: CLAN_WORLD_ABI,
+      address: this.lensAddress,
+      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
       functionName: 'getRankings',
     });
     return { clanIdsRanked: clanIdsRanked as readonly number[], scores };

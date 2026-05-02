@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.34;
 
 import {Script, console} from "forge-std/Script.sol";
 import {MinimalERC20} from "../src/MinimalERC20.sol";
 import {StubPool} from "../src/StubPool.sol";
 import {ClanWorld} from "../src/ClanWorld.sol";
+import {ClanWorldLens} from "../src/ClanWorldLens.sol";
+import {IClanWorld} from "../src/IClanWorld.sol";
 import {PoolSeedConfig} from "../src/IClanWorld.sol";
 
 contract Deploy is Script {
@@ -32,6 +34,8 @@ contract Deploy is Script {
         // 2. Deploy ClanWorld first (needed as engine arg for pools).
         ClanWorld game = new ClanWorld();
         console.log("CLAN_WORLD_CONTRACT_ADDRESS:", address(game));
+        ClanWorldLens lens = new ClanWorldLens(IClanWorld(address(game)));
+        console.log("CLAN_WORLD_LENS_ADDRESS:    ", address(lens));
 
         // 3. Deploy 4 AMM pools (Phase 6.2: constant-product pools).
         StubPool woodGold = new StubPool(address(wood), address(gold), address(game));

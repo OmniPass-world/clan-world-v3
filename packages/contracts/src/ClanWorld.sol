@@ -5235,6 +5235,18 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return _defendingClansByRegion[region];
     }
 
+    function getClanIds() external view override returns (uint32[] memory) {
+        return _allClanIds;
+    }
+
+    function getClanClansmanIds(uint32 clanId) external view override returns (uint32[] memory) {
+        return _clanClansmanIds[clanId];
+    }
+
+    function getClansmanDefendingRegion(uint32 clansmanId) external view override returns (uint8) {
+        return _clansmanDefendingRegion[clansmanId];
+    }
+
     // =========================================================================
     // DERIVED READ GETTERS (read-only, no storage mutation)
     // =========================================================================
