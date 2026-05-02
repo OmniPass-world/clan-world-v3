@@ -757,9 +757,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 Mission storage mission = _missions[clansmanId];
                 if (
                     mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
-                        && _clansmanDefendingRegion[clansmanId] == baseRegion
                 ) {
-                    _clearDefender(clansmanId);
+                    if (_clansmanDefendingRegion[clansmanId] == baseRegion) {
+                        _clearDefender(clansmanId);
+                    }
                     mission.active = false;
 
                     Clansman storage defender = _clansmen[clansmanId];
@@ -1938,6 +1939,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             region >= ClanWorldConstants.REGION_FOREST && region <= ClanWorldConstants.REGION_DEEP_SEA,
             "ClanWorld: invalid bandit region"
         );
+        require(_isBanditAllowedRegion(region), "ClanWorld: forbidden bandit region");
         require(strength > 0, "ClanWorld: invalid bandit strength");
 
         id = _nextBanditId++;
@@ -2307,6 +2309,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             emit BanditDefeated(banditId, targetClanId, closedTick);
             _distributeBanditLootToDefendingClans(banditId, targetClanId);
             targetClan.blueprintBalance += BLUEPRINT_UNIT;
+            targetClan.goldBalance += 1e18;
             emit BlueprintEarned(targetClanId, banditId, BLUEPRINT_UNIT, closedTick);
             _transitionBanditState(banditId, BanditState.Defeated);
         } else {
@@ -2718,6 +2721,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         uint256[] memory candidateWeights = new uint256[](8);
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
+            if (!_isBanditAllowedRegion(region)) {
+                continue;
+            }
             uint256 weight = regionWeights[region - 1];
             if (weight == 0 || _banditsByRegion[region].length >= MAX_BANDITS_PER_REGION) {
                 continue;
@@ -2783,6 +2789,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 roll = RNG.rngBounded(tickSeed, DOMAIN_BANDIT_SPAWN, nonce, BANDIT_TIER_COUNT);
         // forge-lint: disable-next-line(unsafe-typecast)
         return uint8(roll + 1);
+    }
+
+    function _isBanditAllowedRegion(uint8 region) internal pure returns (bool) {
+        return region != ClanWorldConstants.REGION_UNICORN_TOWN && region != ClanWorldConstants.REGION_DEEP_SEA;
     }
 
     function getBanditAttackPower(uint8 tier) internal pure returns (uint16) {
@@ -2895,7 +2905,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
             if (
                 clan.baseRegion >= ClanWorldConstants.REGION_FOREST
-                    && clan.baseRegion <= ClanWorldConstants.REGION_DEEP_SEA
+                    && clan.baseRegion <= ClanWorldConstants.REGION_DEEP_SEA && _isBanditAllowedRegion(clan.baseRegion)
             ) {
                 weights[clan.baseRegion - 1] += 100 + (_lootValueRaw(clan) / 1e18);
             }
@@ -2911,6 +2921,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 if (
                     cs.state != ClansmanState.DEAD && cs.currentRegion >= ClanWorldConstants.REGION_FOREST
                         && cs.currentRegion <= ClanWorldConstants.REGION_DEEP_SEA
+                        && _isBanditAllowedRegion(cs.currentRegion)
                 ) {
                     weights[cs.currentRegion - 1] += 25;
                 }
@@ -4651,6 +4662,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     function initTreasury(address[6] calldata tokens, address[4] calldata pools) external override nonReentrant {
         require(!_treasury.poolsSeeded && _treasury.woodToken == address(0), "ClanWorld: treasury already init");
         require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        _validateTreasuryInit(tokens, pools);
 
         _treasury.woodToken = tokens[0];
         _treasury.ironToken = tokens[1];
@@ -4663,6 +4675,43 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _treasury.wheatGoldPool = pools[1];
         _treasury.fishGoldPool = pools[2];
         _treasury.ironGoldPool = pools[3];
+    }
+
+    function _validateTreasuryInit(address[6] calldata tokens, address[4] calldata pools) internal view {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            require(tokens[i] != address(0), "ClanWorld: zero treasury token");
+            _requireContract(tokens[i], "ClanWorld: treasury token not contract");
+            for (uint256 j = i + 1; j < tokens.length; j++) {
+                require(tokens[i] != tokens[j], "ClanWorld: duplicate treasury token");
+            }
+        }
+
+        for (uint256 i = 0; i < pools.length; i++) {
+            require(pools[i] != address(0), "ClanWorld: zero treasury pool");
+            _requireContract(pools[i], "ClanWorld: treasury pool not contract");
+            for (uint256 j = i + 1; j < pools.length; j++) {
+                require(pools[i] != pools[j], "ClanWorld: duplicate treasury pool");
+            }
+        }
+
+        _requirePoolWiring(pools[0], tokens[0], tokens[4]);
+        _requirePoolWiring(pools[1], tokens[2], tokens[4]);
+        _requirePoolWiring(pools[2], tokens[3], tokens[4]);
+        _requirePoolWiring(pools[3], tokens[1], tokens[4]);
+    }
+
+    function _requirePoolWiring(address pool, address tokenA, address tokenB) internal view {
+        require(StubPool(pool).TOKEN_A() == tokenA, "ClanWorld: treasury pool token A mismatch");
+        require(StubPool(pool).TOKEN_B() == tokenB, "ClanWorld: treasury pool token B mismatch");
+        require(StubPool(pool).ENGINE() == address(this), "ClanWorld: treasury pool engine mismatch");
+    }
+
+    function _requireContract(address target, string memory message) internal view {
+        uint256 size;
+        assembly {
+            size := extcodesize(target)
+        }
+        require(size > 0, message);
     }
 
     /// @notice Owner-only. Seeds the four Unicorn Town AMM pools.
