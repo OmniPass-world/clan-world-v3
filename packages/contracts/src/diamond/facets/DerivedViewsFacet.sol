@@ -18,7 +18,7 @@ contract DerivedViewsFacet {
 
     function getDerivedClanState(uint32 clanId) external view returns (DerivedClanState memory) {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
-        LibSettlement.SettlementSimulation memory sim = LibSettlement.loadSimulation(s, clanId);
+        LibSettlement.SettlementSimulation memory sim = LibSettlement.simulateToTick(s, clanId, s.world.currentTick);
         return DerivedClanState({
             clan: sim.clan,
             isStarving: sim.clan.starvationStartsAtTick != 0 && sim.clan.starvationStartsAtTick <= s.world.currentTick,
@@ -39,7 +39,8 @@ contract DerivedViewsFacet {
             });
         }
 
-        LibSettlement.SettlementSimulation memory sim = LibSettlement.loadSimulation(s, s.clansmen[clansmanId].clanId);
+        LibSettlement.SettlementSimulation memory sim =
+            LibSettlement.simulateToTick(s, s.clansmen[clansmanId].clanId, s.world.currentTick);
         (bool found, uint256 index) = _findSimulatedClansman(sim, clansmanId);
         if (found) {
             return DerivedClansmanState({
