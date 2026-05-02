@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { encodeEventTopics, encodeAbiParameters, type Log } from "viem";
 import { CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
-import { decodeClanWorldLogs } from "./indexer";
+import {
+  commitSnapshot,
+  decodeClanWorldLogs,
+  planPollLogRange,
+} from "./indexer";
 
 const address = "0x1111111111111111111111111111111111111111" as const;
 const transactionHash = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
@@ -105,5 +109,121 @@ describe("decodeClanWorldLogs", () => {
     expect(decoded[1]?.args.missionNonce).toBe("9");
     expect(decoded[2]?.args.amountOut).toBe("50");
     expect(decoded[3]?.args.stolenFish).toBe("4");
+  });
+});
+
+describe("pollLogs range planning", () => {
+  it("uses INDEXER_START_BLOCK when there is no checkpoint", () => {
+    const previousStartBlock = process.env.INDEXER_START_BLOCK;
+    const previousDepth = process.env.INDEXER_CONFIRMATION_DEPTH;
+    process.env.INDEXER_START_BLOCK = "12345";
+    process.env.INDEXER_CONFIRMATION_DEPTH = "5";
+
+    const range = planPollLogRange(null, 20_000n);
+
+    expect(range.fromBlock).toBe(12_345n);
+    expect(range.toBlock).toBe(19_995n);
+    expect(range.shouldPoll).toBe(true);
+
+    if (previousStartBlock === undefined) delete process.env.INDEXER_START_BLOCK;
+    else process.env.INDEXER_START_BLOCK = previousStartBlock;
+    if (previousDepth === undefined) delete process.env.INDEXER_CONFIRMATION_DEPTH;
+    else process.env.INDEXER_CONFIRMATION_DEPTH = previousDepth;
+  });
+
+  it("caps toBlock at the latest confirmed block", () => {
+    const previousDepth = process.env.INDEXER_CONFIRMATION_DEPTH;
+    process.env.INDEXER_CONFIRMATION_DEPTH = "5";
+
+    const range = planPollLogRange({ lastBlock: 89 }, 100n);
+
+    expect(range.fromBlock).toBe(90n);
+    expect(range.toBlock).toBe(95n);
+
+    if (previousDepth === undefined) delete process.env.INDEXER_CONFIRMATION_DEPTH;
+    else process.env.INDEXER_CONFIRMATION_DEPTH = previousDepth;
+  });
+});
+
+describe("legacy snapshot backfill", () => {
+  it("commitSnapshot writes non-empty legacy clans from clanView rows", async () => {
+    const tables: Record<string, any[]> = {};
+    const db = {
+      async insert(table: string, value: Record<string, unknown>) {
+        tables[table] ??= [];
+        const doc = {
+          ...value,
+          _id: `${table}:${tables[table].length}`,
+          _creationTime: tables[table].length,
+        };
+        tables[table].push(doc);
+        return doc._id;
+      },
+      async patch(id: string, value: Record<string, unknown>) {
+        for (const rows of Object.values(tables)) {
+          const index = rows.findIndex((row) => row._id === id);
+          if (index >= 0) rows[index] = { ...rows[index], ...value };
+        }
+      },
+      query(table: string) {
+        let rows = [...(tables[table] ?? [])];
+        const builder = {
+          withIndex(_name: string, apply: (q: any) => unknown) {
+            const clauses: Array<{ field: string; value: unknown }> = [];
+            const q = {
+              eq(field: string, value: unknown) {
+                clauses.push({ field, value });
+                return q;
+              },
+            };
+            apply(q);
+            rows = rows.filter((row) =>
+              clauses.every((clause) => row[clause.field] === clause.value),
+            );
+            return builder;
+          },
+          order(direction: "asc" | "desc") {
+            rows = [...rows].sort((a, b) =>
+              direction === "desc"
+                ? b._creationTime - a._creationTime
+                : a._creationTime - b._creationTime,
+            );
+            return builder;
+          },
+          async first() {
+            return rows[0] ?? null;
+          },
+        };
+        return builder;
+      },
+    };
+
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 99,
+          world: { currentTick: 12 },
+          clans: [
+            {
+              clan: {
+                clan: {
+                  clanId: 2,
+                  owner: "0x0000000000000000000000000000000000000000",
+                  goldBalance: "250",
+                },
+              },
+            },
+          ],
+        },
+      },
+    );
+
+    const worldSnapshots = tables.worldSnapshot ?? [];
+    expect(worldSnapshots).toHaveLength(1);
+    expect(worldSnapshots[0].clans).toEqual([
+      { id: "2", name: "Clan 2", treasury: "250" },
+    ]);
+    expect(worldSnapshots[0].regions).toHaveLength(8);
   });
 });

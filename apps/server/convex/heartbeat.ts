@@ -5,7 +5,13 @@
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { baseSepolia, CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
-import { createPublicClient, http, parseEventLogs, type Hex } from "viem";
+import {
+  createPublicClient,
+  http,
+  parseEventLogs,
+  WaitForTransactionReceiptTimeoutError,
+  type Hex,
+} from "viem";
 
 const indexerApi = (internal as any).indexer;
 
@@ -83,7 +89,27 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
       chain: baseSepolia,
       transport: http(rpcUrl),
     });
-    const receipt = await publicClient.waitForTransactionReceipt({ hash: payload.txHash });
+    const receipt = await publicClient
+      .waitForTransactionReceipt({ hash: payload.txHash, timeout: 15_000 })
+      .catch((error: unknown) => {
+        if (error instanceof WaitForTransactionReceiptTimeoutError) {
+          return undefined;
+        }
+        throw error;
+      });
+    if (!receipt) {
+      return new Response(
+        JSON.stringify({
+          error: "Timed out waiting for transaction receipt",
+          txHash: payload.txHash,
+          timeoutMs: 15_000,
+        }),
+        {
+          status: 408,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
     const parsed = parseEventLogs({
       abi: CLAN_WORLD_ABI,
       logs: receipt.logs,
@@ -105,7 +131,7 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
       txHash: payload.txHash,
       firedAtTs: numberFromPayload(payload.firedAtTs),
     });
-    await ctx.runAction(indexerApi.refreshSnapshot, {});
+    await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {});
 
     return new Response(
       JSON.stringify({ status: "ok", received: txData, decodedEvents: parsed.length }),

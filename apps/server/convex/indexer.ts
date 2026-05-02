@@ -12,6 +12,19 @@ import {
 
 const MAX_CLANS = 12;
 const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
+const DEFAULT_CONFIRMATION_DEPTH = 5;
+const MAX_LOG_BLOCK_RANGE = 9_999n;
+const DEFAULT_COLD_START_LOOKBACK = 1_000n;
+const LEGACY_REGIONS = [
+  { id: "forest", name: "Forest", ownerClanId: null },
+  { id: "mountains", name: "Mountains", ownerClanId: null },
+  { id: "unicorn-town", name: "Unicorn Town", ownerClanId: null },
+  { id: "west-farmland", name: "West Farmland", ownerClanId: null },
+  { id: "east-farmland", name: "East Farmland", ownerClanId: null },
+  { id: "west-docks", name: "West Docks", ownerClanId: null },
+  { id: "east-docks", name: "East Docks", ownerClanId: null },
+  { id: "deep-sea", name: "Deep Sea", ownerClanId: null },
+];
 const indexerApi = (internal as any).indexer;
 
 type ParsedIndexerEvent = {
@@ -103,14 +116,19 @@ function eventNumber(event: ParsedIndexerEvent, key: string): number | undefined
 }
 
 function pricePointFromEvent(event: ParsedIndexerEvent, blockNumber: number) {
-  if (event.eventName !== "ImmediateMarketActionExecuted") return undefined;
+  if (
+    event.eventName !== "ImmediateMarketActionExecuted" &&
+    event.eventName !== "ScheduledMarketActionExecuted"
+  ) {
+    return undefined;
+  }
   const resourceType = asNumber(event.args.resourceOut, asNumber(event.args.resourceIn, 0));
   const amountIn = BigInt(asString(event.args.amountIn, "0"));
   const amountOut = BigInt(asString(event.args.amountOut, "0"));
   const price =
     amountOut > 0n ? ((amountIn * 1_000_000_000_000_000_000n) / amountOut).toString() : "0";
   return {
-    tick: asNumber(event.args.tick),
+    tick: asNumber(event.args.tick ?? event.args.settledAtTick),
     resourceType: String(resourceType),
     priceWoodGold: price,
     blockNumber,
@@ -118,11 +136,54 @@ function pricePointFromEvent(event: ParsedIndexerEvent, blockNumber: number) {
   };
 }
 
+const envBigInt = (key: string): bigint | undefined => {
+  const value = process.env[key];
+  if (!value) return undefined;
+  try {
+    const parsed = BigInt(value);
+    return parsed >= 0n ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+export const indexerConfirmationDepth = (): bigint =>
+  envBigInt("INDEXER_CONFIRMATION_DEPTH") ?? BigInt(DEFAULT_CONFIRMATION_DEPTH);
+
+export function planPollLogRange(
+  checkpoint: { lastBlock: number } | null,
+  latest: bigint,
+): { fromBlock: bigint; toBlock: bigint; safeLatest: bigint; shouldPoll: boolean } {
+  const depth = indexerConfirmationDepth();
+  const safeLatest = latest > depth ? latest - depth : 0n;
+  const coldStartBlock =
+    envBigInt("INDEXER_START_BLOCK") ??
+    (latest > DEFAULT_COLD_START_LOOKBACK ? latest - DEFAULT_COLD_START_LOOKBACK : 1n);
+  const fromBlock = checkpoint ? BigInt(checkpoint.lastBlock + 1) : coldStartBlock;
+  const toBlock = fromBlock + MAX_LOG_BLOCK_RANGE < safeLatest
+    ? fromBlock + MAX_LOG_BLOCK_RANGE
+    : safeLatest;
+
+  return { fromBlock, toBlock, safeLatest, shouldPoll: fromBlock <= safeLatest };
+}
+
+type LegacyClanView = { clanId: number; goldBalance?: string };
+
+export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
+  clanViews
+    .filter((view) => view.clanId > 0)
+    .sort((a, b) => a.clanId - b.clanId)
+    .map((view) => ({
+      id: String(view.clanId),
+      name: `Clan ${view.clanId}`,
+      treasury: asString(view.goldBalance),
+    }));
+
 export const ingestEvents = internalMutation({
   args: {
     events: v.array(v.any()),
     blockNumber: v.number(),
-    txHash: v.string(),
+    txHash: v.optional(v.string()),
     firedAtTs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -130,6 +191,7 @@ export const ingestEvents = internalMutation({
     for (const raw of args.events as ParsedIndexerEvent[]) {
       const logIndex = raw.logIndex ?? 0;
       const txHash = raw.transactionHash ?? args.txHash;
+      if (!txHash) continue;
       const blockNumber = asNumber(raw.blockNumber, args.blockNumber);
       const existing = await ctx.db
         .query("chainEvents")
@@ -197,40 +259,6 @@ export const commitSnapshot = internalMutation({
     const now = Date.now();
     const world = snapshot.world;
     const tick = asNumber(world.currentTick);
-
-    await ctx.db.insert("worldSnapshot", {
-      tick,
-      tickEpochStartedAt: Math.floor(now / 1000),
-      tickEpochDurationMs: 20_000,
-      currentSeasonNumber: asNumber(world.currentSeasonNumber),
-      seasonStartTick: asNumber(world.seasonStartTick),
-      seasonEndTick: asNumber(world.seasonEndTick),
-      winterActive: asBool(world.winterActive),
-      winterStartsAtTick: asNumber(world.winterStartsAtTick),
-      winterEndsAtTick: asNumber(world.winterEndsAtTick),
-      nextHeartbeatAtTick: asNumber(world.nextHeartbeatAtTick),
-      regions: [],
-      clans: [],
-      seasonFinalized: asBool(world.seasonFinalized),
-      activeBanditId: asNumber(world.activeBanditId),
-      currentTickSeed: asString(world.currentTickSeed),
-      lastUpdatedAt: now,
-      lastUpdatedBlock: snapshot.blockNumber,
-      txHash: snapshot.txHash,
-      leaderboard: (Array.isArray(world.leaderboard) ? world.leaderboard : []).map((entry) => {
-        const item = entry as Record<string, unknown>;
-        return {
-          clanId: asNumber(item.clanId),
-          owner: asString(item.owner, "0x0000000000000000000000000000000000000000"),
-          monumentLevel: asNumber(item.monumentLevel),
-          baseLevel: asNumber(item.baseLevel),
-          wallLevel: asNumber(item.wallLevel),
-          livingClansmen: asNumber(item.livingClansmen),
-          state: asNumber(item.state),
-          lootValue: asString(item.lootValue),
-        };
-      }),
-    });
 
     if (snapshot.market) {
       const market = snapshot.market;
@@ -328,6 +356,56 @@ export const commitSnapshot = internalMutation({
       }
     }
 
+    const latestClanViews = await Promise.all(
+      Array.from({ length: MAX_CLANS }, async (_, index) =>
+        await ctx.db
+          .query("clanView")
+          .withIndex("by_clanId", (q) => q.eq("clanId", index + 1))
+          .order("desc")
+          .first(),
+      ),
+    );
+    const legacyClans = legacyClansFromClanViews(latestClanViews.filter(Boolean) as LegacyClanView[]);
+    const worldSnapshot = {
+      tick,
+      tickEpochStartedAt: Math.floor(now / 1000),
+      tickEpochDurationMs: 20_000,
+      currentSeasonNumber: asNumber(world.currentSeasonNumber),
+      seasonStartTick: asNumber(world.seasonStartTick),
+      seasonEndTick: asNumber(world.seasonEndTick),
+      winterActive: asBool(world.winterActive),
+      winterStartsAtTick: asNumber(world.winterStartsAtTick),
+      winterEndsAtTick: asNumber(world.winterEndsAtTick),
+      nextHeartbeatAtTick: asNumber(world.nextHeartbeatAtTick),
+      regions: LEGACY_REGIONS,
+      clans: legacyClans,
+      seasonFinalized: asBool(world.seasonFinalized),
+      activeBanditId: asNumber(world.activeBanditId),
+      currentTickSeed: asString(world.currentTickSeed),
+      lastUpdatedAt: now,
+      lastUpdatedBlock: snapshot.blockNumber,
+      txHash: snapshot.txHash,
+      leaderboard: (Array.isArray(world.leaderboard) ? world.leaderboard : []).map((entry) => {
+        const item = entry as Record<string, unknown>;
+        return {
+          clanId: asNumber(item.clanId),
+          owner: asString(item.owner, "0x0000000000000000000000000000000000000000"),
+          monumentLevel: asNumber(item.monumentLevel),
+          baseLevel: asNumber(item.baseLevel),
+          wallLevel: asNumber(item.wallLevel),
+          livingClansmen: asNumber(item.livingClansmen),
+          state: asNumber(item.state),
+          lootValue: asString(item.lootValue),
+        };
+      }),
+    };
+    const previousWorldSnapshot = await ctx.db.query("worldSnapshot").order("desc").first();
+    if (previousWorldSnapshot) {
+      await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
+    } else {
+      await ctx.db.insert("worldSnapshot", worldSnapshot);
+    }
+
     return { tick, clans: snapshot.clans.length };
   },
 });
@@ -340,8 +418,7 @@ export const refreshSnapshot = internalAction({
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as
       | { lastBlock: number; lastTxHash?: string }
       | null;
-    const blockNumber =
-      checkpoint?.lastBlock ?? Number(await client.getBlockNumber());
+    const blockNumber = Number(await client.getBlockNumber());
 
     const [world, market, bandit] = await Promise.all([
       client.readContract({ address, abi: CLAN_WORLD_ABI, functionName: "getWorldSnapshot" }),
@@ -366,7 +443,6 @@ export const refreshSnapshot = internalAction({
     return await ctx.runMutation(indexerApi.commitSnapshot, {
       snapshot: {
         blockNumber,
-        txHash: checkpoint?.lastTxHash,
         world: bigintSafe(world),
         market: bigintSafe(market),
         bandit: bigintSafe(bandit),
@@ -384,16 +460,18 @@ export const pollLogs = internalAction({
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as
       | { lastBlock: number; lastTxHash?: string }
       | null;
-    const fromBlock = BigInt((checkpoint?.lastBlock ?? 0) + 1);
     const latest = await client.getBlockNumber();
-    if (fromBlock > latest) return { inserted: 0, fromBlock: Number(fromBlock), toBlock: Number(latest) };
+    const { fromBlock, toBlock, safeLatest, shouldPoll } = planPollLogRange(checkpoint, latest);
+    if (!shouldPoll) {
+      return { inserted: 0, fromBlock: Number(fromBlock), toBlock: Number(safeLatest) };
+    }
 
-    const logs = await client.getLogs({ address, fromBlock, toBlock: latest });
+    const logs = await client.getLogs({ address, fromBlock, toBlock });
     const events = decodeClanWorldLogs(logs);
     return await ctx.runMutation(indexerApi.ingestEvents, {
       events,
-      blockNumber: Number(latest),
-      txHash: events.at(-1)?.transactionHash ?? checkpoint?.lastTxHash ?? "0x0",
+      blockNumber: Number(toBlock),
+      txHash: events.at(-1)?.transactionHash ?? checkpoint?.lastTxHash,
     });
   },
 });
