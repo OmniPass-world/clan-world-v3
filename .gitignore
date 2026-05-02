@@ -176,3 +176,8 @@ docs/planning/V1/
 **/agent-directive.secret.md
 **/state/
 **/.credentials.json
+
+# Per-worktree local metadata
+.git-local/
+.git.worktree-link
+.claude/.active-chat

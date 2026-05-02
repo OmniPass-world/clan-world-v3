@@ -1,9 +1,0 @@
-[core]
-	repositoryformatversion = 0
-	filemode = true
-	bare = false
-	logallrefupdates = true
-	worktree = /home/claude/code/omnipass-world/clan-world-pr378-fix
-[remote "origin"]
-	url = /home/claude/code/omnipass-world/clan-world
-	fetch = +refs/heads/*:refs/remotes/origin/*

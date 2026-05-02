@@ -582,13 +582,14 @@ interface IClanWorldEvents {
         uint256 goldBonus,
         uint64 atTick
     );
+    // Pre-prod no-backcompat policy: event parameter-name stability resumes after v1.0.0 GA.
     event ResourcesDeposited(
         uint32 indexed clanId,
         uint32 indexed clansmanId,
-        uint256 wood,
-        uint256 iron,
-        uint256 wheat,
-        uint256 fish,
+        uint256 woodDelta,
+        uint256 ironDelta,
+        uint256 wheatDelta,
+        uint256 fishDelta,
         uint64 atTick
     );
     event ResourcesWithdrawn(
