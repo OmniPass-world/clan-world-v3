@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
 
@@ -7,12 +9,40 @@ interface Props {
 }
 
 /** Resource line in the stub vault — Phase B will source these from Convex. */
-const STUB_RESOURCES = [
+const STUB_RESOURCES_INITIAL = [
   { glyph: '◈', label: 'Gold',  value: 1240, delta: '+45'  },
   { glyph: '⌬', label: 'Wood',  value: 320,  delta: '-12'  },
   { glyph: '◆', label: 'Ore',   value: 88,   delta: '+0'   },
   { glyph: '◇', label: 'Stone', value: 156,  delta: '+8'   },
 ];
+
+/** Demo-only mock tick that nudges resource values so the rolling-number +
+ * delta-floater animation is observable on stage. Replace with live Convex
+ * data when Phase B lands. Period: every 6 seconds, one random resource
+ * gets a delta in [-15, +30]. Wraps to keep values in a sane positive range. */
+function useDemoResourceJiggle() {
+  const [resources, setResources] = useState(STUB_RESOURCES_INITIAL);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setResources((current) => {
+        const idx = Math.floor(Math.random() * current.length);
+        const delta = Math.floor(Math.random() * 46) - 15;
+        if (delta === 0) return current;
+        return current.map((r, i) => {
+          if (i !== idx) return r;
+          // Update both value AND delta string so the row's static delta
+          // text stays in sync with the rolling number + floater (Copilot
+          // + codex cloud P2). Without this, delta showed stale values.
+          const nextValue = Math.max(0, r.value + delta);
+          const sign = delta > 0 ? '+' : '';
+          return { ...r, value: nextValue, delta: `${sign}${delta}` };
+        });
+      });
+    }, 6000);
+    return () => window.clearInterval(id);
+  }, []);
+  return resources;
+}
 
 /** Asset movement event for the log strip. */
 const STUB_MOVEMENTS = [
@@ -23,6 +53,7 @@ const STUB_MOVEMENTS = [
 ];
 
 export function VaultTab({ elder, testIdPrefix }: Props) {
+  const resources = useDemoResourceJiggle();
   return (
     <div
       data-testid={`${testIdPrefix}-content-vault`}
@@ -38,6 +69,14 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
         fontFamily: tokens.font.body,
       }}
     >
+      <style>
+        {`
+          @keyframes clanworld-counter-floater {
+            0% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -16px); }
+          }
+        `}
+      </style>
       {/* Resource grid */}
       <section>
         <SectionHeader>Vault — Clan {elder.clanId}</SectionHeader>
@@ -49,7 +88,7 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
             marginTop: tokens.space.sm,
           }}
         >
-          {STUB_RESOURCES.map((r) => (
+          {resources.map((r) => (
             <div
               key={r.label}
               style={{
@@ -82,7 +121,7 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
                     color: tokens.text.onParchment,
                   }}
                 >
-                  {r.value.toLocaleString()}
+                  <RollingNumber value={r.value} />
                 </span>
               </div>
               <span
@@ -151,7 +190,86 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
   );
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function easeOutQuad(t: number) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+function RollingNumber({ value }: { value: number }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const [floater, setFloater] = useState<{ id: number; delta: number } | null>(null);
+  const renderedValueRef = useRef(value);
+  const targetValueRef = useRef(value);
+  const floaterIdRef = useRef(0);
+
+  useEffect(() => {
+    const from = renderedValueRef.current;
+    const to = value;
+    const delta = to - targetValueRef.current;
+    targetValueRef.current = to;
+    if (from === to) {
+      return;
+    }
+
+    if (delta !== 0) {
+      floaterIdRef.current += 1;
+      setFloater({ id: floaterIdRef.current, delta });
+    }
+    const duration = Math.min(400, 100 + Math.log2(Math.abs(to - from) + 1) * 40);
+    const startedAt = performance.now();
+    let frame = 0;
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / duration);
+      const eased = easeOutQuad(t);
+      const next = Math.round(from + (to - from) * eased);
+      renderedValueRef.current = next;
+      setDisplayValue(next);
+      if (t < 1) {
+        frame = window.requestAnimationFrame(tick);
+      } else {
+        renderedValueRef.current = to;
+        setDisplayValue(to);
+      }
+    };
+
+    frame = window.requestAnimationFrame(tick);
+    const clearFloater = delta !== 0 ? window.setTimeout(() => setFloater(null), 800) : null;
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (clearFloater !== null) window.clearTimeout(clearFloater);
+    };
+  }, [value]);
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', minWidth: '4ch' }}>
+      {displayValue.toLocaleString()}
+      {floater && (
+        <span
+          key={floater.id}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: '100%',
+            transform: 'translate(-50%, 0)',
+            color: floater.delta > 0 ? '#4ade80' : '#ef4444',
+            fontFamily: tokens.font.mono,
+            fontSize: '10px',
+            fontWeight: 700,
+            pointerEvents: 'none',
+            animation: 'clanworld-counter-floater 800ms ease-out forwards',
+            textShadow: '0 1px 2px rgba(0,0,0,0.35)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {floater.delta > 0 ? '+' : ''}
+          {floater.delta.toLocaleString()}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function SectionHeader({ children }: { children: ReactNode }) {
   return (
     <h3
       style={{

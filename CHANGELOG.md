@@ -6,6 +6,65 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.0] — 2026-05-02
+
+### Highlights
+
+> [!NOTE]
+> **v5 animation demo-day subset.** v1.2.0 lands the high-ROI slice of the full v5 animation north-star spec — ships the premium-feel cues that read on stage without committing to the multi-week full implementation. Three implementation rounds, six fix-rounds across 3-tier local review × 3 + SuperSwarm × 4 + cloud (Copilot + ChatGPT codex bot), all convergent CLEAN. PR #455.
+>
+> - **Z-sort architecture fix** — single sortable `worldDynamic` container with global `zIndex = Math.round(y)` enables true 2.5D occlusion (clansman walking behind a building actually renders behind). Previously each entity type lived in a separate Pixi `Container`, breaking cross-type Y-sort even with `sortableChildren = true`. Spec §14 rewrite captures the architectural fix + child-of-host attachment patterns + combat reparenting protocol.
+> - **Building breathe** — every base does a 1-pixel vertical sin sway at proper 0.25 Hz (4-second period), with position-derived phase offsets so adjacent bases desync. Invisible until missing — single biggest premium-feel cue.
+> - **Day/night cycle** — single GPU `ColorMatrixFilter` on the world container cycles through 4 keyframes (dawn / day / dusk / night) over 30 ticks. Per-base window glow Graphics (alpha tied to `1 - daylightBrightness`) lights up bases at night.
+> - **Carry indicators** — fill bar above each traveling clansman tweens 0→1 during gather/travel, drains on deposit. 16×3px parchment-cream fill on ink background with 1px outline.
+> - **Tap-to-zoom + selection ring** — `pixi-viewport.animate` to tapped sprite over 400ms easeInOutQuad with scale 2.0; rotating dashed ring (8 segments, 1Hz rotation, 0.5Hz alpha pulse) attached as first child of the selected sprite. Esc tweens viewport back to fit-world.
+> - **Counter ticks (RollingNumber)** — vault values wrapped in `<RollingNumber>` with `min(400, 100 + log2(|delta|)*40)`ms easeOutQuad tween; `+N` (green) / `-N` (red) delta floater drifts up 16px and fades over 800ms. Demo-only `useDemoResourceJiggle` 6s interval mutates one random resource so the animation is observable on stage without backend changes.
+> - **Combat vignette (3.7s)** — replaces the spec's full-tick 10-phase choreography per codex DA recommendation. Triggered at start of pre-attack tick (or last 4s with precise tickEpoch): world dim fade-in 600ms → combatants reparent to `combatHighlight` above dim → advance to base center 1.5s → idle/jitter 0.5s → full-screen white flash 200ms → resolution 1.5s (success: bandit launch + shrink/fade + defenders cheer; failure: clansmen knockback + wall scale.y drop). `?combat=success|failure` URL toggle for stage flexibility. §10.8 day/night cap rule (`max(0.2, 0.55 - existingDarkness)`) so combat at night stays readable.
+>
+> *Full v5 animation spec authored by Liam (1,172 lines) is the post-hackathon north-star target — committed but explicitly out of scope for this release. Demo-day subset (235 lines) is the ruthless cut shipped here.*
+
+---
+
+### Added
+
+- `docs/planning/clanworld_v5_animation_spec.md` — full v5 animation north-star (post-hackathon target)
+- `docs/planning/clanworld_v5_demo_day_subset.md` — hackathon-scope cut (8 items, 13h budget)
+- `apps/web/src/WorldMap.tsx` — tiered Pixi container layout (`terrainBackground`, `terrainAccents`, `worldDynamic`, `inWorldEffects`, `selectionRings`, `bubbleLayer`, `screenEffects`); building breathe ticker; day/night `ColorMatrixFilter` + per-base window glow; tap-to-zoom + dashed selection ring + Esc clear; combat vignette state machine with `combatVignetteRef` + `banditDefeatedRef` lifecycle; carry-indicator child container per traveling clansman
+- `apps/web/src/components/cockpit/tabs/VaultTab.tsx` — `RollingNumber` component (rAF tween + `+N`/`-N` floater) wrapping every vault counter; `useDemoResourceJiggle` 6s mock-tick hook
+
+### Fixed
+
+- **Z-sort:** `sortableChildren` only sorts within a single Container — the original §14 layer split (buildings layer 3, clansmen layer 5) made cross-type Y-sort impossible. Single `worldDynamic` container resolves
+- **Carry indicator memory leak:** `t.gfx.destroy()` wasn't recursive, leaving carry-bar `Graphics` children to accumulate per-spawn — `destroy({ children: true })` at both expiration sites
+- **Breathe frequency:** `Math.sin(t / 4000)` gave a ~25 second period (≈0.04 Hz), not the spec's 4-second period (0.25 Hz). Sin argument is in radians; correct formula is `Math.sin(t * Math.PI / 2000)`
+- **Day/night live tick:** `dayNightCb` registered once at Pixi init captured the initial `snapshot` prop forever, leaving the cycle stuck on the `Date.now()` fallback. `snapshotRef` updated by useEffect resolves
+- **Bandit fallback selection:** `banditIcon` (Graphics) had `position=(0,0)` and drew shapes at world `(iconX, iconY)`. Tap-zoom called `target.getGlobalPosition()` which returned `worldDynamic` origin, snapping camera to map (0,0) instead of bandit. Position the icon at `(iconX, iconY)` and draw locally
+- **Combat dim cap rule:** Earlier `min(0.55, 1 - brightness)` was inverted — at full daylight (brightness=1), combat dim collapsed to 0. Replaced with `max(0.2, COMBAT_DIM_ALPHA - existingDarkness)`: full dim during day, gentle clamp at night
+- **Bandit pulse vs vignette:** pulse ticker overwrote `bandit.alpha` every frame after the combat ticker, silently nullifying the success-outcome fade-out. Pulse `onTick` early-returns when `combatVignetteRef.current` is set
+- **Combat vignette trigger window:** `getMsUntilTickClose()` falls back to 60s when `tickEpoch` is unavailable, but logs-driven `liveTick` advances every ~20s. The `msUntilTickClose <= 4000` branch never fired before the tick advanced. Detect fallback mode and trigger at start of pre-attack tick instead of last 4s
+- **Defeated bandit reappearance:** `finishCombatVignette` unconditionally restored `bandit.alpha = banditStart.alpha`, popping the defeated bandit back at full opacity after a `?combat=success` fade-out. New `banditDefeatedRef` flag set on natural success; respected by `redrawBandit`, pulse `onTick`, and post-vignette restore
+- **`Assets.load` mid-vignette regression:** Earlier guard early-returned the entire `.then()` callback, permanently losing the bandit sprite if the asset resolved during the 4s vignette window. Now creates the sprite + assigns to `drawn.banditSprite` unconditionally; only the `redrawBandit()` call is gated
+- **`selectTarget` during vignette:** new selection ring during the dimmed combat scene undercut focus and could persist after dim layer faded. Early-return when `combatVignetteRef.current` is set
+- **`relayout` during vignette:** snapshot-driven relayout's `redrawBandit()` could snap the reparented bandit back to home anchor mid-choreography. Skip when `combatVignetteRef.current` is set
+- **`RollingNumber` rapid-update jump + StrictMode skip:** `previousValueRef.current` was updated immediately in the effect, so back-to-back updates and StrictMode double-invoke produced visible jumps. Two refs (`renderedValueRef` for current displayed value + `targetValueRef` for last seen target) decouple tween-from from no-change-detection
+- **Selection ring Graphics leak:** `clearSelection` removed the ring from its parent and nulled the ref but never called `ring.destroy()`. Old rings were JS-GC-able but their WebGL geometry buffers stayed in VRAM until GC fired. `selected.ring.destroy()` before nulling
+- **VaultTab `delta` string stale:** `useDemoResourceJiggle` mutated only `value`, leaving the static `delta` string showing conflicting movement. Now updates both alongside
+
+### Deferred to post-demo
+
+- Full v5 spec implementation (combat full-tick 10-phase choreography, strategic 8×8 atlas, cross-fade transitions, Submission 2 transfer demo cinematic, monument tier-up cinematic, speech bubble anti-occlusion, particle pool of 32, asset pipeline validation)
+- Bridged GOLD token integration (PR #466 scoping doc only — no code changes; ships post-Diamond-proxy)
+- Cosmetic cleanups: `frame.sat` dead config, `combatPlayedTickRef` comment-vs-code mismatch, `combatHighlight` zIndex no-ops, level-badge orphaning defensive path, inline `<style>` collision risk
+
+### Review coverage
+
+- 3× local 3-tier (Codex 5.5 + Claude Opus 4.7 + Gemini 3 Flash) — 1 fix-round per round
+- 4× SuperSwarm (Codex 5.4 + 5.5 + Gemini 3 Pro + Opus 4.6 + 4.7) — 2 fix-rounds before convergent CLEAN
+- 1× Cloud (Copilot + ChatGPT codex bot) — 1 fix-round
+- 13 commits on the feature branch (3 docs + 3 implementation rounds + 7 fix-round commits)
+
+---
+
 ## [1.1.0] — 2026-05-02
 
 ### Highlights
