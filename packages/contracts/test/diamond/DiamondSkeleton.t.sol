@@ -39,6 +39,7 @@ import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol"
 import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
+import {ScoringViewsFacet} from "../../src/diamond/facets/ScoringViewsFacet.sol";
 import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
 import {StubPool} from "../../src/StubPool.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
@@ -374,6 +375,46 @@ contract DiamondSkeletonTest is Test {
         }
     }
 
+    function testDiamondScoringViewsMatchCoreAfterMint() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        ScoringViewsFacet scoringViewsFacet = new ScoringViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_scoringViewsCut(address(scoringViewsFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        assertEq(
+            IClanWorld(address(diamond)).quoteLootValueSettled(diamondClanId),
+            core.quoteLootValueSettled(coreClanId),
+            "settled loot"
+        );
+
+        (uint256 diamondScore, uint64 diamondReached, uint8 diamondLevel) =
+            IClanWorld(address(diamond)).getClanScore(diamondClanId);
+        (uint256 coreScore, uint64 coreReached, uint8 coreLevel) = core.getClanScore(coreClanId);
+        assertEq(diamondScore, coreScore, "score");
+        assertEq(diamondReached, coreReached, "monument reached");
+        assertEq(diamondLevel, coreLevel, "monument level");
+
+        (uint32[] memory diamondRanked, uint256[] memory diamondScores) = IClanWorld(address(diamond)).getRankings();
+        (uint32[] memory coreRanked, uint256[] memory coreScores) = core.getRankings();
+        assertEq(diamondRanked.length, coreRanked.length, "ranked length");
+        assertEq(diamondScores.length, coreScores.length, "rank scores length");
+        for (uint256 i = 0; i < coreRanked.length; i++) {
+            assertEq(diamondRanked[i], coreRanked[i], "ranked clan");
+            assertEq(diamondScores[i], coreScores[i], "rank score");
+        }
+    }
+
     function _rawViewsCut() internal returns (IDiamondCut.FacetCut[] memory cut) {
         RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
         RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
@@ -481,6 +522,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.quoteViewsSelectors()
+        });
+    }
+
+    function _scoringViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.scoringViewsSelectors()
         });
     }
 

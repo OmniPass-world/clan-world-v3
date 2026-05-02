@@ -133,4 +133,11 @@ library DiamondSelectors {
         selectors[1] = IClanWorld.quoteTravel.selector;
         selectors[2] = IClanWorld.quoteLootValueRaw.selector;
     }
+
+    function scoringViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](3);
+        selectors[0] = IClanWorld.quoteLootValueSettled.selector;
+        selectors[1] = IClanWorld.getClanScore.selector;
+        selectors[2] = IClanWorld.getRankings.selector;
+    }
 }
