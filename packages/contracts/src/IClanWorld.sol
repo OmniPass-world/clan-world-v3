@@ -531,7 +531,7 @@ interface IClanWorldEvents {
     event TickAdvanced(uint64 closedTick, uint64 openedTick, bytes32 tickSeed);
     event WinterStarted(uint64 indexed tick);
     event WinterEnded(uint64 indexed tick);
-    event SeasonFinalized(uint64 indexed tick, uint32[] rankedClanIds);
+    event SeasonFinalized(uint64 indexed tick, uint32[] rankedClanIds, uint256[] scores);
 
     // ----- clan lifecycle -----
     event ClanSpawned(

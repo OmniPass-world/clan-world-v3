@@ -3032,10 +3032,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint64 newTick = closedTick + 1;
 
         // --- season boundary ---
-        if (newTick >= _world.seasonEndTick) {
+        if (newTick >= _world.seasonEndTick && _world.seasonFinalized) {
             _world.currentSeasonNumber += 1;
             _world.seasonStartTick = _world.seasonEndTick;
             _world.seasonEndTick = _world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
+            _world.seasonFinalized = false;
         }
 
         // --- winter transitions (timer only; mechanics = Phase 10) ---
@@ -3145,9 +3146,19 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _settleClan(cs.clanId);
     }
 
-    /// @notice Finalize season. Phase 1 stub.
-    function finalizeSeason() external override {
-        // TODO Phase 3
+    /// @notice Finalize season by settling final state and publishing rankings.
+    function finalizeSeason() external override nonReentrant {
+        require(_world.currentTick >= _world.seasonEndTick, "ClanWorld: season not ended");
+        require(!_world.seasonFinalized, "ClanWorld: season finalized");
+
+        for (uint256 i = 0; i < _allClanIds.length; i++) {
+            _settleClanThroughTick(_allClanIds[i], _world.currentTick + 1);
+        }
+
+        (uint32[] memory rankedClanIds, uint256[] memory scores) = _computeRankings();
+
+        _world.seasonFinalized = true;
+        emit SeasonFinalized(uint64(_world.currentTick), rankedClanIds, scores);
     }
 
     // =========================================================================
@@ -5267,6 +5278,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     }
 
     function getRankings() external view override returns (uint32[] memory clanIdsRanked, uint256[] memory scores) {
+        return _computeRankings();
+    }
+
+    function _computeRankings() internal view returns (uint32[] memory clanIdsRanked, uint256[] memory scores) {
         uint256 scanCount = _allClanIds.length;
         if (scanCount > MAX_CLAN_SCAN_FOR_RANKING) {
             scanCount = MAX_CLAN_SCAN_FOR_RANKING;

@@ -430,8 +430,8 @@ contract HeartbeatOrderingTest is Test {
     //
     // Proves Step 4 (world events) fires AFTER Steps 1-3:
     //   - season boundary is crossed at SEASON_DURATION_TICKS
-    //   - currentSeasonNumber increments on the heartbeat that closes tick
-    //     SEASON_DURATION_TICKS-1 (newTick = SEASON_DURATION_TICKS >= seasonEndTick)
+    //   - season rollover waits in limbo until finalizeSeason() publishes rankings
+    //   - currentSeasonNumber increments on the heartbeat after finalization
     //   - no crash or revert when there are no pending missions or market actions
     // -------------------------------------------------------------------------
     function test_heartbeat_seasonTransition() public {
@@ -446,10 +446,20 @@ contract HeartbeatOrderingTest is Test {
         }
 
         WorldState memory ws1 = world.getWorldState();
-        assertEq(ws1.currentSeasonNumber, 2, "season must have incremented to 2 after Steps 1-4");
+        assertEq(ws1.currentSeasonNumber, 1, "season must wait for finalizeSeason");
         assertEq(ws1.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS, "tick must be at season boundary");
-        assertEq(ws1.seasonStartTick, ClanWorldConstants.SEASON_DURATION_TICKS, "new seasonStartTick");
-        assertEq(ws1.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS * 2, "new seasonEndTick");
+        assertEq(ws1.seasonStartTick, 0, "old seasonStartTick");
+        assertEq(ws1.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS, "old seasonEndTick");
+
+        world.finalizeSeason();
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        world.heartbeat();
+
+        WorldState memory ws2 = world.getWorldState();
+        assertEq(ws2.currentSeasonNumber, 2, "season increments after finalization");
+        assertEq(ws2.seasonStartTick, ClanWorldConstants.SEASON_DURATION_TICKS, "new seasonStartTick");
+        assertEq(ws2.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS * 2, "new seasonEndTick");
+        assertFalse(ws2.seasonFinalized, "new season resets finalized flag");
     }
 
     // -------------------------------------------------------------------------
