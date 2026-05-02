@@ -1606,7 +1606,22 @@ export function WorldMap() {
     if (combatPlayedTickRef.current === attackTick) return false;
     const currentTick = liveTickRef.current;
     if (currentTick === attackTick - 1) {
-      return getMsUntilTickClose() <= COMBAT_VIGNETTE_LEAD_MS;
+      // Codex cloud P1: when tickEpoch is unavailable (Sub1 logs-driven liveTick
+      // mode where ticks advance every ~20s but FALLBACK_DAY_TICK_MS is 60s),
+      // `getMsUntilTickClose()` never drops to ≤4000ms before liveTick rolls
+      // forward — the precise pre-close window never fires and the vignette
+      // only triggers post-close (line below). Detect fallback mode and
+      // trigger as soon as we enter the pre-attack tick. Vignette occupies the
+      // first 4s of the pre-attack tick instead of the last 4s; visually similar.
+      const snap = snapshotRef.current;
+      const epoch = snap?.tickEpoch;
+      const havePreciseEpoch =
+        epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0
+        && typeof epoch.durationMs === 'number' && epoch.durationMs > 0;
+      if (havePreciseEpoch) {
+        return getMsUntilTickClose() <= COMBAT_VIGNETTE_LEAD_MS;
+      }
+      return true;
     }
     return currentTick >= attackTick;
   }

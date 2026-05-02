@@ -28,9 +28,15 @@ function useDemoResourceJiggle() {
         const idx = Math.floor(Math.random() * current.length);
         const delta = Math.floor(Math.random() * 46) - 15;
         if (delta === 0) return current;
-        return current.map((r, i) =>
-          i === idx ? { ...r, value: Math.max(0, r.value + delta) } : r,
-        );
+        return current.map((r, i) => {
+          if (i !== idx) return r;
+          // Update both value AND delta string so the row's static delta
+          // text stays in sync with the rolling number + floater (Copilot
+          // + codex cloud P2). Without this, delta showed stale values.
+          const nextValue = Math.max(0, r.value + delta);
+          const sign = delta > 0 ? '+' : '';
+          return { ...r, value: nextValue, delta: `${sign}${delta}` };
+        });
       });
     }, 6000);
     return () => window.clearInterval(id);
