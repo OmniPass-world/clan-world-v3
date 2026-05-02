@@ -3,6 +3,7 @@ import type { ClanOrder } from '../src/types';
 import { ActionType } from '../src/generated/enums';
 
 const mocks = vi.hoisted(() => {
+  const readContract = vi.fn(async () => [3, '0x0102030000000000']);
   const writeContract = vi.fn(
     async (_request: unknown) => `0x${'12'.repeat(32)}`,
   );
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => {
     }),
   );
 
-  return { simulateContract, writeContract };
+  return { readContract, simulateContract, writeContract };
 });
 
 vi.mock('viem', async () => {
@@ -28,6 +29,7 @@ vi.mock('viem', async () => {
   return {
     ...actual,
     createPublicClient: vi.fn(() => ({
+      readContract: mocks.readContract,
       simulateContract: mocks.simulateContract,
     })),
     createWalletClient: vi.fn(() => ({
@@ -86,6 +88,7 @@ describe('RealChainClient.submitOrders order field mapping', () => {
     vi.clearAllMocks();
     process.env.CLAN_WORLD_USE_STUB_CHAIN = 'false';
     process.env.DEPLOYER_PRIVATE_KEY = '11'.repeat(32);
+    process.env.CLAN_WORLD_LENS_ADDRESS = '0x0000000000000000000000000000000000000abc';
     delete process.env.ELDER_WALLET_KEY_PATH;
   });
 
@@ -163,5 +166,23 @@ describe('RealChainClient.submitOrders order field mapping', () => {
       wheat: 3n,
       fish: 0n,
     });
+  });
+
+  it('reads quoteTravel from the configured lens address', async () => {
+    const client = createChainClient();
+
+    const result = await client.quoteTravel(1, 8);
+
+    expect(result).toEqual({
+      travelTicks: 3,
+      path: '0x0102030000000000',
+    });
+    expect(mocks.readContract).toHaveBeenCalledWith(
+      expect.objectContaining({
+        address: '0x0000000000000000000000000000000000000abc',
+        functionName: 'quoteTravel',
+        args: [1, 8],
+      }),
+    );
   });
 });

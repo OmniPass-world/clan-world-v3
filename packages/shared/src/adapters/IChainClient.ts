@@ -106,6 +106,7 @@ export interface IChainClient {
   getWallUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint }>;
   getBaseUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint }>;
   getMonumentUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint; blueprint: bigint }>;
+  quoteTravel(srcRegion: number, dstRegion: number): Promise<{ travelTicks: number; path: `0x${string}` }>;
   getClanScore(clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }>;
   getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }>;
 }
@@ -4036,6 +4037,9 @@ class StubChainClient implements IChainClient {
   async getMonumentUpgradeCost(_currentLevel: number): Promise<{ wood: bigint; iron: bigint; wheat: bigint; blueprint: bigint }> {
     return { wood: 0n, iron: 0n, wheat: 0n, blueprint: 0n };
   }
+  async quoteTravel(_srcRegion: number, _dstRegion: number): Promise<{ travelTicks: number; path: `0x${string}` }> {
+    return { travelTicks: 0, path: '0x0000000000000000' };
+  }
   async getClanScore(_clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }> {
     return { score: 0n, monumentReachedAtTick: 0n, monumentLevel: 0 };
   }
@@ -4269,6 +4273,16 @@ class RealChainClient implements IChainClient {
       args: [currentLevel],
     });
     return { wood, iron, wheat, blueprint };
+  }
+
+  async quoteTravel(srcRegion: number, dstRegion: number): Promise<{ travelTicks: number; path: `0x${string}` }> {
+    const [travelTicks, path] = await this.client.readContract({
+      address: this.lensAddress,
+      abi: CLAN_WORLD_LENS_ABI,
+      functionName: 'quoteTravel',
+      args: [srcRegion, dstRegion],
+    }) as readonly [number | bigint, `0x${string}`];
+    return { travelTicks: Number(travelTicks), path };
   }
 
   async getClanScore(clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }> {
