@@ -1866,6 +1866,12 @@ export function WorldMap() {
     }
 
     const onTick = () => {
+      // Yield bandit alpha ownership to the combat vignette while it's active.
+      // Without this guard, the pulse keeps writing alpha every frame AFTER the
+      // vignette ticker, silently nullifying the success-outcome fade-out
+      // (opus 4.7 SuperSwarm catch). The vignette window overlaps the pulse
+      // window when banditTicksUntil ∈ [0, 2].
+      if (combatVignetteRef.current) return;
       const icon = drawnRef.current.banditIcon;
       const sprite = drawnRef.current.banditSprite;
       const t = performance.now() / 220;
