@@ -107,6 +107,11 @@ library DiamondSelectors {
         selectors[1] = IClanWorld.settleClansman.selector;
     }
 
+    function goldTransferSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](1);
+        selectors[0] = IClanWorld.transferGold.selector;
+    }
+
     function derivedViewsSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](2);
         selectors[0] = IClanWorld.getDerivedClanState.selector;
