@@ -74,7 +74,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     mapping(uint32 => Clan) internal _clans;
     mapping(uint32 => Clansman) internal _clansmen;
-    mapping(uint32 => Mission) private _missions; // keyed by clansmanId
+    mapping(uint32 => Mission) internal _missions; // keyed by clansmanId
     mapping(uint32 => WheatPlot[2]) private _wheatPlots; // [0]=west [1]=east
     mapping(uint64 => ScheduledMarketAction[]) private _scheduledMarketActions; // keyed by tick
     mapping(uint32 => uint64) private _marketMissionCommitSequence; // clansmanId => FIFO sequence captured at submit
@@ -140,7 +140,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     }
 
     // =========================================================================
-    // CONSTANTS — Wheat harvest rate (not in IClanWorld constants)
+    // CONSTANTS — local settlement and building limits
     // =========================================================================
 
     uint64 private constant DEPOSIT_DURATION_TICKS = 1;
@@ -148,7 +148,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     uint8 private constant WALL_MAX_LEVEL = 5;
     uint8 private constant BASE_MAX_LEVEL = 5;
     uint8 private constant MONUMENT_MAX_LEVEL = 10;
-    uint256 private constant WHEAT_HARVEST_RATE = 20e18;
     uint256 private constant RESOURCE_UNIT = 1e18;
     uint256 internal constant BLUEPRINT_UNIT = 1e18;
     /// @dev Caps winter crop boundary work; current clan cap keeps transitions within this budget.
@@ -569,10 +568,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         bool starving = !hadEnoughWheat || !hadEnoughFish;
         if (starving && clan.starvationStartsAtTick == 0) {
-            /// @dev Same-tick onset is canonical; see docs/planning/clanworld_v4_6_phase5_economy_alignment.md §5.2.
-            ///      This also makes bandit-defense starvation effects apply on the upkeep-failure tick.
-            clan.starvationStartsAtTick = tick;
-            emit ClanStarvationChanged(clan.clanId, true, tick);
+            clan.starvationStartsAtTick = tick + 1;
+            emit ClanStarvationChanged(clan.clanId, true, tick + 1);
         } else if (!starving && clan.starvationStartsAtTick != 0) {
             clan.starvationStartsAtTick = 0;
             emit ClanStarvationChanged(clan.clanId, false, tick);
@@ -798,7 +795,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @dev Check if a clan is currently starving (lazy read).
     function _isStarving(Clan storage clan) internal view returns (bool) {
-        return clan.starvationStartsAtTick != 0 && clan.starvationStartsAtTick <= _world.currentTick;
+        return _isStarvingAtTick(clan, _world.currentTick);
+    }
+
+    /// @dev Check starvation against the tick being settled, not necessarily live currentTick.
+    function _isStarvingAtTick(Clan storage clan, uint64 tick) internal view returns (bool) {
+        return clan.starvationStartsAtTick != 0 && clan.starvationStartsAtTick <= tick;
     }
 
     /// @dev Resolve one tick of action for a clansman that is in ACTING state.
@@ -810,7 +812,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint64 tick,
         bytes32 tickSeed
     ) internal {
-        bool starving = _isStarving(clan);
+        bool starving = _isStarvingAtTick(clan, tick);
         ActionType action = m.action;
 
         if (action == ActionType.ChopWood) {
@@ -859,12 +861,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _completeMission(cs, m);
             return;
         }
-        uint256 yield = ClanWorldConstants.WOOD_BASE_YIELD;
-        // Crit roll: domain-separated RNG
-        bytes32 critRng = keccak256(abi.encode("wood_crit", tickSeed, cs.clansmanId, m.nonce, tick));
-        uint256 critRoll = uint256(critRng) % 10000;
-        if (critRoll < ClanWorldConstants.WOOD_CRIT_BPS) {
-            yield += ClanWorldConstants.WOOD_CRIT_BONUS;
+
+        uint256 yield = ClanWorldConstants.WOOD_YIELD_PER_TICK * uint256(getActionDuration(ActionType.ChopWood));
+        bytes32 woodRng = keccak256(abi.encode("wood_crit", tickSeed, cs.clansmanId, m.nonce, tick));
+        if (uint256(woodRng) % 10000 < ClanWorldConstants.WOOD_CRIT_BPS) {
+            yield *= 2;
         }
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
@@ -892,7 +893,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _completeMission(cs, m);
             return;
         }
-        uint256 yield = ClanWorldConstants.IRON_BASE_YIELD;
+        uint256 yield = ClanWorldConstants.IRON_YIELD_PER_TICK * uint256(getActionDuration(ActionType.MineIron));
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
         cs.carryIron += yield;
@@ -936,7 +937,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 fishRoll = uint256(fishRng) % 10000;
         uint256 yield = 0;
         if (fishRoll < ClanWorldConstants.FISH_DOCKS_BPS) {
-            yield = 1e18;
+            yield = ClanWorldConstants.FISH_YIELD_PER_TICK * uint256(getActionDuration(ActionType.FishDocks));
         }
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
@@ -967,7 +968,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 fishRoll = uint256(fishRng) % 10000;
         uint256 yield = 0;
         if (fishRoll < ClanWorldConstants.FISH_DEEP_BPS) {
-            yield = 1e18;
+            yield = ClanWorldConstants.FISH_YIELD_PER_TICK * uint256(getActionDuration(ActionType.FishDeepSea));
         }
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
@@ -1019,7 +1020,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return;
         }
 
-        uint256 yield = WHEAT_HARVEST_RATE;
+        uint256 yield = ClanWorldConstants.WHEAT_YIELD_PER_TICK * uint256(getActionDuration(ActionType.HarvestWheat));
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
         if (yield > plot.remainingWheat) yield = plot.remainingWheat;
@@ -1339,7 +1340,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         bool starving = !hadEnoughWheat || !hadEnoughFish;
         if (starving && sim.clan.starvationStartsAtTick == 0) {
-            sim.clan.starvationStartsAtTick = tick;
+            sim.clan.starvationStartsAtTick = tick + 1;
         } else if (!starving && sim.clan.starvationStartsAtTick != 0) {
             sim.clan.starvationStartsAtTick = 0;
         }
@@ -1545,8 +1546,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint64 tick,
         bytes32 tickSeed
     ) internal view returns (Clansman memory, Mission memory) {
-        bool starving =
-            sim.clan.starvationStartsAtTick != 0 && sim.clan.starvationStartsAtTick <= _world.currentTick;
+        bool starving = sim.clan.starvationStartsAtTick != 0 && sim.clan.starvationStartsAtTick <= tick;
         ActionType action = m.action;
 
         if (action == ActionType.ChopWood) {
@@ -1582,10 +1582,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 remaining = ClanWorldConstants.WOOD_CAP - cs.carryWood;
         if (remaining == 0) return _simulateCompleteMission(cs, m);
 
-        uint256 yield = ClanWorldConstants.WOOD_BASE_YIELD;
+        uint256 yield = ClanWorldConstants.WOOD_YIELD_PER_TICK * uint256(getActionDuration(ActionType.ChopWood));
         bytes32 critRng = keccak256(abi.encode("wood_crit", tickSeed, cs.clansmanId, m.nonce, tick));
         if (uint256(critRng) % 10000 < ClanWorldConstants.WOOD_CRIT_BPS) {
-            yield += ClanWorldConstants.WOOD_CRIT_BONUS;
+            yield *= 2;
         }
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
@@ -1608,7 +1608,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 remaining = ClanWorldConstants.IRON_CAP - cs.carryIron;
         if (remaining == 0) return _simulateCompleteMission(cs, m);
 
-        uint256 yield = ClanWorldConstants.IRON_BASE_YIELD;
+        uint256 yield = ClanWorldConstants.IRON_YIELD_PER_TICK * uint256(getActionDuration(ActionType.MineIron));
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
         cs.carryIron += yield;
@@ -1636,7 +1636,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (remaining == 0) return _simulateCompleteMission(cs, m);
 
         bytes32 fishRng = keccak256(abi.encode("fish_roll", tickSeed, cs.clansmanId, m.nonce, tick));
-        uint256 yield = uint256(fishRng) % 10000 < successBps ? RESOURCE_UNIT : 0;
+        uint256 yield = uint256(fishRng) % 10000 < successBps
+            ? ClanWorldConstants.FISH_YIELD_PER_TICK * uint256(getActionDuration(m.action))
+            : 0;
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
         if (yield > 0) {
@@ -1673,7 +1675,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return _simulateCompleteMission(cs, m);
         }
 
-        uint256 yield = WHEAT_HARVEST_RATE;
+        uint256 yield = ClanWorldConstants.WHEAT_YIELD_PER_TICK * uint256(getActionDuration(ActionType.HarvestWheat));
         if (starving) yield = yield / 2;
         if (yield > remaining) yield = remaining;
         if (yield > plot.remainingWheat) yield = plot.remainingWheat;
