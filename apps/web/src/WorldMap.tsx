@@ -193,7 +193,14 @@ const COMBAT_TOTAL_MS = COMBAT_RESOLUTION_START_MS + COMBAT_RESOLUTION_CAP_MS + 
 const COMBAT_DIM_ALPHA = 0.55;
 const COMBAT_DIM_TINT = 0x1a1a3a;
 const COMBAT_TARGET_CLAN_ID = 'clan-ember';
-const DEMO_COMBAT_OUTCOME: CombatOutcome = 'failure';
+/** Demo combat outcome — overrideable via URL param `?combat=success|failure`
+ * for stage flexibility. Defaults to failure since wall-drop reads more
+ * dramatic. Replace with `snapshot.combatOutcome` when schema lands. */
+function readDemoCombatOutcome(): CombatOutcome {
+  if (typeof window === 'undefined') return 'failure';
+  const param = new URLSearchParams(window.location.search).get('combat');
+  return param === 'success' ? 'success' : 'failure';
+}
 
 // TODO(contract-bindings): replace these demo defaults when carry caps are exposed.
 const WOOD_CAP = 10;
@@ -327,8 +334,10 @@ function createWorldLayers(): WorldLayers {
   const combatHighlight = new Container();
   const combatFlash = new Graphics();
   worldDynamic.sortableChildren = true;
+  // §14.3: combatHighlight must use insertion-order so the success-launch
+  // (bandit drawn after defenders) doesn't sort under the targeted base.
+  // No sortableChildren here. (claude r3 SHOULD #1)
   screenEffects.sortableChildren = true;
-  combatHighlight.sortableChildren = true;
   combatDim.zIndex = 0;
   combatHighlight.zIndex = 1;
   combatFlash.zIndex = 2;
@@ -1619,6 +1628,22 @@ export function WorldMap() {
     const bandit = drawn.banditSprite ?? drawn.banditIcon;
     if (!bandit) return;
 
+    // Mark this tick as played BEFORE any reparenting / mutation so a partial-start
+    // throw can't loop the per-frame ticker into spawning new defender nodes every
+    // frame (codex r3 SHOULD #1).
+    combatPlayedTickRef.current = DEMO_BANDIT.attacksAtTick;
+
+    // §14.3: combatDim sits above worldDynamic and would otherwise dim the
+    // active selection ring. Clear the ring (without the camera fit-out) so
+    // the dimmed world reads cleanly. Speech bubbles still dim mid-flight
+    // (structural fix queued for v1.2) — claude r3 MUST #3 cheap fix.
+    const selected = selectedRef.current;
+    if (selected) {
+      selected.target.removeChild(selected.ring);
+      selected.ring.destroy();
+      selectedRef.current = null;
+    }
+
     const defenderAngles = [Math.PI * 0.75, Math.PI * 0.5, Math.PI * 0.25];
     const defenders = defenderAngles.map((angle) => {
       const defender = makeCombatDefender(targetClan.color, targetClan.id);
@@ -1631,7 +1656,7 @@ export function WorldMap() {
 
     const vignette: CombatVignette = {
       startedAt: performance.now(),
-      outcome: DEMO_COMBAT_OUTCOME,
+      outcome: readDemoCombatOutcome(),
       bandit,
       targetBase: targetBaseNode,
       defenders,
@@ -1657,7 +1682,6 @@ export function WorldMap() {
     reparentForCombat(bandit, vignette);
     defenders.forEach(defender => reparentForCombat(defender, vignette, true));
     combatVignetteRef.current = vignette;
-    combatPlayedTickRef.current = DEMO_BANDIT.attacksAtTick;
   }
 
   function finishCombatVignette(force = false) {
@@ -1704,13 +1728,18 @@ export function WorldMap() {
       return;
     }
 
+    // §10.8 cap rule: combat dim must not stack with day/night darkening into
+    // an unreadable scene. Cap target alpha at min(0.55, 1 - currentBrightness)
+    // so combat at night stays at least readable (claude r3 MUST #2).
+    const dayNightBrightness = getDayNightFrame(getDayNightProgress()).brightness;
+    const dimTarget = Math.min(COMBAT_DIM_ALPHA, clamp01(1 - dayNightBrightness));
     const fadeOutStart = COMBAT_TOTAL_MS - 600;
     if (age < 600) {
-      layers.combatDim.alpha = COMBAT_DIM_ALPHA * clamp01(age / 600);
+      layers.combatDim.alpha = dimTarget * clamp01(age / 600);
     } else if (age >= fadeOutStart) {
-      layers.combatDim.alpha = COMBAT_DIM_ALPHA * (1 - clamp01((age - fadeOutStart) / 600));
+      layers.combatDim.alpha = dimTarget * (1 - clamp01((age - fadeOutStart) / 600));
     } else {
-      layers.combatDim.alpha = COMBAT_DIM_ALPHA;
+      layers.combatDim.alpha = dimTarget;
     }
 
     const flashAge = age - COMBAT_FLASH_START_MS;
@@ -1781,9 +1810,13 @@ export function WorldMap() {
     vignette.targetBase.zIndex = Math.round(vignette.targetBase.y);
   }
 
-  // Tick changes: refresh bandit countdown (demo mode only)
+  // Tick changes: refresh bandit countdown (demo mode only).
+  // Skipped while a combat vignette is animating — redrawBandit overrides the
+  // bandit sprite's x/y/zIndex back to the region anchor, snapping the bandit
+  // out of mid-flight choreography (claude r3 MUST #1).
   useEffect(() => {
     if (!pixiReady || !DEMO_MODE) return;
+    if (combatVignetteRef.current) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTick, pixiReady]);
