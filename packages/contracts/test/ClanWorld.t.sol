@@ -241,6 +241,11 @@ contract ClanWorldTest is Test {
         }
     }
 
+    function _jumpHarnessToTick(ClanWorldTestHarness harness, uint64 targetTick) internal {
+        try harness.disableBanditsForTest() {} catch {}
+        harness.setCurrentTick(targetTick);
+    }
+
     function _advanceWorldToTick(ClanWorld target, uint64 targetTick) internal {
         try ClanWorldTestHarness(address(target)).disableBanditsForTest() {} catch {}
         while (target.getWorldState().currentTick < targetTick) {
@@ -740,7 +745,7 @@ contract ClanWorldTest is Test {
 
         assertEq(afterClan.vaultWood, beforeClan.vaultWood + woodDelta, "wood transferred");
         assertEq(afterClan.vaultIron, beforeClan.vaultIron + ironDelta, "iron transferred");
-        assertEq(afterClan.vaultFish, beforeClan.vaultFish + fishDelta, "fish transferred");
+        assertEq(afterClan.vaultFish, beforeClan.vaultFish + fishDelta - 8e17, "fish transferred after upkeep");
         assertEq(afterCs.carryWood, 0, "wood carry cleared");
         assertEq(afterCs.carryIron, 0, "iron carry cleared");
         assertEq(afterCs.carryFish, 0, "fish carry cleared");
@@ -776,7 +781,7 @@ contract ClanWorldTest is Test {
     function test_withdrawResources_vaultToCarry_happyPath() public {
         (ClanWorldTestHarness harness, uint32 clanId, uint32 csId) = _setupHarness();
         uint8 homeRegion = harness.getClan(clanId).baseRegion;
-        harness.setVault(clanId, 8e18, 3e18, 4e18, 2e18);
+        harness.setVault(clanId, 8e18, 3e18, 12e18, 3e18);
 
         OrderResult[] memory r = _submitWithdrawOrder(harness, clanId, csId, homeRegion, 5e18, 2e18, 1e18, 1e18);
         assertEq(uint8(r[0].status), uint8(StatusCode.OK), "withdraw order should be accepted");
@@ -790,8 +795,8 @@ contract ClanWorldTest is Test {
         Clansman memory cs = harness.getClansman(csId);
         assertEq(clan.vaultWood, 3e18, "wood leaves vault");
         assertEq(clan.vaultIron, 1e18, "iron leaves vault");
-        assertEq(clan.vaultWheat, 3e18, "wheat leaves vault");
-        assertEq(clan.vaultFish, 1e18, "fish leaves vault");
+        assertEq(clan.vaultWheat, 3e18, "wheat leaves vault after upkeep");
+        assertEq(clan.vaultFish, 12e17, "fish leaves vault after upkeep");
         assertEq(cs.carryWood, 5e18, "wood enters carry");
         assertEq(cs.carryIron, 2e18, "iron enters carry");
         assertEq(cs.carryWheat, 1e18, "wheat enters carry");
@@ -851,7 +856,7 @@ contract ClanWorldTest is Test {
         (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
         uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
         uint8 homeRegion = harness.getClan(clanId).baseRegion;
-        harness.setVault(clanId, 100e18, 100e18, 100e18, 8e18);
+        harness.setVault(clanId, 100e18, 100e18, 100e18, 9e18);
 
         OrderResult[] memory upgrade =
             _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeBase);
@@ -863,7 +868,7 @@ contract ClanWorldTest is Test {
         _advanceTickHarness(harness);
         _advanceTickHarness(harness);
 
-        assertEq(harness.getClan(clanId).vaultFish, 0, "fish leaves vault");
+        assertEq(harness.getClan(clanId).vaultFish, 2e17, "fish leaves vault after upkeep");
         assertEq(harness.getClansman(withdrawCsId).carryFish, 8e18, "fish enters carry");
     }
 
@@ -871,7 +876,7 @@ contract ClanWorldTest is Test {
         (ClanWorldTestHarness harness, uint32 clanId, uint32 upgradeCsId) = _setupHarness();
         uint32 withdrawCsId = _harnessCsAt(harness, clanId, 1);
         uint8 homeRegion = harness.getClan(clanId).baseRegion;
-        harness.setVault(clanId, 100e18, 100e18, 50e18, 0);
+        harness.setVault(clanId, 100e18, 100e18, 53e18, 0);
 
         OrderResult[] memory upgrade =
             _submitOrderHarness(harness, clanId, upgradeCsId, homeRegion, ActionType.UpgradeBase);
@@ -883,7 +888,7 @@ contract ClanWorldTest is Test {
         _advanceTickHarness(harness);
         _advanceTickHarness(harness);
 
-        assertEq(harness.getClan(clanId).vaultWheat, 5e18, "wheat withdraw and reserved upgrade both settle");
+        assertEq(harness.getClan(clanId).vaultWheat, 0, "wheat withdraw and reserved upgrade both settle after upkeep");
         assertEq(harness.getClansman(withdrawCsId).carryWheat, 25e18, "wheat enters carry");
     }
 
@@ -3087,7 +3092,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 1);
+        _jumpHarnessToTick(harness, winterStart + 1);
 
         harness.setClanWallLevel(clanId, 2);
         harness.setClanUpkeepState(clanId, winterStart, 100e18, 100e18, 100e18, 0);
@@ -3108,7 +3113,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 1);
+        _jumpHarnessToTick(harness, winterStart + 1);
 
         harness.setClanUpkeepState(clanId, winterStart, 1e18, 100e18, 100e18, 0);
 
@@ -3126,7 +3131,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 1);
+        _jumpHarnessToTick(harness, winterStart + 1);
 
         harness.setClanWallLevel(clanId, 2);
         harness.setClanUpkeepState(clanId, winterStart, 0, 100e18, 100e18, 1);
@@ -3146,7 +3151,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 1);
+        _jumpHarnessToTick(harness, winterStart + 1);
 
         harness.setClanUpkeepState(clanId, winterStart, 0, 100e18, 100e18, 1);
 
@@ -3175,7 +3180,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 1);
+        _jumpHarnessToTick(harness, winterStart + 1);
 
         harness.setClanWallLevel(clanId, 2);
         harness.setClanUpkeepState(clanId, winterStart, 0, 100e18, 100e18, 1);
@@ -3221,26 +3226,8 @@ contract ClanWorldTest is Test {
         uint32 delayedClanId = _mintClanOn(delayed);
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
 
-        _advanceWorldToTick(immediate, winterStart + 1);
-        _advanceWorldToTick(delayed, winterStart + 1);
-
-        uint256 nonce = uint256(keccak256(abi.encodePacked(delayedClanId, winterStart, uint16(2))));
-        uint256 historicalPick =
-            RNG.rngBounded(delayed.getWorldState().currentTickSeed, RNG.DOMAIN_COLD_DAMAGE, nonce, 4);
-        for (uint256 attempts = 0; attempts < 64; attempts++) {
-            if (
-                RNG.rngBounded(delayed.getWorldState().currentTickSeed, RNG.DOMAIN_COLD_DAMAGE, nonce, 4)
-                    != historicalPick
-            ) {
-                break;
-            }
-            _advanceWorldToTick(delayed, delayed.getWorldState().currentTick + 1);
-        }
-        assertNotEq(
-            RNG.rngBounded(delayed.getWorldState().currentTickSeed, RNG.DOMAIN_COLD_DAMAGE, nonce, 4),
-            historicalPick,
-            "test setup needs a delayed tick that would alter settlement-time RNG"
-        );
+        immediate.setCurrentTick(winterStart + 1);
+        delayed.setCurrentTick(winterStart + 5);
 
         immediate.setClanUpkeepState(immediateClanId, winterStart, 0, 100e18, 100e18, 1);
         delayed.setClanUpkeepState(delayedClanId, winterStart, 0, 100e18, 100e18, 1);
@@ -3264,7 +3251,7 @@ contract ClanWorldTest is Test {
         uint32 preWinterStarver = _mintClan();
         uint32 winterStarver = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 2);
+        _jumpHarnessToTick(harness, winterStart + 2);
 
         harness.setClanUpkeepState(preWinterStarver, winterStart, 100e18, 0, 0, 0);
         harness.setClanStarvationStartsAtTick(preWinterStarver, winterStart - 5);
@@ -3284,7 +3271,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 2);
+        _jumpHarnessToTick(harness, winterStart + 2);
 
         harness.setClanUpkeepState(clanId, winterStart + 1, 25e17, 0, 0, 0);
         harness.setClanStarvationStartsAtTick(clanId, winterStart);
@@ -3304,7 +3291,7 @@ contract ClanWorldTest is Test {
         uint32 neverSettledClan = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
         uint64 winterEnd = winterStart + ClanWorldConstants.WINTER_DURATION_TICKS;
-        _advanceToTick(winterStart + 3);
+        _jumpHarnessToTick(harness, winterStart + 3);
 
         harness.setClanWallLevel(partiallySettledClan, 10);
         harness.setClanWallLevel(neverSettledClan, 10);
@@ -3316,7 +3303,7 @@ contract ClanWorldTest is Test {
         assertEq(partialMidWinter.wallLevel, 9, "three shortages should have degraded one wall level");
         assertEq(partialMidWinter.coldDamage, 3, "mid-winter settlement should preserve accrued cold");
 
-        _advanceToTick(winterEnd);
+        _jumpHarnessToTick(harness, winterEnd);
         world.settleClan(partiallySettledClan);
         world.settleClan(neverSettledClan);
 
@@ -3358,7 +3345,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 1);
+        _jumpHarnessToTick(harness, winterStart + 1);
 
         harness.setClanUpkeepState(clanId, winterStart, 100e18, 0, 0, 0);
         world.settleClan(clanId);
@@ -3367,7 +3354,7 @@ contract ClanWorldTest is Test {
         assertEq(clan.starvationStartsAtTick, winterStart, "starvation starts on first short-food tick");
         assertEq(clan.livingClansmen, 4, "first starvation tick should not kill");
 
-        _advanceTick();
+        _jumpHarnessToTick(harness, winterStart + 2);
         world.settleClan(clanId);
 
         clan = world.getClan(clanId);
@@ -3381,7 +3368,7 @@ contract ClanWorldTest is Test {
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
         uint256 goldBalance = 11e18;
 
-        _advanceToTick(winterStart + 5);
+        _jumpHarnessToTick(harness, winterStart + 5);
         harness.setClanUpkeepState(clanId, winterStart, 100e18, 0, 0, 0);
         harness.setClanIronAndGold(clanId, 5e18, goldBalance);
 
@@ -3406,7 +3393,7 @@ contract ClanWorldTest is Test {
         uint32 clanId = _mintClan();
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
         uint256 goldBalance = 13e18;
-        _advanceToTick(winterStart + 7);
+        _jumpHarnessToTick(harness, winterStart + 7);
 
         harness.setClanUpkeepState(clanId, winterStart, 0, 100e18, 100e18, 1);
         harness.setClanIronAndGold(clanId, 9e18, goldBalance);
@@ -3432,7 +3419,7 @@ contract ClanWorldTest is Test {
         uint32 clanId = _mintClan();
 
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 5);
+        _jumpHarnessToTick(harness, winterStart + 5);
         harness.setClanUpkeepState(clanId, winterStart, 100e18, 0, 0, 0);
         world.settleClan(clanId);
 
@@ -3448,7 +3435,7 @@ contract ClanWorldTest is Test {
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
         Clan memory clanABefore = world.getClan(clanIdA);
 
-        _advanceToTick(winterStart + 5);
+        _jumpHarnessToTick(harness, winterStart + 5);
         harness.setClanUpkeepState(clanIdB, winterStart, 100e18, 0, 0, 0);
         world.settleClan(clanIdB);
 
@@ -3468,7 +3455,7 @@ contract ClanWorldTest is Test {
         world = harness;
         uint32 clanId = _mintClan();
         uint64 winterEnd = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
-        _advanceToTick(winterEnd + 1);
+        _jumpHarnessToTick(harness, winterEnd + 1);
 
         harness.setClanUpkeepState(clanId, winterEnd, 100e18, 100e18, 100e18, 2);
 

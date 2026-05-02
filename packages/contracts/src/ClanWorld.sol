@@ -484,23 +484,28 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     /// @dev Lazy settlement of a clan forward to currentTick.
     ///      Mutates storage. Called before order submission and by public settleClan().
     function _settleClan(uint32 clanId) internal {
+        _settleClanThroughTick(clanId, _world.currentTick);
+    }
+
+    /// @dev Settle a clan forward to `throughTick`, exclusive.
+    ///      Applies each closed tick in canonical order: upkeep, regrow, then missions.
+    function _settleClanThroughTick(uint32 clanId, uint64 throughTick) internal {
         Clan storage clan = _clans[clanId];
         if (clan.clanId == 0) return;
+        if (clan.clanState == ClanState.DEAD) return;
 
-        uint64 curTick = _world.currentTick;
         uint64 fromTick = clan.lastSettledTick;
-        if (fromTick >= curTick) return;
+        if (fromTick >= throughTick) return;
 
         // Cap ticks settled per call to prevent block gas limit issues
-        if (curTick > fromTick + MAX_LAZY_SETTLE_BACKLOG) {
-            curTick = fromTick + MAX_LAZY_SETTLE_BACKLOG;
+        if (throughTick > fromTick + MAX_LAZY_SETTLE_BACKLOG) {
+            throughTick = fromTick + MAX_LAZY_SETTLE_BACKLOG;
         }
 
         uint32[] storage clansmanIds = _clanClansmanIds[clanId];
 
-        // Settle tick by tick from fromTick to curTick - 1
-        // (curTick is still open; we settle through the last closed tick)
-        for (uint64 tick = fromTick; tick < curTick; tick++) {
+        // Settle tick by tick from fromTick to throughTick - 1.
+        for (uint64 tick = fromTick; tick < throughTick; tick++) {
             // 1. Apply upkeep for this tick
             _applyUpkeep(clan, tick);
             if (clan.clanState == ClanState.DEAD) break;
@@ -522,12 +527,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             }
         }
 
-        if (curTick > fromTick && !_isWinterActiveAt(curTick) && _isWinterActiveAt(curTick - 1)) {
+        if (throughTick > fromTick && !_isWinterActiveAt(throughTick) && _isWinterActiveAt(throughTick - 1)) {
             clan.coldDamage = 0;
         }
 
-        clan.lastSettledTick = curTick;
-        emit ClanSettled(clanId, curTick);
+        clan.lastSettledTick = throughTick;
+        emit ClanSettled(clanId, throughTick);
     }
 
     /// @dev Apply one tick of upkeep. Marks starvation if insufficient food and cold damage if winter wood is short.
@@ -2246,7 +2251,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return;
         }
 
-        _settleClan(targetClanId);
         if (bandit.state != BanditState.Attacking || bandit.targetClanId != targetClanId) {
             return;
         }
@@ -2852,7 +2856,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 continue;
             }
 
-            _settleClan(clanId);
             _eagerSettleActiveDefendersForBase(clanId, region);
         }
     }
@@ -2876,7 +2879,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 defendersScanned += 1;
                 Mission storage mission = _missions[clansmanIds[j]];
                 if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
-                    _settleClan(defenderClanId);
                     break;
                 }
             }
@@ -2958,7 +2960,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     /// @notice Permissionless heartbeat. Closes the current tick, advances tick counter.
     ///         Execution order per spec §4.2 (CEI-safe):
     ///         CEI guard: nextHeartbeatAtTs written first to close reentrancy window.
-    ///         1. Settle missions completing this tick.
+    ///         1. Settle every clan through this tick in canonical upkeep-before-action order.
     ///         2. Execute scheduled market actions for closedTick (external calls).
     ///         3. Eager-settle bases and defenders in bandit spawn-candidate regions.
     ///         4. Advance bandit timers for the closed tick.
@@ -2975,9 +2977,15 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         // CEI: update rate-limit guard before any external calls
         _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
 
-        // Step 1: Settle missions that complete this tick (settlesAtTick == closedTick).
-        // Bounded by 12-clan cap x 4 clansmen = 48 max iterations.
-        _settleCompletingMissions(closedTick);
+        // Step 1: Settle clans through the closed tick in canonical upkeep-before-action order.
+        // Bounded by 12-clan cap x MAX_LAZY_SETTLE_BACKLOG x 4 clansmen.
+        for (uint256 i = 0; i < _allClanIds.length; i++) {
+            uint32 clanId = _allClanIds[i];
+            Clan storage clan = _clans[clanId];
+            if (clan.lastSettledTick <= closedTick) {
+                _settleClanThroughTick(clanId, closedTick + 1);
+            }
+        }
 
         // Step 2: Execute scheduled market actions for closedTick (may make external calls).
         _executeScheduledMarketActions(closedTick);
@@ -3006,30 +3014,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _world.nextHeartbeatAtTick = newTick + 1;
 
         emit TickAdvanced(closedTick, newTick, newSeed);
-    }
-
-    /// @dev Settle missions that complete exactly at `tick` (settlesAtTick == tick).
-    ///      Called from heartbeat before market execution and tick increment.
-    ///      Bounded by 12-clan cap x 4 clansmen = 48 max iterations.
-    function _settleCompletingMissions(uint64 tick) internal {
-        for (uint256 i = 0; i < _allClanIds.length; i++) {
-            uint32 clanId = _allClanIds[i];
-            Clan storage clan = _clans[clanId];
-            if (clan.clanState == ClanState.DEAD) continue;
-
-            uint32[] storage csIds = _clanClansmanIds[clanId];
-            for (uint256 j = 0; j < csIds.length; j++) {
-                Clansman storage cs = _clansmen[csIds[j]];
-                if (cs.state == ClansmanState.DEAD) continue;
-
-                Mission storage m = _missions[cs.clansmanId];
-                if (!m.active) continue;
-                if (m.settlesAtTick != tick) continue; // not due this tick
-
-                // Settle this mission using the single-tick range [tick, tick+1).
-                _settleMissionForClansman(clan, cs, clanId, tick, tick + 1);
-            }
-        }
     }
 
     /// @dev Resolve world events for the tick that was just closed.
