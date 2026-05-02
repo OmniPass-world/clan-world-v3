@@ -5,11 +5,21 @@ import {Test} from "forge-std/Test.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
 import {ClanWorld} from "../../src/ClanWorld.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
-import {IClanWorld, ActionType, Clan, Clansman, WheatPlot, WorldState} from "../../src/IClanWorld.sol";
+import {
+    IClanWorld,
+    ActionType,
+    Clan,
+    Clansman,
+    DerivedClanState,
+    DerivedClansmanState,
+    WheatPlot,
+    WorldState
+} from "../../src/IClanWorld.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
+import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
 
@@ -166,6 +176,40 @@ contract DiamondSkeletonTest is Test {
         _assertWheatPlotEq(diamondEast, coreEast);
     }
 
+    function testDiamondBasicDerivedViewsMatchCoreAfterMint() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        DerivedViewsFacet derivedViewsFacet = new DerivedViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_derivedViewsCut(address(derivedViewsFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        DerivedClanState memory diamondClan = IClanWorld(address(diamond)).getDerivedClanState(diamondClanId);
+        DerivedClanState memory coreClan = core.getDerivedClanState(coreClanId);
+        _assertDerivedClanStateEq(diamondClan, coreClan);
+
+        uint32 clansmanId = core.getClanClansmanIds(coreClanId)[0];
+        DerivedClansmanState memory diamondClansman = IClanWorld(address(diamond)).getDerivedClansmanState(clansmanId);
+        DerivedClansmanState memory coreClansman = core.getDerivedClansmanState(clansmanId);
+        _assertDerivedClansmanStateEq(diamondClansman, coreClansman);
+
+        DerivedClansmanState memory missing = IClanWorld(address(diamond)).getDerivedClansmanState(999);
+        assertEq(missing.effectiveRegion, 0);
+        assertEq(missing.derivedAtTick, core.getWorldState().currentTick);
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         bytes4[] memory selectors = new bytes4[](26);
         selectors[0] = IClanWorld.getWorldState.selector;
@@ -204,6 +248,17 @@ contract DiamondSkeletonTest is Test {
     function _lifecycleCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = IClanWorld.mintClan.selector;
+
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+        });
+    }
+
+    function _derivedViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        bytes4[] memory selectors = new bytes4[](2);
+        selectors[0] = IClanWorld.getDerivedClanState.selector;
+        selectors[1] = IClanWorld.getDerivedClansmanState.selector;
 
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -269,5 +324,23 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.region, expected.region, "plot region");
         assertEq(actual.remainingWheat, expected.remainingWheat, "remainingWheat");
         assertEq(actual.regrowUntilTick, expected.regrowUntilTick, "regrowUntilTick");
+    }
+
+    function _assertDerivedClanStateEq(DerivedClanState memory actual, DerivedClanState memory expected) internal pure {
+        _assertClanEq(actual.clan, expected.clan);
+        assertEq(actual.isStarving, expected.isStarving, "isStarving");
+        assertEq(actual.lootValue, expected.lootValue, "lootValue");
+        assertEq(actual.derivedAtTick, expected.derivedAtTick, "derivedAtTick");
+    }
+
+    function _assertDerivedClansmanStateEq(DerivedClansmanState memory actual, DerivedClansmanState memory expected)
+        internal
+        pure
+    {
+        _assertClansmanEq(actual.clansman, expected.clansman);
+        assertEq(actual.effectiveRegion, expected.effectiveRegion, "effectiveRegion");
+        assertEq(actual.derivedAtTick, expected.derivedAtTick, "derived clansman tick");
+        assertEq(actual.activeMission.active, expected.activeMission.active, "mission active");
+        assertEq(actual.activeMission.nonce, expected.activeMission.nonce, "mission nonce");
     }
 }
