@@ -22,6 +22,12 @@ contract HeartbeatFacet is IClanWorldEvents {
             LibStorage.exitNonReentrant(s);
             return;
         }
+        if (_isSeasonRolloverPending(s)) {
+            s.world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+            _rollSeason(s);
+            LibStorage.exitNonReentrant(s);
+            return;
+        }
 
         uint64 closedTick = s.world.currentTick;
         bytes32 closedTickSeed = s.world.currentTickSeed;
@@ -54,17 +60,25 @@ contract HeartbeatFacet is IClanWorldEvents {
     }
 
     function _isSeasonFinalizationPending(LibStorage.AppStorage storage s) private view returns (bool) {
-        return s.world.currentTick + 1 >= s.world.seasonEndTick && !s.world.seasonFinalized;
+        return s.world.currentTick >= s.world.seasonEndTick && !s.world.seasonFinalized;
+    }
+
+    function _isSeasonRolloverPending(LibStorage.AppStorage storage s) private view returns (bool) {
+        return s.world.currentTick >= s.world.seasonEndTick && s.world.seasonFinalized;
+    }
+
+    function _rollSeason(LibStorage.AppStorage storage s) private {
+        s.world.currentSeasonNumber += 1;
+        s.world.seasonStartTick = s.world.seasonEndTick;
+        s.world.seasonEndTick = s.world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
+        s.world.seasonFinalized = false;
     }
 
     function _resolveWorldEvents(LibStorage.AppStorage storage s, uint64 closedTick) private {
         uint64 newTick = closedTick + 1;
 
         if (newTick >= s.world.seasonEndTick && s.world.seasonFinalized) {
-            s.world.currentSeasonNumber += 1;
-            s.world.seasonStartTick = s.world.seasonEndTick;
-            s.world.seasonEndTick = s.world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
-            s.world.seasonFinalized = false;
+            _rollSeason(s);
         }
 
         bool wasWinter = LibSeason.isWinterActiveAt(closedTick);

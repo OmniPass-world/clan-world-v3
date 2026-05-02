@@ -2989,6 +2989,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (_isSeasonFinalizationPending()) {
             return;
         }
+        if (_isSeasonRolloverPending()) {
+            _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+            _rollSeason();
+            return;
+        }
 
         uint64 closedTick = _world.currentTick;
         bytes32 closedTickSeed = _world.currentTickSeed;
@@ -3042,10 +3047,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         // --- season boundary ---
         if (newTick >= _world.seasonEndTick && _world.seasonFinalized) {
-            _world.currentSeasonNumber += 1;
-            _world.seasonStartTick = _world.seasonEndTick;
-            _world.seasonEndTick = _world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
-            _world.seasonFinalized = false;
+            _rollSeason();
         }
 
         // --- winter transitions (timer only; mechanics = Phase 10) ---
@@ -3161,11 +3163,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Finalize season by settling final state and publishing rankings.
     function finalizeSeason() external override nonReentrant {
-        require(_world.currentTick + 1 >= _world.seasonEndTick, "ClanWorld: season not ended");
+        require(_world.currentTick >= _world.seasonEndTick, "ClanWorld: season not ended");
         require(!_world.seasonFinalized, "ClanWorld: season finalized");
 
         for (uint256 i = 0; i < _allClanIds.length; i++) {
-            _settleClanThroughTick(_allClanIds[i], _world.currentTick + 1);
+            _settleClanThroughTick(_allClanIds[i], _world.currentTick);
         }
 
         (uint32[] memory rankedClanIds, uint256[] memory scores) = _computeRankings();
@@ -4680,7 +4682,18 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     }
 
     function _isSeasonFinalizationPending() internal view returns (bool) {
-        return _world.currentTick + 1 >= _world.seasonEndTick && !_world.seasonFinalized;
+        return _world.currentTick >= _world.seasonEndTick && !_world.seasonFinalized;
+    }
+
+    function _isSeasonRolloverPending() internal view returns (bool) {
+        return _world.currentTick >= _world.seasonEndTick && _world.seasonFinalized;
+    }
+
+    function _rollSeason() internal {
+        _world.currentSeasonNumber += 1;
+        _world.seasonStartTick = _world.seasonEndTick;
+        _world.seasonEndTick = _world.seasonStartTick + ClanWorldConstants.SEASON_DURATION_TICKS;
+        _world.seasonFinalized = false;
     }
 
     function _requireNoPendingSeasonFinalization() internal view {

@@ -13,7 +13,7 @@ library LibGameRules {
 
     function requireNoPendingSeasonFinalization(LibStorage.AppStorage storage s) internal view {
         require(
-            !(s.world.currentTick + 1 >= s.world.seasonEndTick && !s.world.seasonFinalized),
+            !(s.world.currentTick >= s.world.seasonEndTick && !s.world.seasonFinalized),
             "ClanWorld: finalize season first"
         );
     }

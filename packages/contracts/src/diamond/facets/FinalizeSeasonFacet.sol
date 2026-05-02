@@ -12,13 +12,13 @@ contract FinalizeSeasonFacet is IClanWorldEvents {
     function finalizeSeason() external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
-        require(s.world.currentTick + 1 >= s.world.seasonEndTick, "ClanWorld: season not ended");
+        require(s.world.currentTick >= s.world.seasonEndTick, "ClanWorld: season not ended");
         require(!s.world.seasonFinalized, "ClanWorld: season finalized");
 
         for (uint256 i = 0; i < s.allClanIds.length; i++) {
             uint32 clanId = s.allClanIds[i];
             LibSettlement.SettlementSimulation memory sim =
-                LibSettlement.simulateToTick(s, clanId, s.world.currentTick + 1);
+                LibSettlement.simulateToTick(s, clanId, s.world.currentTick);
             LibSettlement.commitSimulation(s, sim);
         }
 
