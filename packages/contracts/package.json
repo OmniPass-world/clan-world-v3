@@ -7,10 +7,11 @@
     "./abi/IClanWorldLens.json": "./abi/IClanWorldLens.json"
   },
   "scripts": {
-    "build": "if command -v forge >/dev/null 2>&1; then forge build; else echo '[WARN] forge not installed - contracts NOT built. CI will fail. Install Foundry: https://getfoundry.sh' >&2; fi",
-    "codegen": "forge_bin=$(command -v forge || command -v \"$HOME/.foundry/bin/forge\" || true); if [ -n \"$forge_bin\" ]; then \"$forge_bin\" build src/IClanWorld.sol src/IClanWorldLens.sol && node ../../scripts/gen-contract-abi.mjs; else echo 'forge not installed; cannot generate ABI'; exit 1; fi",
-    "check:abi": "bash -c 'forge_bin=$(command -v forge || command -v \"$HOME/.foundry/bin/forge\" || true); if [ -n \"$forge_bin\" ]; then command -v jq >/dev/null 2>&1 || { echo \"jq not installed; cannot check ABI\"; exit 1; }; \"$forge_bin\" build src/IClanWorld.sol src/IClanWorldLens.sol && diff <(jq \".abi\" out/IClanWorld.sol/IClanWorld.json) <(jq \".abi\" abi/IClanWorld.json) && diff <(jq \".abi\" out/IClanWorldLens.sol/IClanWorldLens.json) <(jq \".abi\" abi/IClanWorldLens.json); else echo \"[WARN] forge not installed - ABI drift NOT checked. CI will fail. Install Foundry: https://getfoundry.sh\" >&2; fi'",
-    "test": "forge_bin=$(command -v forge || command -v \"$HOME/.foundry/bin/forge\" || true); if [ -n \"$forge_bin\" ]; then pnpm run check:abi && \"$forge_bin\" test;  else echo '[WARN] forge not installed - contract tests NOT run. CI will fail. Install Foundry: https://getfoundry.sh' >&2; fi",
+    "build": "bash scripts/forge.sh build script/DeployDiamond.s.sol src/IClanWorld.sol src/IClanWorldLens.sol",
+    "codegen": "bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol && node ../../scripts/gen-contract-abi.mjs",
+    "check:abi": "bash -c 'command -v jq >/dev/null 2>&1 || { echo \"jq not installed; cannot check ABI\"; exit 1; }; bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol && diff <(jq \".abi\" out/IClanWorld.sol/IClanWorld.json) <(jq \".abi\" abi/IClanWorld.json) && diff <(jq \".abi\" out/IClanWorldLens.sol/IClanWorldLens.json) <(jq \".abi\" abi/IClanWorldLens.json)'",
+    "check:sizes": "node scripts/check-contract-sizes.mjs",
+    "test": "pnpm run check:abi && bash scripts/forge.sh test",
     "typecheck": "echo 'no TS in contracts package'",
     "lint": "echo 'lint stub'",
     "clean": "rm -rf out cache .turbo"

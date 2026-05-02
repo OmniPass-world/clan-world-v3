@@ -1,0 +1,44 @@
+name: Contracts
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: pnpm install --frozen-lockfile
+      - name: Build contracts
+        working-directory: packages/contracts
+        run: pnpm run build
+      - name: Check deployable bytecode sizes
+        working-directory: packages/contracts
+        run: pnpm run check:sizes
+      - name: Run targeted contract gates
+        working-directory: packages/contracts
+        run: |
+          bash scripts/forge.sh test --match-path test/diamond/DiamondSkeleton.t.sol
+          bash scripts/forge.sh test --match-path test/diamond/StorageLayoutGuard.t.sol
+          bash scripts/forge.sh test --match-path test/SeasonFinalization.t.sol
+          bash scripts/forge.sh test --match-path test/HeartbeatOrdering.t.sol
+          bash scripts/forge.sh test --match-path test/BanditAttackResolution.t.sol
+          bash scripts/forge.sh test --match-path test/ReservationConsistency.t.sol
+      - name: Dry-run diamond deploy script
+        working-directory: packages/contracts
+        env:
+          DEPLOYER_PRIVATE_KEY: 0x59c6995e998f97a5a0044966f094538a006b364ed7ced4d55405b87ae35b0b2a
+        run: bash scripts/forge.sh script script/DeployDiamond.s.sol:DeployDiamond
