@@ -346,7 +346,7 @@ contract BanditAttackResolutionTest is Test {
 
     function test_deadTargetCleanupReleasesDefendersAndEscapesBandit() public {
         uint64 winterStart = world.getWorldState().winterStartsAtTick;
-        _advanceUntil(winterStart + 4);
+        _advanceUntil(winterStart + 5);
 
         uint32[] memory clanIds = _mintClans(3);
         world.blockBanditSpawnsForTest();
@@ -373,9 +373,9 @@ contract BanditAttackResolutionTest is Test {
         uint32 banditId = _forceAttack(targetClanId, 100);
         // closedTick semantics (#328b): _abortBanditAttacksForDeadTarget now uses the
         // caller-provided settlement tick (when the last clansman dies), not _world.currentTick.
-        // Starvation deaths are deferred one winter tick; with 3 living clansmen,
-        // deaths land at winterStart+1, +2, and +3.
-        uint64 expectedBanditAbortTick = deathFromTick + 3;
+        // Starvation starts on the tick after upkeep failure; with 3 living clansmen,
+        // deaths land at winterStart+2, +3, and +4.
+        uint64 expectedBanditAbortTick = deathFromTick + 4;
 
         vm.recordLogs();
         world.settleClan(targetClanId);
@@ -541,7 +541,7 @@ contract BanditAttackResolutionTest is Test {
 
     function test_resolveBanditAttackReturnsWhenTargetDiesDuringSettlement() public {
         uint64 winterStart = world.getWorldState().winterStartsAtTick;
-        _advanceUntil(winterStart + 2);
+        _advanceUntil(winterStart + 3);
 
         uint32 targetClanId = _mintClan();
         world.setClanUpkeepState(targetClanId, winterStart, 0, 0);

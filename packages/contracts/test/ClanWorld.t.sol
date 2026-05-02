@@ -3276,7 +3276,7 @@ contract ClanWorldTest is Test {
         Clan memory preWinterClan = world.getClan(preWinterStarver);
         Clan memory winterClan = world.getClan(winterStarver);
         assertEq(preWinterClan.livingClansmen, 3, "pre-winter starver should skip first winter tick death");
-        assertEq(winterClan.livingClansmen, 3, "fresh winter starver should match pre-winter cadence");
+        assertEq(winterClan.livingClansmen, 4, "fresh winter starver starts on the next tick");
     }
 
     function test_winter_starvationWoodBurnUsesPreDeathLivingCount() public {
@@ -3364,14 +3364,20 @@ contract ClanWorldTest is Test {
         world.settleClan(clanId);
 
         Clan memory clan = world.getClan(clanId);
-        assertEq(clan.starvationStartsAtTick, winterStart, "starvation starts on first short-food tick");
+        assertEq(clan.starvationStartsAtTick, winterStart + 1, "starvation starts on next tick");
         assertEq(clan.livingClansmen, 4, "first starvation tick should not kill");
 
         _advanceTick();
         world.settleClan(clanId);
 
         clan = world.getClan(clanId);
-        assertEq(clan.livingClansmen, 3, "first death lands on the next tick");
+        assertEq(clan.livingClansmen, 4, "starvation onset tick should not kill");
+
+        _advanceTick();
+        world.settleClan(clanId);
+
+        clan = world.getClan(clanId);
+        assertEq(clan.livingClansmen, 3, "first death lands after one starving tick");
     }
 
     function test_clanDeath_starvationMarksDeadBurnsVaultAndPreservesGold() public {
@@ -3381,7 +3387,7 @@ contract ClanWorldTest is Test {
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
         uint256 goldBalance = 11e18;
 
-        _advanceToTick(winterStart + 5);
+        _advanceToTick(winterStart + 6);
         harness.setClanUpkeepState(clanId, winterStart, 100e18, 0, 0, 0);
         harness.setClanIronAndGold(clanId, 5e18, goldBalance);
 
@@ -3397,7 +3403,7 @@ contract ClanWorldTest is Test {
         assertEq(clan.vaultFish, 0, "fish should burn on death");
         assertEq(clan.vaultIron, 0, "iron should burn on death");
         assertEq(clan.goldBalance, goldBalance, "gold should survive clan death");
-        _assertClanDiedLog(logs, clanId, winterStart + 4, "starvation");
+        _assertClanDiedLog(logs, clanId, winterStart + 5, "starvation");
     }
 
     function test_clanDeath_coldDamageMarksDeadAndBurnsVault() public {
@@ -3432,7 +3438,7 @@ contract ClanWorldTest is Test {
         uint32 clanId = _mintClan();
 
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
-        _advanceToTick(winterStart + 5);
+        _advanceToTick(winterStart + 6);
         harness.setClanUpkeepState(clanId, winterStart, 100e18, 0, 0, 0);
         world.settleClan(clanId);
 
@@ -3448,7 +3454,7 @@ contract ClanWorldTest is Test {
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
         Clan memory clanABefore = world.getClan(clanIdA);
 
-        _advanceToTick(winterStart + 5);
+        _advanceToTick(winterStart + 6);
         harness.setClanUpkeepState(clanIdB, winterStart, 100e18, 0, 0, 0);
         world.settleClan(clanIdB);
 
