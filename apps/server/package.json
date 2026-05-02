@@ -8,14 +8,17 @@
     "build": "tsc -b",
     "codegen": "convex codegen --typecheck disable",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run convex/indexer.test.ts",
     "lint": "echo 'lint stub'",
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
     "@clan-world/shared": "workspace:*",
-    "convex": "1.17.4"
+    "convex": "1.17.4",
+    "viem": "2.48.4"
   },
   "devDependencies": {
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
   }
 }

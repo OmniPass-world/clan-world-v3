@@ -76,10 +76,16 @@ importers:
       convex:
         specifier: 1.17.4
         version: 1.17.4(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      viem:
+        specifier: 2.48.4
+        version: 2.48.4(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@5.0.10)
     devDependencies:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/node@25.6.0)(lightningcss@1.32.0)
 
   apps/web:
     dependencies:
