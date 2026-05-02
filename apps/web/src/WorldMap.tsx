@@ -549,6 +549,9 @@ export function WorldMap() {
   const seenTravelLogIdsRef = useRef<Set<string>>(new Set());
   const travelIdSeqRef = useRef(0);
   const combatVignetteRef = useRef<CombatVignette | null>(null);
+  // Set true after a `?combat=success` vignette completes, so the bandit
+  // stays hidden post-fade-out instead of popping back to the home anchor.
+  const banditDefeatedRef = useRef(false);
   const combatTickerCbRef = useRef<(() => void) | null>(null);
   const combatPlayedTickRef = useRef<number | null>(null);
   const liveTickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
@@ -1191,14 +1194,14 @@ export function WorldMap() {
         .then((texture) => {
           const cancelled = isAssetLoadCancelled();
           if (cancelled || !appRef.current) return;
-          // Defer the sprite swap if a combat vignette is mid-flight — the
-          // banditIcon Graphics is currently the vignette's reparented bandit
-          // and redrawBandit() would clear/reposition it back to the home
-          // anchor, snapping the bandit out of choreography (codex 5.4 MEDIUM
-          // #2). The vignette will complete on the fallback icon; a future
-          // sprite-promotion can land in finishCombatVignette or the next
-          // redrawBandit cycle.
-          if (combatVignetteRef.current) return;
+          // The .then() fires once per page load. Earlier round-2 fix
+          // early-returned during vignette to avoid redrawBandit() snapping
+          // the reparented banditIcon back to home — but skipping creation
+          // entirely meant the sprite was permanently lost if the asset
+          // resolved mid-vignette (gemini r3 HIGH #1). Now: always create
+          // the sprite + assign to drawn; only skip the redraw if a
+          // vignette is active. finishCombatVignette() calls redrawBandit
+          // afterward which positions the new sprite.
           const sprite = new Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
           sprite.alpha = 0; // hidden until first redrawBandit positions it
@@ -1210,6 +1213,7 @@ export function WorldMap() {
           });
           layers.worldDynamic.addChild(sprite);
           drawn.banditSprite = sprite;
+          if (combatVignetteRef.current) return;
           redrawBandit();
         })
         .catch(() => {
@@ -1513,6 +1517,18 @@ export function WorldMap() {
     const sprite = drawn.banditSprite;
     const text = drawn.banditCountdown;
     if (!icon || !text) return;
+    // After a `?combat=success` vignette completes, the bandit is defeated.
+    // Skip all redraw / re-show on subsequent layouts (gemini r3 HIGH #2).
+    if (banditDefeatedRef.current) {
+      icon.visible = false;
+      icon.alpha = 0;
+      if (sprite) {
+        sprite.visible = false;
+        sprite.alpha = 0;
+      }
+      text.visible = false;
+      return;
+    }
 
     const region = REGIONS.find(r => r.id === DEMO_BANDIT.regionId);
     if (!region) return;
@@ -1706,7 +1722,17 @@ export function WorldMap() {
     vignette.targetBase.x = vignette.baseStart.x;
     vignette.targetBase.y = vignette.baseStart.y;
     vignette.targetBase.scale.set(vignette.baseStart.scaleX, vignette.baseStart.scaleY);
-    if (vignette.bandit) {
+    // On success outcome the vignette fades the bandit to alpha=0 + 0.3 scale;
+    // unconditionally restoring banditStart would pop the defeated bandit
+    // back to full opacity (gemini r3 HIGH #2). Lock the defeated state via
+    // banditDefeatedRef + skip the visual restore on success.
+    if (vignette.outcome === 'success' && !force) {
+      banditDefeatedRef.current = true;
+      if (vignette.bandit) {
+        vignette.bandit.alpha = 0;
+        vignette.bandit.visible = false;
+      }
+    } else if (vignette.bandit) {
       vignette.bandit.x = vignette.banditStart.x;
       vignette.bandit.y = vignette.banditStart.y;
       vignette.bandit.scale.set(vignette.banditStart.scaleX, vignette.banditStart.scaleY);
@@ -1872,6 +1898,8 @@ export function WorldMap() {
       // (opus 4.7 SuperSwarm catch). The vignette window overlaps the pulse
       // window when banditTicksUntil ∈ [0, 2].
       if (combatVignetteRef.current) return;
+      // Defeated bandit stays hidden — don't pulse it back into visibility.
+      if (banditDefeatedRef.current) return;
       const icon = drawnRef.current.banditIcon;
       const sprite = drawnRef.current.banditSprite;
       const t = performance.now() / 220;
