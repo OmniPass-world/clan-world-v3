@@ -18,5 +18,12 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - name: Require Foundry
+        run: |
+          command -v forge >/dev/null 2>&1 || {
+            echo "::error::forge is not installed, so contract ABI drift checks cannot run. Install Foundry: https://getfoundry.sh"
+            exit 1
+          }
+          forge --version
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:chainclient-abi
