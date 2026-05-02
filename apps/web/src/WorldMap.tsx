@@ -114,6 +114,9 @@ type WorldLayers = {
   selectionRings: Container;
   bubbleLayer: Container;
   screenEffects: Container;
+  combatDim: Graphics;
+  combatHighlight: Container;
+  combatFlash: Graphics;
 };
 
 type CarryIndicator = {
@@ -149,12 +152,48 @@ interface WorkerTravel {
   carry: CarryIndicator;
 }
 
+type CombatOutcome = 'success' | 'failure';
+
+type ReparentedCombatant = {
+  node: Container;
+  parent: Container;
+  zIndex: number;
+  wasTemporary?: boolean;
+};
+
+type CombatVignette = {
+  startedAt: number;
+  outcome: CombatOutcome;
+  bandit: Container | null;
+  targetBase: Container;
+  defenders: Container[];
+  reparented: ReparentedCombatant[];
+  baseStart: { x: number; y: number; scaleX: number; scaleY: number };
+  banditStart: { x: number; y: number; scaleX: number; scaleY: number; alpha: number };
+  defenderStarts: { x: number; y: number }[];
+  center: { x: number; y: number };
+};
+
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
 const TRAVEL_FADE_OUT_MS = 1200; // longer linger at destination
 const TRAVEL_DEST_LINGER_MS = 2500; // hold at destination at full alpha before fading
 const TRAVEL_MIN_MS = 4500;
 const TRAVEL_MAX_MS = 8000;
 const CANNED_TRAVEL_INTERVAL_MS = 1800; // continuous spawn — keeps map alive
+
+const COMBAT_VIGNETTE_LEAD_MS = 4000;
+const COMBAT_ADVANCE_MS = 1500;
+const COMBAT_FLASH_START_MS = 2000;
+const COMBAT_FLASH_IN_MS = 80;
+const COMBAT_FLASH_HOLD_MS = 100;
+const COMBAT_FLASH_FADE_MS = 800;
+const COMBAT_RESOLUTION_START_MS = 2200;
+const COMBAT_RESOLUTION_CAP_MS = 1500;
+const COMBAT_TOTAL_MS = COMBAT_RESOLUTION_START_MS + COMBAT_RESOLUTION_CAP_MS + 600;
+const COMBAT_DIM_ALPHA = 0.55;
+const COMBAT_DIM_TINT = 0x1a1a3a;
+const COMBAT_TARGET_CLAN_ID = 'clan-ember';
+const DEMO_COMBAT_OUTCOME: CombatOutcome = 'failure';
 
 // TODO(contract-bindings): replace these demo defaults when carry caps are exposed.
 const WOOD_CAP = 10;
@@ -284,7 +323,18 @@ function createWorldLayers(): WorldLayers {
   const selectionRings = new Container();
   const bubbleLayer = new Container();
   const screenEffects = new Container();
+  const combatDim = new Graphics();
+  const combatHighlight = new Container();
+  const combatFlash = new Graphics();
   worldDynamic.sortableChildren = true;
+  screenEffects.sortableChildren = true;
+  combatHighlight.sortableChildren = true;
+  combatDim.zIndex = 0;
+  combatHighlight.zIndex = 1;
+  combatFlash.zIndex = 2;
+  combatDim.alpha = 0;
+  combatFlash.alpha = 0;
+  screenEffects.addChild(combatDim, combatHighlight, combatFlash);
   worldContainer.addChild(terrainBackground, terrainAccents, worldDynamic);
   return {
     worldContainer,
@@ -295,6 +345,9 @@ function createWorldLayers(): WorldLayers {
     selectionRings,
     bubbleLayer,
     screenEffects,
+    combatDim,
+    combatHighlight,
+    combatFlash,
   };
 }
 
@@ -338,6 +391,14 @@ function clamp01(value: number) {
 
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
+}
+
+function easeOutQuad(t: number) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+function easeInQuad(t: number) {
+  return t * t;
 }
 
 function getDayNightFrame(progress01: number): DayNightKeyframe {
@@ -478,6 +539,11 @@ export function WorldMap() {
   const travelTickerCbRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
   const seenTravelLogIdsRef = useRef<Set<string>>(new Set());
   const travelIdSeqRef = useRef(0);
+  const combatVignetteRef = useRef<CombatVignette | null>(null);
+  const combatTickerCbRef = useRef<(() => void) | null>(null);
+  const combatPlayedTickRef = useRef<number | null>(null);
+  const liveTickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
+  const liveTickRef = useRef(0);
 
   // Zone-pulse ticker (visual heartbeat for clan zone halos).
   const zonePulseCbRef = useRef<(() => void) | null>(null);
@@ -499,6 +565,13 @@ export function WorldMap() {
   }, [logs, snapshot?.tick]);
   const banditTicksUntil = DEMO_BANDIT.attacksAtTick - liveTick;
   const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
+
+  useEffect(() => {
+    liveTickRef.current = liveTick;
+    if (liveTickClockRef.current.tick !== liveTick) {
+      liveTickClockRef.current = { tick: liveTick, seenAtMs: Date.now() };
+    }
+  }, [liveTick]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -859,6 +932,12 @@ export function WorldMap() {
         dayNightTickerCbRef.current = dayNightCb;
         app.ticker.add(dayNightCb);
 
+        const combatCb = () => {
+          updateCombatVignette();
+        };
+        combatTickerCbRef.current = combatCb;
+        app.ticker.add(combatCb);
+
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
         // viewport handles screen-fit transformation. Children inside the viewport
@@ -882,6 +961,8 @@ export function WorldMap() {
       if (a && travelTickerCbRef.current) a.ticker.remove(travelTickerCbRef.current);
       if (a && zonePulseCbRef.current) a.ticker.remove(zonePulseCbRef.current);
       if (a && dayNightTickerCbRef.current) a.ticker.remove(dayNightTickerCbRef.current);
+      if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
+      finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
       selectedRef.current = null;
       bubblesByClanRef.current.clear();
@@ -896,6 +977,7 @@ export function WorldMap() {
       travelTickerCbRef.current = null;
       zonePulseCbRef.current = null;
       dayNightTickerCbRef.current = null;
+      combatTickerCbRef.current = null;
       dayNightFilterRef.current = null;
       drawnRef.current = {
         regions: [],
@@ -1236,6 +1318,16 @@ export function WorldMap() {
       drawn.bgSprite.y = 0;
     }
 
+    const layers = layersRef.current;
+    if (layers) {
+      layers.combatDim.clear();
+      layers.combatDim.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      layers.combatDim.fill({ color: COMBAT_DIM_TINT, alpha: 1 });
+      layers.combatFlash.clear();
+      layers.combatFlash.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      layers.combatFlash.fill({ color: 0xffffff, alpha: 1 });
+    }
+
     const regionMap = new Map(REGIONS.map(r => [r.id, r]));
 
     if (DEMO_MODE) {
@@ -1450,6 +1542,243 @@ export function WorldMap() {
     const markerHalfW = sprite ? spriteSize / 2 : ringR;
     text.x = iconX + markerHalfW + 4;
     text.y = iconY;
+  }
+
+  function getMsUntilTickClose() {
+    const snap = snapshotRef.current;
+    const epoch = snap?.tickEpoch;
+    const durationMs =
+      epoch && typeof epoch.durationMs === 'number' && epoch.durationMs > 0
+        ? epoch.durationMs
+        : FALLBACK_DAY_TICK_MS;
+    if (epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0 && snap?.tick === liveTickRef.current) {
+      const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
+      return Math.max(0, durationMs - (Date.now() - startedAtMs));
+    }
+    const elapsed = Date.now() - liveTickClockRef.current.seenAtMs;
+    return Math.max(0, durationMs - elapsed);
+  }
+
+  function shouldStartCombatVignette() {
+    if (!DEMO_MODE || combatVignetteRef.current) return false;
+    const attackTick = DEMO_BANDIT.attacksAtTick;
+    if (combatPlayedTickRef.current === attackTick) return false;
+    const currentTick = liveTickRef.current;
+    if (currentTick === attackTick - 1) {
+      return getMsUntilTickClose() <= COMBAT_VIGNETTE_LEAD_MS;
+    }
+    return currentTick >= attackTick;
+  }
+
+  function makeCombatDefender(color: number, clanId: string) {
+    const tex = clansmanTextureCache[clanId];
+    if (tex) {
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 0.5);
+      const targetH = 32;
+      const ratio = targetH / sprite.texture.height;
+      sprite.height = targetH;
+      sprite.width = sprite.texture.width * ratio;
+      return sprite;
+    }
+
+    const fallback = new Graphics();
+    fallback.circle(0, 0, 8);
+    fallback.fill({ color, alpha: 1 });
+    fallback.stroke({ color: 0xffffff, width: 1, alpha: 0.75 });
+    return fallback;
+  }
+
+  function reparentForCombat(node: Container, vignette: CombatVignette, wasTemporary = false) {
+    const layers = layersRef.current;
+    const parent = node.parent;
+    if (!layers || !(parent instanceof Container)) return;
+    vignette.reparented.push({ node, parent, zIndex: node.zIndex, wasTemporary });
+    parent.removeChild(node);
+    layers.combatHighlight.addChild(node);
+    node.zIndex = Math.round(node.y);
+  }
+
+  function startCombatVignette() {
+    const layers = layersRef.current;
+    if (!layers) return;
+    const drawn = drawnRef.current;
+    const targetClan =
+      MOCK_CLANS.find(c => c.id === COMBAT_TARGET_CLAN_ID)
+      ?? MOCK_CLANS.find(c => c.homeRegion === DEMO_BANDIT.regionId);
+    if (!targetClan) return;
+    const targetBase = drawn.bases.find(b => b.clan.id === targetClan.id);
+    if (!targetBase) return;
+
+    const targetBaseNode = targetBase.container;
+    const baseSize = Math.max(96, 144 * layoutRef.current.scale);
+    const center = {
+      x: targetBaseNode.x,
+      y: targetBaseNode.y - baseSize * 0.55,
+    };
+    const bandit = drawn.banditSprite ?? drawn.banditIcon;
+    if (!bandit) return;
+
+    const defenderAngles = [Math.PI * 0.75, Math.PI * 0.5, Math.PI * 0.25];
+    const defenders = defenderAngles.map((angle) => {
+      const defender = makeCombatDefender(targetClan.color, targetClan.id);
+      defender.x = center.x + Math.cos(angle) * 58;
+      defender.y = center.y + Math.sin(angle) * 34;
+      defender.zIndex = Math.round(defender.y);
+      layers.worldDynamic.addChild(defender);
+      return defender;
+    });
+
+    const vignette: CombatVignette = {
+      startedAt: performance.now(),
+      outcome: DEMO_COMBAT_OUTCOME,
+      bandit,
+      targetBase: targetBaseNode,
+      defenders,
+      reparented: [],
+      baseStart: {
+        x: targetBaseNode.x,
+        y: targetBaseNode.y,
+        scaleX: targetBaseNode.scale.x,
+        scaleY: targetBaseNode.scale.y,
+      },
+      banditStart: {
+        x: bandit.x,
+        y: bandit.y,
+        scaleX: bandit.scale.x,
+        scaleY: bandit.scale.y,
+        alpha: bandit.alpha,
+      },
+      defenderStarts: defenders.map(d => ({ x: d.x, y: d.y })),
+      center,
+    };
+
+    reparentForCombat(targetBaseNode, vignette);
+    reparentForCombat(bandit, vignette);
+    defenders.forEach(defender => reparentForCombat(defender, vignette, true));
+    combatVignetteRef.current = vignette;
+    combatPlayedTickRef.current = DEMO_BANDIT.attacksAtTick;
+  }
+
+  function finishCombatVignette(force = false) {
+    const vignette = combatVignetteRef.current;
+    const layers = layersRef.current;
+    if (!vignette || !layers) return;
+
+    layers.combatDim.alpha = 0;
+    layers.combatFlash.alpha = 0;
+    vignette.targetBase.x = vignette.baseStart.x;
+    vignette.targetBase.y = vignette.baseStart.y;
+    vignette.targetBase.scale.set(vignette.baseStart.scaleX, vignette.baseStart.scaleY);
+    if (vignette.bandit) {
+      vignette.bandit.x = vignette.banditStart.x;
+      vignette.bandit.y = vignette.banditStart.y;
+      vignette.bandit.scale.set(vignette.banditStart.scaleX, vignette.banditStart.scaleY);
+      vignette.bandit.alpha = vignette.banditStart.alpha;
+    }
+
+    for (const item of vignette.reparented) {
+      if (item.node.parent) item.node.parent.removeChild(item.node);
+      if (item.wasTemporary) {
+        item.node.destroy({ children: true });
+        continue;
+      }
+      item.parent.addChild(item.node);
+      item.node.zIndex = item.zIndex;
+    }
+    layers.combatHighlight.removeChildren();
+    combatVignetteRef.current = null;
+    if (!force) redrawBandit();
+  }
+
+  function updateCombatVignette() {
+    if (shouldStartCombatVignette()) startCombatVignette();
+    const vignette = combatVignetteRef.current;
+    const layers = layersRef.current;
+    if (!vignette || !layers) return;
+
+    const now = performance.now();
+    const age = now - vignette.startedAt;
+    if (age >= COMBAT_TOTAL_MS) {
+      finishCombatVignette();
+      return;
+    }
+
+    const fadeOutStart = COMBAT_TOTAL_MS - 600;
+    if (age < 600) {
+      layers.combatDim.alpha = COMBAT_DIM_ALPHA * clamp01(age / 600);
+    } else if (age >= fadeOutStart) {
+      layers.combatDim.alpha = COMBAT_DIM_ALPHA * (1 - clamp01((age - fadeOutStart) / 600));
+    } else {
+      layers.combatDim.alpha = COMBAT_DIM_ALPHA;
+    }
+
+    const flashAge = age - COMBAT_FLASH_START_MS;
+    if (flashAge < 0) {
+      layers.combatFlash.alpha = 0;
+    } else if (flashAge < COMBAT_FLASH_IN_MS) {
+      layers.combatFlash.alpha = clamp01(flashAge / COMBAT_FLASH_IN_MS);
+    } else if (flashAge < COMBAT_FLASH_IN_MS + COMBAT_FLASH_HOLD_MS) {
+      layers.combatFlash.alpha = 1;
+    } else {
+      const fadeAge = flashAge - COMBAT_FLASH_IN_MS - COMBAT_FLASH_HOLD_MS;
+      layers.combatFlash.alpha = Math.max(0, 1 - fadeAge / COMBAT_FLASH_FADE_MS);
+    }
+
+    if (age < COMBAT_ADVANCE_MS) {
+      const t = easeInQuad(clamp01(age / COMBAT_ADVANCE_MS));
+      if (vignette.bandit) {
+        vignette.bandit.x = lerp(vignette.banditStart.x, vignette.center.x - 24, t);
+        vignette.bandit.y = lerp(vignette.banditStart.y, vignette.center.y - 8, t);
+      }
+      vignette.defenders.forEach((defender, i) => {
+        const start = vignette.defenderStarts[i];
+        if (!start) return;
+        defender.x = lerp(start.x, vignette.center.x + 18 + i * 8, t);
+        defender.y = lerp(start.y, vignette.center.y + 10, t);
+      });
+    } else if (age < COMBAT_FLASH_START_MS) {
+      const jitter = Math.sin(now / 55) * 1;
+      if (vignette.bandit) {
+        vignette.bandit.x = vignette.center.x - 24 + jitter;
+        vignette.bandit.y = vignette.center.y - 8;
+      }
+      vignette.defenders.forEach((defender, i) => {
+        defender.x = vignette.center.x + 18 + i * 8 - jitter;
+        defender.y = vignette.center.y + 10 + Math.sin(now / 70 + i) * 1;
+      });
+    } else if (age >= COMBAT_RESOLUTION_START_MS) {
+      const rAge = age - COMBAT_RESOLUTION_START_MS;
+      if (vignette.outcome === 'success') {
+        const launchT = easeOutQuad(clamp01(rAge / 600));
+        if (vignette.bandit) {
+          vignette.bandit.x = vignette.center.x - 24 - launchT * 60;
+          vignette.bandit.y = vignette.center.y - 8 - launchT * 16;
+          const fadeT = clamp01((rAge - 250) / 600);
+          const s = lerp(1, 0.3, fadeT);
+          vignette.bandit.scale.set(vignette.banditStart.scaleX * s, vignette.banditStart.scaleY * s);
+          vignette.bandit.alpha = 1 - fadeT;
+        }
+        vignette.defenders.forEach((defender, i) => {
+          defender.y = vignette.center.y + 10 + Math.sin(now / 90 + i) * 5;
+        });
+      } else {
+        const jumpT = easeOutQuad(clamp01(rAge / 300));
+        vignette.defenders.forEach((defender, i) => {
+          const angle = Math.PI * (0.2 + i * 0.22);
+          defender.x = vignette.center.x + 16 + i * 8 + Math.cos(angle) * 28 * jumpT;
+          defender.y = vignette.center.y + 10 + Math.sin(angle) * 20 * jumpT;
+        });
+        const dropT = easeInQuad(clamp01(rAge / 400));
+        vignette.targetBase.scale.y = lerp(vignette.baseStart.scaleY, vignette.baseStart.scaleY * 0.9, dropT);
+      }
+    }
+
+    if (vignette.bandit) vignette.bandit.zIndex = Math.round(vignette.bandit.y);
+    vignette.defenders.forEach(defender => {
+      defender.zIndex = Math.round(defender.y);
+    });
+    vignette.targetBase.zIndex = Math.round(vignette.targetBase.y);
   }
 
   // Tick changes: refresh bandit countdown (demo mode only)
