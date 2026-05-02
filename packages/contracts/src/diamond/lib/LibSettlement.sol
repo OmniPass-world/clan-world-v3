@@ -20,6 +20,9 @@ import {LibSeason} from "./LibSeason.sol";
 import {LibSettlementMath} from "./LibSettlementMath.sol";
 
 library LibSettlement {
+    uint8 internal constant WALL_MAX_LEVEL = 5;
+    uint8 internal constant BASE_MAX_LEVEL = 5;
+
     struct SettlementSimulation {
         Clan clan;
         Clansman[] clansmen;
@@ -342,6 +345,10 @@ library LibSettlement {
             (cs, m) = doDeposit(sim, cs, m);
         } else if (action == ActionType.WithdrawResources) {
             (cs, m) = doWithdrawResources(s, sim, cs, m);
+        } else if (
+            action == ActionType.UpgradeWall || action == ActionType.UpgradeBase || action == ActionType.UpgradeMonument
+        ) {
+            (cs, m) = doBuilding(s, sim, cs, m, action, tick);
         } else if (action == ActionType.MarketBuy || action == ActionType.MarketSell) {
             (cs, m) = completeMission(cs, m);
         }
@@ -351,7 +358,7 @@ library LibSettlement {
 
     function gatherWood(Clansman memory cs, Mission memory m, uint64 tick, bool starving, bytes32 tickSeed)
         internal
-        pure
+        view
         returns (Clansman memory, Mission memory)
     {
         uint256 remaining = ClanWorldConstants.WOOD_CAP - cs.carryWood;
@@ -380,7 +387,7 @@ library LibSettlement {
         uint64 tick,
         bool starving,
         bytes32 tickSeed
-    ) internal pure returns (Clansman memory, Mission memory) {
+    ) internal view returns (Clansman memory, Mission memory) {
         uint256 remaining = ClanWorldConstants.IRON_CAP - cs.carryIron;
         if (remaining == 0) return completeMission(cs, m);
 
@@ -408,7 +415,7 @@ library LibSettlement {
         bool starving,
         bytes32 tickSeed,
         uint256 successBps
-    ) internal pure returns (Clansman memory, Mission memory) {
+    ) internal view returns (Clansman memory, Mission memory) {
         uint256 remaining = ClanWorldConstants.FISH_CAP - cs.carryFish;
         if (remaining == 0) return completeMission(cs, m);
 
@@ -434,7 +441,7 @@ library LibSettlement {
         Mission memory m,
         uint64 tick,
         bool starving
-    ) internal pure returns (Clansman memory, Mission memory) {
+    ) internal view returns (Clansman memory, Mission memory) {
         uint256 remaining = ClanWorldConstants.WHEAT_CAP - cs.carryWheat;
         if (remaining == 0) return completeMission(cs, m);
 
@@ -475,7 +482,7 @@ library LibSettlement {
 
     function doDeposit(SettlementSimulation memory sim, Clansman memory cs, Mission memory m)
         internal
-        pure
+        view
         returns (Clansman memory, Mission memory)
     {
         if (cs.currentRegion != sim.clan.baseRegion) return completeMission(cs, m);
@@ -538,12 +545,178 @@ library LibSettlement {
         return completeMission(cs, m);
     }
 
-    function completeMission(Clansman memory cs, Mission memory m)
+    function doBuilding(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        Clansman memory cs,
+        Mission memory m,
+        ActionType action,
+        uint64 tick
+    ) internal view returns (Clansman memory, Mission memory) {
+        bool finished = true;
+        if (cs.currentRegion == sim.clan.baseRegion) {
+            if (action == ActionType.UpgradeWall) {
+                finished = settleWallUpgrade(s, sim, cs.clansmanId, m.nonce);
+            } else if (action == ActionType.UpgradeBase) {
+                finished = settleBaseUpgrade(s, sim, cs.clansmanId, m.nonce);
+            } else if (action == ActionType.UpgradeMonument) {
+                finished = settleMonumentUpgrade(s, sim, cs.clansmanId, m.nonce, tick);
+            }
+        }
+        if (finished) return completeMission(cs, m);
+        return (cs, m);
+    }
+
+    function settleWallUpgrade(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        uint32 clansmanId,
+        uint64 missionNonce
+    ) internal view returns (bool) {
+        if (upgradeReservationCleared(sim, clansmanId, ActionType.UpgradeWall)) return true;
+        LibStorage.WallUpgradeReservation memory held = s.wallUpgradeReservations[clansmanId];
+        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
+        if (sim.clan.wallLevel >= WALL_MAX_LEVEL) return true;
+        if (held.fromLevel != sim.clan.wallLevel) {
+            if (held.fromLevel < sim.clan.wallLevel) {
+                clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            }
+            return false;
+        }
+
+        (uint256 woodCost, uint256 ironCost) = LibGameRules.wallUpgradeCost(sim.clan.wallLevel);
+        uint256 woodDebit = LibSettlementMath.min(held.woodCost, woodCost);
+        uint256 ironDebit = LibSettlementMath.min(held.ironCost, ironCost);
+        if (sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit) return false;
+
+        sim.clan.vaultWood -= woodDebit;
+        sim.clan.vaultIron -= ironDebit;
+        sim.clan.wallLevel += 1;
+        return true;
+    }
+
+    function settleBaseUpgrade(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        uint32 clansmanId,
+        uint64 missionNonce
+    ) internal view returns (bool) {
+        if (upgradeReservationCleared(sim, clansmanId, ActionType.UpgradeBase)) return true;
+        LibStorage.BaseUpgradeReservation memory held = s.baseUpgradeReservations[clansmanId];
+        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
+        if (sim.clan.baseLevel >= BASE_MAX_LEVEL) return true;
+        if (held.fromLevel != sim.clan.baseLevel) {
+            if (held.fromLevel < sim.clan.baseLevel) {
+                clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+                sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+            }
+            return false;
+        }
+
+        (uint256 woodCost, uint256 ironCost, uint256 wheatCost) = LibGameRules.baseUpgradeCost(sim.clan.baseLevel);
+        uint256 woodDebit = LibSettlementMath.min(held.woodCost, woodCost);
+        uint256 ironDebit = LibSettlementMath.min(held.ironCost, ironCost);
+        uint256 wheatDebit = LibSettlementMath.min(held.wheatCost, wheatCost);
+        if (sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit || sim.clan.vaultWheat < wheatDebit) {
+            return false;
+        }
+
+        sim.clan.vaultWood -= woodDebit;
+        sim.clan.vaultIron -= ironDebit;
+        sim.clan.vaultWheat -= wheatDebit;
+        sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, wheatDebit);
+        sim.clan.baseLevel += 1;
+        return true;
+    }
+
+    function settleMonumentUpgrade(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        uint32 clansmanId,
+        uint64 missionNonce,
+        uint64 tick
+    ) internal view returns (bool) {
+        if (upgradeReservationCleared(sim, clansmanId, ActionType.UpgradeMonument)) {
+            return true;
+        }
+        LibStorage.MonumentUpgradeReservation memory held = s.monumentUpgradeReservations[clansmanId];
+        if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
+        if (sim.clan.monumentLevel >= LibGameRules.MONUMENT_MAX_LEVEL) return true;
+        if (held.fromLevel != sim.clan.monumentLevel) {
+            if (held.fromLevel < sim.clan.monumentLevel) {
+                clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+                sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+            }
+            return false;
+        }
+
+        (uint256 woodCost, uint256 ironCost, uint256 wheatCost, uint256 blueprintCost) =
+            LibGameRules.monumentUpgradeCost(sim.clan.monumentLevel);
+        uint256 woodDebit = LibSettlementMath.min(held.woodCost, woodCost);
+        uint256 ironDebit = LibSettlementMath.min(held.ironCost, ironCost);
+        uint256 wheatDebit = LibSettlementMath.min(held.wheatCost, wheatCost);
+        uint256 blueprintDebit = LibSettlementMath.min(held.blueprintCost, blueprintCost);
+        if (
+            sim.clan.vaultWood < woodDebit || sim.clan.vaultIron < ironDebit || sim.clan.vaultWheat < wheatDebit
+                || sim.clan.blueprintBalance < blueprintDebit
+        ) return false;
+
+        sim.clan.vaultWood -= woodDebit;
+        sim.clan.vaultIron -= ironDebit;
+        sim.clan.vaultWheat -= wheatDebit;
+        sim.clan.blueprintBalance -= blueprintDebit;
+        sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, wheatDebit);
+        sim.clan.monumentLevel += 1;
+        sim.simMonumentReachedAt[sim.clan.monumentLevel] = tick;
+        return true;
+    }
+
+    function upgradeReservationCleared(SettlementSimulation memory sim, uint32 clansmanId, ActionType action)
         internal
         pure
+        returns (bool)
+    {
+        (uint256 index, bool found) = simClansmanIndex(sim, clansmanId);
+        if (!found) return false;
+        if (action == ActionType.UpgradeWall) return sim.simWallReservationCleared[index];
+        if (action == ActionType.UpgradeBase) return sim.simBaseReservationCleared[index];
+        if (action == ActionType.UpgradeMonument) return sim.simMonumentReservationCleared[index];
+        return false;
+    }
+
+    function clearUpgradeReservation(SettlementSimulation memory sim, uint32 clansmanId, ActionType action)
+        internal
+        pure
+    {
+        (uint256 index, bool found) = simClansmanIndex(sim, clansmanId);
+        if (!found) return;
+        if (action == ActionType.UpgradeWall) {
+            sim.simWallReservationCleared[index] = true;
+        } else if (action == ActionType.UpgradeBase) {
+            sim.simBaseReservationCleared[index] = true;
+        } else if (action == ActionType.UpgradeMonument) {
+            sim.simMonumentReservationCleared[index] = true;
+        }
+    }
+
+    function simClansmanIndex(SettlementSimulation memory sim, uint32 clansmanId)
+        internal
+        pure
+        returns (uint256, bool)
+    {
+        for (uint256 i = 0; i < sim.clansmen.length; i++) {
+            if (sim.clansmen[i].clansmanId == clansmanId) return (i, true);
+        }
+        return (0, false);
+    }
+
+    function completeMission(Clansman memory cs, Mission memory m)
+        internal
+        view
         returns (Clansman memory, Mission memory)
     {
         cs.state = ClansmanState.WAITING;
+        cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
         m.active = false;
         return (cs, m);
     }
