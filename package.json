@@ -11,6 +11,11 @@
     "gen:contract-abi": "node scripts/gen-contract-abi.mjs",
     "gen:constants": "node scripts/gen-constants.mjs",
     "gen:enums": "node scripts/gen-enums.mjs",
+    "bridge:doctor": "pnpm --dir gold-bridge-monorepo doctor",
+    "bridge:review": "pnpm --dir gold-bridge-monorepo review",
+    "bridge:web": "pnpm --dir gold-bridge-monorepo web",
+    "bridge:cockpit:api": "pnpm --dir gold-bridge-monorepo cockpit:api",
+    "bridge:preflight": "pnpm --dir gold-bridge-monorepo preflight",
     "lint": "turbo run lint",
     "test:chainclient-abi": "node scripts/gen-chainclient-abi.mjs --check",
     "test:abi-parity": "node packages/shared/scripts/check-chain-abi-parity.mjs",
@@ -25,6 +30,7 @@
     "@types/node": "25.6.0",
     "prettier": "3.8.3",
     "turbo": "2.9.6",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "viem": "^2.48.7"
   }
 }
