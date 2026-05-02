@@ -15,6 +15,7 @@ import {
     DerivedClanState,
     DerivedClansmanState,
     MarketState,
+    RegionOccupant,
     WheatPlot,
     WorldState
 } from "../../src/IClanWorld.sol";
@@ -27,6 +28,7 @@ import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol"
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
+import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
 
 contract PingFacet {
     function ping() external pure returns (uint256) {
@@ -245,6 +247,33 @@ contract DiamondSkeletonTest is Test {
         _assertActiveBanditViewEq(IClanWorld(address(diamond)).getActiveBanditView(), core.getActiveBanditView());
     }
 
+    function testDiamondRegionPopulationMatchesCoreAfterMint() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        RegionViewsFacet regionViewsFacet = new RegionViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_regionViewsCut(address(regionViewsFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        uint8 baseRegion = core.getClan(coreClanId).baseRegion;
+        assertEq(baseRegion, IClanWorld(address(diamond)).getClan(diamondClanId).baseRegion);
+        _assertRegionPopulationEq(
+            IClanWorld(address(diamond)).getRegionPopulation(baseRegion), core.getRegionPopulation(baseRegion)
+        );
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -287,6 +316,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.banditViewsSelectors()
+        });
+    }
+
+    function _regionViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.regionViewsSelectors()
         });
     }
 
@@ -395,5 +433,16 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.carryFish, expected.carryFish, "bandit fish");
         assertEq(actual.projectedTargetClanId, expected.projectedTargetClanId, "bandit target");
         assertEq(actual.projectedTargetLootValue, expected.projectedTargetLootValue, "bandit loot");
+    }
+
+    function _assertRegionPopulationEq(RegionOccupant[] memory actual, RegionOccupant[] memory expected) internal pure {
+        assertEq(actual.length, expected.length, "population length");
+        for (uint256 i = 0; i < expected.length; i++) {
+            assertEq(actual[i].clansmanId, expected[i].clansmanId, "population clansman");
+            assertEq(actual[i].clanId, expected[i].clanId, "population clan");
+            assertEq(uint8(actual[i].state), uint8(expected[i].state), "population state");
+            assertEq(uint8(actual[i].currentAction), uint8(expected[i].currentAction), "population action");
+            assertEq(actual[i].missionNonce, expected[i].missionNonce, "population nonce");
+        }
     }
 }
