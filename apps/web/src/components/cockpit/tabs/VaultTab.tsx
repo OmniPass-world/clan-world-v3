@@ -9,12 +9,34 @@ interface Props {
 }
 
 /** Resource line in the stub vault — Phase B will source these from Convex. */
-const STUB_RESOURCES = [
+const STUB_RESOURCES_INITIAL = [
   { glyph: '◈', label: 'Gold',  value: 1240, delta: '+45'  },
   { glyph: '⌬', label: 'Wood',  value: 320,  delta: '-12'  },
   { glyph: '◆', label: 'Ore',   value: 88,   delta: '+0'   },
   { glyph: '◇', label: 'Stone', value: 156,  delta: '+8'   },
 ];
+
+/** Demo-only mock tick that nudges resource values so the rolling-number +
+ * delta-floater animation is observable on stage. Replace with live Convex
+ * data when Phase B lands. Period: every 6 seconds, one random resource
+ * gets a delta in [-15, +30]. Wraps to keep values in a sane positive range. */
+function useDemoResourceJiggle() {
+  const [resources, setResources] = useState(STUB_RESOURCES_INITIAL);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setResources((current) => {
+        const idx = Math.floor(Math.random() * current.length);
+        const delta = Math.floor(Math.random() * 46) - 15;
+        if (delta === 0) return current;
+        return current.map((r, i) =>
+          i === idx ? { ...r, value: Math.max(0, r.value + delta) } : r,
+        );
+      });
+    }, 6000);
+    return () => window.clearInterval(id);
+  }, []);
+  return resources;
+}
 
 /** Asset movement event for the log strip. */
 const STUB_MOVEMENTS = [
@@ -25,6 +47,7 @@ const STUB_MOVEMENTS = [
 ];
 
 export function VaultTab({ elder, testIdPrefix }: Props) {
+  const resources = useDemoResourceJiggle();
   return (
     <div
       data-testid={`${testIdPrefix}-content-vault`}
@@ -59,7 +82,7 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
             marginTop: tokens.space.sm,
           }}
         >
-          {STUB_RESOURCES.map((r) => (
+          {resources.map((r) => (
             <div
               key={r.label}
               style={{
@@ -168,41 +191,46 @@ function easeOutQuad(t: number) {
 function RollingNumber({ value }: { value: number }) {
   const [displayValue, setDisplayValue] = useState(value);
   const [floater, setFloater] = useState<{ id: number; delta: number } | null>(null);
-  const previousValueRef = useRef(value);
+  const renderedValueRef = useRef(value);
+  const targetValueRef = useRef(value);
   const floaterIdRef = useRef(0);
 
   useEffect(() => {
-    const from = previousValueRef.current;
+    const from = renderedValueRef.current;
     const to = value;
-    const delta = to - from;
-    previousValueRef.current = to;
-    if (delta === 0) {
-      setDisplayValue(to);
+    const delta = to - targetValueRef.current;
+    targetValueRef.current = to;
+    if (from === to) {
       return;
     }
 
-    floaterIdRef.current += 1;
-    setFloater({ id: floaterIdRef.current, delta });
-    const duration = Math.min(400, 100 + Math.log2(Math.abs(delta) + 1) * 40);
+    if (delta !== 0) {
+      floaterIdRef.current += 1;
+      setFloater({ id: floaterIdRef.current, delta });
+    }
+    const duration = Math.min(400, 100 + Math.log2(Math.abs(to - from) + 1) * 40);
     const startedAt = performance.now();
     let frame = 0;
 
     const tick = (now: number) => {
       const t = Math.min(1, (now - startedAt) / duration);
       const eased = easeOutQuad(t);
-      setDisplayValue(Math.round(from + (to - from) * eased));
+      const next = Math.round(from + (to - from) * eased);
+      renderedValueRef.current = next;
+      setDisplayValue(next);
       if (t < 1) {
         frame = window.requestAnimationFrame(tick);
       } else {
+        renderedValueRef.current = to;
         setDisplayValue(to);
       }
     };
 
     frame = window.requestAnimationFrame(tick);
-    const clearFloater = window.setTimeout(() => setFloater(null), 800);
+    const clearFloater = delta !== 0 ? window.setTimeout(() => setFloater(null), 800) : null;
     return () => {
       window.cancelAnimationFrame(frame);
-      window.clearTimeout(clearFloater);
+      if (clearFloater !== null) window.clearTimeout(clearFloater);
     };
   }, [value]);
 

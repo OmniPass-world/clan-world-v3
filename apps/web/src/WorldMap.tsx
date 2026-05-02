@@ -304,6 +304,7 @@ function makeCarryIndicator(): CarryIndicator {
   const bg = new Graphics();
   bg.rect(-CARRY_BAR_W / 2, -CARRY_BAR_H / 2, CARRY_BAR_W, CARRY_BAR_H);
   bg.fill({ color: 0x1a1612, alpha: 0.95 });
+  bg.stroke({ color: 0x000000, width: 1, alpha: 0.85 });
   const fill = new Graphics();
   container.addChild(bg);
   container.addChild(fill);
@@ -753,7 +754,7 @@ export function WorldMap() {
             if (!from || !to) {
               if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
               layer.removeChild(t.gfx);
-              t.gfx.destroy();
+              t.gfx.destroy({ children: true });
               list.splice(i, 1);
               continue;
             }
@@ -772,7 +773,7 @@ export function WorldMap() {
               if (fadeAge >= TRAVEL_DEST_LINGER_MS + TRAVEL_FADE_OUT_MS) {
                 if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
                 layer.removeChild(t.gfx);
-                t.gfx.destroy();
+                t.gfx.destroy({ children: true });
                 list.splice(i, 1);
                 continue;
               }
@@ -821,7 +822,9 @@ export function WorldMap() {
           const now = performance.now();
           drawn.bases.forEach((base) => {
             if (base.baseY <= 0) return;
-            base.container.y = base.baseY + Math.round(Math.sin((now + base.phaseOffset) / 4000) * 1);
+            // 0.25 Hz (4-second period). 2π/4000 = π/2000 keeps units honest:
+            // sin((t + offset) * π / period_ms_half) cycles once per period.
+            base.container.y = base.baseY + Math.round(Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 1);
             base.container.zIndex = Math.round(base.baseY);
           });
         };
