@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
 
@@ -38,6 +40,14 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
         fontFamily: tokens.font.body,
       }}
     >
+      <style>
+        {`
+          @keyframes clanworld-counter-floater {
+            0% { opacity: 1; transform: translate(-50%, 0); }
+            100% { opacity: 0; transform: translate(-50%, -16px); }
+          }
+        `}
+      </style>
       {/* Resource grid */}
       <section>
         <SectionHeader>Vault — Clan {elder.clanId}</SectionHeader>
@@ -82,7 +92,7 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
                     color: tokens.text.onParchment,
                   }}
                 >
-                  {r.value.toLocaleString()}
+                  <RollingNumber value={r.value} />
                 </span>
               </div>
               <span
@@ -151,7 +161,81 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
   );
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+function easeOutQuad(t: number) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+function RollingNumber({ value }: { value: number }) {
+  const [displayValue, setDisplayValue] = useState(value);
+  const [floater, setFloater] = useState<{ id: number; delta: number } | null>(null);
+  const previousValueRef = useRef(value);
+  const floaterIdRef = useRef(0);
+
+  useEffect(() => {
+    const from = previousValueRef.current;
+    const to = value;
+    const delta = to - from;
+    previousValueRef.current = to;
+    if (delta === 0) {
+      setDisplayValue(to);
+      return;
+    }
+
+    floaterIdRef.current += 1;
+    setFloater({ id: floaterIdRef.current, delta });
+    const duration = Math.min(400, 100 + Math.log2(Math.abs(delta) + 1) * 40);
+    const startedAt = performance.now();
+    let frame = 0;
+
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / duration);
+      const eased = easeOutQuad(t);
+      setDisplayValue(Math.round(from + (to - from) * eased));
+      if (t < 1) {
+        frame = window.requestAnimationFrame(tick);
+      } else {
+        setDisplayValue(to);
+      }
+    };
+
+    frame = window.requestAnimationFrame(tick);
+    const clearFloater = window.setTimeout(() => setFloater(null), 800);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(clearFloater);
+    };
+  }, [value]);
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', minWidth: '4ch' }}>
+      {displayValue.toLocaleString()}
+      {floater && (
+        <span
+          key={floater.id}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            bottom: '100%',
+            transform: 'translate(-50%, 0)',
+            color: floater.delta > 0 ? '#4ade80' : '#ef4444',
+            fontFamily: tokens.font.mono,
+            fontSize: '10px',
+            fontWeight: 700,
+            pointerEvents: 'none',
+            animation: 'clanworld-counter-floater 800ms ease-out forwards',
+            textShadow: '0 1px 2px rgba(0,0,0,0.35)',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {floater.delta > 0 ? '+' : ''}
+          {floater.delta.toLocaleString()}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function SectionHeader({ children }: { children: ReactNode }) {
   return (
     <h3
       style={{

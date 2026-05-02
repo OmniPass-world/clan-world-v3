@@ -105,6 +105,23 @@ type BubbleHandle = {
   tail: Graphics; // separate from backdrop so we can hide it on stacked (non-bottom) bubbles
 };
 
+type WorldLayers = {
+  terrainBackground: Container;
+  terrainAccents: Container;
+  worldDynamic: Container;
+  inWorldEffects: Container;
+  selectionRings: Container;
+  bubbleLayer: Container;
+  screenEffects: Container;
+};
+
+type CarryIndicator = {
+  container: Container;
+  fill: Graphics;
+  displayedFill: number;
+  targetFill: number;
+};
+
 // Worker travel animation (PR #44) — small clan-colored dots crossing between regions.
 interface WorkerTravel {
   id: string;
@@ -115,6 +132,7 @@ interface WorkerTravel {
   color: number;
   /** Display node — Sprite when clansman texture loaded, Graphics dot fallback. */
   gfx: Container;
+  carry: CarryIndicator;
 }
 
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
@@ -123,6 +141,14 @@ const TRAVEL_DEST_LINGER_MS = 2500; // hold at destination at full alpha before 
 const TRAVEL_MIN_MS = 4500;
 const TRAVEL_MAX_MS = 8000;
 const CANNED_TRAVEL_INTERVAL_MS = 1800; // continuous spawn — keeps map alive
+
+// TODO(contract-bindings): replace these demo defaults when carry caps are exposed.
+const WOOD_CAP = 10;
+const IRON_CAP = 5;
+const WHEAT_CAP = 10;
+const FISH_CAP = 10;
+const CARRY_BAR_W = 16;
+const CARRY_BAR_H = 3;
 
 /** Map a log message to a clan id by string-matching id or name. */
 function attributeClan(msg: string): string | null {
@@ -219,6 +245,59 @@ function treasuryToMonument(treasury: string): number {
   }
 }
 
+function createWorldLayers(): WorldLayers {
+  const terrainBackground = new Container();
+  const terrainAccents = new Container();
+  const worldDynamic = new Container();
+  const inWorldEffects = new Container();
+  const selectionRings = new Container();
+  const bubbleLayer = new Container();
+  const screenEffects = new Container();
+  worldDynamic.sortableChildren = true;
+  return {
+    terrainBackground,
+    terrainAccents,
+    worldDynamic,
+    inWorldEffects,
+    selectionRings,
+    bubbleLayer,
+    screenEffects,
+  };
+}
+
+function makeCarryIndicator(): CarryIndicator {
+  const container = new Container();
+  container.alpha = 0;
+  const bg = new Graphics();
+  bg.rect(-CARRY_BAR_W / 2, -CARRY_BAR_H / 2, CARRY_BAR_W, CARRY_BAR_H);
+  bg.fill({ color: 0x1a1612, alpha: 0.95 });
+  const fill = new Graphics();
+  container.addChild(bg);
+  container.addChild(fill);
+  return { container, fill, displayedFill: 0, targetFill: 0 };
+}
+
+function setCarryTargetFromCarry(
+  indicator: CarryIndicator,
+  carry: { wood?: number; iron?: number; wheat?: number; fish?: number },
+) {
+  indicator.targetFill = Math.max(
+    (carry.wood ?? 0) / WOOD_CAP,
+    (carry.iron ?? 0) / IRON_CAP,
+    (carry.wheat ?? 0) / WHEAT_CAP,
+    (carry.fish ?? 0) / FISH_CAP,
+  );
+}
+
+function redrawCarryIndicator(indicator: CarryIndicator) {
+  const next = Math.max(0, Math.min(1, indicator.displayedFill));
+  indicator.container.alpha = next <= 0.01 ? 0 : 1;
+  indicator.fill.clear();
+  if (next <= 0.01) return;
+  indicator.fill.rect(-CARRY_BAR_W / 2, -CARRY_BAR_H / 2, CARRY_BAR_W * next, CARRY_BAR_H);
+  indicator.fill.fill({ color: 0xe8d8b5, alpha: 1 });
+}
+
 export function WorldMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -240,7 +319,14 @@ export function WorldMap() {
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
-    bases: { sprite: Sprite | null; fallback: Graphics; clan: ClanDef }[];
+    bases: {
+      container: Container;
+      sprite: Sprite | null;
+      fallback: Graphics;
+      clan: ClanDef;
+      baseY: number;
+      phaseOffset: number;
+    }[];
     /** Floating "Lv N" badge beside each base. */
     levelBadges: { bg: Graphics; label: Text; clan: ClanDef }[];
     flags: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef }[];
@@ -266,6 +352,8 @@ export function WorldMap() {
     banditCountdown: null,
     bgSprite: null,
   });
+
+  const layersRef = useRef<WorldLayers | null>(null);
 
   // Per-clan speech-bubble system (PR #43).
   const bubbleLayerRef = useRef<Container | null>(null);
@@ -370,8 +458,22 @@ export function WorldMap() {
         viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
         viewportRef.current = viewport;
 
+        const layers = createWorldLayers();
+        viewport.addChild(
+          layers.terrainBackground,
+          layers.terrainAccents,
+          layers.worldDynamic,
+          layers.inWorldEffects,
+          layers.selectionRings,
+          layers.bubbleLayer,
+          layers.screenEffects,
+        );
+        layersRef.current = layers;
+        bubbleLayerRef.current = layers.bubbleLayer;
+        travelLayerRef.current = layers.worldDynamic;
+
         // 1. Background terrain map (PR #40) — fantasy strategy art generated to match REGIONS layout.
-        // Loaded async; sprite is added to viewport BEFORE buildScene so region circles render on top.
+        // Loaded async; sprite is added to terrainBackground BEFORE buildScene so region circles render on top.
         try {
           const tex = await Assets.load(worldMapBg);
           if (!mounted || !isMountedRef.current) return;
@@ -381,7 +483,7 @@ export function WorldMap() {
           bg.height = MAP_HEIGHT;
           bg.x = 0;
           bg.y = 0;
-          viewport.addChild(bg);
+          layers.terrainBackground.addChild(bg);
           drawnRef.current.bgSprite = bg;
         } catch (err) {
           // Non-fatal — fall through to flat background color set in app.init
@@ -390,12 +492,10 @@ export function WorldMap() {
 
         // 2. Build scene (regions, sigil sprites, bandit indicator) — PR #41 + PR #42 logic
         // Layers are added to `viewport` (not app.stage) so pinch/drag affect them.
-        buildScene(app, viewport, () => !mounted || !isMountedRef.current);
+        buildScene(() => !mounted || !isMountedRef.current);
 
-        // 3. Speech bubble layer + ticker (PR #43) — added last so bubbles render above everything.
-        const bubbleLayer = new Container();
-        viewport.addChild(bubbleLayer);
-        bubbleLayerRef.current = bubbleLayer;
+        // 3. Speech bubble ticker (PR #43) — bubbleLayer sits above selection/effects.
+        const bubbleLayer = layers.bubbleLayer;
 
         const cb = (ticker: { deltaMS: number }) => {
           const now = performance.now();
@@ -446,12 +546,9 @@ export function WorldMap() {
         tickerCbRef.current = cb;
         app.ticker.add(cb);
 
-        // 3b. Worker travel layer + ticker (PR #44) — clan-colored dots crossing routes.
-        // Added after bubble layer so dots can render under bubbles (less visual noise).
-        const travelLayer = new Container();
-        // Insert below bubble layer so bubbles always appear on top of moving dots.
-        viewport.addChildAt(travelLayer, viewport.getChildIndex(bubbleLayer));
-        travelLayerRef.current = travelLayer;
+        // 3b. Worker travel ticker (PR #44) — clansmen live in worldDynamic so
+        // they Y-sort against bases and bandits.
+        const travelLayer = layers.worldDynamic;
 
         const travelCb = (_ticker: { deltaMS: number }) => {
           const layer = travelLayerRef.current;
@@ -495,6 +592,8 @@ export function WorldMap() {
               const jit = Math.sin((now + (t.id.charCodeAt(t.id.length - 1) * 137)) / 220) * 1.5;
               t.gfx.x = tx + jit;
               t.gfx.y = ty + jit * 0.6;
+              t.gfx.zIndex = Math.round(t.gfx.y);
+              t.carry.targetFill = 0;
               if (fadeAge < TRAVEL_DEST_LINGER_MS) {
                 t.gfx.alpha = 1;
               } else {
@@ -504,9 +603,16 @@ export function WorldMap() {
             } else {
               t.gfx.x = fx + (tx - fx) * progress;
               t.gfx.y = fy + (ty - fy) * progress;
+              t.gfx.zIndex = Math.round(t.gfx.y);
+              setCarryTargetFromCarry(t.carry, {
+                wood: WOOD_CAP * Math.min(1, progress),
+              });
               // Subtle fade-in over first 150ms so dots don't pop in
               t.gfx.alpha = Math.min(1, elapsed / 150);
             }
+            const lerpFactor = t.carry.targetFill >= t.carry.displayedFill ? 0.15 : 0.28;
+            t.carry.displayedFill += (t.carry.targetFill - t.carry.displayedFill) * lerpFactor;
+            redrawCarryIndicator(t.carry);
           }
         };
         travelTickerCbRef.current = travelCb;
@@ -523,6 +629,12 @@ export function WorldMap() {
             const phase = (t + i * 0.7) * 1.1;
             const a = 0.78 + 0.22 * Math.sin(phase);
             gfx.alpha = a;
+          });
+          const now = performance.now();
+          drawn.bases.forEach((base) => {
+            if (base.baseY <= 0) return;
+            base.container.y = base.baseY + Math.round(Math.sin((now + base.phaseOffset) / 4000) * 1);
+            base.container.zIndex = Math.round(base.baseY);
           });
         };
         app.ticker.add(zonePulseCb);
@@ -559,6 +671,7 @@ export function WorldMap() {
       seenTravelLogIdsRef.current.clear();
       bubbleLayerRef.current = null;
       travelLayerRef.current = null;
+      layersRef.current = null;
       tickerCbRef.current = null;
       travelTickerCbRef.current = null;
       zonePulseCbRef.current = null;
@@ -638,8 +751,10 @@ export function WorldMap() {
   // ---- One-time: create Pixi display objects (refs hold them for relayout) -
   // All layers attach to `viewport` (not app.stage) so pixi-viewport's pinch /
   // drag transforms apply to the whole map atomically.
-  function buildScene(app: Application, viewport: Viewport, isAssetLoadCancelled: () => boolean) {
+  function buildScene(isAssetLoadCancelled: () => boolean) {
     const drawn = drawnRef.current;
+    const layers = layersRef.current;
+    if (!layers) return;
 
     // Clan zones, sigil flags, bases, walls, monuments, bandits — all mock data.
     // Skip entirely when DEMO_MODE is off; the canvas renders as an empty terrain map.
@@ -648,14 +763,14 @@ export function WorldMap() {
       // sits on top. Visual sense of "this clan controls this zone."
       for (const clan of MOCK_CLANS) {
         const zoneGfx = new Graphics();
-        viewport.addChild(zoneGfx);
+        layers.terrainAccents.addChild(zoneGfx);
         drawn.clanZones.push({ gfx: zoneGfx, clan });
       }
     }
 
     for (const region of REGIONS) {
       const g = new Graphics();
-      viewport.addChild(g);
+      layers.terrainBackground.addChild(g);
       drawn.regions.push(g);
 
       const label = new Text({
@@ -663,7 +778,7 @@ export function WorldMap() {
         style: { fill: 0xdddddd, fontSize: 11, fontFamily: 'monospace' },
       });
       label.anchor.set(0.5, 0);
-      viewport.addChild(label);
+      layers.terrainBackground.addChild(label);
       drawn.regionLabels.push(label);
     }
 
@@ -671,26 +786,26 @@ export function WorldMap() {
       // Wall rings — drawn first so they sit above region circles but under sigils.
       for (const clan of MOCK_CLANS) {
         const wallGfx = new Graphics();
-        viewport.addChild(wallGfx);
+        layers.worldDynamic.addChild(wallGfx);
         drawn.walls.push({ gfx: wallGfx, clan });
       }
 
       // Monument towers — drawn before flags so sigil layers cleanly on top.
       for (const clan of MOCK_CLANS) {
         const monGfx = new Graphics();
-        viewport.addChild(monGfx);
+        layers.worldDynamic.addChild(monGfx);
         drawn.monuments.push({ gfx: monGfx, clan });
       }
 
       for (const clan of MOCK_CLANS) {
         const flag = new Graphics();
-        viewport.addChild(flag);
+        layers.worldDynamic.addChild(flag);
         const label = new Text({
           text: clan.name,
           style: { fill: clan.color, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' },
         });
         label.anchor.set(0, 1);
-        viewport.addChild(label);
+        layers.worldDynamic.addChild(label);
         const entry: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef } = {
           gfx: flag,
           sprite: null,
@@ -707,7 +822,7 @@ export function WorldMap() {
             if (cancelled || !appRef.current) return;
             const sprite = new Sprite(texture);
             sprite.alpha = 0; // hidden until first relayout positions it
-            viewport.addChild(sprite);
+            layers.worldDynamic.addChild(sprite);
             entry.sprite = sprite;
             // Trigger a relayout so sprite gets positioned and shown.
             const wrap = canvasWrapRef.current;
@@ -725,13 +840,13 @@ export function WorldMap() {
       // visible during the load and as a safety net if the asset 404s. The countdown text
       // anchors next to whichever marker is currently rendered.
       const banditIcon = new Graphics();
-      viewport.addChild(banditIcon);
+      layers.worldDynamic.addChild(banditIcon);
       const countdown = new Text({
         text: '',
         style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
       });
       countdown.anchor.set(0, 0.5);
-      viewport.addChild(countdown);
+      layers.inWorldEffects.addChild(countdown);
       drawn.banditIcon = banditIcon;
       drawn.banditCountdown = countdown;
 
@@ -744,7 +859,7 @@ export function WorldMap() {
           const sprite = new Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
           sprite.alpha = 0; // hidden until first redrawBandit positions it
-          viewport.addChild(sprite);
+          layers.worldDynamic.addChild(sprite);
           drawn.banditSprite = sprite;
           redrawBandit();
         })
@@ -755,12 +870,24 @@ export function WorldMap() {
       // Per-clan BASE SPRITES — pixel-art structures at home regions (towers / keeps / longhouses).
       // Visible on top of region circles + sigil flags. Falls back to a simple colored rect.
       for (const clan of MOCK_CLANS) {
+        const container = new Container();
+        layers.worldDynamic.addChild(container);
         const fallback = new Graphics();
-        viewport.addChild(fallback);
-        const entry: { sprite: Sprite | null; fallback: Graphics; clan: ClanDef } = {
+        container.addChild(fallback);
+        const entry: {
+          container: Container;
+          sprite: Sprite | null;
+          fallback: Graphics;
+          clan: ClanDef;
+          baseY: number;
+          phaseOffset: number;
+        } = {
+          container,
           sprite: null,
           fallback,
           clan,
+          baseY: 0,
+          phaseOffset: 0,
         };
         drawn.bases.push(entry);
 
@@ -771,7 +898,7 @@ export function WorldMap() {
             const sprite = new Sprite(texture);
             sprite.anchor.set(0.5, 1); // anchored at bottom-center so it "stands" on the region
             sprite.alpha = 0;
-            viewport.addChild(sprite);
+            container.addChildAt(sprite, Math.min(1, container.children.length));
             entry.sprite = sprite;
             const wrap = canvasWrapRef.current;
             if (wrap && appRef.current) {
@@ -798,7 +925,6 @@ export function WorldMap() {
       // Floating "Lv N" badges — drawn last so they overlay everything.
       for (const clan of MOCK_CLANS) {
         const bg = new Graphics();
-        viewport.addChild(bg);
         const label = new Text({
           text: 'Lv 1',
           style: {
@@ -809,7 +935,8 @@ export function WorldMap() {
           },
         });
         label.anchor.set(0.5, 0.5);
-        viewport.addChild(label);
+        const base = drawn.bases.find((b) => b.clan.id === clan.id);
+        if (base) base.container.addChild(bg, label);
         drawn.levelBadges.push({ bg, label, clan });
       }
     } // end DEMO_MODE block
@@ -947,25 +1074,31 @@ export function WorldMap() {
       });
 
       // BASE SPRITES — render at clan home positions, replacing monument obelisks.
-      drawn.bases.forEach(({ sprite, fallback, clan }) => {
+      drawn.bases.forEach((entry) => {
+        const { container, sprite, fallback, clan } = entry;
         const base = regionMap.get(clan.homeRegion);
         if (!base) return;
         const cx = projX(base.nx);
         const cy = projY(base.ny);
         // Base size: ~128px at 1x scale, scales with viewport (2x bump for phone readability)
         const baseSize = Math.max(96, 144 * cappedSizeScale);
+        entry.baseY = cy + baseSize * 0.15;
+        entry.phaseOffset = ((Math.round(cx) * 73) ^ (Math.round(entry.baseY) * 31)) % 4000;
+        container.x = cx;
+        container.y = entry.baseY;
+        container.zIndex = Math.round(entry.baseY);
         fallback.clear();
         if (!sprite) {
           // Simple colored fallback rect with clan-color border
-          fallback.rect(cx - baseSize / 2, cy - baseSize, baseSize, baseSize);
+          fallback.rect(-baseSize / 2, -baseSize, baseSize, baseSize);
           fallback.fill({ color: 0x444444, alpha: 0.7 });
           fallback.stroke({ color: clan.color, width: 3 });
         }
         if (sprite) {
           sprite.width = baseSize;
           sprite.height = baseSize;
-          sprite.x = cx;
-          sprite.y = cy + baseSize * 0.15; // anchor=bottom-center; sit slightly below center
+          sprite.x = 0;
+          sprite.y = 0; // anchor=bottom-center; parent sits slightly below region center
           sprite.alpha = 1;
         }
       });
@@ -974,15 +1107,13 @@ export function WorldMap() {
       drawn.levelBadges.forEach(({ bg, label, clan }) => {
         const base = regionMap.get(clan.homeRegion);
         if (!base) return;
-        const cx = projX(base.nx);
-        const cy = projY(base.ny);
         const baseSize = Math.max(96, 144 * cappedSizeScale);
         const lvl = levelByClan.get(clan.id) ?? 0;
         label.text = `Lv ${lvl}`;
         label.style.fontSize = Math.max(11, Math.round(13 * cappedSizeScale));
         // Position to the right of the base sprite, near the top
-        const bx = cx + baseSize * 0.55;
-        const by = cy - baseSize * 0.55;
+        const bx = baseSize * 0.55;
+        const by = -baseSize * 0.7;
         label.x = bx;
         label.y = by;
         // Pill background
@@ -1023,8 +1154,10 @@ export function WorldMap() {
     const iconY = cy - 42 * scale;
     const spriteSize = Math.max(24, 32 * scale);
     const ringR = Math.max(10, 14 * scale);
+    const banditZ = Math.round(iconY);
 
     icon.clear();
+    icon.zIndex = banditZ;
     if (!sprite) {
       // Fallback ring while the sprite loads / on asset failure
       icon.circle(iconX, iconY, ringR);
@@ -1043,6 +1176,7 @@ export function WorldMap() {
       sprite.height = spriteSize;
       sprite.x = iconX;
       sprite.y = iconY;
+      sprite.zIndex = banditZ;
       sprite.alpha = 1;
     }
 
@@ -1168,6 +1302,9 @@ export function WorldMap() {
       dot.alpha = 0;
       gfx = dot;
     }
+    const carry = makeCarryIndicator();
+    carry.container.y = tex ? -18 : -TRAVEL_DOT_RADIUS - 6;
+    gfx.addChild(carry.container);
     layer.addChild(gfx);
 
     const durationMs =
@@ -1182,6 +1319,7 @@ export function WorldMap() {
       durationMs,
       color,
       gfx,
+      carry,
     });
   }
 
