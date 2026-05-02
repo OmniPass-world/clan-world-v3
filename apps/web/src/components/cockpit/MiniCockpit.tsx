@@ -9,6 +9,7 @@ import { CommsTab } from './tabs/CommsTab';
 
 interface Props {
   elder: ElderDef;
+  initialTab?: TabId;
 }
 
 /**
@@ -19,8 +20,8 @@ interface Props {
  * CockpitHeader (rendered once at the top of the page). MiniCockpit no
  * longer takes a `tick` prop.
  */
-export function MiniCockpit({ elder }: Props) {
-  const [active, setActive] = useState<TabId>('terminal');
+export function MiniCockpit({ elder, initialTab = 'terminal' }: Props) {
+  const [active, setActive] = useState<TabId>(initialTab);
   const testIdPrefix = `mini-cockpit-${elder.clanId}`;
 
   return (

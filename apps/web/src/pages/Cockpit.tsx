@@ -127,13 +127,13 @@ export function Cockpit() {
           <MiniCockpit elder={el1} />
         </div>
         <div className="cockpit-cell-2">
-          <MiniCockpit elder={el2} />
+          <MiniCockpit elder={el2} initialTab="vault" />
         </div>
         <div className="cockpit-cell-3">
-          <MiniCockpit elder={el3} />
+          <MiniCockpit elder={el3} initialTab="vault" />
         </div>
         <div className="cockpit-cell-4">
-          <MiniCockpit elder={el4} />
+          <MiniCockpit elder={el4} initialTab="vault" />
         </div>
         <div
           className="cockpit-cell-5"
