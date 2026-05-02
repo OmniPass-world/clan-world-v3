@@ -291,8 +291,6 @@ export function WorldMap() {
 
   const logs = useAgentLogs();
   const snapshot = useQuery(api.getSnapshot.getSnapshot);
-  const banditTicksUntil = DEMO_BANDIT.attacksAtTick - (snapshot?.tick ?? 0);
-  const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
 
   // Derived live tick counter — the worldSnapshot.tick field is currently
   // unwritten by the orchestrator script (it only writes to agentLogs), so
@@ -301,6 +299,8 @@ export function WorldMap() {
   const liveTick = useMemo(() => {
     return Math.max(snapshot?.tick ?? 0, logs.length);
   }, [logs, snapshot?.tick]);
+  const banditTicksUntil = DEMO_BANDIT.attacksAtTick - liveTick;
+  const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
 
   // ---- Pixi init ------------------------------------------------------------
   useEffect(() => {
@@ -1046,8 +1046,7 @@ export function WorldMap() {
       sprite.alpha = 1;
     }
 
-    const tick = snapshot?.tick ?? 0;
-    const ticksUntil = Math.max(0, DEMO_BANDIT.attacksAtTick - tick);
+    const ticksUntil = Math.max(0, DEMO_BANDIT.attacksAtTick - liveTick);
     text.text = `${ticksUntil}t`;
     text.style.fontSize = Math.max(10, Math.round(12 * scale));
     // Anchor the countdown to the right edge of whichever marker is active.
@@ -1061,7 +1060,7 @@ export function WorldMap() {
     if (!pixiReady || !DEMO_MODE) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.tick, pixiReady]);
+  }, [liveTick, pixiReady]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.
   useEffect(() => {
