@@ -551,9 +551,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             fishNeeded = fishNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
         }
 
-        uint256 spendableWheat = clan.vaultWheat > _reservedWheatByClan[clan.clanId]
-            ? clan.vaultWheat - _reservedWheatByClan[clan.clanId]
-            : 0;
+        uint256 spendableWheat =
+            _spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clan.clanId], 0);
         bool hadEnoughWheat = spendableWheat >= wheatNeeded;
         bool hadEnoughFish = clan.vaultFish >= fishNeeded;
 
@@ -593,11 +592,13 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (winter) {
             uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
                 * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
-            if (clan.vaultWood >= woodNeeded) {
+            uint256 spendableWood =
+                _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], 0);
+            if (spendableWood >= woodNeeded) {
                 clan.vaultWood -= woodNeeded;
             } else {
-                uint256 woodShort = woodNeeded - clan.vaultWood;
-                clan.vaultWood = 0;
+                uint256 woodShort = woodNeeded - spendableWood;
+                clan.vaultWood -= spendableWood;
                 uint16 oldColdDamage = clan.coldDamage;
                 if (clan.coldDamage < type(uint16).max) {
                     clan.coldDamage += 1;
@@ -1326,7 +1327,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             fishNeeded = fishNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
         }
 
-        uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
+        uint256 spendableWheat = _spendableAfterReleasing(sim.clan.vaultWheat, sim.reservedWheat, 0);
         bool hadEnoughWheat = spendableWheat >= wheatNeeded;
         bool hadEnoughFish = sim.clan.vaultFish >= fishNeeded;
 
@@ -1359,10 +1360,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (winter) {
             uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
                 * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
-            if (sim.clan.vaultWood >= woodNeeded) {
+            uint256 spendableWood =
+                _spendableAfterReleasing(sim.clan.vaultWood, _reservedWoodByClan[sim.clan.clanId], 0);
+            if (spendableWood >= woodNeeded) {
                 sim.clan.vaultWood -= woodNeeded;
             } else {
-                sim.clan.vaultWood = 0;
+                sim.clan.vaultWood -= spendableWood;
                 uint16 oldColdDamage = sim.clan.coldDamage;
                 if (sim.clan.coldDamage < type(uint16).max) {
                     sim.clan.coldDamage += 1;
@@ -2132,6 +2135,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                     bandit.state == BanditState.Camped
                         && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS
                 ) {
+                    _eagerSettleBanditCandidateRegion(bandit.region);
                     uint32 targetClanId = _pickBanditAttackTarget(bandit);
                     if (targetClanId == ClanWorldConstants.CLAN_ID_NULL) {
                         if (_recordBanditAttackAttempt(banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
@@ -2423,9 +2427,15 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         internal
         returns (uint256 stolenWood, uint256 stolenIron, uint256 stolenWheat, uint256 stolenFish)
     {
-        stolenWood = _banditStealAmount(targetClan.vaultWood);
-        stolenIron = _banditStealAmount(targetClan.vaultIron);
-        stolenWheat = _banditStealAmount(targetClan.vaultWheat);
+        uint32 targetClanId = targetClan.clanId;
+        uint256 spendableWood = _spendableAfterReleasing(targetClan.vaultWood, _reservedWoodByClan[targetClanId], 0);
+        uint256 spendableIron = _spendableAfterReleasing(targetClan.vaultIron, _reservedIronByClan[targetClanId], 0);
+        uint256 spendableWheat =
+            _spendableAfterReleasing(targetClan.vaultWheat, _reservedWheatByClan[targetClanId], 0);
+
+        stolenWood = _banditStealAmount(spendableWood);
+        stolenIron = _banditStealAmount(spendableIron);
+        stolenWheat = _banditStealAmount(spendableWheat);
         stolenFish = _banditStealAmount(targetClan.vaultFish);
 
         targetClan.vaultWood -= stolenWood;
@@ -2856,6 +2866,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 continue;
             }
 
+            _settleClan(clanId);
             _eagerSettleActiveDefendersForBase(clanId, region);
         }
     }
@@ -4384,6 +4395,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (existing.active && existing.clanId == clan.clanId) {
             pendingUpgrades -= 1;
         }
+        if (pendingUpgrades > 0) return StatusCode.ERR_INVALID_ACTION;
 
         uint256 availableWood =
             _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], released.wood);
@@ -4444,6 +4456,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (existing.active && existing.clanId == clan.clanId) {
             pendingUpgrades -= 1;
         }
+        if (pendingUpgrades > 0) return StatusCode.ERR_INVALID_ACTION;
 
         uint256 availableWood =
             _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], released.wood);
@@ -4511,6 +4524,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (existing.active && existing.clanId == clan.clanId) {
             pendingUpgrades -= 1;
         }
+        if (pendingUpgrades > 0) return StatusCode.ERR_INVALID_ACTION;
 
         uint256 availableWood =
             _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], released.wood);
