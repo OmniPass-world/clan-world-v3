@@ -58,4 +58,9 @@ library DiamondSelectors {
         selectors = new bytes4[](1);
         selectors[0] = IClanWorld.getMarketState.selector;
     }
+
+    function banditViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](1);
+        selectors[0] = IClanWorld.getActiveBanditView.selector;
+    }
 }

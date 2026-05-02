@@ -28,5 +28,3 @@ contract BanditStateFacet {}
 contract BanditTargetingFacet {}
 
 contract BanditCombatFacet {}
-
-contract BanditViewsFacet {}

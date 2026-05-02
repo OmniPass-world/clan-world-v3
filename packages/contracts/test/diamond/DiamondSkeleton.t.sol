@@ -8,6 +8,7 @@ import {ClanWorld} from "../../src/ClanWorld.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
 import {
     IClanWorld,
+    ActiveBanditView,
     ActionType,
     Clan,
     Clansman,
@@ -20,6 +21,7 @@ import {
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
+import {BanditViewsFacet} from "../../src/diamond/facets/BanditViewsFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
@@ -228,6 +230,21 @@ contract DiamondSkeletonTest is Test {
         _assertMarketStateEq(IClanWorld(address(diamond)).getMarketState(), core.getMarketState());
     }
 
+    function testDiamondActiveBanditViewMatchesCoreDefault() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        BanditViewsFacet banditViewsFacet = new BanditViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_banditViewsCut(address(banditViewsFacet)), address(0), "");
+
+        _assertActiveBanditViewEq(IClanWorld(address(diamond)).getActiveBanditView(), core.getActiveBanditView());
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -261,6 +278,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.marketViewsSelectors()
+        });
+    }
+
+    function _banditViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.banditViewsSelectors()
         });
     }
 
@@ -350,5 +376,24 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.currentTick, expected.currentTick, "market tick");
         assertEq(actual.currentTickQueue.length, expected.currentTickQueue.length, "current queue");
         assertEq(actual.nextTickQueue.length, expected.nextTickQueue.length, "next queue");
+    }
+
+    function _assertActiveBanditViewEq(ActiveBanditView memory actual, ActiveBanditView memory expected) internal pure {
+        assertEq(actual.exists, expected.exists, "bandit exists");
+        assertEq(actual.banditId, expected.banditId, "bandit id");
+        assertEq(uint8(actual.state), uint8(expected.state), "bandit state");
+        assertEq(actual.currentRegion, expected.currentRegion, "bandit region");
+        assertEq(actual.attackAttemptsMade, expected.attackAttemptsMade, "bandit attempts");
+        assertEq(actual.maxAttemptsRemaining, expected.maxAttemptsRemaining, "bandit remaining");
+        assertEq(actual.stateEnteredTick, expected.stateEnteredTick, "bandit entered");
+        assertEq(actual.nextActionTick, expected.nextActionTick, "bandit next");
+        assertEq(actual.tier, expected.tier, "bandit tier");
+        assertEq(actual.attackPower, expected.attackPower, "bandit power");
+        assertEq(actual.carryWood, expected.carryWood, "bandit wood");
+        assertEq(actual.carryIron, expected.carryIron, "bandit iron");
+        assertEq(actual.carryWheat, expected.carryWheat, "bandit wheat");
+        assertEq(actual.carryFish, expected.carryFish, "bandit fish");
+        assertEq(actual.projectedTargetClanId, expected.projectedTargetClanId, "bandit target");
+        assertEq(actual.projectedTargetLootValue, expected.projectedTargetLootValue, "bandit loot");
     }
 }

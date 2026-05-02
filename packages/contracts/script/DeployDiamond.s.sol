@@ -8,6 +8,7 @@ import {ClanWorldDiamondInit} from "../src/diamond/ClanWorldDiamondInit.sol";
 import {IDiamondCut} from "../src/diamond/IDiamondCut.sol";
 import {DiamondCutFacet} from "../src/diamond/facets/DiamondCutFacet.sol";
 import {DiamondLoupeFacet} from "../src/diamond/facets/DiamondLoupeFacet.sol";
+import {BanditViewsFacet} from "../src/diamond/facets/BanditViewsFacet.sol";
 import {ClanLifecycleFacet} from "../src/diamond/facets/ClanLifecycleFacet.sol";
 import {DerivedViewsFacet} from "../src/diamond/facets/DerivedViewsFacet.sol";
 import {MarketViewsFacet} from "../src/diamond/facets/MarketViewsFacet.sol";
@@ -27,6 +28,7 @@ contract DeployDiamond is Script {
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         DerivedViewsFacet derivedViewsFacet = new DerivedViewsFacet();
         MarketViewsFacet marketViewsFacet = new MarketViewsFacet();
+        BanditViewsFacet banditViewsFacet = new BanditViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
@@ -36,7 +38,8 @@ contract DeployDiamond is Script {
                     address(rawViewsFacet),
                     address(lifecycleFacet),
                     address(derivedViewsFacet),
-                    address(marketViewsFacet)
+                    address(marketViewsFacet),
+                    address(banditViewsFacet)
                 ),
                 address(init),
                 abi.encodeCall(ClanWorldDiamondInit.init, ())
@@ -49,6 +52,7 @@ contract DeployDiamond is Script {
         console.log("RAW_VIEWS_FACET_ADDRESS:          ", address(rawViewsFacet));
         console.log("DERIVED_VIEWS_FACET_ADDRESS:      ", address(derivedViewsFacet));
         console.log("MARKET_VIEWS_FACET_ADDRESS:       ", address(marketViewsFacet));
+        console.log("BANDIT_VIEWS_FACET_ADDRESS:       ", address(banditViewsFacet));
         console.log("CLAN_WORLD_DIAMOND_INIT_ADDRESS:  ", address(init));
 
         vm.stopBroadcast();
@@ -59,9 +63,10 @@ contract DeployDiamond is Script {
         address rawViewsFacet,
         address lifecycleFacet,
         address derivedViewsFacet,
-        address marketViewsFacet
+        address marketViewsFacet,
+        address banditViewsFacet
     ) private pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](5);
+        cut = new IDiamondCut.FacetCut[](6);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -86,6 +91,11 @@ contract DeployDiamond is Script {
             facetAddress: marketViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.marketViewsSelectors()
+        });
+        cut[5] = IDiamondCut.FacetCut({
+            facetAddress: banditViewsFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.banditViewsSelectors()
         });
     }
 }
