@@ -460,6 +460,10 @@ export function WorldMap() {
     color: number;
   } | null>(null);
   const tickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
+  // Snapshot ref populated below in a useEffect — declared up here so the
+  // day/night ticker (registered once at Pixi mount) reads current
+  // snapshot/tickEpoch instead of the stale closure capture.
+  const snapshotRef = useRef<ReturnType<typeof useQuery<typeof api.getSnapshot.getSnapshot>> | undefined>(undefined);
 
   // Per-clan speech-bubble system (PR #43).
   const bubbleLayerRef = useRef<Container | null>(null);
@@ -497,15 +501,17 @@ export function WorldMap() {
   const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
 
   useEffect(() => {
+    snapshotRef.current = snapshot;
     const rawTick = snapshot?.tick;
     if (typeof rawTick === 'number' && Number.isFinite(rawTick)) {
       tickClockRef.current = { tick: rawTick, seenAtMs: Date.now() };
     }
-  }, [snapshot?.tick]);
+  }, [snapshot]);
 
   function getDayNightProgress() {
-    const tick = snapshot?.tick;
-    const epoch = snapshot?.tickEpoch;
+    const snap = snapshotRef.current;
+    const tick = snap?.tick;
+    const epoch = snap?.tickEpoch;
     const hasEpoch = !!epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0;
     if (typeof tick === 'number' && Number.isFinite(tick) && (tick > 0 || hasEpoch)) {
       let subTickProgress = 0;
@@ -540,11 +546,10 @@ export function WorldMap() {
 
   function clearSelection() {
     const selected = selectedRef.current;
-    if (selected) {
-      selected.ring.visible = false;
-      selected.target.removeChild(selected.ring);
-      selectedRef.current = null;
-    }
+    if (!selected) return;
+    selected.ring.visible = false;
+    selected.target.removeChild(selected.ring);
+    selectedRef.current = null;
     fitWorldAnimated();
   }
 
@@ -1411,17 +1416,21 @@ export function WorldMap() {
     const banditZ = Math.round(iconY);
 
     icon.clear();
+    icon.x = iconX;
+    icon.y = iconY;
     icon.zIndex = banditZ;
     if (!sprite) {
-      // Fallback ring while the sprite loads / on asset failure
-      icon.circle(iconX, iconY, ringR);
+      // Fallback ring while the sprite loads / on asset failure.
+      // Draw shapes at icon-local origin so target.getGlobalPosition() in
+      // selectTarget() resolves to the visible center, not the parent layer's origin.
+      icon.circle(0, 0, ringR);
       icon.fill({ color: 0xcc1122, alpha: 0.85 });
       icon.stroke({ color: 0xffffff, width: 2 });
       const barW = Math.max(2, 3 * scale);
       const barH = ringR * 0.95;
-      icon.rect(iconX - barW / 2, iconY - barH / 2, barW, barH * 0.6);
+      icon.rect(-barW / 2, -barH / 2, barW, barH * 0.6);
       icon.fill({ color: 0xffffff });
-      icon.circle(iconX, iconY + barH * 0.35, Math.max(1.5, barW * 0.7));
+      icon.circle(0, barH * 0.35, Math.max(1.5, barW * 0.7));
       icon.fill({ color: 0xffffff });
     }
 
