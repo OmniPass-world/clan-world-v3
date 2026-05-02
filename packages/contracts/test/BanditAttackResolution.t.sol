@@ -280,7 +280,7 @@ contract BanditAttackResolutionTest is Test {
         assertEq(afterClan.vaultWheat, beforeClan.vaultWheat, "wheat stays in defender carry");
         assertEq(afterClan.vaultFish, beforeClan.vaultFish, "fish stays in defender carry");
         assertEq(afterClan.vaultIron, beforeClan.vaultIron, "iron stays in defender carry");
-        assertEq(afterClan.goldBalance, beforeClan.goldBalance + 4e18, "gold half carry");
+        assertEq(afterClan.goldBalance, beforeClan.goldBalance + 5e18, "gold half carry plus defeat reward");
         for (uint256 i = 0; i < 4; i++) {
             assertEq(world.getClansman(_csId(clanId, i)).carryWood, 1e18, "wood defender share");
             assertEq(world.getClansman(_csId(clanId, i)).carryWheat, 1e18, "wheat defender share");
@@ -432,7 +432,7 @@ contract BanditAttackResolutionTest is Test {
             assertEq(clan.vaultWheat, wheatBefore[i], "wheat stays out of vault");
             assertEq(clan.vaultFish, fishBefore[i], "fish stays out of vault");
             assertEq(clan.vaultIron, ironBefore[i], "iron stays out of vault");
-            assertEq(clan.goldBalance, goldBefore[i] + (i == 0 ? 28e18 : 7e18), "gold share");
+            assertEq(clan.goldBalance, goldBefore[i] + (i == 0 ? 29e18 : 7e18), "gold share");
         }
         for (uint256 i = 0; i < clanIds.length; i++) {
             assertEq(world.getClansman(_csId(clanIds[i], 0)).carryWood, 7e18, "explicit wood share");
@@ -602,10 +602,10 @@ contract BanditAttackResolutionTest is Test {
         uint256 goldAfterTotal;
         for (uint256 i = 0; i < clanIds.length; i++) {
             Clan memory clan = world.getClan(clanIds[i]);
-            assertEq(clan.goldBalance, 3e18 + (i == 0 ? 32e18 : 8e18), "gold share");
+            assertEq(clan.goldBalance, 3e18 + (i == 0 ? 33e18 : 8e18), "gold share");
             goldAfterTotal += clan.goldBalance;
         }
-        assertEq(goldAfterTotal - goldBeforeTotal, 48e18, "undropped gold burned");
+        assertEq(goldAfterTotal - goldBeforeTotal, 49e18, "undropped gold plus defeat reward");
         assertEq(world.getClansman(_csId(clanIds[0], 0)).carryWood, 8e18, "target explicit wood");
         assertEq(world.getClansman(_csId(clanIds[0], 1)).carryIron, 5e18, "target waiting iron capped");
         assertEq(world.getClansman(_csId(clanIds[1], 0)).carryFish, 8e18, "helper fish capped");
