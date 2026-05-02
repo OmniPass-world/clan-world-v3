@@ -29,7 +29,10 @@ import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol"
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {QuoteViewsFacet} from "../../src/diamond/facets/QuoteViewsFacet.sol";
-import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
+import {RawBanditViewsFacet} from "../../src/diamond/facets/RawBanditViewsFacet.sol";
+import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol";
+import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
+import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
 import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
 
@@ -103,13 +106,10 @@ contract DiamondSkeletonTest is Test {
 
     function testCanInitializeDiamondAndReadRawWorldState() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
 
         IClanWorld diamondWorld = IClanWorld(address(diamond));
         WorldState memory expected = core.getWorldState();
@@ -132,13 +132,10 @@ contract DiamondSkeletonTest is Test {
     }
 
     function testDiamondInitCannotRunTwice() public {
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
 
         IDiamondCut.FacetCut[] memory emptyCut = new IDiamondCut.FacetCut[](0);
         vm.expectRevert(ClanWorldDiamondInit.ClanWorldDiamondAlreadyInitialized.selector);
@@ -147,14 +144,11 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondMintClanMatchesCoreInitialState() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
 
         address elder = address(0xA11CE);
@@ -188,15 +182,12 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondBasicDerivedViewsMatchCoreAfterMint() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         DerivedViewsFacet derivedViewsFacet = new DerivedViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_derivedViewsCut(address(derivedViewsFacet)), address(0), "");
 
@@ -222,14 +213,11 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondMarketStateMatchesCoreDefaults() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         MarketViewsFacet marketViewsFacet = new MarketViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_marketViewsCut(address(marketViewsFacet)), address(0), "");
 
         _assertMarketStateEq(IClanWorld(address(diamond)).getMarketState(), core.getMarketState());
@@ -237,14 +225,11 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondActiveBanditViewMatchesCoreDefault() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         BanditViewsFacet banditViewsFacet = new BanditViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_banditViewsCut(address(banditViewsFacet)), address(0), "");
 
         _assertActiveBanditViewEq(IClanWorld(address(diamond)).getActiveBanditView(), core.getActiveBanditView());
@@ -252,15 +237,12 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondRegionPopulationMatchesCoreAfterMint() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         RegionViewsFacet regionViewsFacet = new RegionViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_regionViewsCut(address(regionViewsFacet)), address(0), "");
 
@@ -279,15 +261,12 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondWorldSnapshotMatchesCoreAfterMint() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         SnapshotViewsFacet snapshotViewsFacet = new SnapshotViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_snapshotViewsCut(address(snapshotViewsFacet)), address(0), "");
 
@@ -302,15 +281,12 @@ contract DiamondSkeletonTest is Test {
 
     function testDiamondQuoteViewsMatchCoreAfterMint() public {
         ClanWorld core = new ClanWorld();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         QuoteViewsFacet quoteViewsFacet = new QuoteViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
-            .diamondCut(
-                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
-            );
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_quoteViewsCut(address(quoteViewsFacet)), address(0), "");
 
@@ -333,12 +309,32 @@ contract DiamondSkeletonTest is Test {
         }
     }
 
-    function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](1);
+    function _rawViewsCut() internal returns (IDiamondCut.FacetCut[] memory cut) {
+        RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
+        RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
+        RawClanViewsFacet rawClanViewsFacet = new RawClanViewsFacet();
+        RawBanditViewsFacet rawBanditViewsFacet = new RawBanditViewsFacet();
+
+        cut = new IDiamondCut.FacetCut[](4);
         cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet,
+            facetAddress: address(rawWorldViewsFacet),
             action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.rawViewsSelectors()
+            functionSelectors: DiamondSelectors.rawWorldViewsSelectors()
+        });
+        cut[1] = IDiamondCut.FacetCut({
+            facetAddress: address(rawTreasuryViewsFacet),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawTreasuryViewsSelectors()
+        });
+        cut[2] = IDiamondCut.FacetCut({
+            facetAddress: address(rawClanViewsFacet),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawClanViewsSelectors()
+        });
+        cut[3] = IDiamondCut.FacetCut({
+            facetAddress: address(rawBanditViewsFacet),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawBanditViewsSelectors()
         });
     }
 

@@ -13,7 +13,10 @@ import {ClanLifecycleFacet} from "../src/diamond/facets/ClanLifecycleFacet.sol";
 import {DerivedViewsFacet} from "../src/diamond/facets/DerivedViewsFacet.sol";
 import {MarketViewsFacet} from "../src/diamond/facets/MarketViewsFacet.sol";
 import {QuoteViewsFacet} from "../src/diamond/facets/QuoteViewsFacet.sol";
-import {RawViewsFacet} from "../src/diamond/facets/RawViewsFacet.sol";
+import {RawBanditViewsFacet} from "../src/diamond/facets/RawBanditViewsFacet.sol";
+import {RawClanViewsFacet} from "../src/diamond/facets/RawClanViewsFacet.sol";
+import {RawTreasuryViewsFacet} from "../src/diamond/facets/RawTreasuryViewsFacet.sol";
+import {RawWorldViewsFacet} from "../src/diamond/facets/RawWorldViewsFacet.sol";
 import {RegionViewsFacet} from "../src/diamond/facets/RegionViewsFacet.sol";
 import {SnapshotViewsFacet} from "../src/diamond/facets/SnapshotViewsFacet.sol";
 
@@ -27,7 +30,10 @@ contract DeployDiamond is Script {
         DiamondCutFacet cutFacet = new DiamondCutFacet();
         Diamond diamond = new Diamond(owner, address(cutFacet));
         DiamondLoupeFacet loupeFacet = new DiamondLoupeFacet();
-        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
+        RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
+        RawClanViewsFacet rawClanViewsFacet = new RawClanViewsFacet();
+        RawBanditViewsFacet rawBanditViewsFacet = new RawBanditViewsFacet();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
         DerivedViewsFacet derivedViewsFacet = new DerivedViewsFacet();
         MarketViewsFacet marketViewsFacet = new MarketViewsFacet();
@@ -41,7 +47,10 @@ contract DeployDiamond is Script {
             .diamondCut(
                 _initialFacetCuts(
                     address(loupeFacet),
-                    address(rawViewsFacet),
+                    address(rawWorldViewsFacet),
+                    address(rawTreasuryViewsFacet),
+                    address(rawClanViewsFacet),
+                    address(rawBanditViewsFacet),
                     address(lifecycleFacet),
                     address(derivedViewsFacet),
                     address(marketViewsFacet),
@@ -58,7 +67,10 @@ contract DeployDiamond is Script {
         console.log("DIAMOND_CUT_FACET_ADDRESS:        ", address(cutFacet));
         console.log("DIAMOND_LOUPE_FACET_ADDRESS:      ", address(loupeFacet));
         console.log("CLAN_LIFECYCLE_FACET_ADDRESS:     ", address(lifecycleFacet));
-        console.log("RAW_VIEWS_FACET_ADDRESS:          ", address(rawViewsFacet));
+        console.log("RAW_WORLD_VIEWS_FACET_ADDRESS:    ", address(rawWorldViewsFacet));
+        console.log("RAW_TREASURY_VIEWS_FACET_ADDRESS: ", address(rawTreasuryViewsFacet));
+        console.log("RAW_CLAN_VIEWS_FACET_ADDRESS:     ", address(rawClanViewsFacet));
+        console.log("RAW_BANDIT_VIEWS_FACET_ADDRESS:   ", address(rawBanditViewsFacet));
         console.log("DERIVED_VIEWS_FACET_ADDRESS:      ", address(derivedViewsFacet));
         console.log("MARKET_VIEWS_FACET_ADDRESS:       ", address(marketViewsFacet));
         console.log("BANDIT_VIEWS_FACET_ADDRESS:       ", address(banditViewsFacet));
@@ -72,7 +84,10 @@ contract DeployDiamond is Script {
 
     function _initialFacetCuts(
         address loupeFacet,
-        address rawViewsFacet,
+        address rawWorldViewsFacet,
+        address rawTreasuryViewsFacet,
+        address rawClanViewsFacet,
+        address rawBanditViewsFacet,
         address lifecycleFacet,
         address derivedViewsFacet,
         address marketViewsFacet,
@@ -81,48 +96,63 @@ contract DeployDiamond is Script {
         address snapshotViewsFacet,
         address quoteViewsFacet
     ) private pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](9);
+        cut = new IDiamondCut.FacetCut[](12);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.loupeSelectors()
         });
         cut[1] = IDiamondCut.FacetCut({
-            facetAddress: rawViewsFacet,
+            facetAddress: rawWorldViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.rawViewsSelectors()
+            functionSelectors: DiamondSelectors.rawWorldViewsSelectors()
         });
         cut[2] = IDiamondCut.FacetCut({
+            facetAddress: rawTreasuryViewsFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawTreasuryViewsSelectors()
+        });
+        cut[3] = IDiamondCut.FacetCut({
+            facetAddress: rawClanViewsFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawClanViewsSelectors()
+        });
+        cut[4] = IDiamondCut.FacetCut({
+            facetAddress: rawBanditViewsFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawBanditViewsSelectors()
+        });
+        cut[5] = IDiamondCut.FacetCut({
             facetAddress: lifecycleFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()
         });
-        cut[3] = IDiamondCut.FacetCut({
+        cut[6] = IDiamondCut.FacetCut({
             facetAddress: derivedViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.derivedViewsSelectors()
         });
-        cut[4] = IDiamondCut.FacetCut({
+        cut[7] = IDiamondCut.FacetCut({
             facetAddress: marketViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.marketViewsSelectors()
         });
-        cut[5] = IDiamondCut.FacetCut({
+        cut[8] = IDiamondCut.FacetCut({
             facetAddress: banditViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.banditViewsSelectors()
         });
-        cut[6] = IDiamondCut.FacetCut({
+        cut[9] = IDiamondCut.FacetCut({
             facetAddress: regionViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.regionViewsSelectors()
         });
-        cut[7] = IDiamondCut.FacetCut({
+        cut[10] = IDiamondCut.FacetCut({
             facetAddress: snapshotViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.snapshotViewsSelectors()
         });
-        cut[8] = IDiamondCut.FacetCut({
+        cut[11] = IDiamondCut.FacetCut({
             facetAddress: quoteViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.quoteViewsSelectors()

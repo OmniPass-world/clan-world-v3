@@ -43,6 +43,48 @@ library DiamondSelectors {
         selectors[25] = IClanWorld.getMonumentLevelReachedAt.selector;
     }
 
+    function rawWorldViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](7);
+        selectors[0] = IClanWorld.getWorldState.selector;
+        selectors[1] = IClanWorld.isWinter.selector;
+        selectors[2] = IClanWorld.getWallUpgradeCost.selector;
+        selectors[3] = IClanWorld.getBaseUpgradeCost.selector;
+        selectors[4] = IClanWorld.getMonumentUpgradeCost.selector;
+        selectors[5] = IClanWorld.getActionDuration.selector;
+        selectors[6] = IClanWorld.getTravelTicks.selector;
+    }
+
+    function rawTreasuryViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](5);
+        selectors[0] = IClanWorld.getTreasuryState.selector;
+        selectors[1] = IClanWorld.getResourceToken.selector;
+        selectors[2] = IClanWorld.getPool.selector;
+        selectors[3] = IClanWorld.getPrice.selector;
+        selectors[4] = IClanWorld.getScheduledMarketActionsForTick.selector;
+    }
+
+    function rawClanViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](11);
+        selectors[0] = IClanWorld.getClan.selector;
+        selectors[1] = IClanWorld.getClansman.selector;
+        selectors[2] = IClanWorld.getActiveMission.selector;
+        selectors[3] = IClanWorld.getMissionTiming.selector;
+        selectors[4] = IClanWorld.getWheatPlots.selector;
+        selectors[5] = IClanWorld.getActiveDefenders.selector;
+        selectors[6] = IClanWorld.getDefendingClans.selector;
+        selectors[7] = IClanWorld.getClanIds.selector;
+        selectors[8] = IClanWorld.getClanClansmanIds.selector;
+        selectors[9] = IClanWorld.getClansmanDefendingRegion.selector;
+        selectors[10] = IClanWorld.getMonumentLevelReachedAt.selector;
+    }
+
+    function rawBanditViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](3);
+        selectors[0] = IClanWorld.getBandit.selector;
+        selectors[1] = IClanWorld.getBanditTroop.selector;
+        selectors[2] = IClanWorld.getBanditsInRegion.selector;
+    }
+
     function lifecycleSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](1);
         selectors[0] = IClanWorld.mintClan.selector;
