@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import clanWorldLensAbi from '@clan-world/contracts/abi/IClanWorldLens.json' with { type: 'json' };
 import {
+  type Abi,
   createPublicClient,
   createWalletClient,
   http,
@@ -14,7 +15,7 @@ import type { ClanFullView, ClanOrder, Tick } from '../types';
 import { ActionType } from '../generated/enums';
 import { readEnv } from './_env';
 
-const CLAN_WORLD_LENS_ABI = clanWorldLensAbi.abi;
+const CLAN_WORLD_LENS_ABI = clanWorldLensAbi.abi as Abi;
 
 export interface SubmitOrderResult {
   clansmanId: number;
@@ -4087,9 +4088,9 @@ class RealChainClient implements IChainClient {
   async getCurrentTick(): Promise<Tick> {
     const snapshot = await this.client.readContract({
       address: this.lensAddress,
-      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
+      abi: CLAN_WORLD_LENS_ABI,
       functionName: 'getWorldSnapshot',
-    });
+    }) as { currentTick: number | bigint };
     return Number(snapshot.currentTick); // safe: tick values are small enough to fit Number precisely in Wave 0
   }
 
@@ -4226,10 +4227,10 @@ class RealChainClient implements IChainClient {
   async getClanFullView(clanId: string): Promise<ClanFullView> {
     const result = await this.client.readContract({
       address: this.lensAddress,
-      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
+      abi: CLAN_WORLD_LENS_ABI,
       functionName: 'getClanFullView',
       args: [parseClanId(clanId, 'getClanFullView')],
-    });
+    }) as { clan: { clan: { clanId: number | bigint; goldBalance: bigint } } };
 
     const inner = result.clan.clan;
     return {
@@ -4288,19 +4289,19 @@ class RealChainClient implements IChainClient {
   async getClanScore(clanId: string): Promise<{ score: bigint; monumentReachedAtTick: bigint; monumentLevel: number }> {
     const [score, monumentReachedAtTick, monumentLevel] = await this.client.readContract({
       address: this.lensAddress,
-      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
+      abi: CLAN_WORLD_LENS_ABI,
       functionName: 'getClanScore',
       args: [parseClanId(clanId, 'getClanScore')],
-    });
+    }) as readonly [bigint, bigint, number];
     return { score, monumentReachedAtTick, monumentLevel };
   }
 
   async getRankings(): Promise<{ clanIdsRanked: readonly number[]; scores: readonly bigint[] }> {
     const [clanIdsRanked, scores] = await this.client.readContract({
       address: this.lensAddress,
-      abi: CLAN_WORLD_LENS_ABI as unknown as typeof CLAN_WORLD_ABI,
+      abi: CLAN_WORLD_LENS_ABI,
       functionName: 'getRankings',
-    });
+    }) as readonly [readonly number[], readonly bigint[]];
     return { clanIdsRanked: clanIdsRanked as readonly number[], scores };
   }
 }
