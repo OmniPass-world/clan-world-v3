@@ -15,6 +15,7 @@ import {
 } from "../../IClanWorld.sol";
 import {RNG} from "../../lib/RNG.sol";
 import {LibGameRules} from "./LibGameRules.sol";
+import {LibOrderDefenders} from "./LibOrderDefenders.sol";
 import {LibStorage} from "./LibStorage.sol";
 import {LibSeason} from "./LibSeason.sol";
 import {LibSettlementMath} from "./LibSettlementMath.sol";
@@ -22,6 +23,9 @@ import {LibSettlementMath} from "./LibSettlementMath.sol";
 library LibSettlement {
     uint8 internal constant WALL_MAX_LEVEL = 5;
     uint8 internal constant BASE_MAX_LEVEL = 5;
+
+    event MissionCompleted(uint32 indexed clanId, uint32 indexed clansmanId, uint64 missionNonce, ActionType action);
+    event WorkerArrived(uint32 indexed clanId, uint32 indexed clansmanId, uint8 region, uint64 tick);
 
     struct SettlementSimulation {
         Clan clan;
@@ -32,6 +36,8 @@ library LibSettlement {
         bool[] simWallReservationCleared;
         bool[] simBaseReservationCleared;
         bool[] simMonumentReservationCleared;
+        uint64[] simWorkerArrivedTick;
+        uint64[] simMissionCompletedNonce;
         uint256 reservedWheat;
     }
 
@@ -49,6 +55,8 @@ library LibSettlement {
         sim.simWallReservationCleared = new bool[](clansmanIds.length);
         sim.simBaseReservationCleared = new bool[](clansmanIds.length);
         sim.simMonumentReservationCleared = new bool[](clansmanIds.length);
+        sim.simWorkerArrivedTick = new uint64[](clansmanIds.length);
+        sim.simMissionCompletedNonce = new uint64[](clansmanIds.length);
 
         for (uint256 i = 0; i < clansmanIds.length; i++) {
             uint32 clansmanId = clansmanIds[i];
@@ -112,6 +120,15 @@ library LibSettlement {
             }
             if (sim.simMonumentReservationCleared[i]) {
                 clearMonumentUpgradeReservation(s, clansmanId);
+            }
+            if (sim.simWorkerArrivedTick[i] != 0) {
+                emit WorkerArrived(clanId, clansmanId, sim.clansmen[i].currentRegion, sim.simWorkerArrivedTick[i]);
+                if (sim.missions[i].active && sim.missions[i].action == ActionType.DefendBase) {
+                    LibOrderDefenders.registerDefender(s, sim.clansmen[i].currentRegion, clanId, clansmanId);
+                }
+            }
+            if (sim.simMissionCompletedNonce[i] != 0) {
+                emit MissionCompleted(clanId, clansmanId, sim.simMissionCompletedNonce[i], sim.missions[i].action);
             }
         }
 
@@ -337,12 +354,17 @@ library LibSettlement {
             if (cs.state == ClansmanState.TRAVELING && tick >= m.arrivalTick) {
                 cs.state = ClansmanState.ACTING;
                 cs.currentRegion = m.targetRegion;
+                sim.simWorkerArrivedTick[index] = tick;
             }
 
             if (m.action == ActionType.DefendBase) continue;
 
             if (cs.state == ClansmanState.ACTING && tick >= m.settlesAtTick) {
+                uint64 nonceBefore = m.nonce;
                 (cs, m) = resolveAction(s, sim, cs, m, tick, tickSeed);
+                if (!m.active) {
+                    sim.simMissionCompletedNonce[index] = nonceBefore;
+                }
                 if (m.active && LibGameRules.actionDuration(m.action) > 0) {
                     m.settlesAtTick = LibSettlementMath.addTicksClamped(tick, LibGameRules.actionDuration(m.action));
                 }
@@ -761,11 +783,10 @@ library LibSettlement {
 
     function completeMission(Clansman memory cs, Mission memory m)
         internal
-        view
+        pure
         returns (Clansman memory, Mission memory)
     {
         cs.state = ClansmanState.WAITING;
-        cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
         m.active = false;
         return (cs, m);
     }

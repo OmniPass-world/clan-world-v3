@@ -32,6 +32,7 @@ contract HeartbeatFacet is IClanWorldEvents {
             if (s.clans[clanId].clanState != ClanState.DEAD && s.clans[clanId].lastSettledTick <= closedTick) {
                 LibSettlement.SettlementSimulation memory sim = LibSettlement.simulateToTick(s, clanId, closedTick + 1);
                 LibSettlement.commitSimulation(s, sim);
+                emit ClanSettled(clanId, s.clans[clanId].lastSettledTick);
             }
         }
 

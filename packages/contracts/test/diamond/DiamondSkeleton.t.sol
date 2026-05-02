@@ -2,6 +2,7 @@
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {DiamondSelectors} from "../../script/DiamondSelectors.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
 import {ClanWorld} from "../../src/ClanWorld.sol";
@@ -163,6 +164,10 @@ contract SpawnBanditFacet {
 }
 
 contract DiamondSkeletonTest is Test {
+    bytes32 private constant CLAN_SETTLED_TOPIC = keccak256("ClanSettled(uint32,uint64)");
+    bytes32 private constant MISSION_COMPLETED_TOPIC = keccak256("MissionCompleted(uint32,uint32,uint64,uint8)");
+    bytes32 private constant WORKER_ARRIVED_TOPIC = keccak256("WorkerArrived(uint32,uint32,uint8,uint64)");
+
     Diamond diamond;
     DiamondCutFacet cutFacet;
 
@@ -781,6 +786,137 @@ contract DiamondSkeletonTest is Test {
         );
     }
 
+    function testDiamondHeartbeatCompletionLogsAndCooldownMatchCore() public {
+        ClanWorld core = new ClanWorld();
+        _installLifecycleSubmitHeartbeatFacets();
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        uint8 coreBaseRegion = core.getClan(coreClanId).baseRegion;
+        uint8 diamondBaseRegion = IClanWorld(address(diamond)).getClan(diamondClanId).baseRegion;
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _basicOrder(coreClansmanId, coreBaseRegion, ActionType.DepositResources, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _basicOrder(diamondClansmanId, diamondBaseRegion, ActionType.DepositResources, 0);
+
+        vm.prank(elder);
+        OrderResult[] memory coreResults = core.submitClanOrders(coreClanId, coreOrders);
+        vm.prank(elder);
+        OrderResult[] memory diamondResults =
+            IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders);
+        assertEq(uint8(coreResults[0].status), uint8(StatusCode.OK), "core submit ok");
+        assertEq(uint8(diamondResults[0].status), uint8(StatusCode.OK), "diamond submit ok");
+
+        uint64 submittedCooldown = core.getClansman(coreClansmanId).cooldownEndsAtTs;
+        assertEq(IClanWorld(address(diamond)).getClansman(diamondClansmanId).cooldownEndsAtTs, submittedCooldown);
+
+        uint64 settlesAtTick = core.getActiveMission(coreClansmanId).settlesAtTick;
+        Vm.Log[] memory coreLogs;
+        Vm.Log[] memory diamondLogs;
+        while (core.getWorldState().currentTick <= settlesAtTick) {
+            vm.warp(core.getWorldState().nextHeartbeatAtTs);
+            bool finalHeartbeat = core.getWorldState().currentTick == settlesAtTick;
+            if (finalHeartbeat) vm.recordLogs();
+            core.heartbeat();
+            if (finalHeartbeat) coreLogs = vm.getRecordedLogs();
+            if (finalHeartbeat) vm.recordLogs();
+            IClanWorld(address(diamond)).heartbeat();
+            if (finalHeartbeat) diamondLogs = vm.getRecordedLogs();
+        }
+
+        _assertEventFingerprintMatch(coreLogs, address(core), diamondLogs, address(diamond), CLAN_SETTLED_TOPIC);
+        _assertEventFingerprintMatch(
+            coreLogs, address(core), diamondLogs, address(diamond), MISSION_COMPLETED_TOPIC
+        );
+        _assertClansmanEq(IClanWorld(address(diamond)).getClansman(diamondClansmanId), core.getClansman(coreClansmanId));
+        assertEq(core.getClansman(coreClansmanId).cooldownEndsAtTs, submittedCooldown, "core cooldown unchanged");
+        assertEq(
+            IClanWorld(address(diamond)).getClansman(diamondClansmanId).cooldownEndsAtTs,
+            submittedCooldown,
+            "diamond cooldown unchanged"
+        );
+    }
+
+    function testDiamondTraveledDefenderArrivalLogsAndRegistryMatchCore() public {
+        ClanWorld core = new ClanWorld();
+        _installLifecycleSubmitHeartbeatFacets();
+
+        address defenderElder = address(0xA11CE);
+        address targetElder = address(0xB0B);
+        vm.prank(defenderElder);
+        (uint32 coreDefenderClanId,) = core.mintClan(defenderElder);
+        vm.prank(targetElder);
+        (uint32 coreTargetClanId,) = core.mintClan(targetElder);
+        vm.prank(defenderElder);
+        (uint32 diamondDefenderClanId,) = IClanWorld(address(diamond)).mintClan(defenderElder);
+        vm.prank(targetElder);
+        (uint32 diamondTargetClanId,) = IClanWorld(address(diamond)).mintClan(targetElder);
+
+        uint32 coreClansmanId = core.getClanClansmanIds(coreDefenderClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondDefenderClanId)[0];
+        uint8 coreTargetRegion = core.getClan(coreTargetClanId).baseRegion;
+        uint8 diamondTargetRegion = IClanWorld(address(diamond)).getClan(diamondTargetClanId).baseRegion;
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _basicOrder(coreClansmanId, coreTargetRegion, ActionType.DefendBase, coreTargetClanId);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] =
+            _basicOrder(diamondClansmanId, diamondTargetRegion, ActionType.DefendBase, diamondTargetClanId);
+
+        vm.prank(defenderElder);
+        OrderResult[] memory coreResults = core.submitClanOrders(coreDefenderClanId, coreOrders);
+        vm.prank(defenderElder);
+        OrderResult[] memory diamondResults =
+            IClanWorld(address(diamond)).submitClanOrders(diamondDefenderClanId, diamondOrders);
+        assertEq(uint8(coreResults[0].status), uint8(StatusCode.OK), "core defend submit ok");
+        assertEq(uint8(diamondResults[0].status), uint8(StatusCode.OK), "diamond defend submit ok");
+        assertGt(core.getActiveMission(coreClansmanId).arrivalTick, core.getWorldState().currentTick, "traveling setup");
+        assertEq(core.getDefendingClans(coreTargetRegion).length, 0, "core not registered before arrival");
+        assertEq(IClanWorld(address(diamond)).getDefendingClans(diamondTargetRegion).length, 0, "diamond not registered before arrival");
+
+        uint64 arrivalTick = core.getActiveMission(coreClansmanId).arrivalTick;
+        Vm.Log[] memory coreLogs;
+        Vm.Log[] memory diamondLogs;
+        while (core.getWorldState().currentTick <= arrivalTick) {
+            vm.warp(core.getWorldState().nextHeartbeatAtTs);
+            bool finalHeartbeat = core.getWorldState().currentTick == arrivalTick;
+            if (finalHeartbeat) vm.recordLogs();
+            core.heartbeat();
+            if (finalHeartbeat) coreLogs = vm.getRecordedLogs();
+            if (finalHeartbeat) vm.recordLogs();
+            IClanWorld(address(diamond)).heartbeat();
+            if (finalHeartbeat) diamondLogs = vm.getRecordedLogs();
+        }
+
+        _assertEventFingerprintMatch(coreLogs, address(core), diamondLogs, address(diamond), WORKER_ARRIVED_TOPIC);
+        _assertClansmanEq(IClanWorld(address(diamond)).getClansman(diamondClansmanId), core.getClansman(coreClansmanId));
+        _assertMissionEq(
+            IClanWorld(address(diamond)).getActiveMission(diamondClansmanId), core.getActiveMission(coreClansmanId)
+        );
+        assertEq(
+            IClanWorld(address(diamond)).getClansmanDefendingRegion(diamondClansmanId),
+            core.getClansmanDefendingRegion(coreClansmanId),
+            "defending region"
+        );
+
+        uint32[] memory coreActiveDefenders = core.getActiveDefenders(coreTargetClanId);
+        uint32[] memory diamondActiveDefenders = IClanWorld(address(diamond)).getActiveDefenders(diamondTargetClanId);
+        assertEq(diamondActiveDefenders.length, coreActiveDefenders.length, "active defender length");
+        assertEq(diamondActiveDefenders[0], coreActiveDefenders[0], "active defender id");
+
+        uint32[] memory coreDefendingClans = core.getDefendingClans(coreTargetRegion);
+        uint32[] memory diamondDefendingClans = IClanWorld(address(diamond)).getDefendingClans(diamondTargetRegion);
+        assertEq(diamondDefendingClans.length, coreDefendingClans.length, "defending clan length");
+        assertEq(diamondDefendingClans[0], coreDefendingClans[0], "defending clan id");
+    }
+
     function testDiamondTransferClanOwnershipMatchesCoreAfterSettlement() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
@@ -1005,6 +1141,62 @@ contract DiamondSkeletonTest is Test {
 
         _assertClanEq(IClanWorld(address(diamond)).getClan(diamondFromClanId), core.getClan(coreFromClanId));
         _assertClanEq(IClanWorld(address(diamond)).getClan(diamondToClanId), core.getClan(coreToClanId));
+    }
+
+    function _installLifecycleSubmitHeartbeatFacets() internal {
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        SubmitOrdersFacet submitOrdersFacet = new SubmitOrdersFacet();
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_submitOrdersCut(address(submitOrdersFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+    }
+
+    function _basicOrder(uint32 clansmanId, uint8 gotoRegion, ActionType action, uint32 targetClanId)
+        internal
+        pure
+        returns (ClanOrder memory)
+    {
+        return ClanOrder({
+            clansmanId: clansmanId,
+            gotoRegion: gotoRegion,
+            action: action,
+            targetClanId: targetClanId,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
+        });
+    }
+
+    function _assertEventFingerprintMatch(
+        Vm.Log[] memory coreLogs,
+        address coreEmitter,
+        Vm.Log[] memory diamondLogs,
+        address diamondEmitter,
+        bytes32 topic0
+    ) internal pure {
+        bytes32 coreFingerprint = _singleEventFingerprint(coreLogs, coreEmitter, topic0);
+        bytes32 diamondFingerprint = _singleEventFingerprint(diamondLogs, diamondEmitter, topic0);
+        assertEq(diamondFingerprint, coreFingerprint, "event fingerprint");
+    }
+
+    function _singleEventFingerprint(Vm.Log[] memory logs, address emitter, bytes32 topic0)
+        internal
+        pure
+        returns (bytes32 fingerprint)
+    {
+        uint256 matches;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].emitter != emitter || logs[i].topics.length == 0 || logs[i].topics[0] != topic0) continue;
+            fingerprint = keccak256(abi.encode(logs[i].topics, logs[i].data));
+            matches++;
+        }
+        assertEq(matches, 1, "event count");
     }
 
     function _rawViewsCut() internal returns (IDiamondCut.FacetCut[] memory cut) {
