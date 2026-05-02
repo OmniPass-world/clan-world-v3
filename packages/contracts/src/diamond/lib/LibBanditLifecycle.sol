@@ -85,6 +85,12 @@ library LibBanditLifecycle {
         BanditState oldState = bandit.state;
         require(isValidBanditTransition(s, bandit, newState), "ClanWorld: invalid bandit transition");
 
+        if (newState == BanditState.Defeated) {
+            emit BanditStateChanged(id, oldState, newState, bandit.region, s.world.currentTick);
+            deleteBandit(s, id);
+            return;
+        }
+
         bandit.state = newState;
         bandit.tickEnteredState = s.world.currentTick;
         if (newState != BanditState.Attacking) {

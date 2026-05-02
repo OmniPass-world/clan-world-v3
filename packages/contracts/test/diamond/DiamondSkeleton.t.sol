@@ -641,6 +641,40 @@ contract DiamondSkeletonTest is Test {
         assertEq(IClanWorld(address(diamond)).getBandit(diamondBanditId).attackAttemptsMade, 1);
     }
 
+    function testDiamondHeartbeatResolvesBanditAttackLikeCore() public {
+        CoreBanditHarness core = new CoreBanditHarness();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        SpawnBanditFacet spawnBanditFacet = new SpawnBanditFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+        address elder = address(0xBEEF);
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_spawnBanditCut(address(spawnBanditFacet)), address(0), "");
+
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+        uint32 coreBanditId = core.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint32 diamondBanditId = ISpawnBandit(address(diamond)).spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+
+        for (uint256 i = 0; i < 5; i++) {
+            vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+            core.heartbeat();
+            IClanWorld(address(diamond)).heartbeat();
+        }
+
+        _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+        _assertClanEq(IClanWorld(address(diamond)).getClan(diamondClanId), core.getClan(coreClanId));
+        _assertBanditEq(IClanWorld(address(diamond)).getBandit(diamondBanditId), core.getBandit(coreBanditId));
+        assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Resting));
+        assertEq(IClanWorld(address(diamond)).getBandit(diamondBanditId).targetClanId, 0);
+    }
+
     function testDiamondFinalizeSeasonRejectsBeforeSeasonEndLikeCore() public {
         ClanWorld core = new ClanWorld();
         FinalizeSeasonFacet finalizeSeasonFacet = new FinalizeSeasonFacet();

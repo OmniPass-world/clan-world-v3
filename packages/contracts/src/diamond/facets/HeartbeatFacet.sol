@@ -2,6 +2,7 @@
 pragma solidity ^0.8.34;
 
 import {ClanState, ClanWorldConstants, IClanWorldEvents, WheatPlot, WheatPlotState} from "../../IClanWorld.sol";
+import {LibBanditCombat} from "../lib/LibBanditCombat.sol";
 import {LibBanditLifecycle} from "../lib/LibBanditLifecycle.sol";
 import {LibOrderMarket} from "../lib/LibOrderMarket.sol";
 import {LibSeason} from "../lib/LibSeason.sol";
@@ -35,6 +36,7 @@ contract HeartbeatFacet is IClanWorldEvents {
 
         LibOrderMarket.executeScheduledMarketActions(s, closedTick);
         LibBanditLifecycle.advancePassiveBanditStates(s, closedTick);
+        LibBanditCombat.resolveAttackingBandits(s, closedTick);
         _resolveWorldEvents(s, closedTick);
 
         uint64 newTick = closedTick + 1;
