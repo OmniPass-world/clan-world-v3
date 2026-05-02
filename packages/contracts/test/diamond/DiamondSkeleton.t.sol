@@ -30,6 +30,7 @@ import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {BanditViewsFacet} from "../../src/diamond/facets/BanditViewsFacet.sol";
 import {ClanFullViewFacet} from "../../src/diamond/facets/ClanFullViewFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
+import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
@@ -492,6 +493,47 @@ contract DiamondSkeletonTest is Test {
         }
     }
 
+    function testDiamondTransferClanOwnershipMatchesCoreAfterSettlement() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        ClanOwnershipFacet ownershipFacet = new ClanOwnershipFacet();
+        SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_ownershipCut(address(ownershipFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        address newOwner = address(0xB0B);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        WorldState memory coreWorld = core.getWorldState();
+        ISetWorldClock(address(diamond))
+            .setWorldClock(
+                coreWorld.currentTick,
+                coreWorld.nextHeartbeatAtTick,
+                coreWorld.nextHeartbeatAtTs,
+                coreWorld.nextBanditSpawnEligibleTick,
+                coreWorld.currentBanditSpawnChanceBps,
+                coreWorld.currentTickSeed
+            );
+
+        vm.prank(elder);
+        core.transferClanOwnership(coreClanId, newOwner);
+        vm.prank(elder);
+        IClanWorld(address(diamond)).transferClanOwnership(diamondClanId, newOwner);
+
+        _assertClanEq(IClanWorld(address(diamond)).getClan(diamondClanId), core.getClan(coreClanId));
+    }
+
     function _rawViewsCut() internal returns (IDiamondCut.FacetCut[] memory cut) {
         RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
         RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
@@ -527,6 +569,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()
+        });
+    }
+
+    function _ownershipCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.ownershipSelectors()
         });
     }
 
