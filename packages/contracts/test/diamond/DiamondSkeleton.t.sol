@@ -42,6 +42,7 @@ import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.so
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
+import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {MinimalERC20} from "../../src/MinimalERC20.sol";
 import {QuoteViewsFacet} from "../../src/diamond/facets/QuoteViewsFacet.sol";
@@ -504,6 +505,22 @@ contract DiamondSkeletonTest is Test {
         }
     }
 
+    function testDiamondHeartbeatAdvancesEmptyWorldLikeCore() public {
+        ClanWorld core = new ClanWorld();
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
+
+        _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+    }
+
     function testDiamondSubmitWaitOrderMatchesCore() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
@@ -828,6 +845,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()
+        });
+    }
+
+    function _heartbeatCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.heartbeatSelectors()
         });
     }
 

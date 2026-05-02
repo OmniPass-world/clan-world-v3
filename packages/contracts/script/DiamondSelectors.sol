@@ -13,6 +13,11 @@ library DiamondSelectors {
         selectors[3] = IDiamondLoupe.facetAddress.selector;
     }
 
+    function heartbeatSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](1);
+        selectors[0] = IClanWorld.heartbeat.selector;
+    }
+
     function rawViewsSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](26);
         selectors[0] = IClanWorld.getWorldState.selector;
