@@ -29,6 +29,7 @@ import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {BanditViewsFacet} from "../../src/diamond/facets/BanditViewsFacet.sol";
+import {BlueprintTransferFacet} from "../../src/diamond/facets/BlueprintTransferFacet.sol";
 import {ClanFullViewFacet} from "../../src/diamond/facets/ClanFullViewFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
@@ -630,6 +631,52 @@ contract DiamondSkeletonTest is Test {
         _assertClanEq(IClanWorld(address(diamond)).getClan(diamondToClanId), core.getClan(coreToClanId));
     }
 
+    function testDiamondTransferBlueprintRejectsLikeCoreWithoutBalance() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        BlueprintTransferFacet blueprintTransferFacet = new BlueprintTransferFacet();
+        SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_blueprintTransferCut(address(blueprintTransferFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        address recipient = address(0xB0B);
+        vm.prank(elder);
+        (uint32 coreFromClanId,) = core.mintClan(elder);
+        vm.prank(recipient);
+        (uint32 coreToClanId,) = core.mintClan(recipient);
+        vm.prank(elder);
+        (uint32 diamondFromClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+        vm.prank(recipient);
+        (uint32 diamondToClanId,) = IClanWorld(address(diamond)).mintClan(recipient);
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        WorldState memory coreWorld = core.getWorldState();
+        ISetWorldClock(address(diamond))
+            .setWorldClock(
+                coreWorld.currentTick,
+                coreWorld.nextHeartbeatAtTick,
+                coreWorld.nextHeartbeatAtTs,
+                coreWorld.nextBanditSpawnEligibleTick,
+                coreWorld.currentBanditSpawnChanceBps,
+                coreWorld.currentTickSeed
+            );
+
+        vm.prank(elder);
+        vm.expectRevert(bytes("ClanWorld: insufficient blueprints"));
+        core.transferBlueprint(coreFromClanId, coreToClanId, 1e18);
+
+        vm.prank(elder);
+        vm.expectRevert(bytes("ClanWorld: insufficient blueprints"));
+        IClanWorld(address(diamond)).transferBlueprint(diamondFromClanId, diamondToClanId, 1e18);
+    }
+
     function _rawViewsCut() internal returns (IDiamondCut.FacetCut[] memory cut) {
         RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
         RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
@@ -710,6 +757,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.vaultResourceTransferSelectors()
+        });
+    }
+
+    function _blueprintTransferCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.blueprintTransferSelectors()
         });
     }
 
