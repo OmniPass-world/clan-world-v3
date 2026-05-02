@@ -16,6 +16,7 @@ import {
     DerivedClansmanState,
     MarketState,
     RegionOccupant,
+    TreasuryState,
     WheatPlot,
     WorldSnapshot,
     WorldState
@@ -115,6 +116,7 @@ contract DiamondSkeletonTest is Test {
         WorldState memory expected = core.getWorldState();
         WorldState memory actual = diamondWorld.getWorldState();
         _assertWorldStateEq(actual, expected);
+        _assertTreasuryStateEq(diamondWorld.getTreasuryState(), core.getTreasuryState());
 
         assertEq(diamondWorld.isWinter(), core.isWinter());
         assertEq(diamondWorld.getActionDuration(ActionType.ChopWood), core.getActionDuration(ActionType.ChopWood));
@@ -417,6 +419,22 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.winterStartsAtTick, expected.winterStartsAtTick, "winterStartsAtTick");
         assertEq(actual.winterEndsAtTick, expected.winterEndsAtTick, "winterEndsAtTick");
         assertEq(actual.nextCommitSequence, expected.nextCommitSequence, "nextCommitSequence");
+    }
+
+    function _assertTreasuryStateEq(TreasuryState memory actual, TreasuryState memory expected) internal pure {
+        assertEq(actual.treasuryOwner, expected.treasuryOwner, "treasuryOwner");
+        assertEq(actual.prizePotGold, expected.prizePotGold, "prizePotGold");
+        assertEq(actual.poolsSeeded, expected.poolsSeeded, "poolsSeeded");
+        assertEq(actual.woodToken, expected.woodToken, "woodToken");
+        assertEq(actual.wheatToken, expected.wheatToken, "wheatToken");
+        assertEq(actual.fishToken, expected.fishToken, "fishToken");
+        assertEq(actual.ironToken, expected.ironToken, "ironToken");
+        assertEq(actual.goldToken, expected.goldToken, "goldToken");
+        assertEq(actual.blueprintToken, expected.blueprintToken, "blueprintToken");
+        assertEq(actual.woodGoldPool, expected.woodGoldPool, "woodGoldPool");
+        assertEq(actual.wheatGoldPool, expected.wheatGoldPool, "wheatGoldPool");
+        assertEq(actual.fishGoldPool, expected.fishGoldPool, "fishGoldPool");
+        assertEq(actual.ironGoldPool, expected.ironGoldPool, "ironGoldPool");
     }
 
     function _assertClanEq(Clan memory actual, Clan memory expected) internal pure {

@@ -21,7 +21,9 @@ contract ClanWorldDiamondInit {
         s.world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
         s.world.currentSeasonNumber = 1;
         s.world.nextHeartbeatAtTick = 1;
+        s.treasury.treasuryOwner = msg.sender;
         s.nextClanId = 1;
         s.nextClansmanId = 1;
+        s.nextBanditId = 1;
     }
 }
