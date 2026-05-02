@@ -180,16 +180,6 @@ function parseTravelDestination(msg: string): string | null {
 // Hex color → CSS string for the React scoreboard overlay
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
-interface SnapshotClan {
-  id: string;
-  name: string;
-  treasury: string;
-}
-interface SnapshotData {
-  tick: number;
-  clans: SnapshotClan[];
-}
-
 // Demo bandit state — once the Convex schema gains banditState + monumentLevel,
 // pull these from the snapshot. For now hardcoded so the canvas shows the threat.
 // TODO(server-schema): replace with snapshot.banditState when wired.
@@ -300,7 +290,7 @@ export function WorldMap() {
   const [, setSize] = useState({ w: 800, h: 600 });
 
   const logs = useAgentLogs();
-  const snapshot = useQuery(api.getSnapshot.getSnapshot) as SnapshotData | undefined;
+  const snapshot = useQuery(api.getSnapshot.getSnapshot);
 
   // Derived live tick counter — the worldSnapshot.tick field is currently
   // unwritten by the orchestrator script (it only writes to agentLogs), so
@@ -309,6 +299,8 @@ export function WorldMap() {
   const liveTick = useMemo(() => {
     return Math.max(snapshot?.tick ?? 0, logs.length);
   }, [logs, snapshot?.tick]);
+  const banditTicksUntil = DEMO_BANDIT.attacksAtTick - liveTick;
+  const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
 
   // ---- Pixi init ------------------------------------------------------------
   useEffect(() => {
@@ -398,7 +390,7 @@ export function WorldMap() {
 
         // 2. Build scene (regions, sigil sprites, bandit indicator) — PR #41 + PR #42 logic
         // Layers are added to `viewport` (not app.stage) so pinch/drag affect them.
-        buildScene(app, viewport);
+        buildScene(app, viewport, () => !mounted || !isMountedRef.current);
 
         // 3. Speech bubble layer + ticker (PR #43) — added last so bubbles render above everything.
         const bubbleLayer = new Container();
@@ -646,7 +638,7 @@ export function WorldMap() {
   // ---- One-time: create Pixi display objects (refs hold them for relayout) -
   // All layers attach to `viewport` (not app.stage) so pixi-viewport's pinch /
   // drag transforms apply to the whole map atomically.
-  function buildScene(app: Application, viewport: Viewport) {
+  function buildScene(app: Application, viewport: Viewport, isAssetLoadCancelled: () => boolean) {
     const drawn = drawnRef.current;
 
     // Clan zones, sigil flags, bases, walls, monuments, bandits — all mock data.
@@ -711,7 +703,8 @@ export function WorldMap() {
         // remains visible if load fails. Once loaded, sprite is positioned by relayout.
         Assets.load(clan.sigil)
           .then((texture) => {
-            if (!isMountedRef.current || !appRef.current) return;
+            const cancelled = isAssetLoadCancelled();
+            if (cancelled || !appRef.current) return;
             const sprite = new Sprite(texture);
             sprite.alpha = 0; // hidden until first relayout positions it
             viewport.addChild(sprite);
@@ -746,7 +739,8 @@ export function WorldMap() {
       // hides the fallback ring. Catch silently so the ring stays visible on failure.
       Assets.load('/sprites/bandit.png')
         .then((texture) => {
-          if (!isMountedRef.current || !appRef.current) return;
+          const cancelled = isAssetLoadCancelled();
+          if (cancelled || !appRef.current) return;
           const sprite = new Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
           sprite.alpha = 0; // hidden until first redrawBandit positions it
@@ -772,7 +766,8 @@ export function WorldMap() {
 
         Assets.load(clan.basePng)
           .then((texture) => {
-            if (!isMountedRef.current || !appRef.current) return;
+            const cancelled = isAssetLoadCancelled();
+            if (cancelled || !appRef.current) return;
             const sprite = new Sprite(texture);
             sprite.anchor.set(0.5, 1); // anchored at bottom-center so it "stands" on the region
             sprite.alpha = 0;
@@ -791,7 +786,8 @@ export function WorldMap() {
         // If load fails we silently fall back to the colored Graphics dot.
         Assets.load(clan.clansmanPng)
           .then((texture) => {
-            if (!isMountedRef.current) return;
+            const cancelled = isAssetLoadCancelled();
+            if (cancelled) return;
             clansmanTextureCache[clan.id] = texture;
           })
           .catch(() => {
@@ -1050,8 +1046,7 @@ export function WorldMap() {
       sprite.alpha = 1;
     }
 
-    const tick = snapshot?.tick ?? 0;
-    const ticksUntil = Math.max(0, DEMO_BANDIT.attacksAtTick - tick);
+    const ticksUntil = Math.max(0, DEMO_BANDIT.attacksAtTick - liveTick);
     text.text = `${ticksUntil}t`;
     text.style.fontSize = Math.max(10, Math.round(12 * scale));
     // Anchor the countdown to the right edge of whichever marker is active.
@@ -1065,7 +1060,7 @@ export function WorldMap() {
     if (!pixiReady || !DEMO_MODE) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snapshot?.tick, pixiReady]);
+  }, [liveTick, pixiReady]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.
   useEffect(() => {
@@ -1081,18 +1076,22 @@ export function WorldMap() {
     if (!pixiReady || !DEMO_MODE) return;
     const app = appRef.current;
     if (!app) return;
-    const tick = snapshot?.tick ?? 0;
-    const ticksUntil = DEMO_BANDIT.attacksAtTick - tick;
-    const shouldPulse = ticksUntil <= 2 && ticksUntil >= 0;
+
+    const resetBanditAlpha = () => {
+      const icon = drawnRef.current.banditIcon;
+      const sprite = drawnRef.current.banditSprite;
+      if (icon) icon.alpha = 1;
+      if (sprite) sprite.alpha = 1;
+    };
+
+    if (!shouldPulseBandit) {
+      resetBanditAlpha();
+      return;
+    }
 
     const onTick = () => {
       const icon = drawnRef.current.banditIcon;
       const sprite = drawnRef.current.banditSprite;
-      if (!shouldPulse) {
-        if (icon) icon.alpha = 1;
-        if (sprite) sprite.alpha = 1;
-        return;
-      }
       const t = performance.now() / 220;
       const a = 0.55 + 0.45 * Math.abs(Math.sin(t));
       if (icon) icon.alpha = a;
@@ -1101,12 +1100,9 @@ export function WorldMap() {
     app.ticker.add(onTick);
     return () => {
       app.ticker.remove(onTick);
-      const icon = drawnRef.current.banditIcon;
-      const sprite = drawnRef.current.banditSprite;
-      if (icon) icon.alpha = 1;
-      if (sprite) sprite.alpha = 1;
+      resetBanditAlpha();
     };
-  }, [snapshot?.tick, pixiReady]);
+  }, [pixiReady, shouldPulseBandit]);
 
   // Speech bubbles (PR #43): spawn bubbles for new logs; attribute each to a clan via string match.
   // Only active in DEMO_MODE (MOCK_CLANS provides the attribution table).
@@ -1249,7 +1245,7 @@ export function WorldMap() {
   // from a live snapshot or the mock fallback.
   // When DEMO_MODE is off, scoreboardClans is empty — the scoreboard panel hides
   // and the "no chain data yet" placeholder is shown instead.
-  const scoreboardClans = (() => {
+  const scoreboardClans = useMemo(() => {
     const live = snapshot?.clans;
     if (live && live.length > 0) {
       return live
@@ -1278,7 +1274,7 @@ export function WorldMap() {
       })).sort((a, b) => b.monumentLevel - a.monumentLevel);
     }
     return [];
-  })();
+  }, [snapshot]);
 
   return (
     <div
