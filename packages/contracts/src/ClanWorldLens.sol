@@ -27,6 +27,7 @@ import {
 } from "./IClanWorld.sol";
 import {IClanWorldLens} from "./IClanWorldLens.sol";
 import {LibScoring} from "./lib/LibScoring.sol";
+import {LibTravel} from "./lib/LibTravel.sol";
 import {StubPool} from "./StubPool.sol";
 
 /// @notice Stateless reader contract for convenience views that should not live
@@ -53,6 +54,15 @@ contract ClanWorldLens is IClanWorldLens {
 
     function getBanditTargetPreview(uint32 banditId) external view override returns (uint32 previewClanId) {
         return world.getBanditTargetPreview(banditId);
+    }
+
+    function quoteTravel(uint8 srcRegion, uint8 dstRegion)
+        external
+        pure
+        override
+        returns (uint8 travelTicks, bytes8 path)
+    {
+        return LibTravel.quoteTravel(srcRegion, dstRegion);
     }
 
     function quoteLootValueRaw(uint32 clanId) external view override returns (uint256 lootValue) {

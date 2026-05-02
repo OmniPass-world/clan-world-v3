@@ -112,6 +112,17 @@ contract ClanWorldLensTest is Test {
         assertEq(lens.quoteLootValueRaw(clanId), world.quoteLootValueRaw(clanId));
     }
 
+    function test_lensQuoteTravelMatchesCoreForAllRegions() public view {
+        for (uint8 src = 0; src <= 9; src++) {
+            for (uint8 dst = 0; dst <= 9; dst++) {
+                (uint8 coreTicks, bytes8 corePath) = world.quoteTravel(src, dst);
+                (uint8 lensTicks, bytes8 lensPath) = lens.quoteTravel(src, dst);
+                assertEq(lensTicks, coreTicks, "travel ticks");
+                assertEq(lensPath, corePath, "travel path");
+            }
+        }
+    }
+
     function test_coreRawMonumentReachedAtGetter() public {
         vm.prank(elder);
         (uint32 clanId,) = world.mintClan(elder);

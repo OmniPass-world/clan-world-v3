@@ -1484,6 +1484,35 @@
     },
     {
       "type": "function",
+      "name": "quoteTravel",
+      "inputs": [
+        {
+          "name": "srcRegion",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "dstRegion",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "travelTicks",
+          "type": "uint8",
+          "internalType": "uint8"
+        },
+        {
+          "name": "path",
+          "type": "bytes8",
+          "internalType": "bytes8"
+        }
+      ],
+      "stateMutability": "pure"
+    },
+    {
+      "type": "function",
       "name": "world",
       "inputs": [],
       "outputs": [
