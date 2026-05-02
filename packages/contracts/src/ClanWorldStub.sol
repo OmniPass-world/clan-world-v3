@@ -26,6 +26,7 @@ import {
     DerivedClanState,
     DerivedClansmanState,
     ClanOrder,
+    WithdrawResourcesData,
     OrderResult,
     PoolSeedConfig,
     LeaderboardEntry,
@@ -43,17 +44,18 @@ import {
 contract ClanWorldStub is IClanWorld {
     WorldState private _world;
     TreasuryState private _treasury;
+    uint32 private _nextClanId = 1;
+    mapping(uint32 => Clan) private _clans;
 
     constructor(address[6] memory tokens, address[4] memory pools) {
-        _world.currentTick = 1;
+        _world.currentTick = 0;
         _world.nextHeartbeatAtTs = uint64(block.timestamp);
         _world.seasonStartTick = 0;
         _world.seasonEndTick = ClanWorldConstants.SEASON_DURATION_TICKS;
         _world.currentSeasonNumber = 1;
         _world.nextHeartbeatAtTick = _world.currentTick + 1;
-        _world.winterStartsAtTick =
-            ClanWorldConstants.TICKS_PER_WINTER_CYCLE - ClanWorldConstants.WINTER_DURATION_TICKS;
-        _world.winterEndsAtTick = ClanWorldConstants.TICKS_PER_WINTER_CYCLE;
+        _world.winterStartsAtTick = ClanWorldConstants.WINTER_START_TICK;
+        _world.winterEndsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
         _world.winterActive = false;
 
         _treasury.woodToken = tokens[0];
@@ -76,10 +78,20 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function heartbeat() external override {
+        require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
+
         uint64 closed = _world.currentTick;
         _world.currentTick += 1;
         _world.nextHeartbeatAtTick = _world.currentTick + 1;
-        _world.nextHeartbeatAtTs = uint64(block.timestamp);
+        _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+        bool wasWinter = _isWinterActiveAt(closed);
+        bool nowWinter = _isWinterActiveAt(_world.currentTick);
+        if (!wasWinter && nowWinter) {
+            emit WinterStarted(_winterEventTick(_world.currentTick));
+        }
+        if (wasWinter && !nowWinter) {
+            emit WinterEnded(_winterEventTick(_world.currentTick));
+        }
         emit TickAdvanced(closed, _world.currentTick, bytes32(0));
     }
 
@@ -93,8 +105,25 @@ contract ClanWorldStub is IClanWorld {
     // Clan lifecycle
     // -------------------------------------------------------------------------
 
-    function mintClan(address) external override returns (uint32, uint256) {
-        return (1, 1);
+    function mintClan(address to) external override returns (uint32 clanId, uint256 iftTokenId) {
+        require(to != address(0), "ClanWorldStub: zero address");
+
+        clanId = _nextClanId++;
+        iftTokenId = uint256(clanId);
+
+        Clan storage clan = _clans[clanId];
+        clan.clanId = clanId;
+        clan.iftTokenId = iftTokenId;
+        clan.owner = to;
+        clan.clanState = ClanState.ACTIVE;
+        clan.lastSettledTick = _world.currentTick;
+        clan.livingClansmen = 4;
+        clan.goldBalance = 3e18;
+        clan.vaultWood = 20e18;
+        clan.vaultWheat = 20e18;
+        clan.vaultFish = 2e18;
+
+        emit ClanSpawned(clanId, to, iftTokenId, 0, _world.currentTick);
     }
 
     function submitClanOrders(uint32, ClanOrder[] calldata orders)
@@ -114,50 +143,166 @@ contract ClanWorldStub is IClanWorld {
     function seedPools(PoolSeedConfig calldata) external override {}
 
     // -------------------------------------------------------------------------
+    // Clan ownership transfer
+    // -------------------------------------------------------------------------
+
+    function transferClanOwnership(uint32 clanId, address newOwner) external override {
+        Clan storage clan = _clans[clanId];
+        require(clan.clanId != 0, "ClanWorldStub: clan not found");
+        require(clan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(newOwner != address(0), "ClanWorldStub: zero address");
+        require(newOwner != clan.owner, "ClanWorldStub: same owner");
+
+        address oldOwner = clan.owner;
+        clan.owner = newOwner;
+        clan.ownerNonce++;
+        emit ClanOwnershipTransferred(clanId, oldOwner, newOwner, clan.ownerNonce);
+    }
+
+    // -------------------------------------------------------------------------
     // OTC transfers
     // -------------------------------------------------------------------------
 
-    function transferGold(uint32, uint32, uint256) external override {}
+    function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external override {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+        require(fromClan.goldBalance >= amount, "ClanWorldStub: insufficient gold");
 
-    function transferVaultResource(uint32, uint32, ResourceType, uint256) external override {}
+        fromClan.goldBalance -= amount;
+        toClan.goldBalance += amount;
+        emit GoldTransferred(fromClanId, toClanId, amount, _world.currentTick);
+    }
 
-    function transferBlueprint(uint32, uint32, uint256) external override {}
+    function transferVaultResource(uint32 fromClanId, uint32 toClanId, ResourceType resource, uint256 amount)
+        external
+        override
+    {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
 
-    function transferBundle(uint32, uint32, uint256, uint256, uint256, uint256, uint256, uint256) external override {}
+        if (resource == ResourceType.Wood) {
+            require(fromClan.vaultWood >= amount, "ClanWorldStub: insufficient wood");
+            fromClan.vaultWood -= amount;
+            toClan.vaultWood += amount;
+        } else if (resource == ResourceType.Iron) {
+            require(fromClan.vaultIron >= amount, "ClanWorldStub: insufficient iron");
+            fromClan.vaultIron -= amount;
+            toClan.vaultIron += amount;
+        } else if (resource == ResourceType.Wheat) {
+            require(fromClan.vaultWheat >= amount, "ClanWorldStub: insufficient wheat");
+            fromClan.vaultWheat -= amount;
+            toClan.vaultWheat += amount;
+        } else if (resource == ResourceType.Fish) {
+            require(fromClan.vaultFish >= amount, "ClanWorldStub: insufficient fish");
+            fromClan.vaultFish -= amount;
+            toClan.vaultFish += amount;
+        } else {
+            revert("ClanWorldStub: invalid resource");
+        }
+
+        emit VaultResourceTransferred(fromClanId, toClanId, resource, amount, _world.currentTick);
+    }
+
+    function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external override {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+        require(fromClan.blueprintBalance >= amount, "ClanWorldStub: insufficient blueprints");
+
+        fromClan.blueprintBalance -= amount;
+        toClan.blueprintBalance += amount;
+        emit BlueprintTransferred(fromClanId, toClanId, amount, _world.currentTick);
+    }
+
+    function transferBundle(
+        uint32 fromClanId,
+        uint32 toClanId,
+        uint256 gold,
+        uint256 blueprint,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish
+    ) external override {
+        Clan storage fromClan = _clans[fromClanId];
+        Clan storage toClan = _clans[toClanId];
+        require(fromClan.owner == msg.sender, "ClanWorldStub: not clan owner");
+        require(toClan.clanId != 0, "ClanWorldStub: to clan not found");
+        require(fromClan.goldBalance >= gold, "ClanWorldStub: insufficient gold");
+        require(fromClan.blueprintBalance >= blueprint, "ClanWorldStub: insufficient blueprints");
+        require(fromClan.vaultWood >= wood, "ClanWorldStub: insufficient wood");
+        require(fromClan.vaultIron >= iron, "ClanWorldStub: insufficient iron");
+        require(fromClan.vaultWheat >= wheat, "ClanWorldStub: insufficient wheat");
+        require(fromClan.vaultFish >= fish, "ClanWorldStub: insufficient fish");
+
+        fromClan.goldBalance -= gold;
+        fromClan.blueprintBalance -= blueprint;
+        fromClan.vaultWood -= wood;
+        fromClan.vaultIron -= iron;
+        fromClan.vaultWheat -= wheat;
+        fromClan.vaultFish -= fish;
+        toClan.goldBalance += gold;
+        toClan.blueprintBalance += blueprint;
+        toClan.vaultWood += wood;
+        toClan.vaultIron += iron;
+        toClan.vaultWheat += wheat;
+        toClan.vaultFish += fish;
+
+        if (gold > 0) emit GoldTransferred(fromClanId, toClanId, gold, _world.currentTick);
+        if (blueprint > 0) emit BlueprintTransferred(fromClanId, toClanId, blueprint, _world.currentTick);
+        if (wood > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Wood, wood, _world.currentTick);
+        }
+        if (iron > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Iron, iron, _world.currentTick);
+        }
+        if (wheat > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Wheat, wheat, _world.currentTick);
+        }
+        if (fish > 0) {
+            emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Fish, fish, _world.currentTick);
+        }
+    }
 
     // -------------------------------------------------------------------------
     // Raw read getters
     // -------------------------------------------------------------------------
 
     function getWorldState() external view override returns (WorldState memory) {
-        return _world;
+        return _worldStateView();
     }
 
     function getTreasuryState() external view override returns (TreasuryState memory) {
         return _treasury;
     }
 
-    function getClan(uint32) external pure override returns (Clan memory) {
-        return Clan({
-            clanId: 0,
-            iftTokenId: 0,
-            owner: address(0),
-            clanState: ClanState.ACTIVE,
-            baseRegion: 0,
-            baseLevel: 0,
-            wallLevel: 0,
-            monumentLevel: 0,
-            livingClansmen: 0,
-            lastSettledTick: 0,
-            starvationStartsAtTick: 0,
-            coldDamage: 0,
-            goldBalance: 0,
-            blueprintBalance: 0,
-            vaultWood: 0,
-            vaultIron: 0,
-            vaultWheat: 0,
-            vaultFish: 0
-        });
+    function getResourceToken(uint8 resourceType) external view override returns (address) {
+        if (resourceType == uint8(ResourceType.Wood)) return _treasury.woodToken;
+        if (resourceType == uint8(ResourceType.Iron)) return _treasury.ironToken;
+        if (resourceType == uint8(ResourceType.Wheat)) return _treasury.wheatToken;
+        if (resourceType == uint8(ResourceType.Fish)) return _treasury.fishToken;
+        revert("ClanWorldStub: invalid resource");
+    }
+
+    function getPool(uint8 resourceType) external view override returns (address) {
+        if (resourceType == uint8(ResourceType.Wood)) return _treasury.woodGoldPool;
+        if (resourceType == uint8(ResourceType.Iron)) return _treasury.ironGoldPool;
+        if (resourceType == uint8(ResourceType.Wheat)) return _treasury.wheatGoldPool;
+        if (resourceType == uint8(ResourceType.Fish)) return _treasury.fishGoldPool;
+        revert("ClanWorldStub: invalid resource");
+    }
+
+    function getPrice(uint8, uint256) external pure override returns (uint256) {
+        return 0;
+    }
+
+    function getClan(uint32 clanId) external view override returns (Clan memory) {
+        return _clans[clanId];
     }
 
     function getClansman(uint32) external pure override returns (Clansman memory) {
@@ -194,7 +339,8 @@ contract ClanWorldStub is IClanWorld {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
     }
 
@@ -207,6 +353,48 @@ contract ClanWorldStub is IClanWorld {
         return (0, 0, 0);
     }
 
+    function getWallUpgradeCost(uint8 currentLevel) external pure override returns (uint256 wood, uint256 iron) {
+        if (currentLevel == 0) return (20e18, 0);
+        if (currentLevel == 1) return (35e18, 0);
+        if (currentLevel == 2) return (30e18, 5e18);
+        if (currentLevel == 3) return (40e18, 10e18);
+        if (currentLevel == 4) return (50e18, 15e18);
+        return (0, 0);
+    }
+
+    function getBaseUpgradeCost(uint8 currentLevel)
+        external
+        pure
+        override
+        returns (uint256 wood, uint256 iron, uint256 wheat)
+    {
+        if (currentLevel == 1) return (40e18, 0, 20e18);
+        if (currentLevel == 2) return (60e18, 5e18, 30e18);
+        if (currentLevel == 3) return (80e18, 10e18, 40e18);
+        if (currentLevel == 4) return (100e18, 15e18, 50e18);
+        return (0, 0, 0);
+    }
+
+    function getMonumentUpgradeCost(uint8 currentLevel)
+        external
+        pure
+        override
+        returns (uint256 wood, uint256 iron, uint256 wheat, uint256 blueprint)
+    {
+        if (currentLevel == 0) return (30e18, 0, 20e18, 0);
+        if (currentLevel == 1) return (50e18, 0, 30e18, 0);
+        if (currentLevel == 2) return (70e18, 5e18, 40e18, 0);
+        if (currentLevel == 3) return (90e18, 10e18, 50e18, 0);
+        if (currentLevel == 4) return (120e18, 15e18, 60e18, 0);
+        if (currentLevel == 5) return (150e18, 20e18, 80e18, 0);
+        if (currentLevel >= 6 && currentLevel < 10) return (200e18, 25e18, 100e18, 1e18);
+        return (0, 0, 0, 0);
+    }
+
+    function isWinter() external view override returns (bool) {
+        return _isWinterActiveAt(_world.currentTick);
+    }
+
     function getActionDuration(ActionType) external pure override returns (uint64) {
         return 0;
     }
@@ -215,21 +403,30 @@ contract ClanWorldStub is IClanWorld {
         return 0;
     }
 
-    function getBanditTroop(uint32) external pure override returns (BanditTroop memory) {
+    function getBandit(uint32) public pure override returns (BanditTroop memory) {
         return BanditTroop({
-            banditId: 0,
-            state: BanditState.NONE,
-            currentRegion: 0,
-            attackAttemptsMade: 0,
-            stateEnteredTick: 0,
-            nextActionTick: 0,
+            id: 0,
+            region: 0,
+            state: BanditState.None,
+            targetClanId: 0,
+            tickEnteredState: 0,
+            strength: 0,
             tier: 0,
-            attackPower: 0,
+            attackAttemptsMade: 0,
             carryWood: 0,
             carryIron: 0,
             carryWheat: 0,
-            carryFish: 0
+            carryFish: 0,
+            carryGold: 0
         });
+    }
+
+    function getBanditTroop(uint32 banditId) external pure override returns (BanditTroop memory) {
+        return getBandit(banditId);
+    }
+
+    function getBanditsInRegion(uint8) external pure override returns (uint32[] memory) {
+        return new uint32[](0);
     }
 
     function getWheatPlots(uint32) external pure override returns (WheatPlot memory west, WheatPlot memory east) {
@@ -253,8 +450,8 @@ contract ClanWorldStub is IClanWorld {
     // Derived read getters
     // -------------------------------------------------------------------------
 
-    function getDerivedClanState(uint32) external view override returns (DerivedClanState memory) {
-        Clan memory c = this.getClan(0);
+    function getDerivedClanState(uint32 clanId) external view override returns (DerivedClanState memory) {
+        Clan memory c = this.getClan(clanId);
         return DerivedClanState({clan: c, isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick});
     }
 
@@ -283,31 +480,40 @@ contract ClanWorldStub is IClanWorld {
         return 0;
     }
 
+    function getClanScore(uint32) external pure override returns (uint256, uint64, uint8) {
+        return (0, 0, 0);
+    }
+
+    function getRankings() external pure override returns (uint32[] memory, uint256[] memory) {
+        return (new uint32[](0), new uint256[](0));
+    }
+
     // -------------------------------------------------------------------------
     // UI indexer aggregator getters
     // -------------------------------------------------------------------------
 
     function getWorldSnapshot() external view override returns (WorldSnapshot memory) {
+        WorldState memory ws = _worldStateView();
         return WorldSnapshot({
-            currentTick: _world.currentTick,
-            seasonStartTick: _world.seasonStartTick,
-            seasonEndTick: _world.seasonEndTick,
+            currentTick: ws.currentTick,
+            seasonStartTick: ws.seasonStartTick,
+            seasonEndTick: ws.seasonEndTick,
             seasonFinalized: false,
-            currentSeasonNumber: _world.currentSeasonNumber,
-            nextHeartbeatAtTick: _world.nextHeartbeatAtTick,
-            winterActive: _world.winterActive,
-            winterStartsAtTick: _world.winterStartsAtTick,
-            winterEndsAtTick: _world.winterEndsAtTick,
+            currentSeasonNumber: ws.currentSeasonNumber,
+            nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
+            winterActive: ws.winterActive,
+            winterStartsAtTick: ws.winterStartsAtTick,
+            winterEndsAtTick: ws.winterEndsAtTick,
             activeBanditId: 0,
             currentTickSeed: bytes32(0),
             leaderboard: new LeaderboardEntry[](0)
         });
     }
 
-    function getClanFullView(uint32) external view override returns (ClanFullView memory) {
+    function getClanFullView(uint32 clanId) external view override returns (ClanFullView memory) {
         return ClanFullView({
             clan: DerivedClanState({
-                clan: this.getClan(0), isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick
+                clan: this.getClan(clanId), isStarving: false, lootValue: 0, derivedAtTick: _world.currentTick
             }),
             clansmen: new ClansmanFullView[](0),
             westPlot: WheatPlot({state: WheatPlotState.Harvestable, region: 0, remainingWheat: 0, regrowUntilTick: 0}),
@@ -341,7 +547,7 @@ contract ClanWorldStub is IClanWorld {
         return ActiveBanditView({
             exists: false,
             banditId: 0,
-            state: BanditState.NONE,
+            state: BanditState.None,
             currentRegion: 0,
             attackAttemptsMade: 0,
             maxAttemptsRemaining: 0,
@@ -360,5 +566,41 @@ contract ClanWorldStub is IClanWorld {
 
     function getRegionPopulation(uint8) external pure override returns (RegionOccupant[] memory) {
         return new RegionOccupant[](0);
+    }
+
+    function _isWinterActiveAt(uint64 tick) internal pure returns (bool) {
+        if (tick < ClanWorldConstants.WINTER_START_TICK) {
+            return false;
+        }
+        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
+        return elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
+    }
+
+    function _winterEventTick(uint64 tick) internal pure returns (uint64) {
+        return tick;
+    }
+
+    function _winterWindowForTick(uint64 tick)
+        internal
+        pure
+        returns (bool active, uint64 startsAtTick, uint64 endsAtTick)
+    {
+        if (tick < ClanWorldConstants.WINTER_START_TICK) {
+            startsAtTick = ClanWorldConstants.WINTER_START_TICK;
+            endsAtTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
+            return (false, startsAtTick, endsAtTick);
+        }
+
+        uint64 elapsed = tick - ClanWorldConstants.WINTER_START_TICK;
+        uint64 cycleIndex = elapsed / ClanWorldConstants.WINTER_PERIOD_TICKS;
+        uint64 cycleStart = ClanWorldConstants.WINTER_START_TICK + cycleIndex * ClanWorldConstants.WINTER_PERIOD_TICKS;
+        active = elapsed % ClanWorldConstants.WINTER_PERIOD_TICKS < ClanWorldConstants.WINTER_DURATION_TICKS;
+        startsAtTick = active ? cycleStart : cycleStart + ClanWorldConstants.WINTER_PERIOD_TICKS;
+        endsAtTick = startsAtTick + ClanWorldConstants.WINTER_DURATION_TICKS;
+    }
+
+    function _worldStateView() internal view returns (WorldState memory ws) {
+        ws = _world;
+        (ws.winterActive, ws.winterStartsAtTick, ws.winterEndsAtTick) = _winterWindowForTick(_world.currentTick);
     }
 }

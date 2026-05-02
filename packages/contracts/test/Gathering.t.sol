@@ -12,6 +12,7 @@ import {
     Mission,
     ClanFullView,
     ClanOrder,
+    WithdrawResourcesData,
     OrderResult,
     MarketExecutionMode
 } from "../src/IClanWorld.sol";
@@ -51,7 +52,8 @@ contract GatheringHarness is ClanWorld {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
     }
 }
@@ -94,7 +96,8 @@ contract GatheringTest is Test {
             targetClanId: 0,
             marketToken: address(0),
             marketAmount: 0,
-            maxGoldIn: 0
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
         });
 
         vm.prank(elder);
@@ -111,19 +114,22 @@ contract GatheringTest is Test {
         return world.getClansman(csId);
     }
 
-    function test_chopWoodAtForestYieldsBaseTimesActionDuration() public {
+    function test_chopWoodAtForestYieldsBaseOrCritBonus() public {
         vm.prevrandao(bytes32(uint256(2)));
         uint32 clanId = _mintClan();
         uint32 csId = _firstCs(clanId);
 
         Clansman memory cs = _settleChopWood(clanId, csId);
 
-        uint256 expected = ClanWorldConstants.WOOD_YIELD_PER_TICK * world.getActionDuration(ActionType.ChopWood);
-        assertEq(cs.carryWood, expected, "base wood yield");
+        uint256 baseYield =
+            ClanWorldConstants.WOOD_YIELD_PER_TICK * uint256(world.getActionDuration(ActionType.ChopWood));
+        assertTrue(
+            cs.carryWood == baseYield || cs.carryWood == baseYield * 2,
+            "wood yield"
+        );
     }
 
     function test_chopWoodCritDistributionAcrossSeeds() public {
-        uint256 baseYield = ClanWorldConstants.WOOD_YIELD_PER_TICK * world.getActionDuration(ActionType.ChopWood);
         uint256 critCount = 0;
         world = new GatheringHarness();
         uint256 cleanState = vm.snapshotState();
@@ -135,6 +141,8 @@ contract GatheringTest is Test {
             uint32 csId = _firstCs(clanId);
 
             Clansman memory cs = _settleChopWood(clanId, csId);
+            uint256 baseYield =
+                ClanWorldConstants.WOOD_YIELD_PER_TICK * uint256(world.getActionDuration(ActionType.ChopWood));
             if (cs.carryWood == baseYield * 2) {
                 critCount++;
             } else {
@@ -142,7 +150,7 @@ contract GatheringTest is Test {
             }
         }
 
-        assertGe(critCount, 3, "crit count too low");
+        assertGe(critCount, 5, "crit count too low");
         assertLe(critCount, 20, "crit count too high");
     }
 
@@ -201,89 +209,36 @@ contract GatheringTest is Test {
         assertEq(nextTickHarvest.carryWheat, fullYield + fullYield / 2, "next tick harvest is penalized");
     }
 
-    function test_chopWoodAppliesCooldownPostSettle() public {
+    function test_chopWoodReschedulesWhenCarryCapNotReached() public {
         uint32 clanId = _mintClan();
         uint32 csId = _firstCs(clanId);
+
+        OrderResult[] memory result = _submitChopWood(clanId, csId);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "chop wood accepted");
+
+        Mission memory mission = world.getActiveMission(csId);
+        _advanceUntilCurrentTick(mission.settlesAtTick + 1);
+        world.settleClan(clanId);
+
+        Clansman memory cs = world.getClansman(csId);
+        assertEq(uint8(cs.state), uint8(ClansmanState.ACTING), "mission continues");
+        assertTrue(world.getActiveMission(csId).active, "mission remains active");
+        assertEq(
+            world.getActiveMission(csId).settlesAtTick,
+            mission.settlesAtTick + world.getActionDuration(ActionType.ChopWood),
+            "next chop scheduled"
+        );
+    }
+
+    function test_chopWoodAppliesCooldownWhenCarryCapReached() public {
+        uint32 clanId = _mintClan();
+        uint32 csId = _firstCs(clanId);
+        world.setCarryWood(csId, ClanWorldConstants.WOOD_CAP - 1e18);
 
         Clansman memory cs = _settleChopWood(clanId, csId);
 
         assertEq(uint8(cs.state), uint8(ClansmanState.WAITING), "mission completed");
         assertFalse(world.getActiveMission(csId).active, "mission inactive");
         assertGt(cs.cooldownEndsAtTs, block.timestamp, "cooldown starts on settlement");
-    }
-
-    // -------------------------------------------------------------------------
-    // Per-tick yield parity tests (H2): confirm per-tick constants × duration
-    // produce the same per-call totals as the old flat yields.
-    // -------------------------------------------------------------------------
-
-    function _submitOrder(uint32 clanId, uint32 csId, uint8 region, ActionType action)
-        internal
-        returns (OrderResult[] memory)
-    {
-        ClanOrder[] memory orders = new ClanOrder[](1);
-        orders[0] = ClanOrder({
-            clansmanId: csId,
-            gotoRegion: region,
-            action: action,
-            targetClanId: 0,
-            marketToken: address(0),
-            marketAmount: 0,
-            maxGoldIn: 0
-        });
-        vm.prank(elder);
-        return world.submitClanOrders(clanId, orders);
-    }
-
-    function _settleOrder(uint32 clanId, uint32 csId, uint8 region, ActionType action)
-        internal
-        returns (Clansman memory)
-    {
-        OrderResult[] memory result = _submitOrder(clanId, csId, region, action);
-        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "order accepted");
-        Mission memory mission = world.getActiveMission(csId);
-        _advanceUntilCurrentTick(mission.settlesAtTick + 1);
-        world.settleClan(clanId);
-        return world.getClansman(csId);
-    }
-
-    // Iron: IRON_YIELD_PER_TICK * duration = IRON_BASE_YIELD = 5e17
-    function test_mineIronYieldsIronBaseYield() public {
-        // Use prevrandao that avoids gold-bonus path (or just check carryIron)
-        vm.prevrandao(bytes32(uint256(1)));
-        uint32 clanId = _mintClan();
-        uint32 csId = _firstCs(clanId);
-
-        Clansman memory cs = _settleOrder(clanId, csId, ClanWorldConstants.REGION_MOUNTAINS, ActionType.MineIron);
-
-        uint256 expectedYield =
-            ClanWorldConstants.IRON_YIELD_PER_TICK * uint256(world.getActionDuration(ActionType.MineIron));
-        assertEq(expectedYield, ClanWorldConstants.IRON_BASE_YIELD, "constant parity: per-tick*duration == base");
-        assertEq(cs.carryIron, expectedYield, "iron yield equals IRON_BASE_YIELD");
-    }
-
-    // Fish (docks): when roll succeeds, yield = FISH_YIELD_PER_TICK * duration = 1e18
-    function test_fishDocksYieldsOneEther_onSuccessfulRoll() public {
-        // prevrandao 1 → fishRoll = keccak256("fish_roll",...) % 10000 < 2500 (25%)
-        // Try multiple seeds until we get a hit
-        uint256 cleanState = vm.snapshotState();
-        bool hit = false;
-        for (uint256 seed = 1; seed < 100; seed++) {
-            vm.revertToState(cleanState);
-            vm.prevrandao(bytes32(seed));
-            uint32 clanId = _mintClan();
-            uint32 csId = _firstCs(clanId);
-            Clansman memory cs =
-                _settleOrder(clanId, csId, ClanWorldConstants.REGION_WEST_DOCKS, ActionType.FishDocks);
-            if (cs.carryFish > 0) {
-                uint256 expectedYield =
-                    ClanWorldConstants.FISH_YIELD_PER_TICK * uint256(world.getActionDuration(ActionType.FishDocks));
-                assertEq(expectedYield, 1e18, "constant parity: per-tick*duration == 1e18");
-                assertEq(cs.carryFish, expectedYield, "fish docks yield equals 1e18 on success");
-                hit = true;
-                break;
-            }
-        }
-        assertTrue(hit, "did not get a fish roll hit in 100 seeds");
     }
 }

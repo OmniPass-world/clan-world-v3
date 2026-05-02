@@ -81,7 +81,7 @@ Deposit is a **single-tick action** per spec §3.10 (unchanged by this addendum)
 - Worker must be at own clan's `baseRegion`
 - Atomically transfers all 4 carry resources to vault in one settlement
 - Empty-carry deposit is a silent no-op (no event emitted)
-- `ResourcesDeposited` event emitted on non-empty deposit with per-resource deltas + `atTick`
+- `ResourcesDeposited` event emitted on non-empty deposit with per-resource amounts + `atTick`
 
 ### 2.4 Cooldown semantics (A5 unchanged)
 
@@ -166,12 +166,12 @@ These supersede the carry cap values in `clanworld_v4_spec.md` §4.3 and `clanwo
 
 | Resource | Spec value (deprecated) | As-built canonical | Source |
 |---|---|---|---|
-| Wood | 15e18 | **10e18** (`WOOD_CAP = CLANSMAN_CARRY_CAP = 10e18`) | `IClanWorld.sol:43-44` |
+| Wood | 15e18 | **15e18** (`WOOD_CAP`; `CLANSMAN_CARRY_CAP` remains legacy 10e18) | `IClanWorld.sol:43-44` ✅ unchanged |
 | Iron | 5e18 | **5e18** | `IClanWorld.sol:45` ✅ unchanged |
 | Wheat | 40e18 | **40e18** | `IClanWorld.sol:46` ✅ unchanged |
 | Fish | 8e18 | **8e18** | `IClanWorld.sol:47` ✅ unchanged |
 
-**Ratified design decision:** Wood carry cap is **10e18**, not 15e18. `WOOD_CAP` is aliased to the generic `CLANSMAN_CARRY_CAP` constant (10e18). Restoring to spec's 15e18 is tracked as item #10 in §10.
+**Ratified design decision:** Wood carry cap is **15e18**. `WOOD_CAP` is independent from the legacy generic `CLANSMAN_CARRY_CAP` constant (10e18).
 
 **Carry enforcement mechanics (unchanged from spec):** each gather helper enforces the per-resource cap independently. Yield is clamped to `cap - currentCarry` if it would overflow. If carry is already at cap when resolution fires, the mission terminates immediately (no yield credited). This matches spec §4.8.
 
@@ -240,7 +240,7 @@ Starvation clears in the same `_applyUpkeep` tick where the vault CAN satisfy bo
 | Location requirement | worker at own `clan.baseRegion` | `ClanWorld.sol:670-674, 1611-1614` |
 | Transfer semantics | all 4 carry resources → vault atomically; carry fields zeroed | `ClanWorld.sol:682-695` |
 | Empty-carry behavior | silent no-op, no event | `ClanWorld.sol:675-680` |
-| Event | `ResourcesDeposited(clanId, woodDelta, ironDelta, wheatDelta, fishDelta, atTick)` | `IClanWorld.sol:541-549` |
+| Event | `ResourcesDeposited(clanId, wood, iron, wheat, fish, atTick)` | `IClanWorld.sol:541-549` |
 | Error on wrong region | `ERR_NOT_AT_HOMEBASE` | `IClanWorld.sol:171` |
 
 ---
@@ -289,7 +289,7 @@ The following 14 drift items are tracked for evaluation under the `spec-v4-resto
 | 7 | **Fish docks 25%/tick × 1e18** (§4.7) | 25% per batch call × 1e18 | Tiny constant — meaningful after #1 |
 | 8 | **Fish deep sea 75%/tick × 1e18** (§4.7) | 75% per batch call × 1e18 | Tiny constant — meaningful after #1 |
 | 9 | **Wheat harvest rate 20e18/tick** (§4.9) | 5e18/tick × 4 = 20e18/batch | Tiny constant — meaningful after #1 |
-| 10 | **Wood carry cap 15e18** (§4.3) | `WOOD_CAP = CLANSMAN_CARRY_CAP = 10e18` | Tiny — 1 constant in `IClanWorld.sol:43-44` (alias decoupling required) |
+| 10 | **Wood carry cap 15e18** (§4.3) | IMPLEMENTED — `WOOD_CAP = 15e18`; `CLANSMAN_CARRY_CAP` remains legacy 10e18 | Done |
 | 11 | **Winter wheat plot lockdown** (§7.4) — plots enter `WinterLocked` at winter start; no harvest | `WinterLocked` enum state declared, not wired | Small–Medium — wire winter-start heartbeat to set plot state; add check in `_gatherWheat`; wire winter-end → Regrowing |
 | 12 | **Winter upkeep 2× multiplier** (§7.3) — wheat + fish consumption doubles in winter | Flat rate; `WINTER_UPKEEP_MULTIPLIER_BPS = 20000` declared, unused | Small — multiply upkeep by `WINTER_UPKEEP_MULTIPLIER_BPS` when `winterActive` in `_applyUpkeep` |
 | 13 | **Winter wood burn 1e18/base/tick** (§7.3) | Not implemented; `WINTER_WOOD_BURN_PER_BASE = 1e18` declared, unused | Small — add wood burn branch in `_applyUpkeep` when `winterActive` |
@@ -308,7 +308,7 @@ These supersede the economy-related constants in `clanworld_v4_2_state_schema_in
 | `WOOD_YIELD_PER_TICK` | 2e18 (implied by continuous) | **1e18** | `IClanWorld.sol:50` |
 | `WOOD_CRIT_BONUS` | +1e18 additive | **×2 multiplicative (constant declared at `IClanWorld.sol:52-54` but unused by impl; impl does ×2 inline)** | `ClanWorld.sol:495-497` |
 | `WOOD_CRIT_BPS` | 2000 (20%) | **1000 (10%)** | `IClanWorld.sol:55` |
-| `WOOD_CAP` | 15e18 | **10e18 (= `CLANSMAN_CARRY_CAP`)** | `IClanWorld.sol:43-44` |
+| `WOOD_CAP` | 15e18 | **15e18** | `IClanWorld.sol:44` ✅ unchanged |
 | `IRON_YIELD_PER_TICK` | 5e17 (implied by continuous) | **1.25e17** | `IClanWorld.sol:58` |
 | `GOLD_FROM_IRON_BPS` | 200 (2%) | **200 (2%)** ✅ unchanged | `IClanWorld.sol:59` |
 | `GOLD_FROM_IRON_AMOUNT` | 1e18 | **1e18** ✅ unchanged | `IClanWorld.sol:60` |
