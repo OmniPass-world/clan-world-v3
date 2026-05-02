@@ -14,6 +14,7 @@ import {DerivedViewsFacet} from "../src/diamond/facets/DerivedViewsFacet.sol";
 import {MarketViewsFacet} from "../src/diamond/facets/MarketViewsFacet.sol";
 import {RawViewsFacet} from "../src/diamond/facets/RawViewsFacet.sol";
 import {RegionViewsFacet} from "../src/diamond/facets/RegionViewsFacet.sol";
+import {SnapshotViewsFacet} from "../src/diamond/facets/SnapshotViewsFacet.sol";
 
 contract DeployDiamond is Script {
     function run() external {
@@ -31,6 +32,7 @@ contract DeployDiamond is Script {
         MarketViewsFacet marketViewsFacet = new MarketViewsFacet();
         BanditViewsFacet banditViewsFacet = new BanditViewsFacet();
         RegionViewsFacet regionViewsFacet = new RegionViewsFacet();
+        SnapshotViewsFacet snapshotViewsFacet = new SnapshotViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
@@ -42,7 +44,8 @@ contract DeployDiamond is Script {
                     address(derivedViewsFacet),
                     address(marketViewsFacet),
                     address(banditViewsFacet),
-                    address(regionViewsFacet)
+                    address(regionViewsFacet),
+                    address(snapshotViewsFacet)
                 ),
                 address(init),
                 abi.encodeCall(ClanWorldDiamondInit.init, ())
@@ -57,6 +60,7 @@ contract DeployDiamond is Script {
         console.log("MARKET_VIEWS_FACET_ADDRESS:       ", address(marketViewsFacet));
         console.log("BANDIT_VIEWS_FACET_ADDRESS:       ", address(banditViewsFacet));
         console.log("REGION_VIEWS_FACET_ADDRESS:       ", address(regionViewsFacet));
+        console.log("SNAPSHOT_VIEWS_FACET_ADDRESS:     ", address(snapshotViewsFacet));
         console.log("CLAN_WORLD_DIAMOND_INIT_ADDRESS:  ", address(init));
 
         vm.stopBroadcast();
@@ -69,9 +73,10 @@ contract DeployDiamond is Script {
         address derivedViewsFacet,
         address marketViewsFacet,
         address banditViewsFacet,
-        address regionViewsFacet
+        address regionViewsFacet,
+        address snapshotViewsFacet
     ) private pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](7);
+        cut = new IDiamondCut.FacetCut[](8);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -106,6 +111,11 @@ contract DeployDiamond is Script {
             facetAddress: regionViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.regionViewsSelectors()
+        });
+        cut[7] = IDiamondCut.FacetCut({
+            facetAddress: snapshotViewsFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.snapshotViewsSelectors()
         });
     }
 }

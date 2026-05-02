@@ -17,6 +17,7 @@ import {
     MarketState,
     RegionOccupant,
     WheatPlot,
+    WorldSnapshot,
     WorldState
 } from "../../src/IClanWorld.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
@@ -29,6 +30,7 @@ import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol"
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
 import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
+import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
 
 contract PingFacet {
     function ping() external pure returns (uint256) {
@@ -274,6 +276,29 @@ contract DiamondSkeletonTest is Test {
         );
     }
 
+    function testDiamondWorldSnapshotMatchesCoreAfterMint() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        SnapshotViewsFacet snapshotViewsFacet = new SnapshotViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_snapshotViewsCut(address(snapshotViewsFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        core.mintClan(elder);
+        vm.prank(elder);
+        IClanWorld(address(diamond)).mintClan(elder);
+
+        _assertWorldSnapshotEq(IClanWorld(address(diamond)).getWorldSnapshot(), core.getWorldSnapshot());
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -325,6 +350,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.regionViewsSelectors()
+        });
+    }
+
+    function _snapshotViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.snapshotViewsSelectors()
         });
     }
 
@@ -443,6 +477,31 @@ contract DiamondSkeletonTest is Test {
             assertEq(uint8(actual[i].state), uint8(expected[i].state), "population state");
             assertEq(uint8(actual[i].currentAction), uint8(expected[i].currentAction), "population action");
             assertEq(actual[i].missionNonce, expected[i].missionNonce, "population nonce");
+        }
+    }
+
+    function _assertWorldSnapshotEq(WorldSnapshot memory actual, WorldSnapshot memory expected) internal pure {
+        assertEq(actual.currentTick, expected.currentTick, "snapshot currentTick");
+        assertEq(actual.seasonStartTick, expected.seasonStartTick, "snapshot seasonStartTick");
+        assertEq(actual.seasonEndTick, expected.seasonEndTick, "snapshot seasonEndTick");
+        assertEq(actual.seasonFinalized, expected.seasonFinalized, "snapshot seasonFinalized");
+        assertEq(actual.currentSeasonNumber, expected.currentSeasonNumber, "snapshot season");
+        assertEq(actual.nextHeartbeatAtTick, expected.nextHeartbeatAtTick, "snapshot next heartbeat");
+        assertEq(actual.winterActive, expected.winterActive, "snapshot winterActive");
+        assertEq(actual.winterStartsAtTick, expected.winterStartsAtTick, "snapshot winter start");
+        assertEq(actual.winterEndsAtTick, expected.winterEndsAtTick, "snapshot winter end");
+        assertEq(actual.activeBanditId, expected.activeBanditId, "snapshot active bandit");
+        assertEq(actual.currentTickSeed, expected.currentTickSeed, "snapshot seed");
+        assertEq(actual.leaderboard.length, expected.leaderboard.length, "leaderboard length");
+        for (uint256 i = 0; i < expected.leaderboard.length; i++) {
+            assertEq(actual.leaderboard[i].clanId, expected.leaderboard[i].clanId, "leaderboard clanId");
+            assertEq(actual.leaderboard[i].owner, expected.leaderboard[i].owner, "leaderboard owner");
+            assertEq(actual.leaderboard[i].monumentLevel, expected.leaderboard[i].monumentLevel, "leaderboard monument");
+            assertEq(actual.leaderboard[i].baseLevel, expected.leaderboard[i].baseLevel, "leaderboard base");
+            assertEq(actual.leaderboard[i].wallLevel, expected.leaderboard[i].wallLevel, "leaderboard wall");
+            assertEq(actual.leaderboard[i].livingClansmen, expected.leaderboard[i].livingClansmen, "leaderboard living");
+            assertEq(uint8(actual.leaderboard[i].state), uint8(expected.leaderboard[i].state), "leaderboard state");
+            assertEq(actual.leaderboard[i].lootValue, expected.leaderboard[i].lootValue, "leaderboard loot");
         }
     }
 }
