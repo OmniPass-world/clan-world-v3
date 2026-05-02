@@ -28,6 +28,7 @@ import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.so
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
+import {QuoteViewsFacet} from "../../src/diamond/facets/QuoteViewsFacet.sol";
 import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
 import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
 import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
@@ -299,6 +300,39 @@ contract DiamondSkeletonTest is Test {
         _assertWorldSnapshotEq(IClanWorld(address(diamond)).getWorldSnapshot(), core.getWorldSnapshot());
     }
 
+    function testDiamondQuoteViewsMatchCoreAfterMint() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        QuoteViewsFacet quoteViewsFacet = new QuoteViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_quoteViewsCut(address(quoteViewsFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        assertEq(IClanWorld(address(diamond)).quoteLootValueRaw(diamondClanId), core.quoteLootValueRaw(coreClanId));
+        assertEq(IClanWorld(address(diamond)).getBanditTargetPreview(1), core.getBanditTargetPreview(1));
+
+        for (uint8 src = 0; src <= 8; src++) {
+            for (uint8 dst = 0; dst <= 8; dst++) {
+                (uint8 diamondTicks, bytes8 diamondPath) = IClanWorld(address(diamond)).quoteTravel(src, dst);
+                (uint8 coreTicks, bytes8 corePath) = core.quoteTravel(src, dst);
+                assertEq(diamondTicks, coreTicks, "travel ticks");
+                assertEq(diamondPath, corePath, "travel path");
+            }
+        }
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -359,6 +393,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.snapshotViewsSelectors()
+        });
+    }
+
+    function _quoteViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.quoteViewsSelectors()
         });
     }
 

@@ -73,4 +73,11 @@ library DiamondSelectors {
         selectors = new bytes4[](1);
         selectors[0] = IClanWorld.getWorldSnapshot.selector;
     }
+
+    function quoteViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](3);
+        selectors[0] = IClanWorld.getBanditTargetPreview.selector;
+        selectors[1] = IClanWorld.quoteTravel.selector;
+        selectors[2] = IClanWorld.quoteLootValueRaw.selector;
+    }
 }
