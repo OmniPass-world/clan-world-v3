@@ -41,6 +41,7 @@ import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.so
 import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
+import {FinalizeSeasonFacet} from "../../src/diamond/facets/FinalizeSeasonFacet.sol";
 import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
@@ -521,6 +522,21 @@ contract DiamondSkeletonTest is Test {
         _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
     }
 
+    function testDiamondFinalizeSeasonRejectsBeforeSeasonEndLikeCore() public {
+        ClanWorld core = new ClanWorld();
+        FinalizeSeasonFacet finalizeSeasonFacet = new FinalizeSeasonFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_seasonCut(address(finalizeSeasonFacet)), address(0), "");
+
+        vm.expectRevert(bytes("ClanWorld: season not ended"));
+        core.finalizeSeason();
+        vm.expectRevert(bytes("ClanWorld: season not ended"));
+        IClanWorld(address(diamond)).finalizeSeason();
+    }
+
     function testDiamondSubmitWaitOrderMatchesCore() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
@@ -854,6 +870,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.heartbeatSelectors()
+        });
+    }
+
+    function _seasonCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.seasonSelectors()
         });
     }
 
