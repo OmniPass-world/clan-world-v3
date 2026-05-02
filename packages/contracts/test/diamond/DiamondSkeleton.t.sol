@@ -10,6 +10,8 @@ import {
     IClanWorld,
     ActiveBanditView,
     ActionType,
+    BanditState,
+    BanditTroop,
     Clan,
     ClanFullView,
     ClanWorldConstants,
@@ -99,6 +101,64 @@ contract SetWorldClockFacet {
         s.world.currentBanditSpawnChanceBps = currentBanditSpawnChanceBps;
         s.world.currentTickSeed = tickSeed;
         s.tickSeeds[currentTick] = tickSeed;
+    }
+}
+
+contract CoreBanditHarness is ClanWorld {
+    function spawnBandit(uint8 region, uint32 strength) external returns (uint32) {
+        return _spawnBandit(region, strength);
+    }
+}
+
+interface ISpawnBandit {
+    function spawnBandit(uint8 region, uint32 strength) external returns (uint32);
+}
+
+contract SpawnBanditFacet {
+    function spawnBandit(uint8 region, uint32 strength) external returns (uint32 id) {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        require(
+            region >= ClanWorldConstants.REGION_FOREST && region <= ClanWorldConstants.REGION_DEEP_SEA,
+            "ClanWorld: invalid bandit region"
+        );
+        require(
+            region != ClanWorldConstants.REGION_UNICORN_TOWN && region != ClanWorldConstants.REGION_DEEP_SEA,
+            "ClanWorld: forbidden bandit region"
+        );
+        require(strength > 0, "ClanWorld: invalid bandit strength");
+
+        id = s.nextBanditId++;
+        s.bandits[id] = BanditTroop({
+            id: id,
+            region: region,
+            state: BanditState.Spawned,
+            targetClanId: 0,
+            tickEnteredState: s.world.currentTick,
+            strength: strength,
+            tier: _tierForBanditAttackPower(strength),
+            attackAttemptsMade: 0,
+            carryWood: 0,
+            carryIron: 0,
+            carryWheat: 0,
+            carryFish: 0,
+            carryGold: 0
+        });
+        s.banditsByRegion[region].push(id);
+        s.activeBanditCount += 1;
+        s.banditSpawnByRegion[region].lastSpawnTick = s.world.currentTick;
+        s.banditSpawnByRegion[region].probabilityAccum = 0;
+        if (s.world.activeBanditId == ClanWorldConstants.BANDIT_ID_NULL) {
+            s.world.activeBanditId = id;
+        }
+    }
+
+    function _tierForBanditAttackPower(uint32 attackPower) private pure returns (uint8) {
+        if (attackPower == 30) return 1;
+        if (attackPower == 45) return 2;
+        if (attackPower == 60) return 3;
+        if (attackPower == 80) return 4;
+        if (attackPower == 95) return 5;
+        return 0;
     }
 }
 
@@ -518,8 +578,41 @@ contract DiamondSkeletonTest is Test {
         vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
         core.heartbeat();
         IClanWorld(address(diamond)).heartbeat();
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
 
         _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+    }
+
+    function testDiamondHeartbeatAdvancesSpawnedBanditToCampedLikeCore() public {
+        CoreBanditHarness core = new CoreBanditHarness();
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        SpawnBanditFacet spawnBanditFacet = new SpawnBanditFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_spawnBanditCut(address(spawnBanditFacet)), address(0), "");
+
+        uint32 coreBanditId = core.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint32 diamondBanditId = ISpawnBandit(address(diamond)).spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
+
+        _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+        _assertBanditEq(IClanWorld(address(diamond)).getBandit(diamondBanditId), core.getBandit(coreBanditId));
+        assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Camped));
+        assertEq(IClanWorld(address(diamond)).getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 1);
     }
 
     function testDiamondFinalizeSeasonRejectsBeforeSeasonEndLikeCore() public {
@@ -882,6 +975,16 @@ contract DiamondSkeletonTest is Test {
         });
     }
 
+    function _spawnBanditCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = SpawnBanditFacet.spawnBandit.selector;
+
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+        });
+    }
+
     function _submitOrdersCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -1155,6 +1258,22 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.carryIron, expected.carryIron, "carryIron");
         assertEq(actual.carryWheat, expected.carryWheat, "carryWheat");
         assertEq(actual.carryFish, expected.carryFish, "carryFish");
+    }
+
+    function _assertBanditEq(BanditTroop memory actual, BanditTroop memory expected) internal pure {
+        assertEq(actual.id, expected.id, "bandit id");
+        assertEq(actual.region, expected.region, "bandit region");
+        assertEq(uint8(actual.state), uint8(expected.state), "bandit state");
+        assertEq(actual.targetClanId, expected.targetClanId, "bandit target");
+        assertEq(actual.tickEnteredState, expected.tickEnteredState, "bandit tickEnteredState");
+        assertEq(actual.strength, expected.strength, "bandit strength");
+        assertEq(actual.tier, expected.tier, "bandit tier");
+        assertEq(actual.attackAttemptsMade, expected.attackAttemptsMade, "bandit attempts");
+        assertEq(actual.carryWood, expected.carryWood, "bandit wood");
+        assertEq(actual.carryIron, expected.carryIron, "bandit iron");
+        assertEq(actual.carryWheat, expected.carryWheat, "bandit wheat");
+        assertEq(actual.carryFish, expected.carryFish, "bandit fish");
+        assertEq(actual.carryGold, expected.carryGold, "bandit gold");
     }
 
     function _assertMissionEq(Mission memory actual, Mission memory expected) internal pure {
