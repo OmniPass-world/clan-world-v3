@@ -2,16 +2,19 @@
 pragma solidity ^0.8.34;
 
 import {
+    ActionType,
     Clan,
     ClanState,
     ClanWorldConstants,
     Clansman,
     ClansmanState,
     Mission,
+    WithdrawResourcesData,
     WheatPlot,
     WheatPlotState
 } from "../../IClanWorld.sol";
 import {RNG} from "../../lib/RNG.sol";
+import {LibGameRules} from "./LibGameRules.sol";
 import {LibStorage} from "./LibStorage.sol";
 import {LibSeason} from "./LibSeason.sol";
 import {LibSettlementMath} from "./LibSettlementMath.sol";
@@ -70,6 +73,9 @@ library LibSettlement {
             applyUpkeep(s, sim, tick);
             if (sim.clan.clanState == ClanState.DEAD) break;
             regrowWheatPlots(sim, tick);
+            for (uint256 i = 0; i < sim.clansmen.length; i++) {
+                settleMissionForClansman(s, sim, i, tick, tick + 1);
+            }
         }
 
         if (toTick > fromTick && !LibSeason.isWinterActiveAt(toTick) && LibSeason.isWinterActiveAt(toTick - 1)) {
@@ -265,5 +271,280 @@ library LibSettlement {
                 sim.wheatPlots[pi] = plot;
             }
         }
+    }
+
+    function settleMissionForClansman(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        uint256 index,
+        uint64 fromTick,
+        uint64 toTick
+    ) internal view {
+        Clansman memory cs = sim.clansmen[index];
+        Mission memory m = sim.missions[index];
+
+        if (cs.state == ClansmanState.DEAD) {
+            if (m.active) {
+                m.active = false;
+            }
+            sim.missions[index] = m;
+            return;
+        }
+
+        if (!m.active) return;
+
+        for (uint64 tick = fromTick; tick < toTick; tick++) {
+            bytes32 tickSeed = s.tickSeeds[tick];
+
+            if (cs.state == ClansmanState.TRAVELING && tick >= m.arrivalTick) {
+                cs.state = ClansmanState.ACTING;
+                cs.currentRegion = m.targetRegion;
+            }
+
+            if (m.action == ActionType.DefendBase) continue;
+
+            if (cs.state == ClansmanState.ACTING && tick >= m.settlesAtTick) {
+                (cs, m) = resolveAction(s, sim, cs, m, tick, tickSeed);
+                if (m.active && LibGameRules.actionDuration(m.action) > 0) {
+                    m.settlesAtTick = LibSettlementMath.addTicksClamped(tick, LibGameRules.actionDuration(m.action));
+                }
+            }
+
+            if (!m.active) break;
+        }
+
+        sim.clansmen[index] = cs;
+        sim.missions[index] = m;
+    }
+
+    function resolveAction(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        Clansman memory cs,
+        Mission memory m,
+        uint64 tick,
+        bytes32 tickSeed
+    ) internal view returns (Clansman memory, Mission memory) {
+        bool starving = sim.clan.starvationStartsAtTick != 0 && sim.clan.starvationStartsAtTick <= tick;
+        ActionType action = m.action;
+
+        if (action == ActionType.ChopWood) {
+            (cs, m) = gatherWood(cs, m, tick, starving, tickSeed);
+        } else if (action == ActionType.MineIron) {
+            (cs, m) = gatherIron(sim, cs, m, tick, starving, tickSeed);
+        } else if (action == ActionType.FishDocks) {
+            (cs, m) = gatherFish(cs, m, tick, starving, tickSeed, ClanWorldConstants.FISH_DOCKS_BPS);
+        } else if (action == ActionType.FishDeepSea) {
+            (cs, m) = gatherFish(cs, m, tick, starving, tickSeed, ClanWorldConstants.FISH_DEEP_BPS);
+        } else if (action == ActionType.HarvestWheat) {
+            (cs, m) = gatherWheat(sim, cs, m, tick, starving);
+        } else if (action == ActionType.DepositResources) {
+            (cs, m) = doDeposit(sim, cs, m);
+        } else if (action == ActionType.WithdrawResources) {
+            (cs, m) = doWithdrawResources(s, sim, cs, m);
+        } else if (action == ActionType.MarketBuy || action == ActionType.MarketSell) {
+            (cs, m) = completeMission(cs, m);
+        }
+
+        return (cs, m);
+    }
+
+    function gatherWood(Clansman memory cs, Mission memory m, uint64 tick, bool starving, bytes32 tickSeed)
+        internal
+        pure
+        returns (Clansman memory, Mission memory)
+    {
+        uint256 remaining = ClanWorldConstants.WOOD_CAP - cs.carryWood;
+        if (remaining == 0) return completeMission(cs, m);
+
+        uint256 amount =
+            ClanWorldConstants.WOOD_YIELD_PER_TICK * uint256(LibGameRules.actionDuration(ActionType.ChopWood));
+        bytes32 critRng = keccak256(abi.encode("wood_crit", tickSeed, cs.clansmanId, m.nonce, tick));
+        if (uint256(critRng) % 10000 < ClanWorldConstants.WOOD_CRIT_BPS) {
+            amount *= 2;
+        }
+        if (starving) amount = amount / 2;
+        if (amount > remaining) amount = remaining;
+        cs.carryWood += amount;
+
+        if (cs.carryWood >= ClanWorldConstants.WOOD_CAP) {
+            return completeMission(cs, m);
+        }
+        return (cs, m);
+    }
+
+    function gatherIron(
+        SettlementSimulation memory sim,
+        Clansman memory cs,
+        Mission memory m,
+        uint64 tick,
+        bool starving,
+        bytes32 tickSeed
+    ) internal pure returns (Clansman memory, Mission memory) {
+        uint256 remaining = ClanWorldConstants.IRON_CAP - cs.carryIron;
+        if (remaining == 0) return completeMission(cs, m);
+
+        uint256 amount =
+            ClanWorldConstants.IRON_YIELD_PER_TICK * uint256(LibGameRules.actionDuration(ActionType.MineIron));
+        if (starving) amount = amount / 2;
+        if (amount > remaining) amount = remaining;
+        cs.carryIron += amount;
+
+        bytes32 goldRng = keccak256(abi.encode("iron_gold_bonus", tickSeed, cs.clansmanId, m.nonce, tick));
+        if (uint256(goldRng) % 10000 < ClanWorldConstants.GOLD_FROM_IRON_BPS) {
+            sim.clan.goldBalance += ClanWorldConstants.GOLD_FROM_IRON_AMOUNT;
+        }
+
+        if (cs.carryIron >= ClanWorldConstants.IRON_CAP) {
+            return completeMission(cs, m);
+        }
+        return (cs, m);
+    }
+
+    function gatherFish(
+        Clansman memory cs,
+        Mission memory m,
+        uint64 tick,
+        bool starving,
+        bytes32 tickSeed,
+        uint256 successBps
+    ) internal pure returns (Clansman memory, Mission memory) {
+        uint256 remaining = ClanWorldConstants.FISH_CAP - cs.carryFish;
+        if (remaining == 0) return completeMission(cs, m);
+
+        bytes32 fishRng = keccak256(abi.encode("fish_roll", tickSeed, cs.clansmanId, m.nonce, tick));
+        uint256 amount = uint256(fishRng) % 10000 < successBps
+            ? ClanWorldConstants.FISH_YIELD_PER_TICK * uint256(LibGameRules.actionDuration(m.action))
+            : 0;
+        if (starving) amount = amount / 2;
+        if (amount > remaining) amount = remaining;
+        if (amount > 0) {
+            cs.carryFish += amount;
+        }
+
+        if (cs.carryFish >= ClanWorldConstants.FISH_CAP) {
+            return completeMission(cs, m);
+        }
+        return (cs, m);
+    }
+
+    function gatherWheat(
+        SettlementSimulation memory sim,
+        Clansman memory cs,
+        Mission memory m,
+        uint64 tick,
+        bool starving
+    ) internal pure returns (Clansman memory, Mission memory) {
+        uint256 remaining = ClanWorldConstants.WHEAT_CAP - cs.carryWheat;
+        if (remaining == 0) return completeMission(cs, m);
+
+        uint256 plotIdx;
+        if (m.targetRegion == ClanWorldConstants.REGION_WEST_FARMS) {
+            plotIdx = 0;
+        } else if (m.targetRegion == ClanWorldConstants.REGION_EAST_FARMS) {
+            plotIdx = 1;
+        } else {
+            return completeMission(cs, m);
+        }
+
+        WheatPlot memory plot = sim.wheatPlots[plotIdx];
+        if (plot.state != WheatPlotState.Harvestable || plot.remainingWheat == 0) {
+            return completeMission(cs, m);
+        }
+
+        uint256 amount =
+            ClanWorldConstants.WHEAT_YIELD_PER_TICK * uint256(LibGameRules.actionDuration(ActionType.HarvestWheat));
+        if (starving) amount = amount / 2;
+        if (amount > remaining) amount = remaining;
+        if (amount > plot.remainingWheat) amount = plot.remainingWheat;
+
+        cs.carryWheat += amount;
+        plot.remainingWheat -= amount;
+
+        if (plot.remainingWheat == 0) {
+            plot.state = WheatPlotState.Regrowing;
+            plot.regrowUntilTick = LibSettlementMath.addTicksClamped(tick, ClanWorldConstants.WHEAT_PLOT_REGROW_TICKS);
+        }
+        sim.wheatPlots[plotIdx] = plot;
+
+        if (cs.carryWheat >= ClanWorldConstants.WHEAT_CAP || plot.remainingWheat == 0) {
+            return completeMission(cs, m);
+        }
+        return (cs, m);
+    }
+
+    function doDeposit(SettlementSimulation memory sim, Clansman memory cs, Mission memory m)
+        internal
+        pure
+        returns (Clansman memory, Mission memory)
+    {
+        if (cs.currentRegion != sim.clan.baseRegion) return completeMission(cs, m);
+
+        bool hasAnything = cs.carryWood > 0 || cs.carryIron > 0 || cs.carryWheat > 0 || cs.carryFish > 0;
+        if (!hasAnything) return completeMission(cs, m);
+
+        sim.clan.vaultWood += cs.carryWood;
+        sim.clan.vaultIron += cs.carryIron;
+        sim.clan.vaultWheat += cs.carryWheat;
+        sim.clan.vaultFish += cs.carryFish;
+
+        cs.carryWood = 0;
+        cs.carryIron = 0;
+        cs.carryWheat = 0;
+        cs.carryFish = 0;
+
+        return completeMission(cs, m);
+    }
+
+    function doWithdrawResources(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        Clansman memory cs,
+        Mission memory m
+    ) internal view returns (Clansman memory, Mission memory) {
+        if (cs.currentRegion != sim.clan.baseRegion) return completeMission(cs, m);
+
+        WithdrawResourcesData memory req = m.withdrawResources;
+        if (!LibSettlementMath.hasWithdrawRequest(req)) return completeMission(cs, m);
+
+        uint256 spendableWood =
+            LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, s.reservedWoodByClan[sim.clan.clanId], 0);
+        uint256 spendableIron =
+            LibSettlementMath.spendableAfterReleasing(sim.clan.vaultIron, s.reservedIronByClan[sim.clan.clanId], 0);
+        uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
+
+        if (
+            spendableWood < req.wood || spendableIron < req.iron || spendableWheat < req.wheat
+                || sim.clan.vaultFish < req.fish
+        ) return completeMission(cs, m);
+
+        if (
+            req.wood > LibSettlementMath.remainingCapacity(cs.carryWood, ClanWorldConstants.WOOD_CAP)
+                || req.iron > LibSettlementMath.remainingCapacity(cs.carryIron, ClanWorldConstants.IRON_CAP)
+                || req.wheat > LibSettlementMath.remainingCapacity(cs.carryWheat, ClanWorldConstants.WHEAT_CAP)
+                || req.fish > LibSettlementMath.remainingCapacity(cs.carryFish, ClanWorldConstants.FISH_CAP)
+        ) return completeMission(cs, m);
+
+        sim.clan.vaultWood -= req.wood;
+        sim.clan.vaultIron -= req.iron;
+        sim.clan.vaultWheat -= req.wheat;
+        sim.clan.vaultFish -= req.fish;
+
+        cs.carryWood += req.wood;
+        cs.carryIron += req.iron;
+        cs.carryWheat += req.wheat;
+        cs.carryFish += req.fish;
+
+        return completeMission(cs, m);
+    }
+
+    function completeMission(Clansman memory cs, Mission memory m)
+        internal
+        pure
+        returns (Clansman memory, Mission memory)
+    {
+        cs.state = ClansmanState.WAITING;
+        m.active = false;
+        return (cs, m);
     }
 }
