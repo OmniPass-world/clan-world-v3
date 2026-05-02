@@ -11,7 +11,7 @@ import {LibSettlement} from "../lib/LibSettlement.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 
 contract HeartbeatFacet is IClanWorldEvents {
-    uint256 private constant MAX_CROP_TRANSITION_PER_TICK = 64;
+    uint256 private constant MAX_CROP_TRANSITION_PER_TICK = 48;
 
     function heartbeat() external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();

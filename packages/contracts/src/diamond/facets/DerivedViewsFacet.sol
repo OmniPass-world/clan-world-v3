@@ -12,10 +12,6 @@ import {LibStorage} from "../lib/LibStorage.sol";
 ///      scoring helpers belong in LibScoring so the lens and facet share exact
 ///      score/loot semantics without copying tiny rule code.
 contract DerivedViewsFacet {
-    function derivedViewsFacetVersion() external pure returns (bytes4) {
-        return bytes4(keccak256("DerivedViewsFacet.v1"));
-    }
-
     function getDerivedClanState(uint32 clanId) external view returns (DerivedClanState memory) {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibSettlement.SettlementSimulation memory sim = LibSettlement.simulateToTick(s, clanId, s.world.currentTick);

@@ -7,7 +7,7 @@ import {LibSettlement} from "../lib/LibSettlement.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 
 contract FinalizeSeasonFacet is IClanWorldEvents {
-    uint256 internal constant MAX_CLAN_SCAN_FOR_RANKING = 24;
+    uint256 private constant MAX_CLAN_SCAN_FOR_RANKING = 24;
 
     function finalizeSeason() external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();

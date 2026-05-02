@@ -15,6 +15,8 @@ import {
 } from "../../IClanWorld.sol";
 import {LibSettlementMath} from "./LibSettlementMath.sol";
 import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
+import {LibOrderDefenders} from "./LibOrderDefenders.sol";
+import {LibOrderUpgrades} from "./LibOrderUpgrades.sol";
 import {LibStorage} from "./LibStorage.sol";
 
 library LibBanditCombat {
@@ -41,6 +43,7 @@ library LibBanditCombat {
     );
     event BanditDefeated(uint32 indexed banditId, uint32 indexed targetClanId, uint64 atTick);
     event BanditEscaped(uint32 indexed banditId, uint64 atTick);
+    event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
     event WallDamagedByBandit(uint32 indexed clanId, uint8 newLevel, uint32 indexed banditId);
     event ClansmanKilledByBandit(uint32 indexed clanId, uint32 indexed clansmanId, uint32 indexed banditId);
     event BlueprintEarned(uint32 indexed clanId, uint32 indexed banditId, uint256 amount, uint64 tick);
@@ -326,7 +329,7 @@ library LibBanditCombat {
             killIndex++;
 
             if (clan.livingClansmen == 0) {
-                markClanDead(s, clanId, "bandit", s.world.currentTick);
+                markClanDead(s, clanId, "bandit", s.world.currentTick, banditId);
                 break;
             }
         }
@@ -442,14 +445,29 @@ library LibBanditCombat {
 
         Mission storage m = s.missions[cs.clansmanId];
         if (m.active) {
+            if (m.action == ActionType.DefendBase) {
+                LibOrderDefenders.clearDefender(s, cs.clansmanId);
+            }
+            LibOrderUpgrades.refundUpgradeReservation(s, cs.clansmanId, m.action);
             m.active = false;
         }
     }
 
     function markClanDead(LibStorage.AppStorage storage s, uint32 clanId, string memory reason, uint64 tick) public {
+        markClanDead(s, clanId, reason, tick, ClanWorldConstants.BANDIT_ID_NULL);
+    }
+
+    function markClanDead(
+        LibStorage.AppStorage storage s,
+        uint32 clanId,
+        string memory reason,
+        uint64 tick,
+        uint32 excludedBanditId
+    ) public {
         Clan storage clan = s.clans[clanId];
         if (clan.clanId == ClanWorldConstants.CLAN_ID_NULL || clan.clanState == ClanState.DEAD) return;
 
+        uint8 baseRegion = clan.baseRegion;
         clan.clanState = ClanState.DEAD;
         clan.vaultWood = 0;
         clan.vaultWheat = 0;
@@ -464,11 +482,68 @@ library LibBanditCombat {
             cs.state = ClansmanState.DEAD;
             cs.cooldownEndsAtTs = 0;
             Mission storage m = s.missions[csIds[i]];
-            if (m.active) m.active = false;
+            if (m.active) {
+                if (m.action == ActionType.DefendBase) {
+                    LibOrderDefenders.clearDefender(s, csIds[i]);
+                }
+                LibOrderUpgrades.refundUpgradeReservation(s, csIds[i], m.action);
+                m.active = false;
+            }
         }
+
+        releaseDefendersForDeadTarget(s, clanId, baseRegion);
+        abortBanditAttacksForDeadTarget(s, clanId, excludedBanditId, tick);
 
         emit ClanEliminated(clanId, tick);
         emit ClanDied(clanId, tick, reason);
+    }
+
+    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion) public {
+        for (uint256 i = 0; i < s.allClanIds.length; i++) {
+            uint32 defenderClanId = s.allClanIds[i];
+            if (defenderClanId == deadClanId) continue;
+
+            uint32[] storage csIds = s.clanClansmanIds[defenderClanId];
+            for (uint256 j = 0; j < csIds.length; j++) {
+                uint32 clansmanId = csIds[j];
+                Mission storage mission = s.missions[clansmanId];
+                if (
+                    mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
+                ) {
+                    if (s.clansmanDefendingRegion[clansmanId] == baseRegion) {
+                        LibOrderDefenders.clearDefender(s, clansmanId);
+                    }
+                    mission.active = false;
+
+                    Clansman storage defender = s.clansmen[clansmanId];
+                    if (defender.state != ClansmanState.DEAD) {
+                        defender.state = ClansmanState.WAITING;
+                    }
+                }
+            }
+        }
+    }
+
+    function abortBanditAttacksForDeadTarget(
+        LibStorage.AppStorage storage s,
+        uint32 deadClanId,
+        uint32 excludedBanditId,
+        uint64 tick
+    ) public {
+        for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
+            uint32[] storage regionBandits = s.banditsByRegion[region];
+            for (uint256 i = 0; i < regionBandits.length; i++) {
+                uint32 banditId = regionBandits[i];
+                if (banditId == excludedBanditId) continue;
+
+                BanditTroop storage bandit = s.bandits[banditId];
+                if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
+                    LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Escaped);
+                    emit BanditEscaped(banditId, tick);
+                    emit BanditTargetDied(banditId, deadClanId, tick);
+                }
+            }
+        }
     }
 
     function isExplicitBanditDefender(

@@ -34,6 +34,7 @@ library LibDiamond {
     error DiamondCutRemoveFacetAddressMustBeZero();
     error DiamondCutInvalidAction();
     error DiamondInitFailed(address init, bytes data);
+    error DiamondFacetHasNoCode(address facet);
     error DiamondNotOwner(address caller);
 
     function diamondStorage() internal pure returns (DiamondStorage storage ds) {
@@ -79,6 +80,7 @@ library LibDiamond {
         if (facetAddress == address(0)) {
             revert DiamondCutFacetCannotBeZero();
         }
+        enforceHasContractCode(facetAddress);
 
         DiamondStorage storage ds = diamondStorage();
         uint96 selectorPosition = uint96(ds.facetFunctionSelectors[facetAddress].functionSelectors.length);
@@ -103,6 +105,7 @@ library LibDiamond {
         if (facetAddress == address(0)) {
             revert DiamondCutFacetCannotBeZero();
         }
+        enforceHasContractCode(facetAddress);
 
         DiamondStorage storage ds = diamondStorage();
         uint96 selectorPosition = uint96(ds.facetFunctionSelectors[facetAddress].functionSelectors.length);
@@ -185,6 +188,7 @@ library LibDiamond {
         if (init == address(0)) {
             return;
         }
+        enforceHasContractCode(init);
 
         (bool success,) = init.delegatecall(data);
         if (!success) {
@@ -192,6 +196,12 @@ library LibDiamond {
                 returndatacopy(0, 0, returndatasize())
                 revert(0, returndatasize())
             }
+        }
+    }
+
+    function enforceHasContractCode(address target) internal view {
+        if (target.code.length == 0) {
+            revert DiamondFacetHasNoCode(target);
         }
     }
 }

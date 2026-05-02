@@ -17,6 +17,7 @@ import {
     ClanFullView,
     ClanWorldConstants,
     ClanOrder,
+    ClansmanState,
     Clansman,
     DerivedClanState,
     DerivedClansmanState,
@@ -49,6 +50,7 @@ import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol"
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {MinimalERC20} from "../../src/MinimalERC20.sol";
+import {OwnershipFacet} from "../../src/diamond/facets/OwnershipFacet.sol";
 import {QuoteViewsFacet} from "../../src/diamond/facets/QuoteViewsFacet.sol";
 import {RawBanditViewsFacet} from "../../src/diamond/facets/RawBanditViewsFacet.sol";
 import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol";
@@ -62,6 +64,9 @@ import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol"
 import {StubPool} from "../../src/StubPool.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
 import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
+import {LibBanditCombat} from "../../src/diamond/lib/LibBanditCombat.sol";
+import {LibDiamond} from "../../src/diamond/lib/LibDiamond.sol";
+import {LibOrderDefenders} from "../../src/diamond/lib/LibOrderDefenders.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 
 contract PingFacet {
@@ -72,6 +77,11 @@ contract PingFacet {
 
 interface IPing {
     function ping() external view returns (uint256);
+}
+
+interface IOwnershipFacet {
+    function owner() external view returns (address);
+    function transferOwnership(address newOwner) external;
 }
 
 interface ISetWorldClock {
@@ -113,6 +123,12 @@ contract CoreBanditHarness is ClanWorld {
 
 interface ISpawnBandit {
     function spawnBandit(uint8 region, uint32 strength) external returns (uint32);
+}
+
+interface IBanditCleanupHarness {
+    function registerTargetDefender(uint32 defenderClanId, uint32 targetClanId) external returns (uint32 clansmanId);
+    function forceBanditAttack(uint32 banditId, uint32 targetClanId) external;
+    function markClanDead(uint32 clanId, uint64 tick) external;
 }
 
 contract SpawnBanditFacet {
@@ -160,6 +176,32 @@ contract SpawnBanditFacet {
         if (attackPower == 80) return 4;
         if (attackPower == 95) return 5;
         return 0;
+    }
+}
+
+contract BanditCleanupHarnessFacet {
+    function registerTargetDefender(uint32 defenderClanId, uint32 targetClanId) external returns (uint32 clansmanId) {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        clansmanId = s.clanClansmanIds[defenderClanId][0];
+        uint8 targetRegion = s.clans[targetClanId].baseRegion;
+
+        s.clansmen[clansmanId].state = ClansmanState.ACTING;
+        s.clansmen[clansmanId].currentRegion = targetRegion;
+        s.missions[clansmanId].active = true;
+        s.missions[clansmanId].action = ActionType.DefendBase;
+        s.missions[clansmanId].targetClanId = targetClanId;
+        LibOrderDefenders.registerDefender(s, targetRegion, defenderClanId, clansmanId);
+    }
+
+    function forceBanditAttack(uint32 banditId, uint32 targetClanId) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        s.bandits[banditId].state = BanditState.Attacking;
+        s.bandits[banditId].targetClanId = targetClanId;
+        s.bandits[banditId].tickEnteredState = s.world.currentTick;
+    }
+
+    function markClanDead(uint32 clanId, uint64 tick) external {
+        LibBanditCombat.markClanDead(LibStorage.appStorage(), clanId, "test", tick);
     }
 }
 
@@ -223,6 +265,67 @@ contract DiamondSkeletonTest is Test {
         vm.prank(address(0xBEEF));
         vm.expectRevert();
         IDiamondCut(address(diamond)).diamondCut(cut, address(0), "");
+    }
+
+    function testOwnershipFacetTransfersDiamondCutAuthority() public {
+        OwnershipFacet ownershipFacet = new OwnershipFacet();
+        IDiamondCut(address(diamond)).diamondCut(_adminOwnershipCut(address(ownershipFacet)), address(0), "");
+
+        address newOwner = address(0xCAFE);
+        assertEq(IOwnershipFacet(address(diamond)).owner(), address(this));
+        IOwnershipFacet(address(diamond)).transferOwnership(newOwner);
+        assertEq(IOwnershipFacet(address(diamond)).owner(), newOwner);
+
+        PingFacet pingFacet = new PingFacet();
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = PingFacet.ping.selector;
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: address(pingFacet), action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+        });
+
+        vm.expectRevert();
+        IDiamondCut(address(diamond)).diamondCut(cut, address(0), "");
+
+        vm.prank(newOwner);
+        IDiamondCut(address(diamond)).diamondCut(cut, address(0), "");
+        assertEq(IPing(address(diamond)).ping(), 42);
+    }
+
+    function testDiamondCutRejectsNoCodeFacetAndInit() public {
+        address noCode = address(0xBEEF);
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = PingFacet.ping.selector;
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: noCode, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+        });
+
+        vm.expectRevert(abi.encodeWithSelector(LibDiamond.DiamondFacetHasNoCode.selector, noCode));
+        IDiamondCut(address(diamond)).diamondCut(cut, address(0), "");
+
+        IDiamondCut.FacetCut[] memory emptyCut = new IDiamondCut.FacetCut[](0);
+        vm.expectRevert(abi.encodeWithSelector(LibDiamond.DiamondFacetHasNoCode.selector, noCode));
+        IDiamondCut(address(diamond)).diamondCut(emptyCut, noCode, "");
+    }
+
+    function testProductionDiamondRoutesEveryExpectedSelector() public {
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+        DiamondLoupeFacet loupeFacet = new DiamondLoupeFacet();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_productionCut(address(loupeFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+
+        bytes4[] memory selectors = _expectedProductionSelectors();
+        for (uint256 i = 0; i < selectors.length; i++) {
+            assertTrue(
+                IDiamondLoupe(address(diamond)).facetAddress(selectors[i]) != address(0),
+                "missing expected selector"
+            );
+            for (uint256 j = i + 1; j < selectors.length; j++) {
+                assertTrue(selectors[i] != selectors[j], "duplicate expected selector");
+            }
+        }
     }
 
     function testCanInitializeDiamondAndReadRawWorldState() public {
@@ -678,6 +781,44 @@ contract DiamondSkeletonTest is Test {
         _assertBanditEq(IClanWorld(address(diamond)).getBandit(diamondBanditId), core.getBandit(coreBanditId));
         assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Resting));
         assertEq(IClanWorld(address(diamond)).getBandit(diamondBanditId).targetClanId, 0);
+    }
+
+    function testDiamondMarkClanDeadCleansDefendersReservationsAndBanditTargets() public {
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        SpawnBanditFacet spawnBanditFacet = new SpawnBanditFacet();
+        BanditCleanupHarnessFacet cleanupFacet = new BanditCleanupHarnessFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+        address defenderOwner = address(0xA11CE);
+        address targetOwner = address(0xB0B);
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_spawnBanditCut(address(spawnBanditFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_banditCleanupHarnessCut(address(cleanupFacet)), address(0), "");
+
+        vm.prank(defenderOwner);
+        (uint32 defenderClanId,) = IClanWorld(address(diamond)).mintClan(defenderOwner);
+        vm.prank(targetOwner);
+        (uint32 targetClanId,) = IClanWorld(address(diamond)).mintClan(targetOwner);
+
+        uint32 defenderId =
+            IBanditCleanupHarness(address(diamond)).registerTargetDefender(defenderClanId, targetClanId);
+        uint32 banditId = ISpawnBandit(address(diamond)).spawnBandit(
+            IClanWorld(address(diamond)).getClan(targetClanId).baseRegion, 100
+        );
+        IBanditCleanupHarness(address(diamond)).forceBanditAttack(banditId, targetClanId);
+
+        assertEq(IClanWorld(address(diamond)).getActiveDefenders(targetClanId).length, 1, "defender registered");
+        assertTrue(IClanWorld(address(diamond)).getActiveMission(defenderId).active, "defender mission active");
+
+        IBanditCleanupHarness(address(diamond)).markClanDead(targetClanId, 7);
+
+        assertEq(uint8(IClanWorld(address(diamond)).getClansman(defenderId).state), uint8(ClansmanState.WAITING));
+        assertFalse(IClanWorld(address(diamond)).getActiveMission(defenderId).active, "defender mission cleared");
+        assertEq(IClanWorld(address(diamond)).getActiveDefenders(targetClanId).length, 0, "defender registry cleared");
+        assertEq(uint8(IClanWorld(address(diamond)).getBandit(banditId).state), uint8(BanditState.Escaped));
+        assertEq(IClanWorld(address(diamond)).getBandit(banditId).targetClanId, 0, "bandit target cleared");
     }
 
     function testDiamondHeartbeatUpdatesBanditSpawnPreviewLikeCore() public {
@@ -1228,6 +1369,187 @@ contract DiamondSkeletonTest is Test {
         });
     }
 
+    function _productionCut(address loupeFacet) internal returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](25);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: loupeFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.loupeSelectors()
+        });
+        cut[1] = IDiamondCut.FacetCut({
+            facetAddress: address(new OwnershipFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.ownershipFacetSelectors()
+        });
+        cut[2] = IDiamondCut.FacetCut({
+            facetAddress: address(new HeartbeatFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.heartbeatSelectors()
+        });
+        cut[3] = IDiamondCut.FacetCut({
+            facetAddress: address(new FinalizeSeasonFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.seasonSelectors()
+        });
+        cut[4] = IDiamondCut.FacetCut({
+            facetAddress: address(new RawWorldViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawWorldViewsSelectors()
+        });
+        cut[5] = IDiamondCut.FacetCut({
+            facetAddress: address(new RawTreasuryViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawTreasuryViewsSelectors()
+        });
+        cut[6] = IDiamondCut.FacetCut({
+            facetAddress: address(new RawClanViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawClanViewsSelectors()
+        });
+        cut[7] = IDiamondCut.FacetCut({
+            facetAddress: address(new RawBanditViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawBanditViewsSelectors()
+        });
+        cut[8] = IDiamondCut.FacetCut({
+            facetAddress: address(new ClanLifecycleFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.lifecycleSelectors()
+        });
+        cut[9] = IDiamondCut.FacetCut({
+            facetAddress: address(new SubmitOrdersFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.submitOrdersSelectors()
+        });
+        cut[10] = IDiamondCut.FacetCut({
+            facetAddress: address(new ClanOwnershipFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.ownershipSelectors()
+        });
+        cut[11] = IDiamondCut.FacetCut({
+            facetAddress: address(new TreasuryFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.treasurySelectors()
+        });
+        cut[12] = IDiamondCut.FacetCut({
+            facetAddress: address(new SettlementFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.settlementSelectors()
+        });
+        cut[13] = IDiamondCut.FacetCut({
+            facetAddress: address(new GoldTransferFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.goldTransferSelectors()
+        });
+        cut[14] = IDiamondCut.FacetCut({
+            facetAddress: address(new VaultResourceTransferFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.vaultResourceTransferSelectors()
+        });
+        cut[15] = IDiamondCut.FacetCut({
+            facetAddress: address(new BlueprintTransferFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.blueprintTransferSelectors()
+        });
+        cut[16] = IDiamondCut.FacetCut({
+            facetAddress: address(new BundleTransferFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.bundleTransferSelectors()
+        });
+        cut[17] = IDiamondCut.FacetCut({
+            facetAddress: address(new DerivedViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.derivedViewsSelectors()
+        });
+        cut[18] = IDiamondCut.FacetCut({
+            facetAddress: address(new MarketViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.marketViewsSelectors()
+        });
+        cut[19] = IDiamondCut.FacetCut({
+            facetAddress: address(new BanditViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.banditViewsSelectors()
+        });
+        cut[20] = IDiamondCut.FacetCut({
+            facetAddress: address(new RegionViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.regionViewsSelectors()
+        });
+        cut[21] = IDiamondCut.FacetCut({
+            facetAddress: address(new SnapshotViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.snapshotViewsSelectors()
+        });
+        cut[22] = IDiamondCut.FacetCut({
+            facetAddress: address(new ClanFullViewFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.clanFullViewSelectors()
+        });
+        cut[23] = IDiamondCut.FacetCut({
+            facetAddress: address(new QuoteViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.quoteViewsSelectors()
+        });
+        cut[24] = IDiamondCut.FacetCut({
+            facetAddress: address(new ScoringViewsFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.scoringViewsSelectors()
+        });
+    }
+
+    function _expectedProductionSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](59);
+        uint256 offset;
+        selectors[offset++] = IDiamondCut.diamondCut.selector;
+        offset = _copySelectors(selectors, offset, DiamondSelectors.loupeSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.ownershipFacetSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.heartbeatSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.seasonSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.rawWorldViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.rawTreasuryViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.rawClanViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.rawBanditViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.lifecycleSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.submitOrdersSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.ownershipSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.treasurySelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.settlementSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.goldTransferSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.vaultResourceTransferSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.blueprintTransferSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.bundleTransferSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.derivedViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.marketViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.banditViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.regionViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.snapshotViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.clanFullViewSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.quoteViewsSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.scoringViewsSelectors());
+        require(offset == selectors.length, "selector count drift");
+    }
+
+    function _copySelectors(bytes4[] memory out, uint256 offset, bytes4[] memory selectors)
+        internal
+        pure
+        returns (uint256)
+    {
+        for (uint256 i = 0; i < selectors.length; i++) {
+            out[offset++] = selectors[i];
+        }
+        return offset;
+    }
+
+    function _adminOwnershipCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.ownershipFacetSelectors()
+        });
+    }
+
     function _lifecycleCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -1258,6 +1580,18 @@ contract DiamondSkeletonTest is Test {
     function _spawnBanditCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         bytes4[] memory selectors = new bytes4[](1);
         selectors[0] = SpawnBanditFacet.spawnBandit.selector;
+
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+        });
+    }
+
+    function _banditCleanupHarnessCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        bytes4[] memory selectors = new bytes4[](3);
+        selectors[0] = BanditCleanupHarnessFacet.registerTargetDefender.selector;
+        selectors[1] = BanditCleanupHarnessFacet.forceBanditAttack.selector;
+        selectors[2] = BanditCleanupHarnessFacet.markClanDead.selector;
 
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
