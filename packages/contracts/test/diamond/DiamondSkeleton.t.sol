@@ -675,6 +675,34 @@ contract DiamondSkeletonTest is Test {
         assertEq(IClanWorld(address(diamond)).getBandit(diamondBanditId).targetClanId, 0);
     }
 
+    function testDiamondHeartbeatUpdatesBanditSpawnPreviewLikeCore() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+        address elder = address(0xBEEF);
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+
+        vm.prank(elder);
+        core.mintClan(elder);
+        vm.prank(elder);
+        IClanWorld(address(diamond)).mintClan(elder);
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
+
+        _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+        uint32 activeBanditId = core.getWorldState().activeBanditId;
+        if (activeBanditId != ClanWorldConstants.BANDIT_ID_NULL) {
+            _assertBanditEq(IClanWorld(address(diamond)).getBandit(activeBanditId), core.getBandit(activeBanditId));
+        }
+    }
+
     function testDiamondFinalizeSeasonRejectsBeforeSeasonEndLikeCore() public {
         ClanWorld core = new ClanWorld();
         FinalizeSeasonFacet finalizeSeasonFacet = new FinalizeSeasonFacet();
