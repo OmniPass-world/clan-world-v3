@@ -34,6 +34,9 @@ const numberFromPayload = (value: unknown): number | undefined => {
   return undefined;
 };
 
+export const snapshotRefreshBlockFromReceipt = (receipt: ReceiptLike): number =>
+  Number(receipt.blockNumber);
+
 const bigintSafe = (value: unknown): unknown => {
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.map(bigintSafe);
@@ -199,8 +202,8 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
     }
 
     const parsed = parseHeartbeatEngineEvents(validation.engineLogs);
-    const blockNumber =
-      numberFromPayload(payload.blockNumber) ?? Number(receipt.blockNumber);
+    // Receipt blockNumber is the chain fact; payload blockNumber is keeper metadata.
+    const blockNumber = snapshotRefreshBlockFromReceipt(receipt);
     await ctx.runMutation(indexerApi.ingestEvents, {
       events: parsed,
       blockNumber,

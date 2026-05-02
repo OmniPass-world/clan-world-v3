@@ -3,6 +3,7 @@ import { encodeAbiParameters, encodeEventTopics, type Log } from "viem";
 import { CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
 import {
   parseHeartbeatEngineEvents,
+  snapshotRefreshBlockFromReceipt,
   validateHeartbeatReceipt,
 } from "./heartbeat";
 
@@ -118,5 +119,18 @@ describe("heartbeat webhook validation", () => {
     expect(events).toHaveLength(1);
     expect(events[0]?.address).toBe(engineAddress);
     expect(events[0]?.eventName).toBe("TickAdvanced");
+  });
+
+  it("uses receipt block for snapshot pin when payload block disagrees", () => {
+    const payloadBlockNumber = 999;
+    const receipt = {
+      status: "success" as const,
+      to: engineAddress,
+      logs: [fixtureLog(engineAddress, 0)],
+      blockNumber: 1000n,
+    };
+
+    expect(payloadBlockNumber).not.toBe(Number(receipt.blockNumber));
+    expect(snapshotRefreshBlockFromReceipt(receipt)).toBe(1000);
   });
 });

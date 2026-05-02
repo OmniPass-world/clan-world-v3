@@ -2981,6 +2981,13 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     function heartbeat() external override nonReentrant {
         require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
+        // Freeze before side effects. While finalization is pending, keepers may
+        // continue calling heartbeat, but the already-closed boundary tick must
+        // not replay settlement, bandit, market, or winter transitions.
+        if (_isSeasonFinalizationPending()) {
+            return;
+        }
+
         uint64 closedTick = _world.currentTick;
         bytes32 closedTickSeed = _world.currentTickSeed;
 
@@ -3017,9 +3024,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         // Step 8: Increment tick and publish the opened tick seed as one visible state transition.
         uint64 newTick = closedTick + 1;
-        if (newTick >= _world.seasonEndTick && !_world.seasonFinalized) {
-            newTick = _world.seasonEndTick - 1;
-        }
         bytes32 newSeed = keccak256(abi.encode(block.prevrandao, closedTickSeed, closedTick));
         _world.currentTick = newTick;
         _tickSeeds[newTick] = newSeed;
@@ -3136,6 +3140,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Public settlement trigger — lazily settle a clan.
     function settleClan(uint32 clanId) external override nonReentrant {
+        // Settlement mutates ranking inputs, so pause it in frozen limbo.
+        _requireNoPendingSeasonFinalization();
         _settleClan(clanId);
     }
 
@@ -3144,6 +3150,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     ///         correct ordering and prevent double-settlement. Callers may call this
     ///         or settleClan interchangeably; both are safe and idempotent.
     function settleClansman(uint32 clansmanId) external override nonReentrant {
+        // Settlement mutates ranking inputs, so pause it in frozen limbo.
+        _requireNoPendingSeasonFinalization();
         Clansman storage cs = _clansmen[clansmanId];
         if (cs.clansmanId == 0) return;
         _settleClan(cs.clanId);
@@ -3170,6 +3178,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Mint a new clan and spawn its homebase.
     function mintClan(address to) external override nonReentrant returns (uint32 clanId, uint256 iftTokenId) {
+        // New clans affect the ranking set and must wait for the next season.
+        _requireNoPendingSeasonFinalization();
         require(to != address(0), "ClanWorld: zero address");
         require(_allClanIds.length < MAX_CLANS, "ClanWorld: max clans");
         clanId = _nextClanId++;
@@ -3257,6 +3267,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         nonReentrant
         returns (OrderResult[] memory results)
     {
+        // Player orders can settle clans and execute immediate market mutations,
+        // so freeze submissions until finalizeSeason snapshots rankings.
+        _requireNoPendingSeasonFinalization();
         Clan storage clan = _clans[clanId];
         require(clan.clanId != 0, "ClanWorld: clan not found");
         require(clan.owner == msg.sender, "ClanWorld: not clan owner");
@@ -4664,9 +4677,20 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return a < b ? a : b;
     }
 
+    function _isSeasonFinalizationPending() internal view returns (bool) {
+        return _world.currentTick + 1 >= _world.seasonEndTick && !_world.seasonFinalized;
+    }
+
+    function _requireNoPendingSeasonFinalization() internal view {
+        require(!_isSeasonFinalizationPending(), "ClanWorld: season ended, awaiting finalization");
+    }
+
     // =========================================================================
     // TREASURY / POOL SEEDING
     // =========================================================================
+
+    // Treasury setup does not mutate clan ranking inputs, so it remains callable
+    // during season-finalization limbo.
 
     /// @notice One-time treasury initialization: register token and pool addresses.
     ///         Must be called before seedPools. Callable only once.
@@ -4763,6 +4787,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Transfer clan ownership to a new address. Increments ownerNonce.
     function transferClanOwnership(uint32 clanId, address newOwner) external override nonReentrant {
+        // Ownership transfer settles the clan first, so pause it in frozen limbo.
+        _requireNoPendingSeasonFinalization();
         Clan storage clan = _clans[clanId];
         require(clan.clanId != 0, "ClanWorld: clan not found");
         require(clan.owner == msg.sender, "ClanWorld: not clan owner");
@@ -4789,6 +4815,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Transfer gold from one clan to another. Caller must be owner of fromClan.
     function transferGold(uint32 fromClanId, uint32 toClanId, uint256 amount) external override nonReentrant {
+        // OTC transfers mutate balances that feed season rankings.
+        _requireNoPendingSeasonFinalization();
         require(amount > 0, "ClanWorld: zero amount");
         require(fromClanId != toClanId, "ClanWorld: same clan");
 
@@ -4818,6 +4846,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         override
         nonReentrant
     {
+        // OTC transfers mutate balances that feed season rankings.
+        _requireNoPendingSeasonFinalization();
         require(amount > 0, "ClanWorld: zero amount");
         require(fromClanId != toClanId, "ClanWorld: same clan");
 
@@ -4854,6 +4884,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Transfer blueprints from one clan to another. Caller must be owner of fromClan.
     function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external override nonReentrant {
+        // OTC transfers mutate balances that feed season rankings.
+        _requireNoPendingSeasonFinalization();
         require(amount > 0, "ClanWorld: zero amount");
         require(fromClanId != toClanId, "ClanWorld: same clan");
 
@@ -4888,6 +4920,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 wheat,
         uint256 fish
     ) external override nonReentrant {
+        // OTC transfers mutate balances that feed season rankings.
+        _requireNoPendingSeasonFinalization();
         require(gold > 0 || blueprint > 0 || wood > 0 || iron > 0 || wheat > 0 || fish > 0, "ClanWorld: empty bundle");
         require(fromClanId != toClanId, "ClanWorld: same clan");
 
