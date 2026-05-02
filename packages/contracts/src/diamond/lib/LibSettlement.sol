@@ -3,6 +3,8 @@ pragma solidity ^0.8.34;
 
 import {
     ActionType,
+    BanditState,
+    BanditTroop,
     Clan,
     ClanState,
     ClanWorldConstants,
@@ -14,6 +16,7 @@ import {
     WheatPlotState
 } from "../../IClanWorld.sol";
 import {RNG} from "../../lib/RNG.sol";
+import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibGameRules} from "./LibGameRules.sol";
 import {LibOrderDefenders} from "./LibOrderDefenders.sol";
 import {LibStorage} from "./LibStorage.sol";
@@ -26,6 +29,8 @@ library LibSettlement {
 
     event MissionCompleted(uint32 indexed clanId, uint32 indexed clansmanId, uint64 missionNonce, ActionType action);
     event WorkerArrived(uint32 indexed clanId, uint32 indexed clansmanId, uint8 region, uint64 tick);
+    event BanditEscaped(uint32 indexed banditId, uint64 atTick);
+    event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
 
     struct SettlementSimulation {
         Clan clan;
@@ -36,9 +41,14 @@ library LibSettlement {
         bool[] simWallReservationCleared;
         bool[] simBaseReservationCleared;
         bool[] simMonumentReservationCleared;
+        bool[] simDefenderRegistrationCleared;
         uint64[] simWorkerArrivedTick;
         uint64[] simMissionCompletedNonce;
+        bool simClanDied;
+        uint256 reservedWood;
+        uint256 reservedIron;
         uint256 reservedWheat;
+        uint256 reservedBlueprint;
     }
 
     function loadSimulation(LibStorage.AppStorage storage s, uint32 clanId)
@@ -55,6 +65,7 @@ library LibSettlement {
         sim.simWallReservationCleared = new bool[](clansmanIds.length);
         sim.simBaseReservationCleared = new bool[](clansmanIds.length);
         sim.simMonumentReservationCleared = new bool[](clansmanIds.length);
+        sim.simDefenderRegistrationCleared = new bool[](clansmanIds.length);
         sim.simWorkerArrivedTick = new uint64[](clansmanIds.length);
         sim.simMissionCompletedNonce = new uint64[](clansmanIds.length);
 
@@ -66,7 +77,10 @@ library LibSettlement {
 
         sim.wheatPlots[0] = s.wheatPlots[clanId][0];
         sim.wheatPlots[1] = s.wheatPlots[clanId][1];
+        sim.reservedWood = s.reservedWoodByClan[clanId];
+        sim.reservedIron = s.reservedIronByClan[clanId];
         sim.reservedWheat = s.reservedWheatByClan[clanId];
+        sim.reservedBlueprint = s.reservedBlueprintByClan[clanId];
     }
 
     function simulateToTick(LibStorage.AppStorage storage s, uint32 clanId, uint64 toTick)
@@ -121,6 +135,9 @@ library LibSettlement {
             if (sim.simMonumentReservationCleared[i]) {
                 clearMonumentUpgradeReservation(s, clansmanId);
             }
+            if (sim.simDefenderRegistrationCleared[i]) {
+                LibOrderDefenders.clearDefender(s, clansmanId);
+            }
             if (sim.simWorkerArrivedTick[i] != 0) {
                 emit WorkerArrived(clanId, clansmanId, sim.clansmen[i].currentRegion, sim.simWorkerArrivedTick[i]);
                 if (sim.missions[i].active && sim.missions[i].action == ActionType.DefendBase) {
@@ -132,7 +149,14 @@ library LibSettlement {
             }
         }
 
+        s.reservedWoodByClan[clanId] = sim.reservedWood;
+        s.reservedIronByClan[clanId] = sim.reservedIron;
         s.reservedWheatByClan[clanId] = sim.reservedWheat;
+        s.reservedBlueprintByClan[clanId] = sim.reservedBlueprint;
+        if (sim.simClanDied) {
+            releaseDefendersForDeadTarget(s, clanId, sim.clan.baseRegion);
+            abortBanditAttacksForDeadTarget(s, clanId, ClanWorldConstants.BANDIT_ID_NULL, sim.clan.lastSettledTick);
+        }
         for (uint8 level = 1; level < sim.simMonumentReachedAt.length; level++) {
             if (sim.simMonumentReachedAt[level] != 0 && s.monumentLevelReachedAt[clanId][level] == 0) {
                 s.monumentLevelReachedAt[clanId][level] = sim.simMonumentReachedAt[level];
@@ -180,7 +204,7 @@ library LibSettlement {
                 ? sim.clan.starvationStartsAtTick
                 : winterStartsAtTick;
             if (effectiveStarvationStartsAtTick < tick) {
-                killNextClansmanFromStarvation(sim);
+                killNextClansmanFromStarvation(s, sim);
             }
         }
         if (sim.clan.clanState == ClanState.DEAD) return;
@@ -189,7 +213,7 @@ library LibSettlement {
             uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
                 * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
             uint256 spendableWood =
-                LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, s.reservedWoodByClan[sim.clan.clanId], 0);
+                LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, sim.reservedWood, 0);
             if (spendableWood >= woodNeeded) {
                 sim.clan.vaultWood -= woodNeeded;
             } else {
@@ -261,29 +285,35 @@ library LibSettlement {
                 continue;
             }
 
-            markClansmanDead(sim, i);
+            markClansmanDead(s, sim, i);
             if (sim.clan.livingClansmen == 0) {
-                markClanDead(sim);
+                markClanDead(s, sim);
             }
             return;
         }
     }
 
-    function killNextClansmanFromStarvation(SettlementSimulation memory sim) internal pure {
+    function killNextClansmanFromStarvation(LibStorage.AppStorage storage s, SettlementSimulation memory sim)
+        internal
+        view
+    {
         if (sim.clan.livingClansmen == 0) return;
 
         for (uint256 i = 0; i < sim.clansmen.length; i++) {
             if (sim.clansmen[i].state == ClansmanState.DEAD) continue;
 
-            markClansmanDead(sim, i);
+            markClansmanDead(s, sim, i);
             if (sim.clan.livingClansmen == 0) {
-                markClanDead(sim);
+                markClanDead(s, sim);
             }
             return;
         }
     }
 
-    function markClansmanDead(SettlementSimulation memory sim, uint256 index) internal pure {
+    function markClansmanDead(LibStorage.AppStorage storage s, SettlementSimulation memory sim, uint256 index)
+        internal
+        view
+    {
         if (sim.clansmen[index].state == ClansmanState.DEAD) return;
 
         sim.clansmen[index].state = ClansmanState.DEAD;
@@ -292,11 +322,15 @@ library LibSettlement {
             sim.clan.livingClansmen--;
         }
         if (sim.missions[index].active) {
+            if (sim.missions[index].action == ActionType.DefendBase) {
+                sim.simDefenderRegistrationCleared[index] = true;
+            }
+            refundSimUpgradeReservation(s, sim, index, sim.missions[index].action);
             sim.missions[index].active = false;
         }
     }
 
-    function markClanDead(SettlementSimulation memory sim) internal pure {
+    function markClanDead(LibStorage.AppStorage storage s, SettlementSimulation memory sim) internal view {
         if (sim.clan.clanId == ClanWorldConstants.CLAN_ID_NULL || sim.clan.clanState == ClanState.DEAD) return;
 
         sim.clan.clanState = ClanState.DEAD;
@@ -311,9 +345,14 @@ library LibSettlement {
             sim.clansmen[i].state = ClansmanState.DEAD;
             sim.clansmen[i].cooldownEndsAtTs = 0;
             if (sim.missions[i].active) {
+                if (sim.missions[i].action == ActionType.DefendBase) {
+                    sim.simDefenderRegistrationCleared[i] = true;
+                }
+                refundSimUpgradeReservation(s, sim, i, sim.missions[i].action);
                 sim.missions[i].active = false;
             }
         }
+        sim.simClanDied = true;
     }
 
     function regrowWheatPlots(SettlementSimulation memory sim, uint64 tick) internal pure {
@@ -561,7 +600,7 @@ library LibSettlement {
     }
 
     function doWithdrawResources(
-        LibStorage.AppStorage storage s,
+        LibStorage.AppStorage storage,
         SettlementSimulation memory sim,
         Clansman memory cs,
         Mission memory m
@@ -571,10 +610,8 @@ library LibSettlement {
         WithdrawResourcesData memory req = m.withdrawResources;
         if (!LibSettlementMath.hasWithdrawRequest(req)) return completeMission(cs, m);
 
-        uint256 spendableWood =
-            LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, s.reservedWoodByClan[sim.clan.clanId], 0);
-        uint256 spendableIron =
-            LibSettlementMath.spendableAfterReleasing(sim.clan.vaultIron, s.reservedIronByClan[sim.clan.clanId], 0);
+        uint256 spendableWood = LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, sim.reservedWood, 0);
+        uint256 spendableIron = LibSettlementMath.spendableAfterReleasing(sim.clan.vaultIron, sim.reservedIron, 0);
         uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
 
         if (
@@ -635,11 +672,15 @@ library LibSettlement {
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
         if (sim.clan.wallLevel >= WALL_MAX_LEVEL) {
             clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
             return true;
         }
         if (held.fromLevel != sim.clan.wallLevel) {
             if (held.fromLevel < sim.clan.wallLevel) {
                 clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+                sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+                sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
             }
             return false;
         }
@@ -652,6 +693,8 @@ library LibSettlement {
         clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
+        sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, woodDebit);
+        sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, ironDebit);
         sim.clan.wallLevel += 1;
         return true;
     }
@@ -667,12 +710,16 @@ library LibSettlement {
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
         if (sim.clan.baseLevel >= BASE_MAX_LEVEL) {
             clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
             sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
             return true;
         }
         if (held.fromLevel != sim.clan.baseLevel) {
             if (held.fromLevel < sim.clan.baseLevel) {
                 clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeBase);
+                sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+                sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
                 sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
             }
             return false;
@@ -690,6 +737,8 @@ library LibSettlement {
         sim.clan.vaultWood -= woodDebit;
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
+        sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, woodDebit);
+        sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, ironDebit);
         sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, wheatDebit);
         sim.clan.baseLevel += 1;
         return true;
@@ -709,13 +758,19 @@ library LibSettlement {
         if (!held.active || held.clanId != sim.clan.clanId || held.missionNonce != missionNonce) return true;
         if (sim.clan.monumentLevel >= LibGameRules.MONUMENT_MAX_LEVEL) {
             clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
             sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+            sim.reservedBlueprint = LibSettlementMath.subtractHeld(sim.reservedBlueprint, held.blueprintCost);
             return true;
         }
         if (held.fromLevel != sim.clan.monumentLevel) {
             if (held.fromLevel < sim.clan.monumentLevel) {
                 clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeMonument);
+                sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+                sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
                 sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+                sim.reservedBlueprint = LibSettlementMath.subtractHeld(sim.reservedBlueprint, held.blueprintCost);
             }
             return false;
         }
@@ -736,7 +791,10 @@ library LibSettlement {
         sim.clan.vaultIron -= ironDebit;
         sim.clan.vaultWheat -= wheatDebit;
         sim.clan.blueprintBalance -= blueprintDebit;
+        sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, woodDebit);
+        sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, ironDebit);
         sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, wheatDebit);
+        sim.reservedBlueprint = LibSettlementMath.subtractHeld(sim.reservedBlueprint, blueprintDebit);
         sim.clan.monumentLevel += 1;
         sim.simMonumentReachedAt[sim.clan.monumentLevel] = tick;
         return true;
@@ -770,6 +828,37 @@ library LibSettlement {
         }
     }
 
+    function refundSimUpgradeReservation(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        uint256 index,
+        ActionType action
+    ) internal view {
+        uint32 clansmanId = sim.clansmen[index].clansmanId;
+        if (action == ActionType.UpgradeWall) {
+            LibStorage.WallUpgradeReservation memory held = s.wallUpgradeReservations[clansmanId];
+            if (!held.active || held.clanId != sim.clan.clanId) return;
+            sim.simWallReservationCleared[index] = true;
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
+        } else if (action == ActionType.UpgradeBase) {
+            LibStorage.BaseUpgradeReservation memory held = s.baseUpgradeReservations[clansmanId];
+            if (!held.active || held.clanId != sim.clan.clanId) return;
+            sim.simBaseReservationCleared[index] = true;
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
+            sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+        } else if (action == ActionType.UpgradeMonument) {
+            LibStorage.MonumentUpgradeReservation memory held = s.monumentUpgradeReservations[clansmanId];
+            if (!held.active || held.clanId != sim.clan.clanId) return;
+            sim.simMonumentReservationCleared[index] = true;
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
+            sim.reservedWheat = LibSettlementMath.subtractHeld(sim.reservedWheat, held.wheatCost);
+            sim.reservedBlueprint = LibSettlementMath.subtractHeld(sim.reservedBlueprint, held.blueprintCost);
+        }
+    }
+
     function simClansmanIndex(SettlementSimulation memory sim, uint32 clansmanId)
         internal
         pure
@@ -789,6 +878,54 @@ library LibSettlement {
         cs.state = ClansmanState.WAITING;
         m.active = false;
         return (cs, m);
+    }
+
+    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion) internal {
+        for (uint256 i = 0; i < s.allClanIds.length; i++) {
+            uint32 defenderClanId = s.allClanIds[i];
+            if (defenderClanId == deadClanId) continue;
+
+            uint32[] storage csIds = s.clanClansmanIds[defenderClanId];
+            for (uint256 j = 0; j < csIds.length; j++) {
+                uint32 clansmanId = csIds[j];
+                Mission storage mission = s.missions[clansmanId];
+                if (
+                    mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
+                ) {
+                    if (s.clansmanDefendingRegion[clansmanId] == baseRegion) {
+                        LibOrderDefenders.clearDefender(s, clansmanId);
+                    }
+                    mission.active = false;
+
+                    Clansman storage defender = s.clansmen[clansmanId];
+                    if (defender.state != ClansmanState.DEAD) {
+                        defender.state = ClansmanState.WAITING;
+                    }
+                }
+            }
+        }
+    }
+
+    function abortBanditAttacksForDeadTarget(
+        LibStorage.AppStorage storage s,
+        uint32 deadClanId,
+        uint32 excludedBanditId,
+        uint64 tick
+    ) internal {
+        for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
+            uint32[] storage regionBandits = s.banditsByRegion[region];
+            for (uint256 i = 0; i < regionBandits.length; i++) {
+                uint32 banditId = regionBandits[i];
+                if (banditId == excludedBanditId) continue;
+
+                BanditTroop storage bandit = s.bandits[banditId];
+                if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
+                    LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Escaped);
+                    emit BanditEscaped(banditId, tick);
+                    emit BanditTargetDied(banditId, deadClanId, tick);
+                }
+            }
+        }
     }
 
     function clearWallUpgradeReservation(LibStorage.AppStorage storage s, uint32 clansmanId) internal {
