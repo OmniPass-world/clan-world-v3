@@ -53,15 +53,23 @@ test.describe('cockpit shell (Phase A)', () => {
     // asynchronously, so we just assert the cell is in the DOM).
     await expect(page.locator('[data-testid="cockpit-worldmap"]')).toBeVisible();
 
-    // Default tab on each mini-cockpit is "terminal" — verify by checking
-    // the terminal content placeholder is the one rendered initially.
-    for (const clanId of [1, 2, 3, 4]) {
+    // Only Elder 1 opens ttyd on page mount; the other panels start on a
+    // lightweight tab so the cockpit does not create 4 terminal connections.
+    const terminalClanId = 1;
+    await expect(
+      page.locator(`[data-testid="mini-cockpit-${terminalClanId}-tab-terminal"]`),
+    ).toHaveAttribute('data-active', 'true');
+    await expect(
+      page.locator(`[data-testid="mini-cockpit-${terminalClanId}-content-terminal"]`),
+    ).toBeVisible();
+
+    for (const clanId of [2, 3, 4]) {
       const terminalTab = page.locator(
         `[data-testid="mini-cockpit-${clanId}-tab-terminal"]`,
       );
-      await expect(terminalTab).toHaveAttribute('data-active', 'true');
+      await expect(terminalTab).toHaveAttribute('data-active', 'false');
       await expect(
-        page.locator(`[data-testid="mini-cockpit-${clanId}-content-terminal"]`),
+        page.locator(`[data-testid="mini-cockpit-${clanId}-content-vault"]`),
       ).toBeVisible();
     }
 
