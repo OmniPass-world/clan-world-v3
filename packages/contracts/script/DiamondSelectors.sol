@@ -53,4 +53,9 @@ library DiamondSelectors {
         selectors[0] = IClanWorld.getDerivedClanState.selector;
         selectors[1] = IClanWorld.getDerivedClansmanState.selector;
     }
+
+    function marketViewsSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](1);
+        selectors[0] = IClanWorld.getMarketState.selector;
+    }
 }

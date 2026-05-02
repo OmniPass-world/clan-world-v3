@@ -13,6 +13,7 @@ import {
     Clansman,
     DerivedClanState,
     DerivedClansmanState,
+    MarketState,
     WheatPlot,
     WorldState
 } from "../../src/IClanWorld.sol";
@@ -22,6 +23,7 @@ import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
+import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
 
 contract PingFacet {
@@ -211,6 +213,21 @@ contract DiamondSkeletonTest is Test {
         assertEq(missing.derivedAtTick, core.getWorldState().currentTick);
     }
 
+    function testDiamondMarketStateMatchesCoreDefaults() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        MarketViewsFacet marketViewsFacet = new MarketViewsFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_marketViewsCut(address(marketViewsFacet)), address(0), "");
+
+        _assertMarketStateEq(IClanWorld(address(diamond)).getMarketState(), core.getMarketState());
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -235,6 +252,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.derivedViewsSelectors()
+        });
+    }
+
+    function _marketViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.marketViewsSelectors()
         });
     }
 
@@ -314,5 +340,15 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.derivedAtTick, expected.derivedAtTick, "derived clansman tick");
         assertEq(actual.activeMission.active, expected.activeMission.active, "mission active");
         assertEq(actual.activeMission.nonce, expected.activeMission.nonce, "mission nonce");
+    }
+
+    function _assertMarketStateEq(MarketState memory actual, MarketState memory expected) internal pure {
+        assertEq(actual.wood.resourceToken, expected.wood.resourceToken, "wood token");
+        assertEq(actual.wheat.resourceToken, expected.wheat.resourceToken, "wheat token");
+        assertEq(actual.fish.resourceToken, expected.fish.resourceToken, "fish token");
+        assertEq(actual.iron.resourceToken, expected.iron.resourceToken, "iron token");
+        assertEq(actual.currentTick, expected.currentTick, "market tick");
+        assertEq(actual.currentTickQueue.length, expected.currentTickQueue.length, "current queue");
+        assertEq(actual.nextTickQueue.length, expected.nextTickQueue.length, "next queue");
     }
 }
