@@ -16,15 +16,12 @@ import {
     WorldState
 } from "../../IClanWorld.sol";
 import {LibSeason} from "../lib/LibSeason.sol";
+import {LibGameRules} from "../lib/LibGameRules.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 import {LibTravel} from "../../lib/LibTravel.sol";
 import {StubPool} from "../../StubPool.sol";
 
 contract RawViewsFacet {
-    uint64 private constant DEPOSIT_DURATION_TICKS = 1;
-    uint64 private constant BUILDING_DURATION_TICKS = 1;
-    uint8 private constant MONUMENT_MAX_LEVEL = 10;
-
     function getWorldState() external view returns (WorldState memory ws) {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         ws.currentTick = s.world.currentTick;
@@ -94,20 +91,11 @@ contract RawViewsFacet {
     }
 
     function getWallUpgradeCost(uint8 currentLevel) external pure returns (uint256 wood, uint256 iron) {
-        if (currentLevel == 0) return (20e18, 0);
-        if (currentLevel == 1) return (35e18, 0);
-        if (currentLevel == 2) return (30e18, 5e18);
-        if (currentLevel == 3) return (40e18, 10e18);
-        if (currentLevel == 4) return (50e18, 15e18);
-        return (0, 0);
+        return LibGameRules.wallUpgradeCost(currentLevel);
     }
 
     function getBaseUpgradeCost(uint8 currentLevel) external pure returns (uint256 wood, uint256 iron, uint256 wheat) {
-        if (currentLevel == 1) return (40e18, 0, 20e18);
-        if (currentLevel == 2) return (60e18, 5e18, 30e18);
-        if (currentLevel == 3) return (80e18, 10e18, 40e18);
-        if (currentLevel == 4) return (100e18, 15e18, 50e18);
-        return (0, 0, 0);
+        return LibGameRules.baseUpgradeCost(currentLevel);
     }
 
     function getMonumentUpgradeCost(uint8 currentLevel)
@@ -115,39 +103,11 @@ contract RawViewsFacet {
         pure
         returns (uint256 wood, uint256 iron, uint256 wheat, uint256 blueprint)
     {
-        if (currentLevel == 0) return (30e18, 0, 20e18, 0);
-        if (currentLevel == 1) return (50e18, 0, 30e18, 0);
-        if (currentLevel == 2) return (70e18, 5e18, 40e18, 0);
-        if (currentLevel == 3) return (90e18, 10e18, 50e18, 0);
-        if (currentLevel == 4) return (120e18, 15e18, 60e18, 0);
-        if (currentLevel == 5) return (150e18, 20e18, 80e18, 0);
-        if (currentLevel >= 6 && currentLevel < MONUMENT_MAX_LEVEL) return (200e18, 25e18, 100e18, 1e18);
-        return (0, 0, 0, 0);
+        return LibGameRules.monumentUpgradeCost(currentLevel);
     }
 
     function getActionDuration(ActionType action) external pure returns (uint64) {
-        if (
-            action == ActionType.ChopWood || action == ActionType.MineIron || action == ActionType.FishDocks
-                || action == ActionType.FishDeepSea || action == ActionType.HarvestWheat
-        ) {
-            return 4;
-        }
-
-        if (action == ActionType.DepositResources || action == ActionType.WithdrawResources) {
-            return DEPOSIT_DURATION_TICKS;
-        }
-
-        if (
-            action == ActionType.UpgradeWall || action == ActionType.UpgradeBase || action == ActionType.UpgradeMonument
-        ) {
-            return BUILDING_DURATION_TICKS;
-        }
-
-        if (action == ActionType.MarketBuy || action == ActionType.MarketSell) {
-            return 1;
-        }
-
-        return 0;
+        return LibGameRules.actionDuration(action);
     }
 
     function getTravelTicks(uint8 fromRegion, uint8 toRegion) external pure returns (uint64) {

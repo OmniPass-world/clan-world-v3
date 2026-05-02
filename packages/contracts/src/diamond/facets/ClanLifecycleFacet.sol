@@ -12,18 +12,17 @@ import {
     WheatPlotState
 } from "../../IClanWorld.sol";
 import {LibSeason} from "../lib/LibSeason.sol";
+import {LibGameRules} from "../lib/LibGameRules.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 
 contract ClanLifecycleFacet is IClanWorldEvents {
-    uint8 private constant MAX_CLANS = 12;
-
     function mintClan(address to) external returns (uint32 clanId, uint256 iftTokenId) {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
 
-        _requireNoPendingSeasonFinalization(s);
+        LibGameRules.requireNoPendingSeasonFinalization(s);
         require(to != address(0), "ClanWorld: zero address");
-        require(s.allClanIds.length < MAX_CLANS, "ClanWorld: max clans");
+        require(s.allClanIds.length < LibGameRules.MAX_CLANS, "ClanWorld: max clans");
 
         clanId = s.nextClanId++;
         iftTokenId = uint256(clanId);
@@ -87,12 +86,5 @@ contract ClanLifecycleFacet is IClanWorldEvents {
             ClanWorldConstants.REGION_EAST_DOCKS
         ];
         return spawnRegions[(clanId - 1) % 6];
-    }
-
-    function _requireNoPendingSeasonFinalization(LibStorage.AppStorage storage s) private view {
-        require(
-            !(s.world.currentTick + 1 >= s.world.seasonEndTick && !s.world.seasonFinalized),
-            "ClanWorld: finalize season first"
-        );
     }
 }
