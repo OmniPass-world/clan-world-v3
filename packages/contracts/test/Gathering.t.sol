@@ -151,10 +151,18 @@ contract GatheringTest is Test {
         uint32 csId = _firstCs(clanId);
         world.setCarryWood(csId, ClanWorldConstants.WOOD_CAP - 1e18);
 
-        Clansman memory cs = _settleChopWood(clanId, csId);
+        OrderResult[] memory result = _submitChopWood(clanId, csId);
+        assertEq(uint8(result[0].status), uint8(StatusCode.OK), "chop wood accepted");
+        uint64 submitCooldown = result[0].cooldownEndsAtTs;
+
+        Mission memory mission = world.getActiveMission(csId);
+        _advanceUntilCurrentTick(mission.settlesAtTick + 1);
+        world.settleClan(clanId);
+
+        Clansman memory cs = world.getClansman(csId);
 
         assertEq(uint8(cs.state), uint8(ClansmanState.WAITING), "mission completed");
         assertFalse(world.getActiveMission(csId).active, "mission inactive");
-        assertGt(cs.cooldownEndsAtTs, block.timestamp, "cooldown starts on settlement");
+        assertEq(cs.cooldownEndsAtTs, submitCooldown, "natural completion keeps submit-time cooldown");
     }
 }

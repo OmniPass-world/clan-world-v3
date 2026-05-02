@@ -2287,10 +2287,10 @@ contract ClanWorldTest is Test {
     }
 
     // -------------------------------------------------------------------------
-    // 3.E5: Cooldown from heartbeat-resolved mission — can't re-order immediately after natural completion
+    // 3.E5: Heartbeat-resolved mission keeps submit-time cooldown — natural completion does not rate-limit
     // -------------------------------------------------------------------------
 
-    function test_phase3E5_heartbeatResolvedMission_setsCooldown() public {
+    function test_phase3E5_heartbeatResolvedMission_keepsSubmitCooldown() public {
         uint32 clanId = _mintClan();
         ClanFullView memory v = world.getClanFullView(clanId);
         uint32 csId = v.clansmen[0].clansman.clansman.clansmanId;
@@ -2300,6 +2300,7 @@ contract ClanWorldTest is Test {
         // _doDeposit with empty carry calls _completeMission immediately during settlement.
         OrderResult[] memory r = _submitOrder(clanId, csId, homeRegion, ActionType.DepositResources);
         assertEq(uint8(r[0].status), uint8(StatusCode.OK), "3.E5: order must succeed");
+        uint64 submitCooldown = r[0].cooldownEndsAtTs;
 
         // Wait for submit-time cooldown to expire (warp only; no ticks yet)
         vm.warp(block.timestamp + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS + 1);
@@ -2307,29 +2308,17 @@ contract ClanWorldTest is Test {
         _advanceTick();
         _advanceTick();
 
-        // Settle the clan — mission completes, clansman back to WAITING with new cooldown
+        // Settle the clan — mission completes, clansman back to WAITING without resetting cooldown.
         world.settleClan(clanId);
 
         // Verify clansman is now WAITING
         Clansman memory cs = world.getClansman(csId);
         assertEq(uint8(cs.state), uint8(ClansmanState.WAITING), "3.E5: clansman must be WAITING after completion");
-        assertGt(cs.cooldownEndsAtTs, block.timestamp, "3.E5: heartbeat-resolved completion must set future cooldown");
+        assertEq(cs.cooldownEndsAtTs, submitCooldown, "3.E5: natural completion keeps submit-time cooldown");
 
-        // Attempt to re-order without advancing time — must hit cooldown
+        // Attempt to re-order without advancing time — submit-time cooldown is already expired.
         OrderResult[] memory r2 = _submitOrder(clanId, csId, homeRegion, ActionType.Wait);
-        assertEq(
-            uint8(r2[0].status),
-            uint8(StatusCode.ERR_COOLDOWN_ACTIVE),
-            "3.E5: must be ERR_COOLDOWN_ACTIVE after heartbeat resolution"
-        );
-
-        // Warp past cooldown and try again — should succeed
-        // Note: the cooldown check uses strict less-than (`block.timestamp < cs.cooldownEndsAtTs`),
-        // so `timestamp == cooldownEndsAtTs` is already expired (boundary is inclusive).
-        // The +1 warp here is conservative; test_phase3E5b_cooldown_exactBoundary verifies the exact boundary.
-        vm.warp(cs.cooldownEndsAtTs + 1);
-        OrderResult[] memory r3 = _submitOrder(clanId, csId, homeRegion, ActionType.Wait);
-        assertEq(uint8(r3[0].status), uint8(StatusCode.OK), "3.E5: after cooldown expires must succeed");
+        assertEq(uint8(r2[0].status), uint8(StatusCode.OK), "3.E5: no completion cooldown should block reorder");
     }
 
     // -------------------------------------------------------------------------
