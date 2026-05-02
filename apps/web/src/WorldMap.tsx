@@ -638,6 +638,10 @@ export function WorldMap() {
   function selectTarget(target: SelectableTarget, color: number) {
     const viewport = viewportRef.current;
     if (!viewport) return;
+    // No-op during active combat vignette — a fresh selection ring would
+    // appear inside the dimmed combat scene, undercutting the focus and
+    // potentially persisting after the dim layer fades (codex 5.4 LOW).
+    if (combatVignetteRef.current) return;
     let ring = selectedRef.current?.ring;
     if (!ring) {
       ring = new Graphics();
@@ -1187,6 +1191,14 @@ export function WorldMap() {
         .then((texture) => {
           const cancelled = isAssetLoadCancelled();
           if (cancelled || !appRef.current) return;
+          // Defer the sprite swap if a combat vignette is mid-flight — the
+          // banditIcon Graphics is currently the vignette's reparented bandit
+          // and redrawBandit() would clear/reposition it back to the home
+          // anchor, snapping the bandit out of choreography (codex 5.4 MEDIUM
+          // #2). The vignette will complete on the fallback icon; a future
+          // sprite-promotion can land in finishCombatVignette or the next
+          // redrawBandit cycle.
+          if (combatVignetteRef.current) return;
           const sprite = new Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
           sprite.alpha = 0; // hidden until first redrawBandit positions it
@@ -1729,10 +1741,15 @@ export function WorldMap() {
     }
 
     // §10.8 cap rule: combat dim must not stack with day/night darkening into
-    // an unreadable scene. Cap target alpha at min(0.55, 1 - currentBrightness)
-    // so combat at night stays at least readable (claude r3 MUST #2).
+    // an unreadable scene. The naive `min(0.55, 1 - brightness)` reads the
+    // spec literally but inverts the intent — at full daylight (brightness=1)
+    // it gives 0, killing combat dim during the brightest part of the cycle
+    // (codex 5.4 SuperSwarm catch). Correct semantic: dim down by the AMOUNT
+    // of existing day/night darkening so total visual darkness stays bounded.
+    // Floor at 0.2 so combat still has a visible beat even at deep night.
     const dayNightBrightness = getDayNightFrame(getDayNightProgress()).brightness;
-    const dimTarget = Math.min(COMBAT_DIM_ALPHA, clamp01(1 - dayNightBrightness));
+    const existingDarkness = clamp01(1 - dayNightBrightness);
+    const dimTarget = Math.max(0.2, COMBAT_DIM_ALPHA - existingDarkness);
     const fadeOutStart = COMBAT_TOTAL_MS - 600;
     if (age < 600) {
       layers.combatDim.alpha = dimTarget * clamp01(age / 600);
