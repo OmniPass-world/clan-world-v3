@@ -1959,6 +1959,30 @@
     },
     {
       "type": "function",
+      "name": "getMonumentLevelReachedAt",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "internalType": "uint32"
+        },
+        {
+          "name": "level",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "reachedAtTick",
+          "type": "uint64",
+          "internalType": "uint64"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "getMonumentUpgradeCost",
       "inputs": [
         {

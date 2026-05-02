@@ -458,6 +458,10 @@ contract ClanWorldStub is IClanWorld {
         return 0;
     }
 
+    function getMonumentLevelReachedAt(uint32, uint8) external pure override returns (uint64) {
+        return 0;
+    }
+
     // -------------------------------------------------------------------------
     // Derived read getters
     // -------------------------------------------------------------------------

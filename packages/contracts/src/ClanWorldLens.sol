@@ -55,6 +55,10 @@ contract ClanWorldLens is IClanWorldLens {
         return world.getBanditTargetPreview(banditId);
     }
 
+    function quoteLootValueRaw(uint32 clanId) external view override returns (uint256 lootValue) {
+        return LibScoring.lootValue(world.getClan(clanId));
+    }
+
     function quoteLootValueSettled(uint32 clanId) external view override returns (uint256 lootValue) {
         return world.quoteLootValueSettled(clanId);
     }

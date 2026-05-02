@@ -5247,6 +5247,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return _clansmanDefendingRegion[clansmanId];
     }
 
+    function getMonumentLevelReachedAt(uint32 clanId, uint8 level) external view override returns (uint64) {
+        return _monumentLevelReachedAt[clanId][level];
+    }
+
     // =========================================================================
     // DERIVED READ GETTERS (read-only, no storage mutation)
     // =========================================================================

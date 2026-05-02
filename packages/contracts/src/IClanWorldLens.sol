@@ -24,6 +24,8 @@ interface IClanWorldLens {
 
     function getBanditTargetPreview(uint32 banditId) external view returns (uint32 previewClanId);
 
+    function quoteLootValueRaw(uint32 clanId) external view returns (uint256 lootValue);
+
     function quoteLootValueSettled(uint32 clanId) external view returns (uint256 lootValue);
 
     function getClanScore(uint32 clanId)

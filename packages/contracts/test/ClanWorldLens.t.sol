@@ -42,6 +42,11 @@ contract ClanWorldLensHarness is ClanWorld {
         _clans[clanId].vaultWheat = wheat;
         _clans[clanId].vaultFish = fish;
     }
+
+    function setMonumentLevelReachedAt(uint32 clanId, uint8 level, uint64 reachedAtTick) external {
+        _clans[clanId].monumentLevel = level;
+        _monumentLevelReachedAt[clanId][level] = reachedAtTick;
+    }
 }
 
 contract ClanWorldLensTest is Test {
@@ -99,6 +104,24 @@ contract ClanWorldLensTest is Test {
         assertEq(lensScores[0], coreScores[0]);
     }
 
+    function test_lensQuoteLootValueRawMatchesCore() public {
+        vm.prank(elder);
+        (uint32 clanId,) = world.mintClan(elder);
+        world.setVault(clanId, 100e18, 5e18, 40e18, 3e18);
+
+        assertEq(lens.quoteLootValueRaw(clanId), world.quoteLootValueRaw(clanId));
+    }
+
+    function test_coreRawMonumentReachedAtGetter() public {
+        vm.prank(elder);
+        (uint32 clanId,) = world.mintClan(elder);
+
+        world.setMonumentLevelReachedAt(clanId, 1, 42);
+
+        assertEq(world.getMonumentLevelReachedAt(clanId, 1), 42);
+        assertEq(world.getMonumentLevelReachedAt(clanId, 2), 0);
+    }
+
     function test_lensMarketStateMatchesCore() public view {
         MarketState memory core = world.getMarketState();
         MarketState memory fromLens = lens.getMarketState();
@@ -154,6 +177,7 @@ contract ClanWorldLensTest is Test {
         lens.getMarketState();
         lens.getActiveBanditView();
         lens.getRegionPopulation(world.getClan(clanId).baseRegion);
+        lens.quoteLootValueRaw(clanId);
 
         assertEq(world.getClan(clanId).lastSettledTick, beforeSettled, "lens must not settle clan");
         assertEq(uint8(world.getClansman(csId).state), uint8(beforeState), "lens must not mutate clansman");

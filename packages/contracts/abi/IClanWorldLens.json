@@ -1446,6 +1446,25 @@
     },
     {
       "type": "function",
+      "name": "quoteLootValueRaw",
+      "inputs": [
+        {
+          "name": "clanId",
+          "type": "uint32",
+          "internalType": "uint32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "lootValue",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "quoteLootValueSettled",
       "inputs": [
         {
