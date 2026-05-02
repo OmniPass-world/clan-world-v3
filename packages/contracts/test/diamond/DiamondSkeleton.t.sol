@@ -5,10 +5,11 @@ import {Test} from "forge-std/Test.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
 import {ClanWorld} from "../../src/ClanWorld.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
-import {IClanWorld, ActionType, WorldState} from "../../src/IClanWorld.sol";
+import {IClanWorld, ActionType, Clan, Clansman, WheatPlot, WorldState} from "../../src/IClanWorld.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
+import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {RawViewsFacet} from "../../src/diamond/facets/RawViewsFacet.sol";
 
@@ -122,6 +123,46 @@ contract DiamondSkeletonTest is Test {
         IDiamondCut(address(diamond)).diamondCut(emptyCut, address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
     }
 
+    function testDiamondMintClanMatchesCoreInitialState() public {
+        ClanWorld core = new ClanWorld();
+        RawViewsFacet rawViewsFacet = new RawViewsFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _rawViewsCut(address(rawViewsFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId, uint256 coreIftTokenId) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId, uint256 diamondIftTokenId) = IClanWorld(address(diamond)).mintClan(elder);
+
+        assertEq(diamondClanId, coreClanId);
+        assertEq(diamondIftTokenId, coreIftTokenId);
+        _assertClanEq(IClanWorld(address(diamond)).getClan(diamondClanId), core.getClan(coreClanId));
+        assertEq(IClanWorld(address(diamond)).getClanIds().length, core.getClanIds().length);
+
+        uint32[] memory diamondClansmen = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId);
+        uint32[] memory coreClansmen = core.getClanClansmanIds(coreClanId);
+        assertEq(diamondClansmen.length, coreClansmen.length);
+        for (uint256 i = 0; i < coreClansmen.length; i++) {
+            assertEq(diamondClansmen[i], coreClansmen[i]);
+            _assertClansmanEq(
+                IClanWorld(address(diamond)).getClansman(diamondClansmen[i]), core.getClansman(coreClansmen[i])
+            );
+        }
+
+        (WheatPlot memory diamondWest, WheatPlot memory diamondEast) =
+            IClanWorld(address(diamond)).getWheatPlots(diamondClanId);
+        (WheatPlot memory coreWest, WheatPlot memory coreEast) = core.getWheatPlots(coreClanId);
+        _assertWheatPlotEq(diamondWest, coreWest);
+        _assertWheatPlotEq(diamondEast, coreEast);
+    }
+
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         bytes4[] memory selectors = new bytes4[](22);
         selectors[0] = IClanWorld.getWorldState.selector;
@@ -153,6 +194,16 @@ contract DiamondSkeletonTest is Test {
         });
     }
 
+    function _lifecycleCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        bytes4[] memory selectors = new bytes4[](1);
+        selectors[0] = IClanWorld.mintClan.selector;
+
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+        });
+    }
+
     function _assertWorldStateEq(WorldState memory actual, WorldState memory expected) internal pure {
         assertEq(actual.currentTick, expected.currentTick, "currentTick");
         assertEq(actual.seasonStartTick, expected.seasonStartTick, "seasonStartTick");
@@ -169,5 +220,47 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.winterStartsAtTick, expected.winterStartsAtTick, "winterStartsAtTick");
         assertEq(actual.winterEndsAtTick, expected.winterEndsAtTick, "winterEndsAtTick");
         assertEq(actual.nextCommitSequence, expected.nextCommitSequence, "nextCommitSequence");
+    }
+
+    function _assertClanEq(Clan memory actual, Clan memory expected) internal pure {
+        assertEq(actual.clanId, expected.clanId, "clanId");
+        assertEq(actual.iftTokenId, expected.iftTokenId, "iftTokenId");
+        assertEq(actual.owner, expected.owner, "owner");
+        assertEq(uint8(actual.clanState), uint8(expected.clanState), "clanState");
+        assertEq(actual.baseRegion, expected.baseRegion, "baseRegion");
+        assertEq(actual.baseLevel, expected.baseLevel, "baseLevel");
+        assertEq(actual.wallLevel, expected.wallLevel, "wallLevel");
+        assertEq(actual.monumentLevel, expected.monumentLevel, "monumentLevel");
+        assertEq(actual.livingClansmen, expected.livingClansmen, "livingClansmen");
+        assertEq(actual.lastSettledTick, expected.lastSettledTick, "lastSettledTick");
+        assertEq(actual.starvationStartsAtTick, expected.starvationStartsAtTick, "starvationStartsAtTick");
+        assertEq(actual.coldDamage, expected.coldDamage, "coldDamage");
+        assertEq(actual.ownerNonce, expected.ownerNonce, "ownerNonce");
+        assertEq(actual.goldBalance, expected.goldBalance, "goldBalance");
+        assertEq(actual.blueprintBalance, expected.blueprintBalance, "blueprintBalance");
+        assertEq(actual.vaultWood, expected.vaultWood, "vaultWood");
+        assertEq(actual.vaultIron, expected.vaultIron, "vaultIron");
+        assertEq(actual.vaultWheat, expected.vaultWheat, "vaultWheat");
+        assertEq(actual.vaultFish, expected.vaultFish, "vaultFish");
+    }
+
+    function _assertClansmanEq(Clansman memory actual, Clansman memory expected) internal pure {
+        assertEq(actual.clansmanId, expected.clansmanId, "clansmanId");
+        assertEq(actual.clanId, expected.clanId, "clansman clanId");
+        assertEq(uint8(actual.state), uint8(expected.state), "clansman state");
+        assertEq(actual.currentRegion, expected.currentRegion, "currentRegion");
+        assertEq(actual.cooldownEndsAtTs, expected.cooldownEndsAtTs, "cooldownEndsAtTs");
+        assertEq(actual.lastMissionNonce, expected.lastMissionNonce, "lastMissionNonce");
+        assertEq(actual.carryWood, expected.carryWood, "carryWood");
+        assertEq(actual.carryIron, expected.carryIron, "carryIron");
+        assertEq(actual.carryWheat, expected.carryWheat, "carryWheat");
+        assertEq(actual.carryFish, expected.carryFish, "carryFish");
+    }
+
+    function _assertWheatPlotEq(WheatPlot memory actual, WheatPlot memory expected) internal pure {
+        assertEq(uint8(actual.state), uint8(expected.state), "plot state");
+        assertEq(actual.region, expected.region, "plot region");
+        assertEq(actual.remainingWheat, expected.remainingWheat, "remainingWheat");
+        assertEq(actual.regrowUntilTick, expected.regrowUntilTick, "regrowUntilTick");
     }
 }
