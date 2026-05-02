@@ -5,9 +5,12 @@ import {
   http,
   fallback,
   defineChain,
+  isAddress,
+  zeroAddress,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import type { ClanFullView, ClanOrder, Tick } from '../types';
+import { ActionType } from '../generated/enums';
 import { readEnv } from './_env';
 
 export interface SubmitOrderResult {
@@ -49,6 +52,53 @@ export function uintValue(value: unknown): bigint {
   }
 
   throw new Error(`uintValue: unsupported type ${typeof value}`);
+}
+
+const optionalUintValue = (value: unknown): bigint =>
+  value === undefined || value === null ? 0n : uintValue(value);
+
+function validateSubmitOrderPayload(order: ClanOrder, submitterClanId: number): void {
+  const action = Number(order.payload.action);
+
+  if (action === ActionType.DefendBase) {
+    const targetClanId = Number(order.payload.targetClanId ?? 0);
+    if (
+      !Number.isInteger(targetClanId) ||
+      targetClanId < 1 ||
+      targetClanId > 12
+    ) {
+      throw new Error(
+        'submitOrders: DefendBase targetClanId must be an integer from 1 to 12',
+      );
+    }
+    if (targetClanId === submitterClanId) {
+      throw new Error(
+        'submitOrders: DefendBase targetClanId cannot be the submitter clan',
+      );
+    }
+  }
+
+  if (action === ActionType.MarketBuy) {
+    const { marketToken } = order.payload;
+    if (typeof marketToken !== 'string' || !isAddress(marketToken)) {
+      throw new Error(
+        'submitOrders: MarketBuy marketToken must be a valid 0x-prefixed 20-byte address',
+      );
+    }
+    if (optionalUintValue(order.payload.maxGoldIn) <= 0n) {
+      throw new Error(
+        'submitOrders: MarketBuy maxGoldIn must be greater than 0',
+      );
+    }
+  }
+
+  if (action === ActionType.MarketSell) {
+    if (optionalUintValue(order.payload.marketAmount) <= 0n) {
+      throw new Error(
+        'submitOrders: MarketSell marketAmount must be greater than 0',
+      );
+    }
+  }
 }
 
 export interface IChainClient {
@@ -2606,6 +2656,7 @@ class RealChainClient implements IChainClient {
             `submitOrders: mission order missing required payload fields (clansmanId, gotoRegion, action)`,
           );
         }
+        validateSubmitOrderPayload(order, parsedClanId);
       }
     }
 
@@ -2624,17 +2675,14 @@ class RealChainClient implements IChainClient {
           typeof o.payload.withdrawResources === 'object'
             ? (o.payload.withdrawResources as Record<string, unknown>)
             : o.payload;
-        const optionalUintValue = (value: unknown): bigint =>
-          value === undefined || value === null ? 0n : uintValue(value);
         return {
           clansmanId: Number(o.payload.clansmanId),
           gotoRegion: Number(o.payload.gotoRegion),
           action: Number(o.payload.action),
-          targetClanId: 0,
-          marketToken:
-            '0x0000000000000000000000000000000000000000' as `0x${string}`,
-          marketAmount: 0n,
-          maxGoldIn: 0n,
+          targetClanId: Number(o.payload.targetClanId ?? 0),
+          marketToken: (o.payload.marketToken ?? zeroAddress) as `0x${string}`,
+          marketAmount: optionalUintValue(o.payload.marketAmount),
+          maxGoldIn: optionalUintValue(o.payload.maxGoldIn),
           withdrawResources: {
             wood: optionalUintValue(withdraw.wood),
             iron: optionalUintValue(withdraw.iron),
