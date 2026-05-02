@@ -1,7 +1,16 @@
+// v1.0.1: webhook accepts tx pings and logs them; chain state is read by
+// runner/Elder paths via getWorldSnapshot/getRankings. v1.1 will replace
+// this with a real event-decoder that reads logs from the heartbeat tx
+// and refreshes Convex snapshots from chain state. Tracked: GH issue #TBD
 import { httpAction, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
 
-export const heartbeatWebhook = httpAction(async (ctx, request) => {
+type HeartbeatWebhookPayload = {
+  txHash?: unknown;
+  blockNumber?: unknown;
+  engineAddress?: unknown;
+};
+
+export const heartbeatWebhook = httpAction(async (_ctx, request) => {
   if (request.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -18,9 +27,16 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
     });
   }
 
-  const result = await ctx.runMutation(internal.heartbeat.advanceTick, {});
+  const payload = (await request.json()) as HeartbeatWebhookPayload;
+  const txData = {
+    txHash: payload.txHash,
+    blockNumber: payload.blockNumber,
+    engineAddress: payload.engineAddress,
+  };
 
-  return new Response(JSON.stringify(result), {
+  console.log("heartbeat webhook tx ping", txData);
+
+  return new Response(JSON.stringify({ status: "ok", received: txData }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
