@@ -90,6 +90,12 @@ library DiamondSelectors {
         selectors[0] = IClanWorld.mintClan.selector;
     }
 
+    function treasurySelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](2);
+        selectors[0] = IClanWorld.initTreasury.selector;
+        selectors[1] = IClanWorld.seedPools.selector;
+    }
+
     function derivedViewsSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](2);
         selectors[0] = IClanWorld.getDerivedClanState.selector;

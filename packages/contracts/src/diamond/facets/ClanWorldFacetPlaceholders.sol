@@ -19,8 +19,6 @@ contract UpgradesFacet {}
 
 contract MarketFacet {}
 
-contract TreasuryFacet {}
-
 contract DirectTransfersFacet {}
 
 contract BanditStateFacet {}

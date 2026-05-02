@@ -15,6 +15,7 @@ import {
     DerivedClanState,
     DerivedClansmanState,
     MarketState,
+    PoolSeedConfig,
     RegionOccupant,
     TreasuryState,
     WheatPlot,
@@ -29,6 +30,7 @@ import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.so
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
+import {MinimalERC20} from "../../src/MinimalERC20.sol";
 import {QuoteViewsFacet} from "../../src/diamond/facets/QuoteViewsFacet.sol";
 import {RawBanditViewsFacet} from "../../src/diamond/facets/RawBanditViewsFacet.sol";
 import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol";
@@ -36,6 +38,8 @@ import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFa
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
 import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
+import {StubPool} from "../../src/StubPool.sol";
+import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
 
 contract PingFacet {
     function ping() external pure returns (uint256) {
@@ -180,6 +184,41 @@ contract DiamondSkeletonTest is Test {
         (WheatPlot memory coreWest, WheatPlot memory coreEast) = core.getWheatPlots(coreClanId);
         _assertWheatPlotEq(diamondWest, coreWest);
         _assertWheatPlotEq(diamondEast, coreEast);
+    }
+
+    function testDiamondTreasuryInitAndSeedPools() public {
+        TreasuryFacet treasuryFacet = new TreasuryFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_treasuryCut(address(treasuryFacet)), address(0), "");
+
+        (address[6] memory tokens, address[4] memory pools) = _deployTreasuryBoundary(address(diamond));
+        PoolSeedConfig memory cfg = _seedConfig();
+        _seedAndApproveTreasury(tokens, address(diamond), cfg);
+
+        IClanWorld diamondWorld = IClanWorld(address(diamond));
+        diamondWorld.initTreasury(tokens, pools);
+        TreasuryState memory initialized = diamondWorld.getTreasuryState();
+        assertEq(initialized.woodToken, tokens[0], "wood token");
+        assertEq(initialized.ironToken, tokens[1], "iron token");
+        assertEq(initialized.wheatToken, tokens[2], "wheat token");
+        assertEq(initialized.fishToken, tokens[3], "fish token");
+        assertEq(initialized.goldToken, tokens[4], "gold token");
+        assertEq(initialized.blueprintToken, tokens[5], "blueprint token");
+        assertEq(initialized.woodGoldPool, pools[0], "wood pool");
+        assertEq(initialized.wheatGoldPool, pools[1], "wheat pool");
+        assertEq(initialized.fishGoldPool, pools[2], "fish pool");
+        assertEq(initialized.ironGoldPool, pools[3], "iron pool");
+        assertEq(initialized.poolsSeeded, false, "seeded before seedPools");
+
+        diamondWorld.seedPools(cfg);
+        assertEq(diamondWorld.getTreasuryState().poolsSeeded, true, "pools seeded");
+        _assertPoolReserves(pools[0], cfg.woodSeed, cfg.goldSeedForWood);
+        _assertPoolReserves(pools[1], cfg.wheatSeed, cfg.goldSeedForWheat);
+        _assertPoolReserves(pools[2], cfg.fishSeed, cfg.goldSeedForFish);
+        _assertPoolReserves(pools[3], cfg.ironSeed, cfg.goldSeedForIron);
     }
 
     function testDiamondBasicDerivedViewsMatchCoreAfterMint() public {
@@ -349,6 +388,15 @@ contract DiamondSkeletonTest is Test {
         });
     }
 
+    function _treasuryCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.treasurySelectors()
+        });
+    }
+
     function _derivedViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
@@ -435,6 +483,58 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.wheatGoldPool, expected.wheatGoldPool, "wheatGoldPool");
         assertEq(actual.fishGoldPool, expected.fishGoldPool, "fishGoldPool");
         assertEq(actual.ironGoldPool, expected.ironGoldPool, "ironGoldPool");
+    }
+
+    function _deployTreasuryBoundary(address engine)
+        internal
+        returns (address[6] memory tokens, address[4] memory pools)
+    {
+        tokens[0] = address(new MinimalERC20("Wood", "WOOD"));
+        tokens[1] = address(new MinimalERC20("Iron", "IRON"));
+        tokens[2] = address(new MinimalERC20("Wheat", "WHEAT"));
+        tokens[3] = address(new MinimalERC20("Fish", "FISH"));
+        tokens[4] = address(new MinimalERC20("Gold", "GOLD"));
+        tokens[5] = address(new MinimalERC20("Blueprint", "BPRT"));
+
+        pools[0] = address(new StubPool(tokens[0], tokens[4], engine));
+        pools[1] = address(new StubPool(tokens[2], tokens[4], engine));
+        pools[2] = address(new StubPool(tokens[3], tokens[4], engine));
+        pools[3] = address(new StubPool(tokens[1], tokens[4], engine));
+    }
+
+    function _seedAndApproveTreasury(address[6] memory tokens, address spender, PoolSeedConfig memory cfg) internal {
+        MinimalERC20(tokens[0]).seedTreasury(address(this), cfg.woodSeed);
+        MinimalERC20(tokens[1]).seedTreasury(address(this), cfg.ironSeed);
+        MinimalERC20(tokens[2]).seedTreasury(address(this), cfg.wheatSeed);
+        MinimalERC20(tokens[3]).seedTreasury(address(this), cfg.fishSeed);
+        MinimalERC20(tokens[4])
+            .seedTreasury(
+                address(this), cfg.goldSeedForWood + cfg.goldSeedForWheat + cfg.goldSeedForFish + cfg.goldSeedForIron
+            );
+        MinimalERC20(tokens[5]).seedTreasury(address(this), 1);
+
+        for (uint256 i = 0; i < tokens.length; i++) {
+            MinimalERC20(tokens[i]).approve(spender, type(uint256).max);
+        }
+    }
+
+    function _seedConfig() internal pure returns (PoolSeedConfig memory) {
+        return PoolSeedConfig({
+            woodSeed: 1_000,
+            wheatSeed: 700,
+            fishSeed: 500,
+            ironSeed: 250,
+            goldSeedForWood: 100,
+            goldSeedForWheat: 120,
+            goldSeedForFish: 140,
+            goldSeedForIron: 160
+        });
+    }
+
+    function _assertPoolReserves(address pool, uint256 reserveA, uint256 reserveB) internal view {
+        (uint256 actualA, uint256 actualB) = StubPool(pool).getReserves();
+        assertEq(actualA, reserveA, "reserve A");
+        assertEq(actualB, reserveB, "reserve B");
     }
 
     function _assertClanEq(Clan memory actual, Clan memory expected) internal pure {
