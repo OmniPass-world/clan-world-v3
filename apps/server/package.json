@@ -8,7 +8,7 @@
     "build": "tsc -b",
     "codegen": "convex codegen --typecheck disable",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run convex/indexer.test.ts",
+    "test": "vitest run convex/*.test.ts",
     "lint": "echo 'lint stub'",
     "clean": "rm -rf dist .turbo"
   },

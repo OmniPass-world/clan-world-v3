@@ -3465,6 +3465,7 @@ contract ClanWorldTest is Test {
         }
         WorldState memory ws = world.getWorldState();
         assertEq(ws.currentSeasonNumber, 1, "season waits for finalization");
+        assertEq(ws.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "tick freezes before season boundary");
         assertEq(ws.seasonStartTick, 0);
         assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS);
 

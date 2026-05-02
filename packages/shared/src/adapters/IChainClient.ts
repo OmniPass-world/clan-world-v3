@@ -57,23 +57,18 @@ export function uintValue(value: unknown): bigint {
 const optionalUintValue = (value: unknown): bigint =>
   value === undefined || value === null ? 0n : uintValue(value);
 
-function validateSubmitOrderPayload(order: ClanOrder, submitterClanId: number): void {
+export function validateSubmitOrderPayload(order: ClanOrder, submitterClanId: number): void {
   const action = Number(order.payload.action);
 
   if (action === ActionType.DefendBase) {
     const targetClanId = Number(order.payload.targetClanId ?? 0);
     if (
       !Number.isInteger(targetClanId) ||
-      targetClanId < 1 ||
+      targetClanId < 0 ||
       targetClanId > 12
     ) {
       throw new Error(
-        'submitOrders: DefendBase targetClanId must be an integer from 1 to 12',
-      );
-    }
-    if (targetClanId === submitterClanId) {
-      throw new Error(
-        'submitOrders: DefendBase targetClanId cannot be the submitter clan',
+        'submitOrders: DefendBase targetClanId must be 0 or an integer from 1 to 12',
       );
     }
   }
@@ -3721,6 +3716,12 @@ export const CLAN_WORLD_ABI = [
         "type": "uint32[]",
         "indexed": false,
         "internalType": "uint32[]"
+      },
+      {
+        "name": "scores",
+        "type": "uint256[]",
+        "indexed": false,
+        "internalType": "uint256[]"
       }
     ],
     "anonymous": false

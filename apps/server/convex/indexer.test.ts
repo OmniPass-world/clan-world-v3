@@ -4,19 +4,84 @@ import { CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
 import {
   commitSnapshot,
   decodeClanWorldLogs,
+  ingestEvents,
   planPollLogRange,
+  pricePointFromEvent,
 } from "./indexer";
 
 const address = "0x1111111111111111111111111111111111111111" as const;
-const transactionHash = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
+const transactionHash =
+  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
+
+function createDb(tables: Record<string, any[]> = {}) {
+  return {
+    tables,
+    db: {
+      async insert(table: string, value: Record<string, unknown>) {
+        tables[table] ??= [];
+        const doc = {
+          ...value,
+          _id: `${table}:${tables[table].length}`,
+          _creationTime: tables[table].length,
+        };
+        tables[table].push(doc);
+        return doc._id;
+      },
+      async patch(id: string, value: Record<string, unknown>) {
+        for (const rows of Object.values(tables)) {
+          const index = rows.findIndex((row) => row._id === id);
+          if (index >= 0) rows[index] = { ...rows[index], ...value };
+        }
+      },
+      query(table: string) {
+        let rows = [...(tables[table] ?? [])];
+        const builder = {
+          withIndex(_name: string, apply: (q: any) => unknown) {
+            const clauses: Array<{ field: string; value: unknown }> = [];
+            const q = {
+              eq(field: string, value: unknown) {
+                clauses.push({ field, value });
+                return q;
+              },
+            };
+            apply(q);
+            rows = rows.filter((row) =>
+              clauses.every((clause) => row[clause.field] === clause.value),
+            );
+            return builder;
+          },
+          order(direction: "asc" | "desc") {
+            rows = [...rows].sort((a, b) =>
+              direction === "desc"
+                ? b._creationTime - a._creationTime
+                : a._creationTime - b._creationTime,
+            );
+            return builder;
+          },
+          async first() {
+            return rows[0] ?? null;
+          },
+        };
+        return builder;
+      },
+    },
+  };
+}
 
 function eventAbi(name: string) {
-  const event = CLAN_WORLD_ABI.find((item) => item.type === "event" && item.name === name);
-  if (!event || event.type !== "event") throw new Error(`missing event ${name}`);
+  const event = CLAN_WORLD_ABI.find(
+    (item) => item.type === "event" && item.name === name,
+  );
+  if (!event || event.type !== "event")
+    throw new Error(`missing event ${name}`);
   return event;
 }
 
-function fixtureLog(name: string, values: Record<string, unknown>, logIndex: number): Log {
+function fixtureLog(
+  name: string,
+  values: Record<string, unknown>,
+  logIndex: number,
+): Log {
   const abi = eventAbi(name);
   const indexed = abi.inputs.filter((input) => input.indexed);
   const unindexed = abi.inputs.filter((input) => !input.indexed);
@@ -25,13 +90,16 @@ function fixtureLog(name: string, values: Record<string, unknown>, logIndex: num
     topics: encodeEventTopics({
       abi: [abi],
       eventName: name as never,
-      args: Object.fromEntries(indexed.map((input) => [input.name, values[input.name]])),
+      args: Object.fromEntries(
+        indexed.map((input) => [input.name, values[input.name]]),
+      ),
     }) as [`0x${string}`, ...`0x${string}`[]],
     data: encodeAbiParameters(
       unindexed.map((input) => ({ name: input.name, type: input.type })),
       unindexed.map((input) => values[input.name]),
     ),
-    blockHash: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    blockHash:
+      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     blockNumber: 123n,
     transactionHash,
     transactionIndex: 2,
@@ -48,7 +116,8 @@ describe("decodeClanWorldLogs", () => {
         {
           closedTick: 4n,
           openedTick: 5n,
-          tickSeed: "0x1234000000000000000000000000000000000000000000000000000000000000",
+          tickSeed:
+            "0x1234000000000000000000000000000000000000000000000000000000000000",
         },
         0,
       ),
@@ -125,9 +194,11 @@ describe("pollLogs range planning", () => {
     expect(range.toBlock).toBe(19_995n);
     expect(range.shouldPoll).toBe(true);
 
-    if (previousStartBlock === undefined) delete process.env.INDEXER_START_BLOCK;
+    if (previousStartBlock === undefined)
+      delete process.env.INDEXER_START_BLOCK;
     else process.env.INDEXER_START_BLOCK = previousStartBlock;
-    if (previousDepth === undefined) delete process.env.INDEXER_CONFIRMATION_DEPTH;
+    if (previousDepth === undefined)
+      delete process.env.INDEXER_CONFIRMATION_DEPTH;
     else process.env.INDEXER_CONFIRMATION_DEPTH = previousDepth;
   });
 
@@ -140,63 +211,112 @@ describe("pollLogs range planning", () => {
     expect(range.fromBlock).toBe(90n);
     expect(range.toBlock).toBe(95n);
 
-    if (previousDepth === undefined) delete process.env.INDEXER_CONFIRMATION_DEPTH;
+    if (previousDepth === undefined)
+      delete process.env.INDEXER_CONFIRMATION_DEPTH;
     else process.env.INDEXER_CONFIRMATION_DEPTH = previousDepth;
+  });
+});
+
+describe("pricePointFromEvent", () => {
+  it("indexes buys under the bought non-gold resource", () => {
+    const pricePoint = pricePointFromEvent(
+      {
+        eventName: "ImmediateMarketActionExecuted",
+        args: {
+          action: 11,
+          resourceIn: 4,
+          amountIn: "200",
+          resourceOut: 2,
+          amountOut: "100",
+          tick: "7",
+        },
+      },
+      123,
+    );
+
+    expect(pricePoint?.resourceType).toBe("2");
+    expect(pricePoint?.priceWoodGold).toBe("2000000000000000000");
+  });
+
+  it("indexes sells under the sold non-gold resource", () => {
+    const pricePoint = pricePointFromEvent(
+      {
+        eventName: "ScheduledMarketActionExecuted",
+        args: {
+          action: 12,
+          resourceIn: 1,
+          amountIn: "100",
+          resourceOut: 4,
+          amountOut: "300",
+          settledAtTick: "8",
+        },
+      },
+      124,
+    );
+
+    expect(pricePoint?.resourceType).toBe("1");
+    expect(pricePoint?.priceWoodGold).toBe("3000000000000000000");
+  });
+});
+
+describe("ingestEvents checkpoint isolation", () => {
+  const event = {
+    eventName: "TickAdvanced",
+    args: {
+      closedTick: "1",
+      openedTick: "2",
+      tickSeed: "0x1234",
+    },
+    transactionHash,
+    blockNumber: 105,
+    logIndex: 0,
+  };
+
+  it("does not advance the pollLogs cursor for webhook ingestion", async () => {
+    const { db, tables } = createDb({
+      eventCheckpoint: [
+        { _id: "eventCheckpoint:0", _creationTime: 0, lastBlock: 100 },
+      ],
+    });
+
+    await (ingestEvents as any)._handler(
+      { db },
+      {
+        events: [event],
+        blockNumber: 105,
+        txHash: transactionHash,
+        advanceCheckpoint: false,
+      },
+    );
+
+    expect(tables.eventCheckpoint?.[0]?.lastBlock).toBe(100);
+    expect(tables.chainEvents).toHaveLength(1);
+  });
+
+  it("advances the pollLogs cursor when requested by the poller", async () => {
+    const { db, tables } = createDb({
+      eventCheckpoint: [
+        { _id: "eventCheckpoint:0", _creationTime: 0, lastBlock: 100 },
+      ],
+    });
+
+    await (ingestEvents as any)._handler(
+      { db },
+      {
+        events: [event],
+        blockNumber: 105,
+        txHash: transactionHash,
+        advanceCheckpoint: true,
+      },
+    );
+
+    expect(tables.eventCheckpoint?.[0]?.lastBlock).toBe(105);
   });
 });
 
 describe("legacy snapshot backfill", () => {
   it("commitSnapshot writes non-empty legacy clans from clanView rows", async () => {
-    const tables: Record<string, any[]> = {};
-    const db = {
-      async insert(table: string, value: Record<string, unknown>) {
-        tables[table] ??= [];
-        const doc = {
-          ...value,
-          _id: `${table}:${tables[table].length}`,
-          _creationTime: tables[table].length,
-        };
-        tables[table].push(doc);
-        return doc._id;
-      },
-      async patch(id: string, value: Record<string, unknown>) {
-        for (const rows of Object.values(tables)) {
-          const index = rows.findIndex((row) => row._id === id);
-          if (index >= 0) rows[index] = { ...rows[index], ...value };
-        }
-      },
-      query(table: string) {
-        let rows = [...(tables[table] ?? [])];
-        const builder = {
-          withIndex(_name: string, apply: (q: any) => unknown) {
-            const clauses: Array<{ field: string; value: unknown }> = [];
-            const q = {
-              eq(field: string, value: unknown) {
-                clauses.push({ field, value });
-                return q;
-              },
-            };
-            apply(q);
-            rows = rows.filter((row) =>
-              clauses.every((clause) => row[clause.field] === clause.value),
-            );
-            return builder;
-          },
-          order(direction: "asc" | "desc") {
-            rows = [...rows].sort((a, b) =>
-              direction === "desc"
-                ? b._creationTime - a._creationTime
-                : a._creationTime - b._creationTime,
-            );
-            return builder;
-          },
-          async first() {
-            return rows[0] ?? null;
-          },
-        };
-        return builder;
-      },
-    };
+    const { db, tables } = createDb();
 
     await (commitSnapshot as any)._handler(
       { db },

@@ -3017,6 +3017,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         // Step 8: Increment tick and publish the opened tick seed as one visible state transition.
         uint64 newTick = closedTick + 1;
+        if (newTick >= _world.seasonEndTick && !_world.seasonFinalized) {
+            newTick = _world.seasonEndTick - 1;
+        }
         bytes32 newSeed = keccak256(abi.encode(block.prevrandao, closedTickSeed, closedTick));
         _world.currentTick = newTick;
         _tickSeeds[newTick] = newSeed;
@@ -3148,7 +3151,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Finalize season by settling final state and publishing rankings.
     function finalizeSeason() external override nonReentrant {
-        require(_world.currentTick >= _world.seasonEndTick, "ClanWorld: season not ended");
+        require(_world.currentTick + 1 >= _world.seasonEndTick, "ClanWorld: season not ended");
         require(!_world.seasonFinalized, "ClanWorld: season finalized");
 
         for (uint256 i = 0; i < _allClanIds.length; i++) {
@@ -3158,7 +3161,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         (uint32[] memory rankedClanIds, uint256[] memory scores) = _computeRankings();
 
         _world.seasonFinalized = true;
-        emit SeasonFinalized(uint64(_world.currentTick), rankedClanIds, scores);
+        emit SeasonFinalized(uint64(_world.seasonEndTick), rankedClanIds, scores);
     }
 
     // =========================================================================

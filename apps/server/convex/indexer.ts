@@ -1,5 +1,9 @@
 import { v } from "convex/values";
-import { internalAction, internalMutation, internalQuery } from "./_generated/server";
+import {
+  internalAction,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import { internal } from "./_generated/api";
 import { baseSepolia, CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
 import {
@@ -59,7 +63,9 @@ export function bigintSafe(value: unknown): unknown {
   return out;
 }
 
-export function decodeClanWorldLogs(logs: readonly Log[]): ParsedIndexerEvent[] {
+export function decodeClanWorldLogs(
+  logs: readonly Log[],
+): ParsedIndexerEvent[] {
   return parseEventLogs({
     abi: CLAN_WORLD_ABI,
     logs: [...logs],
@@ -84,7 +90,11 @@ const asNumber = (value: unknown, fallback = 0): number => {
 };
 
 const asString = (value: unknown, fallback = "0"): string =>
-  typeof value === "string" ? value : value === undefined || value === null ? fallback : String(value);
+  typeof value === "string"
+    ? value
+    : value === undefined || value === null
+      ? fallback
+      : String(value);
 
 const asBool = (value: unknown, fallback = false): boolean =>
   typeof value === "boolean" ? value : fallback;
@@ -92,41 +102,62 @@ const asBool = (value: unknown, fallback = false): boolean =>
 const objectAt = (value: unknown, key: string): Record<string, unknown> => {
   if (!value || typeof value !== "object") return {};
   const nested = (value as Record<string, unknown>)[key];
-  return nested && typeof nested === "object" ? (nested as Record<string, unknown>) : {};
+  return nested && typeof nested === "object"
+    ? (nested as Record<string, unknown>)
+    : {};
 };
 
 function createClient() {
   const rpcUrl = process.env.RPC_URL_PRIMARY;
-  if (!rpcUrl) throw new Error("RPC_URL_PRIMARY is required for CLANWORLD_USE_REAL_INDEXER");
+  if (!rpcUrl)
+    throw new Error(
+      "RPC_URL_PRIMARY is required for CLANWORLD_USE_REAL_INDEXER",
+    );
   return createPublicClient({ chain: baseSepolia, transport: http(rpcUrl) });
 }
 
 function engineAddress(): Hex {
   const address = process.env.CLAN_WORLD_CONTRACT_ADDRESS;
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
-    throw new Error("CLAN_WORLD_CONTRACT_ADDRESS must be a 0x-prefixed 20-byte address");
+    throw new Error(
+      "CLAN_WORLD_CONTRACT_ADDRESS must be a 0x-prefixed 20-byte address",
+    );
   }
   return address as Hex;
 }
 
-function eventNumber(event: ParsedIndexerEvent, key: string): number | undefined {
+function eventNumber(
+  event: ParsedIndexerEvent,
+  key: string,
+): number | undefined {
   const value = event.args[key];
   if (value === undefined || value === null) return undefined;
   return asNumber(value);
 }
 
-function pricePointFromEvent(event: ParsedIndexerEvent, blockNumber: number) {
+export function pricePointFromEvent(
+  event: ParsedIndexerEvent,
+  blockNumber: number,
+) {
   if (
     event.eventName !== "ImmediateMarketActionExecuted" &&
     event.eventName !== "ScheduledMarketActionExecuted"
   ) {
     return undefined;
   }
-  const resourceType = asNumber(event.args.resourceOut, asNumber(event.args.resourceIn, 0));
+  const resourceIn = asNumber(event.args.resourceIn, 0);
+  const resourceOut = asNumber(event.args.resourceOut, 0);
   const amountIn = BigInt(asString(event.args.amountIn, "0"));
   const amountOut = BigInt(asString(event.args.amountOut, "0"));
+  const goldResourceType = 4;
+  const isBuy = resourceIn === goldResourceType;
+  const resourceType = isBuy ? resourceOut : resourceIn;
+  const resourceAmount = isBuy ? amountOut : amountIn;
+  const goldAmount = isBuy ? amountIn : amountOut;
   const price =
-    amountOut > 0n ? ((amountIn * 1_000_000_000_000_000_000n) / amountOut).toString() : "0";
+    resourceAmount > 0n
+      ? ((goldAmount * 1_000_000_000_000_000_000n) / resourceAmount).toString()
+      : "0";
   return {
     tick: asNumber(event.args.tick ?? event.args.settledAtTick),
     resourceType: String(resourceType),
@@ -153,18 +184,33 @@ export const indexerConfirmationDepth = (): bigint =>
 export function planPollLogRange(
   checkpoint: { lastBlock: number } | null,
   latest: bigint,
-): { fromBlock: bigint; toBlock: bigint; safeLatest: bigint; shouldPoll: boolean } {
+): {
+  fromBlock: bigint;
+  toBlock: bigint;
+  safeLatest: bigint;
+  shouldPoll: boolean;
+} {
   const depth = indexerConfirmationDepth();
   const safeLatest = latest > depth ? latest - depth : 0n;
   const coldStartBlock =
     envBigInt("INDEXER_START_BLOCK") ??
-    (latest > DEFAULT_COLD_START_LOOKBACK ? latest - DEFAULT_COLD_START_LOOKBACK : 1n);
-  const fromBlock = checkpoint ? BigInt(checkpoint.lastBlock + 1) : coldStartBlock;
-  const toBlock = fromBlock + MAX_LOG_BLOCK_RANGE < safeLatest
-    ? fromBlock + MAX_LOG_BLOCK_RANGE
-    : safeLatest;
+    (latest > DEFAULT_COLD_START_LOOKBACK
+      ? latest - DEFAULT_COLD_START_LOOKBACK
+      : 1n);
+  const fromBlock = checkpoint
+    ? BigInt(checkpoint.lastBlock + 1)
+    : coldStartBlock;
+  const toBlock =
+    fromBlock + MAX_LOG_BLOCK_RANGE < safeLatest
+      ? fromBlock + MAX_LOG_BLOCK_RANGE
+      : safeLatest;
 
-  return { fromBlock, toBlock, safeLatest, shouldPoll: fromBlock <= safeLatest };
+  return {
+    fromBlock,
+    toBlock,
+    safeLatest,
+    shouldPoll: fromBlock <= safeLatest,
+  };
 }
 
 type LegacyClanView = { clanId: number; goldBalance?: string };
@@ -185,6 +231,7 @@ export const ingestEvents = internalMutation({
     blockNumber: v.number(),
     txHash: v.optional(v.string()),
     firedAtTs: v.optional(v.number()),
+    advanceCheckpoint: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     let inserted = 0;
@@ -195,7 +242,9 @@ export const ingestEvents = internalMutation({
       const blockNumber = asNumber(raw.blockNumber, args.blockNumber);
       const existing = await ctx.db
         .query("chainEvents")
-        .withIndex("by_tx_log", (q) => q.eq("txHash", txHash).eq("logIndex", logIndex))
+        .withIndex("by_tx_log", (q) =>
+          q.eq("txHash", txHash).eq("logIndex", logIndex),
+        )
         .first();
       if (existing) continue;
 
@@ -208,7 +257,10 @@ export const ingestEvents = internalMutation({
         decodedAt: Date.now(),
         blockHash: raw.blockHash ?? undefined,
         transactionIndex: raw.transactionIndex ?? undefined,
-        tick: eventNumber(raw, "tick") ?? eventNumber(raw, "atTick") ?? eventNumber(raw, "openedTick"),
+        tick:
+          eventNumber(raw, "tick") ??
+          eventNumber(raw, "atTick") ??
+          eventNumber(raw, "openedTick"),
         clanId: eventNumber(raw, "clanId") ?? eventNumber(raw, "targetClanId"),
         clansmanId: eventNumber(raw, "clansmanId"),
         banditId: eventNumber(raw, "banditId"),
@@ -232,18 +284,20 @@ export const ingestEvents = internalMutation({
       if (pricePoint) await ctx.db.insert("pricePoint", pricePoint);
     }
 
-    const checkpoint = await ctx.db.query("eventCheckpoint").first();
-    const nextCheckpoint = {
-      lastBlock: args.blockNumber,
-      lastTxHash: args.txHash,
-      lastSeenAt: Date.now(),
-    };
-    if (checkpoint) {
-      if (args.blockNumber >= checkpoint.lastBlock) {
-        await ctx.db.patch(checkpoint._id, nextCheckpoint);
+    if (args.advanceCheckpoint === true) {
+      const checkpoint = await ctx.db.query("eventCheckpoint").first();
+      const nextCheckpoint = {
+        lastBlock: args.blockNumber,
+        lastTxHash: args.txHash,
+        lastSeenAt: Date.now(),
+      };
+      if (checkpoint) {
+        if (args.blockNumber >= checkpoint.lastBlock) {
+          await ctx.db.patch(checkpoint._id, nextCheckpoint);
+        }
+      } else {
+        await ctx.db.insert("eventCheckpoint", nextCheckpoint);
       }
-    } else {
-      await ctx.db.insert("eventCheckpoint", nextCheckpoint);
     }
 
     return { inserted };
@@ -267,14 +321,19 @@ export const commitSnapshot = internalMutation({
           const pool = objectAt(market, resourceType);
           return {
             resourceType,
-            resourceToken: asString(pool.resourceToken, "0x0000000000000000000000000000000000000000"),
+            resourceToken: asString(
+              pool.resourceToken,
+              "0x0000000000000000000000000000000000000000",
+            ),
             reserveResource: asString(pool.resourceReserve),
             reserveGold: asString(pool.goldReserve),
             spotPriceGoldPerResource: asString(pool.spotPriceGoldPerResource),
           };
         }),
         currentTick: asNumber(market.currentTick, tick),
-        currentTickQueue: bigintSafe(market.currentTickQueue ?? []) as unknown[],
+        currentTickQueue: bigintSafe(
+          market.currentTickQueue ?? [],
+        ) as unknown[],
         nextTickQueue: bigintSafe(market.nextTickQueue ?? []) as unknown[],
         lastUpdatedTick: tick,
         lastUpdatedBlock: snapshot.blockNumber,
@@ -314,7 +373,10 @@ export const commitSnapshot = internalMutation({
 
       const nextView = {
         clanId,
-        owner: asString(clan.owner, "0x0000000000000000000000000000000000000000"),
+        owner: asString(
+          clan.owner,
+          "0x0000000000000000000000000000000000000000",
+        ),
         baseRegion: asNumber(clan.baseRegion),
         clanState: asNumber(clan.clanState),
         baseLevel: asNumber(clan.baseLevel),
@@ -349,23 +411,35 @@ export const commitSnapshot = internalMutation({
         .order("desc")
         .first();
       const previousComparable = previous
-        ? { ...previous, _id: undefined, _creationTime: undefined, refreshedAt: undefined }
+        ? {
+            ...previous,
+            _id: undefined,
+            _creationTime: undefined,
+            refreshedAt: undefined,
+          }
         : undefined;
-      if (JSON.stringify(previousComparable) !== JSON.stringify({ ...nextView, refreshedAt: undefined })) {
+      if (
+        JSON.stringify(previousComparable) !==
+        JSON.stringify({ ...nextView, refreshedAt: undefined })
+      ) {
         await ctx.db.insert("clanView", nextView);
       }
     }
 
     const latestClanViews = await Promise.all(
-      Array.from({ length: MAX_CLANS }, async (_, index) =>
-        await ctx.db
-          .query("clanView")
-          .withIndex("by_clanId", (q) => q.eq("clanId", index + 1))
-          .order("desc")
-          .first(),
+      Array.from(
+        { length: MAX_CLANS },
+        async (_, index) =>
+          await ctx.db
+            .query("clanView")
+            .withIndex("by_clanId", (q) => q.eq("clanId", index + 1))
+            .order("desc")
+            .first(),
       ),
     );
-    const legacyClans = legacyClansFromClanViews(latestClanViews.filter(Boolean) as LegacyClanView[]);
+    const legacyClans = legacyClansFromClanViews(
+      latestClanViews.filter(Boolean) as LegacyClanView[],
+    );
     const worldSnapshot = {
       tick,
       tickEpochStartedAt: Math.floor(now / 1000),
@@ -385,11 +459,17 @@ export const commitSnapshot = internalMutation({
       lastUpdatedAt: now,
       lastUpdatedBlock: snapshot.blockNumber,
       txHash: snapshot.txHash,
-      leaderboard: (Array.isArray(world.leaderboard) ? world.leaderboard : []).map((entry) => {
+      leaderboard: (Array.isArray(world.leaderboard)
+        ? world.leaderboard
+        : []
+      ).map((entry) => {
         const item = entry as Record<string, unknown>;
         return {
           clanId: asNumber(item.clanId),
-          owner: asString(item.owner, "0x0000000000000000000000000000000000000000"),
+          owner: asString(
+            item.owner,
+            "0x0000000000000000000000000000000000000000",
+          ),
           monumentLevel: asNumber(item.monumentLevel),
           baseLevel: asNumber(item.baseLevel),
           wallLevel: asNumber(item.wallLevel),
@@ -399,7 +479,10 @@ export const commitSnapshot = internalMutation({
         };
       }),
     };
-    const previousWorldSnapshot = await ctx.db.query("worldSnapshot").order("desc").first();
+    const previousWorldSnapshot = await ctx.db
+      .query("worldSnapshot")
+      .order("desc")
+      .first();
     if (previousWorldSnapshot) {
       await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
     } else {
@@ -411,22 +494,39 @@ export const commitSnapshot = internalMutation({
 });
 
 export const refreshSnapshot = internalAction({
-  args: {},
-  handler: async (ctx): Promise<unknown> => {
+  args: {
+    blockNumber: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<unknown> => {
     const client = createClient();
     const address = engineAddress();
-    const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as
-      | { lastBlock: number; lastTxHash?: string }
-      | null;
-    const blockNumber = Number(await client.getBlockNumber());
+    const pinnedBlockNumber =
+      args.blockNumber === undefined ? undefined : BigInt(args.blockNumber);
+    const blockNumber =
+      args.blockNumber ?? Number(await client.getBlockNumber());
 
     const [world, market, bandit] = await Promise.all([
-      client.readContract({ address, abi: CLAN_WORLD_ABI, functionName: "getWorldSnapshot" }),
+      client.readContract({
+        address,
+        abi: CLAN_WORLD_ABI,
+        functionName: "getWorldSnapshot",
+        blockNumber: pinnedBlockNumber,
+      }),
       client
-        .readContract({ address, abi: CLAN_WORLD_ABI, functionName: "getMarketState" })
+        .readContract({
+          address,
+          abi: CLAN_WORLD_ABI,
+          functionName: "getMarketState",
+          blockNumber: pinnedBlockNumber,
+        })
         .catch(() => undefined),
       client
-        .readContract({ address, abi: CLAN_WORLD_ABI, functionName: "getActiveBanditView" })
+        .readContract({
+          address,
+          abi: CLAN_WORLD_ABI,
+          functionName: "getActiveBanditView",
+          blockNumber: pinnedBlockNumber,
+        })
         .catch(() => undefined),
     ]);
 
@@ -434,7 +534,13 @@ export const refreshSnapshot = internalAction({
       Array.from({ length: MAX_CLANS }, async (_, index) => {
         const clanId = index + 1;
         return client
-          .readContract({ address, abi: CLAN_WORLD_ABI, functionName: "getClanFullView", args: [clanId] })
+          .readContract({
+            address,
+            abi: CLAN_WORLD_ABI,
+            functionName: "getClanFullView",
+            args: [clanId],
+            blockNumber: pinnedBlockNumber,
+          })
           .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
           .catch(() => undefined);
       }),
@@ -457,13 +563,21 @@ export const pollLogs = internalAction({
   handler: async (ctx): Promise<unknown> => {
     const client = createClient();
     const address = engineAddress();
-    const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as
-      | { lastBlock: number; lastTxHash?: string }
-      | null;
+    const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {
+      lastBlock: number;
+      lastTxHash?: string;
+    } | null;
     const latest = await client.getBlockNumber();
-    const { fromBlock, toBlock, safeLatest, shouldPoll } = planPollLogRange(checkpoint, latest);
+    const { fromBlock, toBlock, safeLatest, shouldPoll } = planPollLogRange(
+      checkpoint,
+      latest,
+    );
     if (!shouldPoll) {
-      return { inserted: 0, fromBlock: Number(fromBlock), toBlock: Number(safeLatest) };
+      return {
+        inserted: 0,
+        fromBlock: Number(fromBlock),
+        toBlock: Number(safeLatest),
+      };
     }
 
     const logs = await client.getLogs({ address, fromBlock, toBlock });
@@ -472,6 +586,7 @@ export const pollLogs = internalAction({
       events,
       blockNumber: Number(toBlock),
       txHash: events.at(-1)?.transactionHash ?? checkpoint?.lastTxHash,
+      advanceCheckpoint: true,
     });
   },
 });

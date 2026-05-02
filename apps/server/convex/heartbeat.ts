@@ -11,6 +11,7 @@ import {
   parseEventLogs,
   WaitForTransactionReceiptTimeoutError,
   type Hex,
+  type Log,
 } from "viem";
 
 const indexerApi = (internal as any).indexer;
@@ -41,6 +42,70 @@ const bigintSafe = (value: unknown): unknown => {
     Object.entries(value).map(([key, nested]) => [key, bigintSafe(nested)]),
   );
 };
+
+type ReceiptLike = {
+  status: "success" | "reverted";
+  to?: string | null;
+  logs: readonly Log[];
+  blockNumber: bigint | number;
+};
+
+export function validateHeartbeatReceipt(
+  receipt: ReceiptLike,
+  expectedEngine: string,
+  payloadEngine?: unknown,
+):
+  | { ok: true; engineLogs: readonly Log[] }
+  | { ok: false; status: number; body: string } {
+  if (receipt.status !== "success") {
+    console.warn("[heartbeat] tx reverted, skipping");
+    return { ok: false, status: 200, body: "tx reverted" };
+  }
+
+  const normalizedExpectedEngine = expectedEngine.toLowerCase();
+  const receiptTo = receipt.to?.toLowerCase();
+  if (receiptTo !== normalizedExpectedEngine) {
+    console.warn(
+      `[heartbeat] tx not to engine (${receiptTo} != ${normalizedExpectedEngine})`,
+    );
+    return { ok: false, status: 200, body: "not engine tx" };
+  }
+
+  if (
+    typeof payloadEngine === "string" &&
+    payloadEngine.toLowerCase() !== normalizedExpectedEngine
+  ) {
+    console.warn("[heartbeat] payload engineAddress mismatch");
+    return { ok: false, status: 400, body: "engine mismatch" };
+  }
+
+  const engineLogs = receipt.logs.filter(
+    (log) => log.address.toLowerCase() === normalizedExpectedEngine,
+  );
+  if (engineLogs.length === 0) {
+    console.log("[heartbeat] tx has no engine logs, skipping");
+    return { ok: false, status: 200, body: "no engine logs" };
+  }
+
+  return { ok: true, engineLogs };
+}
+
+export function parseHeartbeatEngineEvents(engineLogs: readonly Log[]) {
+  return parseEventLogs({
+    abi: CLAN_WORLD_ABI,
+    logs: [...engineLogs],
+    strict: false,
+  }).map((event) => ({
+    eventName: event.eventName,
+    args: bigintSafe(event.args ?? {}),
+    address: event.address,
+    blockHash: event.blockHash,
+    blockNumber: event.blockNumber,
+    transactionHash: event.transactionHash,
+    transactionIndex: event.transactionIndex,
+    logIndex: event.logIndex,
+  }));
+}
 
 export const heartbeatWebhook = httpAction(async (ctx, request) => {
   if (request.method !== "POST") {
@@ -79,10 +144,13 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
     }
     const rpcUrl = process.env.RPC_URL_PRIMARY;
     if (!rpcUrl) {
-      return new Response(JSON.stringify({ error: "RPC_URL_PRIMARY is required" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "RPC_URL_PRIMARY is required" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const publicClient = createPublicClient({
@@ -110,31 +178,46 @@ export const heartbeatWebhook = httpAction(async (ctx, request) => {
         },
       );
     }
-    const parsed = parseEventLogs({
-      abi: CLAN_WORLD_ABI,
-      logs: receipt.logs,
-      strict: false,
-    }).map((event) => ({
-      eventName: event.eventName,
-      args: bigintSafe(event.args ?? {}),
-      address: event.address,
-      blockHash: event.blockHash,
-      blockNumber: event.blockNumber,
-      transactionHash: event.transactionHash,
-      transactionIndex: event.transactionIndex,
-      logIndex: event.logIndex,
-    }));
-    const blockNumber = numberFromPayload(payload.blockNumber) ?? Number(receipt.blockNumber);
+
+    const expectedEngine = process.env.CLAN_WORLD_CONTRACT_ADDRESS;
+    if (!expectedEngine) {
+      return new Response(
+        JSON.stringify({ error: "CLAN_WORLD_CONTRACT_ADDRESS is required" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+    const validation = validateHeartbeatReceipt(
+      receipt,
+      expectedEngine,
+      payload.engineAddress,
+    );
+    if (!validation.ok) {
+      return new Response(validation.body, { status: validation.status });
+    }
+
+    const parsed = parseHeartbeatEngineEvents(validation.engineLogs);
+    const blockNumber =
+      numberFromPayload(payload.blockNumber) ?? Number(receipt.blockNumber);
     await ctx.runMutation(indexerApi.ingestEvents, {
       events: parsed,
       blockNumber,
       txHash: payload.txHash,
       firedAtTs: numberFromPayload(payload.firedAtTs),
+      advanceCheckpoint: false,
     });
-    await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {});
+    await ctx.scheduler.runAfter(0, indexerApi.refreshSnapshot, {
+      blockNumber,
+    });
 
     return new Response(
-      JSON.stringify({ status: "ok", received: txData, decodedEvents: parsed.length }),
+      JSON.stringify({
+        status: "ok",
+        received: txData,
+        decodedEvents: parsed.length,
+      }),
       {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -162,8 +245,7 @@ export const advanceTick = internalMutation({
     // calls from inserting duplicate tick rows.
     const nowSeconds = Math.floor(Date.now() / 1000);
     const epochEndSeconds =
-      snap.tickEpochStartedAt +
-      Math.floor(snap.tickEpochDurationMs / 1000);
+      snap.tickEpochStartedAt + Math.floor(snap.tickEpochDurationMs / 1000);
     if (nowSeconds < epochEndSeconds) {
       return { status: "no-op", reason: "epoch not yet elapsed" };
     }

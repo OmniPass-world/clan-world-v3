@@ -59,6 +59,14 @@ contract SeasonFinalizationTest is Test {
         }
     }
 
+    function _advanceToFrozenSeasonBoundary(uint64 seasonEndTick) internal {
+        while (world.getWorldState().currentTick < seasonEndTick - 1) {
+            _advanceTick();
+        }
+        _advanceTick();
+        assertEq(world.getWorldState().currentTick, seasonEndTick - 1, "heartbeat freezes at boundary");
+    }
+
     function test_finalizeSeasonRevertsBeforeSeasonEnd() public {
         vm.expectRevert("ClanWorld: season not ended");
         world.finalizeSeason();
@@ -74,7 +82,7 @@ contract SeasonFinalizationTest is Test {
         world.setLivingClansmen(clanA, 0);
         world.setLivingClansmen(clanB, 0);
         world.setLivingClansmen(clanC, 0);
-        _advanceToTick(ClanWorldConstants.SEASON_DURATION_TICKS);
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         (uint32[] memory expectedRanked, uint256[] memory expectedScores) = world.getRankings();
         assertEq(expectedRanked[0], clanB, "rank 1");
@@ -87,7 +95,7 @@ contract SeasonFinalizationTest is Test {
     }
 
     function test_finalizeSeasonIsIdempotent() public {
-        _advanceToTick(ClanWorldConstants.SEASON_DURATION_TICKS);
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
         world.finalizeSeason();
 
         vm.expectRevert("ClanWorld: season finalized");
@@ -95,7 +103,7 @@ contract SeasonFinalizationTest is Test {
     }
 
     function test_seasonAutoRollBlockedUntilFinalized() public {
-        _advanceToTick(ClanWorldConstants.SEASON_DURATION_TICKS);
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         WorldState memory beforeFinalize = world.getWorldState();
         assertEq(beforeFinalize.currentSeasonNumber, 1, "season number stays put");
@@ -120,7 +128,7 @@ contract SeasonFinalizationTest is Test {
         world.setLivingClansmen(clanA, 0);
         world.setLivingClansmen(clanB, 0);
         world.setLivingClansmen(clanC, 0);
-        _advanceToTick(ClanWorldConstants.SEASON_DURATION_TICKS);
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         world.finalizeSeason();
 
@@ -133,7 +141,7 @@ contract SeasonFinalizationTest is Test {
     function test_finalizeSeasonResetsForNextSeason() public {
         uint32 clanId = _mintClan(elderA);
         world.setLivingClansmen(clanId, 0);
-        _advanceToTick(ClanWorldConstants.SEASON_DURATION_TICKS);
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         world.finalizeSeason();
         _advanceTick();
@@ -142,7 +150,7 @@ contract SeasonFinalizationTest is Test {
         assertEq(nextSeason.currentSeasonNumber, 2, "season two active");
         assertFalse(nextSeason.seasonFinalized, "finalized flag reset");
 
-        _advanceToTick(nextSeason.seasonEndTick);
+        _advanceToFrozenSeasonBoundary(nextSeason.seasonEndTick);
         WorldState memory limbo = world.getWorldState();
         assertEq(limbo.currentSeasonNumber, 2, "second season also waits for finalization");
 
@@ -154,5 +162,55 @@ contract SeasonFinalizationTest is Test {
         assertEq(thirdSeason.seasonStartTick, ClanWorldConstants.SEASON_DURATION_TICKS * 2, "third season start");
         assertEq(thirdSeason.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS * 3, "third season end");
         assertFalse(thirdSeason.seasonFinalized, "finalized flag reset again");
+    }
+
+    function test_heartbeatFreezesAtSeasonBoundary() public {
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
+
+        WorldState memory frozen = world.getWorldState();
+        assertEq(frozen.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "did not cross boundary");
+        assertEq(frozen.currentSeasonNumber, 1, "season unchanged");
+        assertFalse(frozen.seasonFinalized, "not finalized");
+    }
+
+    function test_heartbeatResumesAfterFinalize() public {
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
+
+        world.finalizeSeason();
+        _advanceTick();
+
+        WorldState memory afterRoll = world.getWorldState();
+        assertEq(afterRoll.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS, "advanced into next season");
+        assertEq(afterRoll.currentSeasonNumber, 2, "season rolled");
+        assertEq(afterRoll.seasonStartTick, ClanWorldConstants.SEASON_DURATION_TICKS, "new season start");
+    }
+
+    function test_finalizeSeasonRankingsExcludePostBoundaryState() public {
+        uint32 clanA = _mintClan(elderA);
+        uint32 clanB = _mintClan(elderB);
+        world.setVault(clanA, 200e18, 0, 0, 0);
+        world.setVault(clanB, 100e18, 0, 0, 0);
+        world.setLivingClansmen(clanA, 0);
+        world.setLivingClansmen(clanB, 0);
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
+
+        world.finalizeSeason();
+
+        (uint32[] memory rankedClanIds,) = world.getRankings();
+        assertEq(rankedClanIds[0], clanA, "pre-boundary leader remains first");
+        assertEq(world.getClan(clanA).lastSettledTick, ClanWorldConstants.SEASON_DURATION_TICKS, "clan A boundary settled");
+        assertEq(world.getClan(clanB).lastSettledTick, ClanWorldConstants.SEASON_DURATION_TICKS, "clan B boundary settled");
+    }
+
+    function test_unfinalizedSeasonBlocksMultipleAdvances() public {
+        _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
+
+        for (uint256 i = 0; i < 100; i++) {
+            _advanceTick();
+        }
+
+        WorldState memory frozen = world.getWorldState();
+        assertEq(frozen.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "still frozen");
+        assertEq(frozen.currentSeasonNumber, 1, "season number unchanged");
     }
 }
