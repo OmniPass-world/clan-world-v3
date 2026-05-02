@@ -547,8 +547,8 @@ export function WorldMap() {
   function clearSelection() {
     const selected = selectedRef.current;
     if (!selected) return;
-    selected.ring.visible = false;
     selected.target.removeChild(selected.ring);
+    selected.ring.destroy();
     selectedRef.current = null;
     fitWorldAnimated();
   }
