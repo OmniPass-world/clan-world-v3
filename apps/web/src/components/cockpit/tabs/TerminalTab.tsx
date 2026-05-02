@@ -54,6 +54,7 @@ export function TerminalTab({ elder, testIdPrefix }: Props) {
         src={url}
         title={`Elder ${elder.clanId} tmux mirror`}
         className="cockpit-terminal-iframe"
+        loading="lazy"
         sandbox="allow-scripts allow-same-origin"
         style={{
           flex: 1,
