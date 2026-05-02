@@ -13,14 +13,19 @@ import {
     Clan,
     ClanFullView,
     ClanWorldConstants,
+    ClanOrder,
     Clansman,
     DerivedClanState,
     DerivedClansmanState,
     MarketState,
+    Mission,
+    OrderResult,
     PoolSeedConfig,
     RegionOccupant,
     ResourceType,
+    StatusCode,
     TreasuryState,
+    WithdrawResourcesData,
     WheatPlot,
     WorldSnapshot,
     WorldState
@@ -48,6 +53,7 @@ import {RegionViewsFacet} from "../../src/diamond/facets/RegionViewsFacet.sol";
 import {ScoringViewsFacet} from "../../src/diamond/facets/ScoringViewsFacet.sol";
 import {SettlementFacet} from "../../src/diamond/facets/SettlementFacet.sol";
 import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.sol";
+import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
 import {StubPool} from "../../src/StubPool.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
 import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
@@ -498,6 +504,69 @@ contract DiamondSkeletonTest is Test {
         }
     }
 
+    function testDiamondSubmitWaitOrderMatchesCore() public {
+        ClanWorld core = new ClanWorld();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        SubmitOrdersFacet submitOrdersFacet = new SubmitOrdersFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_submitOrdersCut(address(submitOrdersFacet)), address(0), "");
+
+        address elder = address(0xA11CE);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        uint8 coreBaseRegion = core.getClan(coreClanId).baseRegion;
+        uint8 diamondBaseRegion = IClanWorld(address(diamond)).getClan(diamondClanId).baseRegion;
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = ClanOrder({
+            clansmanId: coreClansmanId,
+            gotoRegion: coreBaseRegion,
+            action: ActionType.Wait,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
+        });
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = ClanOrder({
+            clansmanId: diamondClansmanId,
+            gotoRegion: diamondBaseRegion,
+            action: ActionType.Wait,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
+        });
+
+        vm.prank(elder);
+        OrderResult[] memory coreResults = core.submitClanOrders(coreClanId, coreOrders);
+        vm.prank(elder);
+        OrderResult[] memory diamondResults =
+            IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders);
+
+        assertEq(uint8(diamondResults[0].status), uint8(coreResults[0].status), "status");
+        assertEq(diamondResults[0].cooldownEndsAtTs, coreResults[0].cooldownEndsAtTs, "cooldown");
+        assertEq(diamondResults[0].missionNonce, coreResults[0].missionNonce, "nonce");
+        assertEq(uint8(diamondResults[0].marketMode), uint8(coreResults[0].marketMode), "market mode");
+        assertEq(uint8(diamondResults[0].status), uint8(StatusCode.OK), "submit ok");
+
+        _assertClansmanEq(IClanWorld(address(diamond)).getClansman(diamondClansmanId), core.getClansman(coreClansmanId));
+        _assertMissionEq(
+            IClanWorld(address(diamond)).getActiveMission(diamondClansmanId), core.getActiveMission(coreClansmanId)
+        );
+    }
+
     function testDiamondTransferClanOwnershipMatchesCoreAfterSettlement() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
@@ -759,6 +828,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()
+        });
+    }
+
+    function _submitOrdersCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.submitOrdersSelectors()
         });
     }
 
@@ -1026,6 +1104,27 @@ contract DiamondSkeletonTest is Test {
         assertEq(actual.carryIron, expected.carryIron, "carryIron");
         assertEq(actual.carryWheat, expected.carryWheat, "carryWheat");
         assertEq(actual.carryFish, expected.carryFish, "carryFish");
+    }
+
+    function _assertMissionEq(Mission memory actual, Mission memory expected) internal pure {
+        assertEq(actual.active, expected.active, "mission active");
+        assertEq(actual.nonce, expected.nonce, "mission nonce");
+        assertEq(actual.clansmanId, expected.clansmanId, "mission clansmanId");
+        assertEq(actual.submittedAtTick, expected.submittedAtTick, "submitted");
+        assertEq(actual.executesAtTick, expected.executesAtTick, "executes");
+        assertEq(actual.settlesAtTick, expected.settlesAtTick, "settles");
+        assertEq(actual.startRegion, expected.startRegion, "start region");
+        assertEq(actual.targetRegion, expected.targetRegion, "target region");
+        assertEq(uint8(actual.action), uint8(expected.action), "action");
+        assertEq(actual.startTick, expected.startTick, "start tick");
+        assertEq(actual.arrivalTick, expected.arrivalTick, "arrival");
+        assertEq(actual.actionStartTick, expected.actionStartTick, "action start");
+        assertEq(actual.missionSeed, expected.missionSeed, "seed");
+        assertEq(uint8(actual.marketMode), uint8(expected.marketMode), "market mode");
+        assertEq(actual.targetClanId, expected.targetClanId, "target clan");
+        assertEq(actual.marketToken, expected.marketToken, "market token");
+        assertEq(actual.marketAmount, expected.marketAmount, "market amount");
+        assertEq(actual.maxGoldIn, expected.maxGoldIn, "max gold");
     }
 
     function _assertWheatPlotEq(WheatPlot memory actual, WheatPlot memory expected) internal pure {
