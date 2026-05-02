@@ -72,16 +72,34 @@ function MainApp() {
   // When the guard is required, start verified=false and prompt for verification;
   // otherwise render directly in browser/dev.
   const [verified, setVerified] = useState(!REQUIRE_WORLD_APP_GUARD);
+  const [verifyState, setVerifyState] = useState<
+    'idle' | 'loading' | 'error' | 'success'
+  >('idle');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const isInWorldApp = MiniKit.isInstalled() || !REQUIRE_WORLD_APP_GUARD;
 
   const { open: openIDKit, result, isSuccess } = useIDKitRequest(IDKIT_CONFIG);
+
+  const handleOpenIDKit = () => {
+    setVerifyState('idle');
+    setErrorMessage(null);
+    openIDKit();
+  };
 
   useEffect(() => {
     if (!isSuccess || result === null) return;
     if (!CONVEX_SITE_URL) {
       console.error('CONVEX_SITE_URL not set — VITE_CONVEX_URL missing');
+      setVerifyState('error');
+      setErrorMessage(
+        import.meta.env.DEV
+          ? '[Dev] VITE_CONVEX_URL not configured. World ID verification disabled.'
+          : 'World ID verification is not available right now. Please try again later.',
+      );
       return;
     }
+    setVerifyState('loading');
+    setErrorMessage(null);
     fetch(`${CONVEX_SITE_URL}/api/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -90,11 +108,23 @@ function MainApp() {
       .then((res) => {
         if (res.ok) {
           setVerified(true);
+          setVerifyState('success');
+          setErrorMessage(null);
         } else {
           console.error('Verify failed:', res.status);
+          setVerifyState('error');
+          setErrorMessage(
+            'World ID verification failed. Please try again in a moment.',
+          );
         }
       })
-      .catch((err) => console.error('Verify error:', err));
+      .catch((err) => {
+        console.error('Verify error:', err);
+        setVerifyState('error');
+        setErrorMessage(
+          'Could not reach the verification service. Check your connection and try again.',
+        );
+      });
   }, [isSuccess, result]);
 
   if (!isInWorldApp) {
@@ -164,17 +194,60 @@ function MainApp() {
     >
       {/* Page title removed — host chrome (Telegram / World App) shows the app name. */}
       {!verified && (
-        <button
-          onClick={openIDKit}
+        <div
           style={{
             margin: '8px',
-            padding: '12px 24px',
-            fontFamily: 'monospace',
-            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px',
           }}
         >
-          Claim Your Clan Identity
-        </button>
+          <button
+            onClick={handleOpenIDKit}
+            disabled={verifyState === 'loading'}
+            aria-busy={verifyState === 'loading'}
+            style={{
+              padding: '12px 24px',
+              fontFamily: 'monospace',
+              cursor: verifyState === 'loading' ? 'wait' : 'pointer',
+              opacity: verifyState === 'loading' ? 0.68 : 1,
+            }}
+          >
+            {verifyState === 'loading'
+              ? 'Verifying...'
+              : 'Claim Your Clan Identity'}
+          </button>
+          {!CONVEX_SITE_URL && import.meta.env.DEV && (
+            <div
+              role="status"
+              style={{
+                color: '#f2c572',
+                fontFamily: 'monospace',
+                fontSize: '0.78rem',
+                lineHeight: 1.4,
+              }}
+            >
+              [Dev] VITE_CONVEX_URL not configured. World ID verification disabled.
+            </div>
+          )}
+          {verifyState === 'error' && errorMessage && (
+            <div
+              role="alert"
+              aria-live="polite"
+              style={{
+                background: 'rgba(122, 34, 34, 0.24)',
+                border: '1px solid rgba(242, 103, 103, 0.56)',
+                color: '#ffd0d0',
+                fontFamily: 'monospace',
+                fontSize: '0.85rem',
+                lineHeight: 1.45,
+                padding: '10px 12px',
+              }}
+            >
+              {errorMessage}
+            </div>
+          )}
+        </div>
       )}
       {verified && (
         <WorldMapBoundary>
