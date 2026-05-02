@@ -2,6 +2,7 @@
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
+import {DiamondSelectors} from "../../script/DiamondSelectors.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
 import {ClanWorld} from "../../src/ClanWorld.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
@@ -211,58 +212,29 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _rawViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        bytes4[] memory selectors = new bytes4[](26);
-        selectors[0] = IClanWorld.getWorldState.selector;
-        selectors[1] = IClanWorld.getTreasuryState.selector;
-        selectors[2] = IClanWorld.getResourceToken.selector;
-        selectors[3] = IClanWorld.getPool.selector;
-        selectors[4] = IClanWorld.getPrice.selector;
-        selectors[5] = IClanWorld.getClan.selector;
-        selectors[6] = IClanWorld.getClansman.selector;
-        selectors[7] = IClanWorld.getActiveMission.selector;
-        selectors[8] = IClanWorld.getMissionTiming.selector;
-        selectors[9] = IClanWorld.isWinter.selector;
-        selectors[10] = IClanWorld.getWallUpgradeCost.selector;
-        selectors[11] = IClanWorld.getBaseUpgradeCost.selector;
-        selectors[12] = IClanWorld.getMonumentUpgradeCost.selector;
-        selectors[13] = IClanWorld.getActionDuration.selector;
-        selectors[14] = IClanWorld.getTravelTicks.selector;
-        selectors[15] = IClanWorld.getBandit.selector;
-        selectors[16] = IClanWorld.getBanditTroop.selector;
-        selectors[17] = IClanWorld.getBanditsInRegion.selector;
-        selectors[18] = IClanWorld.getWheatPlots.selector;
-        selectors[19] = IClanWorld.getScheduledMarketActionsForTick.selector;
-        selectors[20] = IClanWorld.getActiveDefenders.selector;
-        selectors[21] = IClanWorld.getDefendingClans.selector;
-        selectors[22] = IClanWorld.getClanIds.selector;
-        selectors[23] = IClanWorld.getClanClansmanIds.selector;
-        selectors[24] = IClanWorld.getClansmanDefendingRegion.selector;
-        selectors[25] = IClanWorld.getMonumentLevelReachedAt.selector;
-
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.rawViewsSelectors()
         });
     }
 
     function _lifecycleCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        bytes4[] memory selectors = new bytes4[](1);
-        selectors[0] = IClanWorld.mintClan.selector;
-
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.lifecycleSelectors()
         });
     }
 
     function _derivedViewsCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        bytes4[] memory selectors = new bytes4[](2);
-        selectors[0] = IClanWorld.getDerivedClanState.selector;
-        selectors[1] = IClanWorld.getDerivedClansmanState.selector;
-
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet, action: IDiamondCut.FacetCutAction.Add, functionSelectors: selectors
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.derivedViewsSelectors()
         });
     }
 
