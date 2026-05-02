@@ -3475,6 +3475,15 @@ contract ClanWorldTest is Test {
             world.heartbeat();
         }
         WorldState memory ws = world.getWorldState();
+        assertEq(ws.currentSeasonNumber, 1, "season waits for finalization");
+        assertEq(ws.seasonStartTick, 0);
+        assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS);
+
+        world.finalizeSeason();
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        world.heartbeat();
+
+        ws = world.getWorldState();
         assertEq(ws.currentSeasonNumber, 2, "season number should increment");
         assertEq(ws.seasonStartTick, ClanWorldConstants.SEASON_DURATION_TICKS);
         assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS * 2);

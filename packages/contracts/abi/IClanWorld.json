@@ -4360,6 +4360,12 @@
           "type": "uint32[]",
           "indexed": false,
           "internalType": "uint32[]"
+        },
+        {
+          "name": "scores",
+          "type": "uint256[]",
+          "indexed": false,
+          "internalType": "uint256[]"
         }
       ],
       "anonymous": false
