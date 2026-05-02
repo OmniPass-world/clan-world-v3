@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
-import { Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
@@ -106,6 +106,7 @@ type BubbleHandle = {
 };
 
 type WorldLayers = {
+  worldContainer: Container;
   terrainBackground: Container;
   terrainAccents: Container;
   worldDynamic: Container;
@@ -120,6 +121,19 @@ type CarryIndicator = {
   fill: Graphics;
   displayedFill: number;
   targetFill: number;
+};
+
+type DayNightKeyframe = {
+  r: number;
+  g: number;
+  b: number;
+  brightness: number;
+  sat: number;
+};
+
+type SelectableTarget = Container & {
+  width: number;
+  height: number;
 };
 
 // Worker travel animation (PR #44) — small clan-colored dots crossing between regions.
@@ -149,6 +163,22 @@ const WHEAT_CAP = 10;
 const FISH_CAP = 10;
 const CARRY_BAR_W = 16;
 const CARRY_BAR_H = 3;
+
+const TICKS_PER_DAY_CYCLE = 30;
+const FALLBACK_DAY_TICK_MS = 60_000;
+const DAYNIGHT_KEYFRAMES: Record<'dawn' | 'day' | 'dusk' | 'night', DayNightKeyframe> = {
+  dawn: { r: 1.10, g: 0.90, b: 0.80, brightness: 0.95, sat: 0.85 },
+  day: { r: 1.00, g: 1.00, b: 1.00, brightness: 1.00, sat: 1.00 },
+  dusk: { r: 1.15, g: 0.85, b: 0.70, brightness: 0.85, sat: 0.95 },
+  night: { r: 0.65, g: 0.70, b: 0.95, brightness: 0.55, sat: 0.70 },
+};
+const DAYNIGHT_PHASES = [
+  { at: 0.00, key: 'dawn' as const },
+  { at: 0.05, key: 'day' as const },
+  { at: 0.50, key: 'dusk' as const },
+  { at: 0.55, key: 'night' as const },
+  { at: 1.00, key: 'dawn' as const },
+];
 
 /** Map a log message to a clan id by string-matching id or name. */
 function attributeClan(msg: string): string | null {
@@ -246,6 +276,7 @@ function treasuryToMonument(treasury: string): number {
 }
 
 function createWorldLayers(): WorldLayers {
+  const worldContainer = new Container();
   const terrainBackground = new Container();
   const terrainAccents = new Container();
   const worldDynamic = new Container();
@@ -254,7 +285,9 @@ function createWorldLayers(): WorldLayers {
   const bubbleLayer = new Container();
   const screenEffects = new Container();
   worldDynamic.sortableChildren = true;
+  worldContainer.addChild(terrainBackground, terrainAccents, worldDynamic);
   return {
+    worldContainer,
     terrainBackground,
     terrainAccents,
     worldDynamic,
@@ -298,6 +331,69 @@ function redrawCarryIndicator(indicator: CarryIndicator) {
   indicator.fill.fill({ color: 0xe8d8b5, alpha: 1 });
 }
 
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function getDayNightFrame(progress01: number): DayNightKeyframe {
+  const wrapped = ((progress01 % 1) + 1) % 1;
+  for (let i = 0; i < DAYNIGHT_PHASES.length - 1; i++) {
+    const a = DAYNIGHT_PHASES[i];
+    const b = DAYNIGHT_PHASES[i + 1];
+    if (!a || !b) continue;
+    if (wrapped >= a.at && wrapped <= b.at) {
+      const t = b.at === a.at ? 0 : (wrapped - a.at) / (b.at - a.at);
+      const from = DAYNIGHT_KEYFRAMES[a.key];
+      const to = DAYNIGHT_KEYFRAMES[b.key];
+      return {
+        r: lerp(from.r, to.r, t),
+        g: lerp(from.g, to.g, t),
+        b: lerp(from.b, to.b, t),
+        brightness: lerp(from.brightness, to.brightness, t),
+        sat: lerp(from.sat, to.sat, t),
+      };
+    }
+  }
+  return DAYNIGHT_KEYFRAMES.dawn;
+}
+
+function applyDayNightFilter(filter: ColorMatrixFilter, frame: DayNightKeyframe) {
+  const r = frame.r * frame.brightness;
+  const g = frame.g * frame.brightness;
+  const b = frame.b * frame.brightness;
+  void frame.sat;
+  filter.matrix = [
+    r, 0, 0, 0, 0,
+    0, g, 0, 0, 0,
+    0, 0, b, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+}
+
+function drawSelectionRing(g: Graphics, radius: number, color: number) {
+  g.clear();
+  const segmentCount = 8;
+  const gap = 0.18;
+  const step = (Math.PI * 2) / segmentCount;
+  for (let i = 0; i < segmentCount; i++) {
+    const start = i * step + gap;
+    const end = (i + 1) * step - gap;
+    const samples = 6;
+    for (let j = 0; j <= samples; j++) {
+      const a = lerp(start, end, j / samples);
+      const x = Math.cos(a) * radius;
+      const y = Math.sin(a) * radius * 0.45;
+      if (j === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+  }
+  g.stroke({ color, width: 2, alpha: 1 });
+}
+
 export function WorldMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -323,6 +419,7 @@ export function WorldMap() {
       container: Container;
       sprite: Sprite | null;
       fallback: Graphics;
+      glow: Graphics;
       clan: ClanDef;
       baseY: number;
       phaseOffset: number;
@@ -354,6 +451,14 @@ export function WorldMap() {
   });
 
   const layersRef = useRef<WorldLayers | null>(null);
+  const dayNightFilterRef = useRef<ColorMatrixFilter | null>(null);
+  const dayNightTickerCbRef = useRef<(() => void) | null>(null);
+  const selectedRef = useRef<{
+    target: SelectableTarget;
+    ring: Graphics;
+    color: number;
+  } | null>(null);
+  const tickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
 
   // Per-clan speech-bubble system (PR #43).
   const bubbleLayerRef = useRef<Container | null>(null);
@@ -389,6 +494,86 @@ export function WorldMap() {
   }, [logs, snapshot?.tick]);
   const banditTicksUntil = DEMO_BANDIT.attacksAtTick - liveTick;
   const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
+
+  useEffect(() => {
+    const rawTick = snapshot?.tick;
+    if (typeof rawTick === 'number' && Number.isFinite(rawTick)) {
+      tickClockRef.current = { tick: rawTick, seenAtMs: Date.now() };
+    }
+  }, [snapshot?.tick]);
+
+  function getDayNightProgress() {
+    const tick = snapshot?.tick;
+    const epoch = snapshot?.tickEpoch;
+    const hasEpoch = !!epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0;
+    if (typeof tick === 'number' && Number.isFinite(tick) && (tick > 0 || hasEpoch)) {
+      let subTickProgress = 0;
+      if (hasEpoch && typeof epoch.durationMs === 'number' && epoch.durationMs > 0) {
+        const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
+        subTickProgress = clamp01((Date.now() - startedAtMs) / epoch.durationMs);
+      } else {
+        const elapsed = Date.now() - tickClockRef.current.seenAtMs;
+        subTickProgress = clamp01(elapsed / FALLBACK_DAY_TICK_MS);
+      }
+      return ((tick + subTickProgress) % TICKS_PER_DAY_CYCLE) / TICKS_PER_DAY_CYCLE;
+    }
+    return ((Date.now() / FALLBACK_DAY_TICK_MS) % TICKS_PER_DAY_CYCLE) / TICKS_PER_DAY_CYCLE;
+  }
+
+  function fitWorldAnimated() {
+    const viewport = viewportRef.current;
+    const wrap = canvasWrapRef.current;
+    if (!viewport || !wrap) return;
+    const fitScale = Math.max(
+      (wrap.clientWidth || viewport.screenWidth) / WORLD_WIDTH,
+      (wrap.clientHeight || viewport.screenHeight) / WORLD_HEIGHT,
+    );
+    viewport.plugins.remove('animate');
+    viewport.animate({
+      position: { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 },
+      scale: fitScale,
+      time: 400,
+      ease: 'easeInOutQuad',
+    });
+  }
+
+  function clearSelection() {
+    const selected = selectedRef.current;
+    if (selected) {
+      selected.ring.visible = false;
+      selected.target.removeChild(selected.ring);
+      selectedRef.current = null;
+    }
+    fitWorldAnimated();
+  }
+
+  function selectTarget(target: SelectableTarget, color: number) {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    let ring = selectedRef.current?.ring;
+    if (!ring) {
+      ring = new Graphics();
+    } else if (ring.parent) {
+      ring.parent.removeChild(ring);
+    }
+    const radius = Math.max(18, Math.max(target.width || 0, target.height || 0) * 0.7);
+    drawSelectionRing(ring, radius, color);
+    ring.visible = true;
+    ring.alpha = 1;
+    ring.rotation = 0;
+    target.addChildAt(ring, 0);
+    selectedRef.current = { target, ring, color };
+
+    const global = target.getGlobalPosition();
+    const world = viewport.toWorld(global);
+    viewport.plugins.remove('animate');
+    viewport.animate({
+      position: { x: world.x, y: world.y },
+      scale: 2.0,
+      time: 400,
+      ease: 'easeInOutQuad',
+    });
+  }
 
   // ---- Pixi init ------------------------------------------------------------
   useEffect(() => {
@@ -460,14 +645,15 @@ export function WorldMap() {
 
         const layers = createWorldLayers();
         viewport.addChild(
-          layers.terrainBackground,
-          layers.terrainAccents,
-          layers.worldDynamic,
+          layers.worldContainer,
           layers.inWorldEffects,
           layers.selectionRings,
           layers.bubbleLayer,
           layers.screenEffects,
         );
+        const dayNightFilter = new ColorMatrixFilter();
+        layers.worldContainer.filters = [dayNightFilter];
+        dayNightFilterRef.current = dayNightFilter;
         layersRef.current = layers;
         bubbleLayerRef.current = layers.bubbleLayer;
         travelLayerRef.current = layers.worldDynamic;
@@ -565,6 +751,7 @@ export function WorldMap() {
             const from = REGIONS.find(r => r.id === t.fromRegionKey);
             const to = REGIONS.find(r => r.id === t.toRegionKey);
             if (!from || !to) {
+              if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
               layer.removeChild(t.gfx);
               t.gfx.destroy();
               list.splice(i, 1);
@@ -583,6 +770,7 @@ export function WorldMap() {
               // Linger at destination at full alpha for TRAVEL_DEST_LINGER_MS,
               // THEN fade. Keeps arrival visible — answers "clansmen disappear" bug.
               if (fadeAge >= TRAVEL_DEST_LINGER_MS + TRAVEL_FADE_OUT_MS) {
+                if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
                 layer.removeChild(t.gfx);
                 t.gfx.destroy();
                 list.splice(i, 1);
@@ -642,6 +830,27 @@ export function WorldMap() {
         // Track separately:
         zonePulseCbRef.current = zonePulseCb;
 
+        const dayNightCb = () => {
+          const filter = dayNightFilterRef.current;
+          if (!filter) return;
+          const frame = getDayNightFrame(getDayNightProgress());
+          applyDayNightFilter(filter, frame);
+          const glowAlpha = clamp01(1 - frame.brightness);
+          drawnRef.current.bases.forEach((base) => {
+            base.glow.alpha = glowAlpha;
+          });
+
+          const selected = selectedRef.current;
+          if (selected) {
+            const ring = selected.ring;
+            const now = performance.now();
+            ring.rotation += (app.ticker.deltaMS / 1000) * Math.PI * 2;
+            ring.alpha = 0.6 + Math.sin((now / 1000) * Math.PI) * 0.4;
+          }
+        };
+        dayNightTickerCbRef.current = dayNightCb;
+        app.ticker.add(dayNightCb);
+
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
         // viewport handles screen-fit transformation. Children inside the viewport
@@ -664,6 +873,9 @@ export function WorldMap() {
       if (a && tickerCbRef.current) a.ticker.remove(tickerCbRef.current);
       if (a && travelTickerCbRef.current) a.ticker.remove(travelTickerCbRef.current);
       if (a && zonePulseCbRef.current) a.ticker.remove(zonePulseCbRef.current);
+      if (a && dayNightTickerCbRef.current) a.ticker.remove(dayNightTickerCbRef.current);
+      selectedRef.current?.ring.destroy();
+      selectedRef.current = null;
       bubblesByClanRef.current.clear();
       seenLogIdsRef.current.clear();
       flagAnchorsRef.current.clear();
@@ -675,6 +887,8 @@ export function WorldMap() {
       tickerCbRef.current = null;
       travelTickerCbRef.current = null;
       zonePulseCbRef.current = null;
+      dayNightTickerCbRef.current = null;
+      dayNightFilterRef.current = null;
       drawnRef.current = {
         regions: [],
         regionLabels: [],
@@ -746,6 +960,18 @@ export function WorldMap() {
       ro.disconnect();
       window.removeEventListener('orientationchange', handleResize);
     };
+  }, [pixiReady]);
+
+  useEffect(() => {
+    if (!pixiReady) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        clearSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pixiReady]);
 
   // ---- One-time: create Pixi display objects (refs hold them for relayout) -
@@ -840,6 +1066,12 @@ export function WorldMap() {
       // visible during the load and as a safety net if the asset 404s. The countdown text
       // anchors next to whichever marker is currently rendered.
       const banditIcon = new Graphics();
+      banditIcon.eventMode = 'static';
+      banditIcon.cursor = 'pointer';
+      banditIcon.on('pointertap', (event) => {
+        event.stopPropagation();
+        selectTarget(banditIcon as SelectableTarget, 0xffe9b8);
+      });
       layers.worldDynamic.addChild(banditIcon);
       const countdown = new Text({
         text: '',
@@ -859,6 +1091,12 @@ export function WorldMap() {
           const sprite = new Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
           sprite.alpha = 0; // hidden until first redrawBandit positions it
+          sprite.eventMode = 'static';
+          sprite.cursor = 'pointer';
+          sprite.on('pointertap', (event) => {
+            event.stopPropagation();
+            selectTarget(sprite as SelectableTarget, 0xffe9b8);
+          });
           layers.worldDynamic.addChild(sprite);
           drawn.banditSprite = sprite;
           redrawBandit();
@@ -873,11 +1111,20 @@ export function WorldMap() {
         const container = new Container();
         layers.worldDynamic.addChild(container);
         const fallback = new Graphics();
+        const glow = new Graphics();
         container.addChild(fallback);
+        container.addChild(glow);
+        container.eventMode = 'static';
+        container.cursor = 'pointer';
+        container.on('pointertap', (event) => {
+          event.stopPropagation();
+          selectTarget(container as SelectableTarget, clan.color);
+        });
         const entry: {
           container: Container;
           sprite: Sprite | null;
           fallback: Graphics;
+          glow: Graphics;
           clan: ClanDef;
           baseY: number;
           phaseOffset: number;
@@ -885,6 +1132,7 @@ export function WorldMap() {
           container,
           sprite: null,
           fallback,
+          glow,
           clan,
           baseY: 0,
           phaseOffset: 0,
@@ -1075,7 +1323,7 @@ export function WorldMap() {
 
       // BASE SPRITES — render at clan home positions, replacing monument obelisks.
       drawn.bases.forEach((entry) => {
-        const { container, sprite, fallback, clan } = entry;
+        const { container, sprite, fallback, glow, clan } = entry;
         const base = regionMap.get(clan.homeRegion);
         if (!base) return;
         const cx = projX(base.nx);
@@ -1101,6 +1349,9 @@ export function WorldMap() {
           sprite.y = 0; // anchor=bottom-center; parent sits slightly below region center
           sprite.alpha = 1;
         }
+        glow.clear();
+        glow.circle(0, -baseSize * 0.8, Math.max(6, 8 * cappedSizeScale));
+        glow.fill({ color: 0xffd27d, alpha: 0.6 });
       });
 
       // FLOATING "Lv N" BADGES — beside each base sprite. Updates with monument level.
@@ -1302,6 +1553,12 @@ export function WorldMap() {
       dot.alpha = 0;
       gfx = dot;
     }
+    gfx.eventMode = 'static';
+    gfx.cursor = 'pointer';
+    gfx.on('pointertap', (event) => {
+      event.stopPropagation();
+      selectTarget(gfx as SelectableTarget, color);
+    });
     const carry = makeCarryIndicator();
     carry.container.y = tex ? -18 : -TRAVEL_DOT_RADIUS - 6;
     gfx.addChild(carry.container);
