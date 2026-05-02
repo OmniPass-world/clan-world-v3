@@ -39,6 +39,16 @@ library LibOrderMarket {
         uint256 amountOut,
         uint64 tick
     );
+    event ScheduledMarketActionExecuted(
+        uint32 indexed clanId,
+        uint32 clansmanId,
+        ActionType action,
+        uint8 resourceIn,
+        uint256 amountIn,
+        uint8 resourceOut,
+        uint256 amountOut,
+        uint64 settledAtTick
+    );
     event MarketActionFailed(
         uint32 indexed clanId,
         uint32 indexed clansmanId,
@@ -99,6 +109,68 @@ library LibOrderMarket {
         emit ScheduledMarketActionCommitted(
             executeAtTick, sma.commitSequence, clanId, clansmanId, m.action, m.marketToken, m.marketAmount, m.maxGoldIn
         );
+    }
+
+    function executeScheduledMarketActions(LibStorage.AppStorage storage s, uint64 tick) public {
+        ScheduledMarketAction[] storage actions = s.scheduledMarketActions[tick];
+        uint256 len = actions.length;
+        if (len == 0) return;
+
+        ScheduledMarketAction[] memory arr = new ScheduledMarketAction[](len);
+        for (uint256 i = 0; i < len; i++) {
+            arr[i] = actions[i];
+        }
+        for (uint256 i = 1; i < len; i++) {
+            ScheduledMarketAction memory key = arr[i];
+            uint256 j = i;
+            while (j > 0 && arr[j - 1].commitSequence > key.commitSequence) {
+                arr[j] = arr[j - 1];
+                j--;
+            }
+            arr[j] = key;
+        }
+
+        for (uint256 i = 0; i < len; i++) {
+            ScheduledMarketAction memory sma = arr[i];
+            Clansman storage cs = s.clansmen[sma.clansmanId];
+            if (cs.clanId != sma.clanId || cs.state == ClansmanState.DEAD) {
+                emit MarketActionFailed(
+                    sma.clanId,
+                    sma.clansmanId,
+                    sma.action,
+                    MarketExecutionMode.Scheduled,
+                    StatusCode.ERR_INVALID_CLANSMAN,
+                    tick
+                );
+                continue;
+            }
+
+            Mission storage m = s.missions[sma.clansmanId];
+            if (m.action != sma.action || m.nonce != sma.missionNonce) {
+                emit MarketActionFailed(
+                    sma.clanId,
+                    sma.clansmanId,
+                    sma.action,
+                    MarketExecutionMode.Scheduled,
+                    StatusCode.ERR_INVALID_ACTION,
+                    tick
+                );
+                continue;
+            }
+
+            StatusCode status = sma.action == ActionType.MarketSell
+                ? executeMarketSell(s, tick, sma.clanId, sma.clansmanId, sma.marketToken, sma.marketAmount)
+                : executeMarketBuy(
+                    s, tick, sma.clanId, sma.clansmanId, sma.marketToken, sma.marketAmount, sma.maxGoldIn
+                );
+            if (status != StatusCode.OK) {
+                handleMarketFailureAt(
+                    s, sma.clanId, sma.clansmanId, sma.action, MarketExecutionMode.Scheduled, status, tick
+                );
+            }
+        }
+
+        delete s.scheduledMarketActions[tick];
     }
 
     function executeImmediateMarket(
@@ -280,6 +352,87 @@ library LibOrderMarket {
         }
     }
 
+    function executeMarketSell(
+        LibStorage.AppStorage storage s,
+        uint64 closedTick,
+        uint32 clanId,
+        uint32 clansmanId,
+        address token,
+        uint256 amount
+    ) public returns (StatusCode) {
+        if (!s.treasury.poolsSeeded) return StatusCode.ERR_MARKET_UNSUPPORTED_TOKEN;
+        address poolAddr = poolFor(s, token);
+        if (poolAddr == address(0)) return StatusCode.ERR_MARKET_UNSUPPORTED_TOKEN;
+
+        Clan storage clan = s.clans[clanId];
+        Clansman storage cs = s.clansmen[clansmanId];
+        if (!deductFromCarry(s, cs, token, amount)) return StatusCode.ERR_MISSING_RESOURCES;
+
+        try StubPool(poolAddr).sellResource(amount) returns (uint256 goldOut) {
+            clan.goldBalance += goldOut;
+            emit ScheduledMarketActionExecuted(
+                clanId,
+                clansmanId,
+                ActionType.MarketSell,
+                marketResourceForToken(s, token),
+                amount,
+                ClanWorldConstants.RESOURCE_GOLD,
+                goldOut,
+                closedTick
+            );
+            return StatusCode.OK;
+        } catch {
+            addToCarry(s, cs, token, amount);
+            return StatusCode.ERR_LIQUIDITY_INSUFFICIENT;
+        }
+    }
+
+    function executeMarketBuy(
+        LibStorage.AppStorage storage s,
+        uint64 closedTick,
+        uint32 clanId,
+        uint32 clansmanId,
+        address token,
+        uint256 amountOut,
+        uint256 maxGoldIn
+    ) public returns (StatusCode) {
+        if (!s.treasury.poolsSeeded) return StatusCode.ERR_MARKET_UNSUPPORTED_TOKEN;
+        address poolAddr = poolFor(s, token);
+        if (poolAddr == address(0)) return StatusCode.ERR_MARKET_UNSUPPORTED_TOKEN;
+
+        Clansman storage cs = s.clansmen[clansmanId];
+        if (amountOut > remainingCarryForToken(s, cs, token)) return StatusCode.ERR_CARRY_FULL;
+
+        uint256 goldIn;
+        try StubPool(poolAddr).quoteBuy(amountOut) returns (uint256 quotedGoldIn) {
+            goldIn = quotedGoldIn;
+        } catch {
+            return StatusCode.ERR_LIQUIDITY_INSUFFICIENT;
+        }
+
+        Clan storage clan = s.clans[clanId];
+        if (goldIn > maxGoldIn) return StatusCode.ERR_MAX_GOLD_IN_EXCEEDED;
+        if (clan.goldBalance < goldIn) return StatusCode.ERR_NOT_ENOUGH_GOLD;
+
+        try StubPool(poolAddr).swapExactOutForInWithMaxIn(amountOut, maxGoldIn) returns (uint256 actualGoldIn) {
+            clan.goldBalance -= actualGoldIn;
+            addToCarry(s, cs, token, amountOut);
+            emit ScheduledMarketActionExecuted(
+                clanId,
+                clansmanId,
+                ActionType.MarketBuy,
+                ClanWorldConstants.RESOURCE_GOLD,
+                actualGoldIn,
+                marketResourceForToken(s, token),
+                amountOut,
+                closedTick
+            );
+            return StatusCode.OK;
+        } catch {
+            return StatusCode.ERR_LIQUIDITY_INSUFFICIENT;
+        }
+    }
+
     function hasCarryBalance(LibStorage.AppStorage storage s, Clansman storage cs, address token, uint256 amount)
         public
         view
@@ -326,6 +479,24 @@ library LibOrderMarket {
             cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
         }
         emit MarketActionFailed(clanId, clansmanId, action, mode, reason, s.world.currentTick);
+        return reason;
+    }
+
+    function handleMarketFailureAt(
+        LibStorage.AppStorage storage s,
+        uint32 clanId,
+        uint32 clansmanId,
+        ActionType action,
+        MarketExecutionMode mode,
+        StatusCode reason,
+        uint64 tick
+    ) public returns (StatusCode) {
+        Clansman storage cs = s.clansmen[clansmanId];
+        if (cs.clansmanId != 0 && cs.state != ClansmanState.DEAD) {
+            cs.state = ClansmanState.WAITING;
+            cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+        }
+        emit MarketActionFailed(clanId, clansmanId, action, mode, reason, tick);
         return reason;
     }
 
