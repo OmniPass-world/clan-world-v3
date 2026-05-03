@@ -102,7 +102,7 @@ export async function runCommand(
   if (ns === 'clan' && cmd === 'view') {
     const [clanId] = rest;
     if (!clanId) throw new UsageError('usage: elder clan view <clanId>');
-    const result = await deps.convex.getClanFullView(clanId);
+    const result = await deps.chain.getClanFullView(clanId);
     return JSON.stringify(result, null, 2) + '\n';
   }
 

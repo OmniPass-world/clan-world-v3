@@ -24,7 +24,14 @@ test.describe('cockpit shell (Phase A)', () => {
       route.fulfill({
         status: 200,
         contentType: 'text/html',
-        body: '<!DOCTYPE html><html><body data-stub="ttyd"></body></html>',
+        body: `<!DOCTYPE html><html><body data-stub="ttyd"><script>
+          const match = location.pathname.match(/elder-(\\d+)-tty/);
+          parent.postMessage({
+            type: 'clanworld-ttyd-status',
+            clanId: Number(match?.[1] ?? 0),
+            status: 'open'
+          }, '*');
+        </script></body></html>`,
       }),
     );
   });
@@ -73,6 +80,13 @@ test.describe('cockpit shell (Phase A)', () => {
       ).toBeVisible();
     }
 
+    const vault = page.locator('[data-testid="mini-cockpit-2-content-vault"]');
+    for (const label of ['Gold', 'Wood', 'Iron', 'Wheat', 'Fish', 'Blueprint']) {
+      await expect(vault.getByText(label, { exact: true })).toBeVisible();
+    }
+    await expect(vault.getByText('Ore', { exact: true })).toHaveCount(0);
+    await expect(vault.getByText('Stone', { exact: true })).toHaveCount(0);
+
     // Phase A.5b: tick counter is now app-level (single instance), not
     // per-mini-cockpit. The connection pill is also rendered once.
     await expect(page.locator('[data-testid="cockpit-header-tick"]')).toBeVisible();
@@ -88,16 +102,20 @@ test.describe('cockpit shell (Phase A)', () => {
     });
   });
 
-  test('connection pill transitions to disconnected when heartbeat fails', async ({
+  test('connection pill auto-recovers after heartbeat failures', async ({
     page,
   }) => {
-    // Override the beforeEach stub: abort all elder-* iframe + heartbeat
-    // requests so the heartbeat probe fails. After MAX_RETRIES (3) at
-    // 2s/4s/8s backoff, total worst-case wall time to disconnected is ~14s
-    // plus initial probe fail; allow a generous 30s timeout.
-    await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) =>
-      route.abort('failed'),
-    );
+    let shouldFail = true;
+    await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) => {
+      if (shouldFail) {
+        return route.abort('failed');
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!DOCTYPE html><html><body data-stub="ttyd-recovered"></body></html>',
+      });
+    });
 
     await page.goto('/cockpit');
 
@@ -115,13 +133,78 @@ test.describe('cockpit shell (Phase A)', () => {
     const retryBtn = page.locator('[data-testid="cockpit-connection-pill-retry"]');
     await expect(retryBtn).toBeVisible();
 
-    // Clicking Reconnect bumps the state machine back into the retry loop;
-    // since the route is still aborted, the pill should re-enter
-    // `reconnecting` before flipping back to `disconnected`. We assert it
-    // doesn't crash and remains in a known state after a click.
-    await retryBtn.click();
-    await expect(pill).toHaveAttribute('data-status', /reconnecting|disconnected/, {
-      timeout: 5_000,
+    shouldFail = false;
+    await expect(pill).toHaveAttribute('data-status', 'connected', {
+      timeout: 20_000,
     });
+  });
+
+  test('terminal iframe reloads when ttyd reports a closed websocket', async ({
+    page,
+  }) => {
+    let documentLoads = 0;
+    await page.route('**/cockpit.clan-world.com/elder-1-tty/**', (route) => {
+      if (route.request().resourceType() !== 'document') {
+        return route.fulfill({ status: 200, body: '' });
+      }
+
+      documentLoads += 1;
+      const shouldClose = documentLoads === 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: `<!DOCTYPE html><html><body><script>
+          parent.postMessage({
+            type: 'clanworld-ttyd-status',
+            clanId: 1,
+            status: 'open'
+          }, '*');
+          ${shouldClose ? `
+            setTimeout(() => parent.postMessage({
+              type: 'clanworld-ttyd-status',
+              clanId: 1,
+              status: 'close'
+            }, '*'), 50);
+          ` : ''}
+        </script></body></html>`,
+      });
+    });
+
+    await page.goto('/cockpit');
+
+    await expect
+      .poll(() => documentLoads, { timeout: 8_000 })
+      .toBeGreaterThanOrEqual(2);
+
+    await expect(
+      page.locator('[data-testid="mini-cockpit-1-content-terminal"]'),
+    ).toHaveAttribute('data-terminal-status', 'connected');
+  });
+
+  test('terminal iframe stays connected when ttyd loads without the reconnect shim', async ({
+    page,
+  }) => {
+    let documentLoads = 0;
+    await page.route('**/cockpit.clan-world.com/elder-1-tty/**', (route) => {
+      if (route.request().resourceType() !== 'document') {
+        return route.fulfill({ status: 200, body: '' });
+      }
+
+      documentLoads += 1;
+      return route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: '<!DOCTYPE html><html><body data-stub="ttyd-blank"></body></html>',
+      });
+    });
+
+    await page.goto('/cockpit');
+
+    await expect(
+      page.locator('[data-testid="mini-cockpit-1-content-terminal"]'),
+    ).toHaveAttribute('data-terminal-status', 'connected');
+
+    await page.waitForTimeout(6_000);
+    expect(documentLoads).toBe(1);
   });
 });

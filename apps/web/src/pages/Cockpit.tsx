@@ -63,19 +63,26 @@ export function Cockpit() {
         .cockpit-grid {
           flex: 1;
           display: grid;
-          gap: 8px;
-          padding: 8px;
+          gap: 0px;
+          padding: 0px;
           min-height: 0;
-          grid-template-columns: 1.3fr 1fr 1.3fr;
-          grid-template-rows: minmax(560px, 1fr) minmax(560px, 1fr);
+          grid-template-columns: 1fr 1fr 1fr;
+          grid-template-rows: minmax(240px, 1fr) minmax(240px, 1fr);
           grid-template-areas:
             "p1 p5 p2"
             "p3 p5 p4";
         }
-        .cockpit-cell-1 { grid-area: p1; min-width: 0; min-height: 0; }
-        .cockpit-cell-2 { grid-area: p2; min-width: 0; min-height: 0; }
-        .cockpit-cell-3 { grid-area: p3; min-width: 0; min-height: 0; }
-        .cockpit-cell-4 { grid-area: p4; min-width: 0; min-height: 0; }
+        .cockpit-cell-1, .cockpit-cell-2, .cockpit-cell-3, .cockpit-cell-4 {
+          min-width: 0; min-height: 0;
+          display: flex; flex-direction: column;
+        }
+        .cockpit-cell-1 > *, .cockpit-cell-2 > *, .cockpit-cell-3 > *, .cockpit-cell-4 > * {
+          flex: 1; min-height: 0;
+        }
+        .cockpit-cell-1 { grid-area: p1; }
+        .cockpit-cell-2 { grid-area: p2; }
+        .cockpit-cell-3 { grid-area: p3; }
+        .cockpit-cell-4 { grid-area: p4; }
         .cockpit-cell-5 { grid-area: p5; min-width: 0; min-height: 0; position: relative; }
 
         @media (max-width: 960px) {

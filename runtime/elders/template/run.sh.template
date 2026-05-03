@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # elder-{{ELDER_NUMBER}} entry point — adapted from ~/agents/_template/run.sh
 # Pattern A per back-on-plan §1A: shared parent .claude/ at ~/clan-world/.claude/
-# is auto-inherited via Claude Code parent-walk; this script only sets per-elder
-# isolated CLAUDE_CONFIG_DIR for OAuth + plugin state.
+# is the single Claude config dir for every Elder. Each Elder still runs from
+# its own working directory for local .env, state, and outbox files.
 
 set -euo pipefail
 
 ELDER_NUMBER={{ELDER_NUMBER}}
 AGENT_DIR="$(cd "$(dirname "$0")" && pwd)"
+RUNTIME_DIR="$(cd "$AGENT_DIR/.." && pwd)"
 
-# === Core isolation — OAuth via CLAUDE_CONFIG_DIR per ADR 0013 ===
+# === Core config — shared Claude config dir for all Elders ===
 # NEVER use ANTHROPIC_API_KEY, NEVER use --bare (forces API key).
-export CLAUDE_CONFIG_DIR="$AGENT_DIR/.claude"
+export CLAUDE_CONFIG_DIR="$RUNTIME_DIR/.claude"
 export CLAUDE_CODE_HIDE_ACCOUNT_INFO=1
 
 # === Token-based auth (skips interactive OAuth wizard) ===
@@ -24,15 +25,22 @@ if [ -f "${CLAN_WORLD_REPO:-$HOME/code/clan-world}/.env.local" ]; then
   source "${CLAN_WORLD_REPO:-$HOME/code/clan-world}/.env.local"
   set +a
 fi
+if [ -f "$AGENT_DIR/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$AGENT_DIR/.env"
+  set +a
+fi
 
 # OAuth credentials: symlink to host-shared credentials so token refresh stays fresh.
 # Run once during agent setup if not already present:
+mkdir -p "$CLAUDE_CONFIG_DIR"
 if [ ! -e "$CLAUDE_CONFIG_DIR/.credentials.json" ]; then
   ln -sf ~/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true
 fi
 
 # === Plugin isolation (Telegram unused for Elders, but isolation matters) ===
-export TELEGRAM_STATE_DIR="$AGENT_DIR/.claude/channels/telegram"
+export TELEGRAM_STATE_DIR="$AGENT_DIR/state/channels/telegram"
 export CLAUDE_CODE_PLUGIN_CACHE_DIR="$AGENT_DIR/state/plugin-cache"
 
 # === Runtime state dirs ===
@@ -57,11 +65,7 @@ export TZ="America/New_York"
 # Binary lives in the clan-world workspace; symlink/PATH avoids hardcoding repo paths in skills.
 export PATH="$HOME/code/omnipass-world/clan-world/packages/agents/bin:$PATH"
 
-# === CWD must be the elder's dir so Claude Code parent-walks .claude/ correctly ===
-# Walks up from $AGENT_DIR finding:
-#   $AGENT_DIR/.claude/             (per-elder, here)
-#   ~/clan-world/.claude/        (shared parent — Pattern A)
-# Settings + skills + hooks union from both.
+# === CWD stays per-Elder; CLAUDE_CONFIG_DIR is shared ===
 cd "$AGENT_DIR"
 echo "[$AGENT_NAME] Starting... model=$ANTHROPIC_MODEL $(date '+%Y-%m-%d %H:%M:%S %Z')"
 

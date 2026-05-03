@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../../server/convex/_generated/api';
 import { tokens } from '../../styles/cockpit-tokens';
 import { useConnectionStatus, type ConnectionStatus } from '../../hooks/useConnectionStatus';
 
-/**
- * Phase A.5b stub: returns hardcoded tick so the header has something to show.
- *
- * TODO(phase-b): wire to a Convex query (likely `api.engine.currentTick`)
- * so the value updates live as the engine ticks. The pulse animation in
- * <TickCounter> will then visibly fire on each increment.
- */
-function useCurrentTick(): { tick: number; tickMax: number } {
-  return { tick: 4, tickMax: 10 };
+const MEMORY_WIPE_INTERVAL_TICKS = 10;
+
+function useMemoryWipeCountdown(): {
+  currentTick: number;
+  ticksUntilWipe: number;
+  intervalTicks: number;
+} {
+  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const tick = typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
+    ? snapshot.tick
+    : 0;
+  const remainder = tick % MEMORY_WIPE_INTERVAL_TICKS;
+  const ticksUntilWipe = remainder === 0
+    ? MEMORY_WIPE_INTERVAL_TICKS
+    : MEMORY_WIPE_INTERVAL_TICKS - remainder;
+
+  return {
+    currentTick: tick,
+    ticksUntilWipe,
+    intervalTicks: MEMORY_WIPE_INTERVAL_TICKS,
+  };
 }
 
 /**
@@ -20,7 +34,7 @@ function useCurrentTick(): { tick: number; tickMax: number } {
  * Layout: title left, tick counter middle-right, connection pill far right.
  */
 export function CockpitHeader() {
-  const { tick, tickMax } = useCurrentTick();
+  const { currentTick, ticksUntilWipe, intervalTicks } = useMemoryWipeCountdown();
   const { status, retry } = useConnectionStatus();
 
   return (
@@ -57,7 +71,11 @@ export function CockpitHeader() {
           gap: tokens.space.lg,
         }}
       >
-        <TickCounter tick={tick} tickMax={tickMax} />
+        <TickCounter
+          currentTick={currentTick}
+          ticksUntilWipe={ticksUntilWipe}
+          intervalTicks={intervalTicks}
+        />
         <ConnectionPill status={status} onRetry={retry} />
       </div>
     </header>
@@ -65,26 +83,25 @@ export function CockpitHeader() {
 }
 
 interface TickProps {
-  tick: number;
-  tickMax: number;
+  currentTick: number;
+  ticksUntilWipe: number;
+  intervalTicks: number;
 }
 
 /**
- * Mono "T n/N" counter with a 200ms border-glow flash on each increment.
- * Uses a ref-tracked previous tick so the flash fires only on actual change,
- * not on remount.
+ * Memory wipe countdown with a 200ms border-glow flash on each engine tick.
  */
-function TickCounter({ tick, tickMax }: TickProps) {
+function TickCounter({ currentTick, ticksUntilWipe, intervalTicks }: TickProps) {
   const [pulsing, setPulsing] = useState(false);
-  const prevTickRef = useRef(tick);
+  const prevTickRef = useRef(currentTick);
 
   useEffect(() => {
-    if (tick === prevTickRef.current) return;
-    prevTickRef.current = tick;
+    if (currentTick === prevTickRef.current) return;
+    prevTickRef.current = currentTick;
     setPulsing(true);
     const t = setTimeout(() => setPulsing(false), 200);
     return () => clearTimeout(t);
-  }, [tick]);
+  }, [currentTick]);
 
   return (
     <div
@@ -93,7 +110,7 @@ function TickCounter({ tick, tickMax }: TickProps) {
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '4px',
+        gap: '8px',
         padding: '4px 10px',
         border: `1px solid ${pulsing ? tokens.text.accent : tokens.border.iron}`,
         borderRadius: tokens.radius.sm,
@@ -108,12 +125,24 @@ function TickCounter({ tick, tickMax }: TickProps) {
         letterSpacing: '0.08em',
         transition: 'box-shadow 200ms ease, border-color 200ms ease',
       }}
-      title="Engine tick"
+      title={`Memory wipe countdown. Current engine tick: ${currentTick}. Wipe interval: ${intervalTicks} ticks.`}
     >
-      <span style={{ opacity: 0.6 }}>T</span>
-      <span>{tick}</span>
-      <span style={{ opacity: 0.4 }}>/</span>
-      <span style={{ opacity: 0.6 }}>{tickMax}</span>
+      <span
+        style={{
+          opacity: 0.62,
+          fontSize: '10px',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        memory wipe
+      </span>
+      <span style={{ color: tokens.text.accent, whiteSpace: 'nowrap' }}>
+        in {ticksUntilWipe}t
+      </span>
+      <span style={{ opacity: 0.45, fontSize: '10px', whiteSpace: 'nowrap' }}>
+        tick {currentTick}
+      </span>
     </div>
   );
 }

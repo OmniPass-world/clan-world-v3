@@ -1,47 +1,44 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../../../server/convex/_generated/api';
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
+import type { Clan } from '@clan-world/shared';
 
 interface Props {
   elder: ElderDef;
   testIdPrefix: string;
 }
 
-/** Resource line in the stub vault — Phase B will source these from Convex. */
-const STUB_RESOURCES_INITIAL = [
-  { glyph: '◈', label: 'Gold',  value: 1240, delta: '+45'  },
-  { glyph: '⌬', label: 'Wood',  value: 320,  delta: '-12'  },
-  { glyph: '◆', label: 'Ore',   value: 88,   delta: '+0'   },
-  { glyph: '◇', label: 'Stone', value: 156,  delta: '+8'   },
-];
+const WEI_PER_RESOURCE = '1000000000000000000';
 
-/** Demo-only mock tick that nudges resource values so the rolling-number +
- * delta-floater animation is observable on stage. Replace with live Convex
- * data when Phase B lands. Period: every 6 seconds, one random resource
- * gets a delta in [-15, +30]. Wraps to keep values in a sane positive range. */
-function useDemoResourceJiggle() {
-  const [resources, setResources] = useState(STUB_RESOURCES_INITIAL);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setResources((current) => {
-        const idx = Math.floor(Math.random() * current.length);
-        const delta = Math.floor(Math.random() * 46) - 15;
-        if (delta === 0) return current;
-        return current.map((r, i) => {
-          if (i !== idx) return r;
-          // Update both value AND delta string so the row's static delta
-          // text stays in sync with the rolling number + floater (Copilot
-          // + codex cloud P2). Without this, delta showed stale values.
-          const nextValue = Math.max(0, r.value + delta);
-          const sign = delta > 0 ? '+' : '';
-          return { ...r, value: nextValue, delta: `${sign}${delta}` };
-        });
-      });
-    }, 6000);
-    return () => window.clearInterval(id);
-  }, []);
-  return resources;
+type VaultResource = {
+  glyph: string;
+  label: string;
+  value: number;
+  status: string;
+};
+
+function wholeUnits(value: string | undefined): number {
+  if (!value) return 0;
+  try {
+    return Number(BigInt(value) / BigInt(WEI_PER_RESOURCE));
+  } catch {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+}
+
+function resourcesForClan(clan: Clan | undefined, status: string): VaultResource[] {
+  return [
+    { glyph: '◈', label: 'Gold', value: wholeUnits(clan?.goldBalance ?? clan?.treasury), status },
+    { glyph: '⌬', label: 'Wood', value: wholeUnits(clan?.vaultWood), status },
+    { glyph: '◆', label: 'Iron', value: wholeUnits(clan?.vaultIron), status },
+    { glyph: '✦', label: 'Wheat', value: wholeUnits(clan?.vaultWheat), status },
+    { glyph: '◇', label: 'Fish', value: wholeUnits(clan?.vaultFish), status },
+    { glyph: '▣', label: 'Blueprint', value: wholeUnits(clan?.blueprintBalance), status },
+  ];
 }
 
 /** Asset movement event for the log strip. */
@@ -53,7 +50,11 @@ const STUB_MOVEMENTS = [
 ];
 
 export function VaultTab({ elder, testIdPrefix }: Props) {
-  const resources = useDemoResourceJiggle();
+  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const clan = snapshot?.clans.find((c) => c.id === String(elder.clanId));
+  const syncLabel = snapshot === undefined ? 'Syncing...' : clan ? `T${snapshot.tick}` : 'No clan';
+  const resources = resourcesForClan(clan, clan ? 'live' : snapshot === undefined ? 'sync' : 'empty');
+
   return (
     <div
       data-testid={`${testIdPrefix}-content-vault`}
@@ -79,7 +80,21 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
       </style>
       {/* Resource grid */}
       <section>
-        <SectionHeader>Vault — Clan {elder.clanId}</SectionHeader>
+        <SectionHeader>
+          Vault — Clan {elder.clanId}
+          <span
+            style={{
+              float: 'right',
+              fontFamily: tokens.font.mono,
+              fontSize: '10px',
+              letterSpacing: 0,
+              textTransform: 'none',
+              color: tokens.text.muted,
+            }}
+          >
+            {syncLabel}
+          </span>
+        </SectionHeader>
         <div
           style={{
             display: 'grid',
@@ -128,10 +143,10 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
                 style={{
                   fontFamily: tokens.font.mono,
                   fontSize: '10px',
-                  color: r.delta.startsWith('-') ? tokens.text.danger : '#3a7a3a',
+                  color: tokens.text.muted,
                 }}
               >
-                {r.delta}
+                {r.status}
               </span>
             </div>
           ))}

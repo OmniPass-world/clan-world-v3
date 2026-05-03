@@ -30,6 +30,17 @@ cast call "$CLAN_WORLD_CONTRACT_ADDRESS" \
 
 The unset/default cadence remains `60` seconds. The `1` second setting is for manual test cycles and the hackathon demo only.
 
+## Convex Heartbeat Webhook
+
+Convex queries use the `.convex.cloud` URL, but HTTP actions are served from `.convex.site`. For the heartbeat loop, either set `CONVEX_WEBHOOK_URL` explicitly or let `scripts/start-heartbeat-loop.sh` derive it from `CONVEX_DEPLOY_URL`:
+
+```bash
+CONVEX_DEPLOY_URL=https://oceanic-hound-951.convex.cloud
+CONVEX_WEBHOOK_URL=https://oceanic-hound-951.convex.site
+```
+
+Posting heartbeat txs to `.convex.cloud/api/heartbeat-webhook` returns `404` and will not update `chainEvents`.
+
 ## Demo Mission Cooldown
 
 For rapid manual testing, set the clansman submit cooldown to `1` second after deploying or upgrading `HeartbeatConfigFacet`:

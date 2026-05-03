@@ -10,20 +10,20 @@ loop:
   chainTick = pollChainTick(convex)
   if chainTick > lastProcessedTick:
     parallel for elder in 1..4:
-      block = composeSituationBlock(elder, chainTick, ...)
-      tmux send-keys -t elder-N -l "$block" + Enter
+      update = composeSituationBlock(elder, chainTick)
+      tmux send-keys -t elder-N -l "$update" + Enter
     settle window (~90s) — Elders read, reason, submit orders
     heartbeat() on-chain (rate-limit aware, Cycle A)
     lastProcessedTick = chainTick
   sleep pollInterval
 ```
 
-The runner is the **only** writer of situation blocks into Elder sessions. It
+The runner is the **only** writer of tick updates into Elder sessions. It
 satisfies four seam interfaces from `@clan-world/agents/seams`:
 
 | Seam                  | Impl                       | Notes                                              |
 | --------------------- | -------------------------- | -------------------------------------------------- |
-| `IRunnerInbox`        | `TmuxRunnerInbox`          | `tmux send-keys -l` + paste block + Enter         |
+| `IRunnerInbox`        | `TmuxRunnerInbox`          | `tmux send-keys -l` + paste tick update + Enter   |
 | `IElderMemoryStore`   | `FileMemoryStore` / `ZeroGMemoryStore` | Local JSON or 0G KV (see Memory adapter below) |
 | `IElderPeerInbox`     | `FilePeerInbox` / `AxlPeerInbox` | JSONL per recipient clan or Gensyn AXL transport |
 | `IHeartbeatCaller`    | `RunnerCastHeartbeat`      | viem `writeContract`, dedicated runner wallet     |

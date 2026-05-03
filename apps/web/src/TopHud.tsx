@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../server/convex/_generated/api';
 import { DEMO_MODE } from './config/env';
@@ -15,6 +15,13 @@ const BANDIT_RED = '#b23a48';
 const GOLD = '#d4a24c';
 const PARCHMENT = '#e8d8b5';
 const INK = '#3d2817';
+const FALLBACK_TICK_DURATION_MS = 59_000;
+
+type TickCountdownAnchor = {
+  tick: number;
+  startedAtMs: number;
+  durationMs: number;
+};
 
 function useBanditWarning(liveTick: number): { active: boolean; ticksUntil: number } {
   if (!DEMO_MODE) return { active: false, ticksUntil: 999 };
@@ -24,6 +31,39 @@ function useBanditWarning(liveTick: number): { active: boolean; ticksUntil: numb
 
 export function TopHud({ liveTick }: { liveTick: number }) {
   const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const tickCountdownAnchorRef = useRef<TickCountdownAnchor>({
+    tick: liveTick,
+    startedAtMs: Date.now(),
+    durationMs: FALLBACK_TICK_DURATION_MS,
+  });
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (tickCountdownAnchorRef.current.tick !== liveTick) {
+      const epoch = snapshot?.tickEpoch;
+      const canUseSnapshotEpoch =
+        snapshot?.tick === liveTick &&
+        epoch &&
+        typeof epoch.startedAt === 'number' &&
+        typeof epoch.durationMs === 'number' &&
+        epoch.durationMs > 0;
+      tickCountdownAnchorRef.current = {
+        tick: liveTick,
+        startedAtMs: canUseSnapshotEpoch
+          ? epoch.startedAt < 10_000_000_000
+            ? epoch.startedAt * 1000
+            : epoch.startedAt
+          : Date.now(),
+        durationMs: canUseSnapshotEpoch ? epoch.durationMs : FALLBACK_TICK_DURATION_MS,
+      };
+    }
+    setNowMs(Date.now());
+  }, [liveTick, snapshot?.tick, snapshot?.tickEpoch]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, []);
 
   const { seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick } = useMemo(() => {
     // Try to read real season data from full worldSnapshot via getSnapshot.
@@ -64,6 +104,15 @@ export function TopHud({ liveTick }: { liveTick: number }) {
   }, [winterActive, winterStartsAtTick, liveTick]);
 
   const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick);
+  const tickCountdown = useMemo(() => {
+    const { startedAtMs, durationMs } = tickCountdownAnchorRef.current;
+    const elapsed = Math.max(0, nowMs - startedAtMs);
+    const progress = Math.max(0, Math.min(1, elapsed / durationMs));
+    return {
+      remainingPct: Math.max(0, Math.min(100, (1 - progress) * 100)),
+      durationMs,
+    };
+  }, [liveTick, nowMs, snapshot?.tick, snapshot?.tickEpoch]);
 
   // Bar fill color: green → amber → red as season ages
   const barColor = seasonProgress < 0.5
@@ -96,13 +145,51 @@ export function TopHud({ liveTick }: { liveTick: number }) {
       <div
         style={{
           color: GOLD,
-          fontSize: 18,
-          letterSpacing: '0.06em',
-          whiteSpace: 'nowrap',
-          minWidth: 72,
+          minWidth: 82,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 3,
+          flexShrink: 0,
         }}
       >
-        tick {liveTick}
+        <div
+          key={liveTick}
+          data-testid="top-hud-tick"
+          style={{
+            fontSize: 18,
+            letterSpacing: '0.06em',
+            lineHeight: 1,
+            whiteSpace: 'nowrap',
+            transformOrigin: 'left center',
+            animation: 'cw-tick-pop 760ms ease-out',
+          }}
+        >
+          tick {liveTick}
+        </div>
+        <div
+          aria-hidden="true"
+          style={{
+            height: 3,
+            width: '100%',
+            background: 'rgba(212, 162, 76, 0.16)',
+            border: '1px solid rgba(212, 162, 76, 0.18)',
+            borderRadius: 2,
+            overflow: 'hidden',
+            boxShadow: 'inset 0 0 4px rgba(0,0,0,0.35)',
+          }}
+          title={`Approximate time until next tick: ${Math.round((tickCountdown.remainingPct / 100) * tickCountdown.durationMs / 1000)}s`}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${tickCountdown.remainingPct}%`,
+              background: GOLD,
+              borderRadius: 2,
+              transition: 'width 250ms linear',
+              boxShadow: `0 0 8px ${GOLD}aa`,
+            }}
+          />
+        </div>
       </div>
 
       {/* Center: season progress */}
@@ -210,6 +297,20 @@ export function TopHud({ liveTick }: { liveTick: number }) {
       </div>
 
       <style>{`
+        @keyframes cw-tick-pop {
+          0% {
+            transform: scale(1);
+            text-shadow: 0 0 3px ${GOLD}44;
+          }
+          28% {
+            transform: scale(1.24);
+            text-shadow: 0 0 12px ${GOLD}cc, 0 0 24px ${GOLD}66;
+          }
+          100% {
+            transform: scale(1);
+            text-shadow: 0 0 3px ${GOLD}55;
+          }
+        }
         @keyframes cw-bandit-pulse {
           from { opacity: 0.7; box-shadow: 0 0 4px ${BANDIT_RED}44; }
           to   { opacity: 1;   box-shadow: 0 0 10px ${BANDIT_RED}88; }

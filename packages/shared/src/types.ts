@@ -25,8 +25,15 @@ export interface Clan {
   name: string;
   /** Decimal string representation of wei amount; consumers parse with BigInt() if arithmetic needed. */
   treasury: string;
-  /** Numeric ClanWorld region id for the clan home/base, when sourced from chain. */
-  baseRegion?: number;
+  /** Decimal string representation of 18-decimal game balances indexed from chain. */
+  goldBalance?: string;
+  blueprintBalance?: string;
+  vaultWood?: string;
+  vaultIron?: string;
+  vaultWheat?: string;
+  vaultFish?: string;
+  /** ClanWorld region id for live chain rows; legacy fixtures may use region keys. */
+  baseRegion?: number | string;
   baseLevel?: number;
   wallLevel?: number;
   monumentLevel?: number;

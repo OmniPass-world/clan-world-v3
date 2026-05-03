@@ -6,7 +6,7 @@ import { writeRestrictedFileSync } from './restrictedFile';
 import type { ElderId } from './types';
 
 /**
- * `IRunnerInbox` impl that pushes situation blocks into a tmux session via
+ * `IRunnerInbox` impl that pushes tick updates into a tmux session via
  * `tmux send-keys`.
  *
  * Idempotency contract (from `IRunnerInbox`):
@@ -17,8 +17,8 @@ import type { ElderId } from './types';
  * Multi-line paste contract:
  *   `tmux send-keys -l "$block"` sends the literal string (no key-name parsing)
  *   so newlines, dollar signs, and quotes inside the block are preserved.
- *   We then send a separate `Enter` keystroke to submit. This matches the
- *   send-keys-paste-block pattern used by `~/bin/cc-send`.
+ *   We then send `Enter`, wait 250ms, and send `Enter` again. Claude Code
+ *   occasionally drops the first Enter after a literal paste.
  */
 export class TmuxRunnerInbox implements IRunnerInbox {
   private readonly target: string;
@@ -76,7 +76,7 @@ export class TmuxRunnerInbox implements IRunnerInbox {
       // /clear must be submitted with Enter before bootstrap is sent; otherwise
       // the two concatenate as a single prompt and the /clear slash command is ignored.
       await this.runner.send(this.target, ['/clear'], { literal: false });
-      await this.runner.send(this.target, ['Enter'], { literal: false });
+      await pressEnterTwice(this.runner, this.target);
       await sendBlock(this.runner, this.target, this.bootstrapBlock);
     } catch {
       // /clear failures are non-fatal — the next tick will try again.
@@ -134,10 +134,22 @@ export const defaultTmuxRunner: TmuxRunner = {
 };
 
 async function sendBlock(runner: TmuxRunner, target: string, block: string, signal?: AbortSignal): Promise<void> {
-  // Two-step paste: literal block, then Enter to submit.
+  // Paste literal block, then Enter twice to submit reliably.
   await runner.send(target, [block], { literal: true }, signal);
   if (signal?.aborted) return; // don't send Enter if aborted mid-paste
+  await pressEnterTwice(runner, target, signal);
+}
+
+async function pressEnterTwice(runner: TmuxRunner, target: string, signal?: AbortSignal): Promise<void> {
   await runner.send(target, ['Enter'], { literal: false }, signal);
+  if (signal?.aborted) return;
+  await sleep(250);
+  if (signal?.aborted) return;
+  await runner.send(target, ['Enter'], { literal: false }, signal);
+}
+
+async function sleep(ms: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function readLastTick(file: string): number | undefined {

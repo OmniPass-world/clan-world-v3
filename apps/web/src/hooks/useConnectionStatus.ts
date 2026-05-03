@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export type ConnectionStatus = 'connected' | 'reconnecting' | 'disconnected';
 
@@ -35,16 +35,15 @@ interface Options {
  *
  *   connected ──fail──▶ reconnecting ──MAX_RETRIES fails──▶ disconnected
  *       ▲                    │                                  │
- *       └─────────success─────┘──manual retry()──────────────────┘
+ *       └─────────success─────┴────manual/auto retry─────────────┘
  *
  * The fetch uses `mode: 'no-cors'` because the cockpit page lives on a
  * different subdomain than ttyd — the response is opaque, but `fetch`
  * resolving (vs rejecting) is enough signal that the host is reachable.
  *
- * On `visibilitychange` → visible, we fire an immediate heartbeat ONLY if
- * the state is `connected` or `reconnecting`. We never auto-leave the
- * `disconnected` state — that state is sticky until the user clicks
- * Reconnect, by design.
+ * On `visibilitychange` → visible, we fire an immediate heartbeat. The
+ * disconnected state is no longer sticky — the cockpit keeps probing so a
+ * restarted ttyd backend recovers without a page refresh.
  *
  * Implementation note: the entire state machine is implemented inside a
  * single `useEffect` so the closure variables (retryCount, in-flight flag,
@@ -59,16 +58,10 @@ export function useConnectionStatus(options: Options = {}): {
   const { url = HEARTBEAT_URL, intervalMs = HEARTBEAT_INTERVAL_MS } = options;
   // Initialize as 'reconnecting' until the first probe completes. Previously
   // initialized to 'connected', which caused a brief green pill flash before
-  // the first HEAD probe resolved (PR #133 review SHOULD FIX #4). Probe
+  // the first probe resolved (PR #133 review SHOULD FIX #4). Probe
   // succeeds → flips to 'connected'; probe fails → already in correct state.
   const [status, setStatus] = useState<ConnectionStatus>('reconnecting');
   const [retryToken, setRetryToken] = useState(0);
-
-  // Status ref so the visibility handler can check current state without
-  // re-running the effect on every transition (which would tear down + rearm
-  // the timer chain on each tick).
-  const statusRef = useRef<ConnectionStatus>(status);
-  statusRef.current = status;
 
   const retry = useCallback(() => {
     setRetryToken((n) => n + 1);
@@ -96,7 +89,7 @@ export function useConnectionStatus(options: Options = {}): {
 
     const probe = async (): Promise<boolean> => {
       try {
-        await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+        await fetch(url, { method: 'GET', mode: 'no-cors', cache: 'no-store' });
         return true;
       } catch {
         return false;
@@ -124,6 +117,7 @@ export function useConnectionStatus(options: Options = {}): {
         // increment meant the FOURTH failure tripped disconnect, not the third.
         if (retryCount >= MAX_RETRIES) {
           setStatus('disconnected');
+          pollTimer = setTimeout(() => void heartbeat(), intervalMs);
           return;
         }
         setStatus('reconnecting');
@@ -137,10 +131,6 @@ export function useConnectionStatus(options: Options = {}): {
     const onVisibility = () => {
       if (cancelled) return;
       if (document.visibilityState !== 'visible') return;
-      // Don't auto-revive from disconnected — that state is sticky until
-      // the user clicks the Reconnect button. Visibility change only
-      // accelerates the next probe in the polling loop.
-      if (statusRef.current === 'disconnected') return;
       void heartbeat();
     };
     document.addEventListener('visibilitychange', onVisibility);

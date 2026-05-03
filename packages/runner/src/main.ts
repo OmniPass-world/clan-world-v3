@@ -20,15 +20,15 @@ function defaultStateDir(): string {
 
 /**
  * Bootstrap block sent immediately after `/clear` so the freshly reset Elder
- * session knows who it is. The runner sends a full situation block on the
- * next tick — this is just the "you are Elder N, clan X, await tick" preamble.
+ * session knows who it is. The runner sends a short tick marker on the next
+ * tick — this is just the "you are Elder N, clan X, await tick" preamble.
  */
 function bootstrapBlock(elder: ElderId, clanId: string): string {
   return [
     `# Bootstrap — Elder ${elder} (Clan ${clanId})`,
     '',
     `You are Elder ${elder} of Clan ${clanId} in ClanWorld. Your context was just reset.`,
-    'A full situation block will arrive on the next tick. Until then, you can use the `elder` CLI to:',
+    'A short tick marker will arrive on the next tick. Until then, you can use the `elder` CLI to:',
     '- `elder world snapshot`             — read current world state',
     `- \`elder clan view ${clanId}\`     — read your clan's state`,
     '- `elder memory recall <key>`        — restore continuity from prior cycles',

@@ -119,4 +119,102 @@ describe('tickLoop', () => {
     expect(logs.warn).toEqual([]);
     expect(logs.error).toEqual([]);
   });
+
+  it('waits for ack-clear and resets every elder on tick 10', async () => {
+    const abort = new AbortController();
+    const delivered: Array<{ elder: ElderId; tick: number; block: string }> = [];
+    const resets: Array<{ elder: ElderId; timeoutMs: number }> = [];
+    const perElder = {} as Record<ElderId, PerElderDeps>;
+
+    for (const elder of ELDER_IDS) {
+      const inbox: IRunnerInbox = {
+        async deliverSituationBlock(tick: number, block: string): Promise<DeliveryStatus> {
+          delivered.push({ elder, tick, block });
+          return { ok: true };
+        },
+        async waitForAckAndClear(timeoutMs: number) {
+          resets.push({ elder, timeoutMs });
+          return elder === 1 ? 'timeout' : 'ack';
+        },
+      };
+      perElder[elder] = {
+        inbox,
+        memory: fakeMemory(),
+        peerInbox: fakePeerInbox(),
+      };
+    }
+
+    const logs = {
+      info: [] as unknown[][],
+      warn: [] as unknown[][],
+      error: [] as unknown[][],
+    };
+    const log: Logger = {
+      info: (...args) => logs.info.push(args),
+      warn: (...args) => logs.warn.push(args),
+      error: (...args) => logs.error.push(args),
+    };
+
+    await tickLoop({
+      convex: fakeConvex(10),
+      perElder,
+      config: config(),
+      signal: abort.signal,
+      log,
+      settleLatch: {
+        lastSettledTick: () => -1,
+        markSettled: () => abort.abort(),
+      },
+    });
+
+    expect(delivered).toEqual(
+      ELDER_IDS.map(elder => ({
+        elder,
+        tick: 10,
+        block: [
+          'TICK 10 Started',
+          'warning: final tick before message history is erased. Save important continuity with `elder memory save`, then call `elder ack-clear` when done.',
+        ].join('\n'),
+      })),
+    );
+    expect(resets).toEqual(ELDER_IDS.map(elder => ({ elder, timeoutMs: 100 })));
+    expect(logs.info.flat().join('\n')).toContain('context reset boundary reached');
+    expect(logs.warn.flat().join('\n')).toContain('elder 1: ack-clear timeout');
+  });
+
+  it('does not reset on the tick-9 warning', async () => {
+    const abort = new AbortController();
+    const resets: ElderId[] = [];
+    const perElder = {} as Record<ElderId, PerElderDeps>;
+
+    for (const elder of ELDER_IDS) {
+      const inbox: IRunnerInbox = {
+        async deliverSituationBlock(): Promise<DeliveryStatus> {
+          return { ok: true };
+        },
+        async waitForAckAndClear() {
+          resets.push(elder);
+          return 'ack';
+        },
+      };
+      perElder[elder] = {
+        inbox,
+        memory: fakeMemory(),
+        peerInbox: fakePeerInbox(),
+      };
+    }
+
+    await tickLoop({
+      convex: fakeConvex(9),
+      perElder,
+      config: config(),
+      signal: abort.signal,
+      settleLatch: {
+        lastSettledTick: () => -1,
+        markSettled: () => abort.abort(),
+      },
+    });
+
+    expect(resets).toEqual([]);
+  });
 });

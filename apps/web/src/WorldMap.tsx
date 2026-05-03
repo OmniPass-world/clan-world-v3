@@ -49,6 +49,11 @@ type SnapshotClan = {
   id: string;
   name: string;
   treasury: string;
+  goldBalance?: string;
+  vaultWood?: string;
+  vaultIron?: string;
+  vaultWheat?: string;
+  vaultFish?: string;
   baseRegion?: number;
   baseLevel?: number;
   wallLevel?: number;
@@ -80,14 +85,12 @@ type LiveClansmanMarker = {
   carry: CarryIndicator;
   statusBg: Graphics;
   statusText: Text;
+  route?: TravelRoute;
 };
 
 // Reference design size — coords below are authored against the actual map art.
 const REF_W = MAP_WIDTH;
 const REF_H = MAP_HEIGHT;
-
-// Temporary tuning overlay: keep this visible while we align regions by eye.
-const SHOW_REGION_OVERLAY = true;
 
 const REGIONS: RegionDef[] = [
   {
@@ -199,6 +202,10 @@ const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
   7: 'east-docks',
 };
 
+function clansmanPngForClanId(clanId: string): string | null {
+  return MOCK_CLANS.find((clan) => clan.id === clanId)?.clansmanPng ?? null;
+}
+
 const REGION_KEY_BY_CHAIN_ID: Record<number, string> = {
   1: 'forest',
   2: 'mountains',
@@ -268,6 +275,22 @@ function hashUnit(seed: string): number {
     h = Math.imul(h, 16777619);
   }
   return ((h >>> 0) % 10000) / 10000;
+}
+
+function lerpPoint(a: Point2, b: Point2, t: number): Point2 {
+  return { x: lerp(a.x, b.x, t), y: lerp(a.y, b.y, t) };
+}
+
+function cubicBezierPoint(p0: Point2, p1: Point2, p2: Point2, p3: Point2, t: number): Point2 {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+  const uuu = uu * u;
+  const ttt = tt * t;
+  return {
+    x: uuu * p0.x + 3 * uu * t * p1.x + 3 * u * tt * p2.x + ttt * p3.x,
+    y: uuu * p0.y + 3 * uu * t * p1.y + 3 * u * tt * p2.y + ttt * p3.y,
+  };
 }
 
 function pointInPolygon(x: number, y: number, polygon: Array<[number, number]>) {
@@ -348,6 +371,22 @@ function baseVisualScale(level: number | undefined): number {
 // Worker sprite textures, loaded once at init. Keyed by clan id.
 // Falls back to colored Graphics dot if texture missing.
 const clansmanTextureCache: Record<string, import('pixi.js').Texture | undefined> = {};
+const clansmanTexturePromiseCache: Record<string, Promise<import('pixi.js').Texture> | undefined> = {};
+
+function loadClansmanTexture(clanId: string, clansmanPng: string) {
+  if (clansmanTextureCache[clanId]) return Promise.resolve(clansmanTextureCache[clanId]!);
+  if (clansmanTexturePromiseCache[clanId]) return clansmanTexturePromiseCache[clanId]!;
+  clansmanTexturePromiseCache[clanId] = Assets.load(clansmanPng)
+    .then((texture) => {
+      clansmanTextureCache[clanId] = texture;
+      return texture;
+    })
+    .catch((err) => {
+      clansmanTexturePromiseCache[clanId] = undefined;
+      throw err;
+    });
+  return clansmanTexturePromiseCache[clanId]!;
+}
 
 const SIGIL_SIZE = 36;
 
@@ -416,6 +455,25 @@ type SelectableTarget = Container & {
   height: number;
 };
 
+type Point2 = { x: number; y: number };
+
+type TravelRoute = {
+  fromRegionKey: string;
+  toRegionKey: string;
+  startedAt: number;
+  durationMs: number;
+  seed: string;
+  color: number;
+  line: Graphics;
+  clearing?: boolean;
+  reconcile?: {
+    startedAt: number;
+    durationMs: number;
+    from: Point2;
+    to: Point2;
+  };
+};
+
 // Worker travel animation (PR #44) — small clan-colored dots crossing between regions.
 interface WorkerTravel {
   id: string;
@@ -427,6 +485,7 @@ interface WorkerTravel {
   /** Display node — Sprite when clansman texture loaded, Graphics dot fallback. */
   gfx: Container;
   carry: CarryIndicator;
+  route: TravelRoute;
 }
 
 type CombatOutcome = 'success' | 'failure';
@@ -462,9 +521,10 @@ type CombatVignette = {
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
 const TRAVEL_FADE_OUT_MS = 1200; // longer linger at destination
 const TRAVEL_DEST_LINGER_MS = 2500; // hold at destination at full alpha before fading
-const TRAVEL_MIN_MS = 4500;
-const TRAVEL_MAX_MS = 8000;
-const CANNED_TRAVEL_INTERVAL_MS = 1800; // continuous spawn — keeps map alive
+const OPTIMISTIC_TRAVEL_MS = 60_000;
+const TRAVEL_RECONCILE_MS = 450;
+const MAX_DECORATIVE_TRAVELS = 8;
+const CANNED_TRAVEL_INTERVAL_MS = 4500; // long 60s paths need a quieter spawn cadence
 
 const COMBAT_VIGNETTE_LEAD_MS = 4000;
 const COMBAT_ADVANCE_MS = 1500;
@@ -497,6 +557,9 @@ const CARRY_BAR_H = 5;
 
 const TICKS_PER_DAY_CYCLE = 30;
 const FALLBACK_DAY_TICK_MS = 60_000;
+// Temporarily disabled for demo recording; leave the implementation in place
+// so the effect can be re-enabled after the capture.
+const ENABLE_DAY_NIGHT_EFFECT = false;
 const DAYNIGHT_KEYFRAMES: Record<'dawn' | 'day' | 'dusk' | 'night', DayNightKeyframe> = {
   dawn: { r: 1.10, g: 0.90, b: 0.80, brightness: 0.95, sat: 0.85 },
   day: { r: 1.00, g: 1.00, b: 1.00, brightness: 1.00, sat: 1.00 },
@@ -708,6 +771,10 @@ function easeInQuad(t: number) {
   return t * t;
 }
 
+function easeInOutQuad(t: number) {
+  return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
+}
+
 function getDayNightFrame(progress01: number): DayNightKeyframe {
   const wrapped = ((progress01 % 1) + 1) % 1;
   for (let i = 0; i < DAYNIGHT_PHASES.length - 1; i++) {
@@ -871,6 +938,9 @@ export function WorldMap() {
   const [pixiReady, setPixiReady] = useState(false);
   const [pixiInitError, setPixiInitError] = useState<Error | null>(null);
   const [, setSize] = useState({ w: 800, h: 600 });
+  // Tracks the currently-selected clan base for the floating HUD readout.
+  // Mirrors selectedRef when the selection target is a base; null otherwise.
+  const [selectedClanId, setSelectedClanId] = useState<string | null>(null);
 
   const logs = useAgentLogs();
   const snapshot = useQuery(api.getSnapshot.getSnapshot);
@@ -942,6 +1012,7 @@ export function WorldMap() {
     selected.target.removeChild(selected.ring);
     selected.ring.destroy();
     selectedRef.current = null;
+    setSelectedClanId(null);
     fitWorldAnimated();
   }
 
@@ -1078,9 +1149,11 @@ export function WorldMap() {
           layers.bubbleLayer,
           layers.screenEffects,
         );
-        const dayNightFilter = new ColorMatrixFilter();
-        layers.worldContainer.filters = [dayNightFilter];
-        dayNightFilterRef.current = dayNightFilter;
+        if (ENABLE_DAY_NIGHT_EFFECT) {
+          const dayNightFilter = new ColorMatrixFilter();
+          layers.worldContainer.filters = [dayNightFilter];
+          dayNightFilterRef.current = dayNightFilter;
+        }
         layersRef.current = layers;
         bubbleLayerRef.current = layers.bubbleLayer;
         travelLayerRef.current = layers.worldDynamic;
@@ -1168,9 +1241,6 @@ export function WorldMap() {
           if (!layer) return;
           const now = performance.now();
           const list = travelsRef.current;
-          const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
-          const projX = (nx: number) => offsetX + nx * REF_W * scaleX;
-          const projY = (ny: number) => offsetY + ny * REF_H * scaleY;
 
           for (let i = list.length - 1; i >= 0; i--) {
             const t = list[i];
@@ -1179,6 +1249,8 @@ export function WorldMap() {
             const to = REGIONS.find(r => r.id === t.toRegionKey);
             if (!from || !to) {
               if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
+              t.route.line.parent?.removeChild(t.route.line);
+              t.route.line.destroy();
               layer.removeChild(t.gfx);
               t.gfx.destroy({ children: true });
               list.splice(i, 1);
@@ -1186,11 +1258,9 @@ export function WorldMap() {
             }
             const elapsed = now - t.startedAt;
             const progress = elapsed / t.durationMs;
-
-            const fx = projX(from.nx);
-            const fy = projY(from.ny);
-            const tx = projX(to.nx);
-            const ty = projY(to.ny);
+            const position = routePoint(t.route, now);
+            redrawRouteLine(t.route, now);
+            const destination = projectedRegionAnchor(t.toRegionKey);
 
             if (progress >= 1) {
               const fadeAge = elapsed - t.durationMs;
@@ -1198,6 +1268,8 @@ export function WorldMap() {
               // THEN fade. Keeps arrival visible — answers "clansmen disappear" bug.
               if (fadeAge >= TRAVEL_DEST_LINGER_MS + TRAVEL_FADE_OUT_MS) {
                 if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
+                t.route.line.parent?.removeChild(t.route.line);
+                t.route.line.destroy();
                 layer.removeChild(t.gfx);
                 t.gfx.destroy({ children: true });
                 list.splice(i, 1);
@@ -1205,8 +1277,8 @@ export function WorldMap() {
               }
               // Tiny jitter at destination so the cluster reads as living units, not pinned dots
               const jit = Math.sin((now + (t.id.charCodeAt(t.id.length - 1) * 137)) / 220) * 1.5;
-              t.gfx.x = tx + jit;
-              t.gfx.y = ty + jit * 0.6;
+              t.gfx.x = (destination?.x ?? position?.x ?? 0) + jit;
+              t.gfx.y = (destination?.y ?? position?.y ?? 0) + jit * 0.6;
               t.gfx.zIndex = Math.round(t.gfx.y);
               t.carry.targetFill = 0;
               if (fadeAge < TRAVEL_DEST_LINGER_MS) {
@@ -1214,10 +1286,12 @@ export function WorldMap() {
               } else {
                 const fOff = fadeAge - TRAVEL_DEST_LINGER_MS;
                 t.gfx.alpha = Math.max(0, 1 - fOff / TRAVEL_FADE_OUT_MS);
+                t.route.line.alpha = t.gfx.alpha;
               }
             } else {
-              t.gfx.x = fx + (tx - fx) * progress;
-              t.gfx.y = fy + (ty - fy) * progress;
+              if (!position) continue;
+              t.gfx.x = position.x;
+              t.gfx.y = position.y;
               t.gfx.zIndex = Math.round(t.gfx.y);
               setCarryTargetFromCarry(t.carry, {
                 wood: WOOD_CAP * Math.min(1, progress),
@@ -1260,14 +1334,21 @@ export function WorldMap() {
         zonePulseCbRef.current = zonePulseCb;
 
         const dayNightCb = () => {
-          const filter = dayNightFilterRef.current;
-          if (!filter) return;
-          const frame = getDayNightFrame(getDayNightProgress());
-          applyDayNightFilter(filter, frame);
-          const glowAlpha = clamp01(1 - frame.brightness);
-          drawnRef.current.bases.forEach((base) => {
-            base.glow.alpha = glowAlpha;
-          });
+          if (ENABLE_DAY_NIGHT_EFFECT) {
+            const filter = dayNightFilterRef.current;
+            if (filter) {
+              const frame = getDayNightFrame(getDayNightProgress());
+              applyDayNightFilter(filter, frame);
+              const glowAlpha = clamp01(1 - frame.brightness);
+              drawnRef.current.bases.forEach((base) => {
+                base.glow.alpha = glowAlpha;
+              });
+            }
+          } else {
+            drawnRef.current.bases.forEach((base) => {
+              base.glow.alpha = 0;
+            });
+          }
 
           const selected = selectedRef.current;
           if (selected) {
@@ -1459,7 +1540,9 @@ export function WorldMap() {
 
   function clearLiveClansmanVisuals() {
     const drawn = drawnRef.current;
-    drawn.liveClansmen.forEach(({ node }) => {
+    drawn.liveClansmen.forEach(({ node, route }) => {
+      route?.line.parent?.removeChild(route.line);
+      route?.line.destroy();
       node.parent?.removeChild(node);
       node.destroy({ children: true });
     });
@@ -1489,6 +1572,7 @@ export function WorldMap() {
       container.on('pointertap', (event) => {
         event.stopPropagation();
         selectTarget(container as SelectableTarget, clan.color);
+        setSelectedClanId(clan.id);
       });
       const entry: {
         container: Container;
@@ -1524,12 +1608,25 @@ export function WorldMap() {
           // fallback rect stays visible
         });
 
-      Assets.load(clan.clansmanPng)
+      loadClansmanTexture(clan.id, clan.clansmanPng)
         .then((texture) => {
           const cancelled = isAssetLoadCancelled();
           if (cancelled) return;
           clansmanTextureCache[clan.id] = texture;
           if (!DEMO_MODE) {
+            // Evict markers that were drawn with the dot fallback so the next
+            // sync re-creates them as sprites. The new diff-by-key sync would
+            // otherwise keep the existing fallback nodes forever.
+            const drawnNow = drawnRef.current;
+            for (let i = drawnNow.liveClansmen.length - 1; i >= 0; i--) {
+              const m = drawnNow.liveClansmen[i];
+              if (!m || m.clanId !== clan.id) continue;
+              m.route?.line.parent?.removeChild(m.route.line);
+              m.route?.line.destroy();
+              m.node.parent?.removeChild(m.node);
+              m.node.destroy({ children: true });
+              drawnNow.liveClansmen.splice(i, 1);
+            }
             liveClansmanVisualKeyRef.current = '';
             syncLiveClansmanVisuals(() => !isMountedRef.current);
             relayout(WORLD_WIDTH, WORLD_HEIGHT);
@@ -1598,7 +1695,7 @@ export function WorldMap() {
         const actionStartTick = numberLike(fieldAt(mission, 'actionStartTick'), arrivalTick);
         const settlesAtTick = numberLike(fieldAt(mission, 'settlesAtTick'), actionStartTick);
         markers.push({
-          key: `${clan.id}:${clansmanId}:${regionKey}:${targetRegionKey ?? ''}:${startTick}:${arrivalTick}:${action}:${missionActive ? 'a' : 'i'}`,
+          key: `${clan.id}:${clansmanId}`,
           clanId: clan.id,
           clansmanId: String(clansmanId),
           regionKey,
@@ -1671,6 +1768,7 @@ export function WorldMap() {
     container.on('pointertap', (event) => {
       event.stopPropagation();
       selectTarget(container as SelectableTarget, color);
+      setSelectedClanId(null);
     });
     return { container, carry, statusBg, statusText };
   }
@@ -1680,12 +1778,31 @@ export function WorldMap() {
     const layers = layersRef.current;
     if (!layers) return;
     const markers = extractLiveClansmen(snapshotRef.current?.clans as SnapshotClan[] | undefined);
-    const key = markers.map((marker) => marker.key).join('|');
-    if (key === liveClansmanVisualKeyRef.current) return;
-    liveClansmanVisualKeyRef.current = key;
-    clearLiveClansmanVisuals();
+    const rosterKey = markers.map((marker) => marker.key).join('|');
     const drawn = drawnRef.current;
+    const nextKeys = new Set(markers.map((marker) => marker.key));
+    for (let i = drawn.liveClansmen.length - 1; i >= 0; i--) {
+      const current = drawn.liveClansmen[i];
+      if (!current || nextKeys.has(current.key)) continue;
+      current.route?.line.parent?.removeChild(current.route.line);
+      current.route?.line.destroy();
+      current.node.parent?.removeChild(current.node);
+      current.node.destroy({ children: true });
+      drawn.liveClansmen.splice(i, 1);
+    }
+    const existingByKey = new Map(drawn.liveClansmen.map((marker) => [marker.key, marker]));
     for (const marker of markers) {
+      const existing = existingByKey.get(marker.key);
+      if (existing) {
+        Object.assign(existing, marker, {
+          node: existing.node,
+          carry: existing.carry,
+          statusBg: existing.statusBg,
+          statusText: existing.statusText,
+          route: existing.route,
+        });
+        continue;
+      }
       const { container, carry, statusBg, statusText } = makeLiveClansmanMarker(
         marker.color,
         marker.clanId,
@@ -1694,6 +1811,7 @@ export function WorldMap() {
       layers.worldDynamic.addChild(container);
       drawn.liveClansmen.push({ ...marker, node: container, carry, statusBg, statusText });
     }
+    liveClansmanVisualKeyRef.current = rosterKey;
     updateLiveClansmanPositions();
   }
 
@@ -1706,6 +1824,81 @@ export function WorldMap() {
     }
     const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
     return tick + clamp01((Date.now() - startedAtMs) / epoch.durationMs);
+  }
+
+  function projectedRegionAnchor(regionKey: string): Point2 | null {
+    const region = REGIONS.find(r => r.id === regionKey);
+    if (!region) return null;
+    const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
+    return {
+      x: offsetX + region.nx * REF_W * scaleX,
+      y: offsetY + region.ny * REF_H * scaleY,
+    };
+  }
+
+  function routeControlPoints(route: TravelRoute) {
+    const from = projectedRegionAnchor(route.fromRegionKey);
+    const to = projectedRegionAnchor(route.toRegionKey);
+    if (!from || !to) return null;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const dist = Math.max(1, Math.hypot(dx, dy));
+    const nx = -dy / dist;
+    const ny = dx / dist;
+    const bendSign = hashUnit(`${route.seed}:bend`) > 0.5 ? 1 : -1;
+    const bendA = bendSign * Math.min(150 * layoutRef.current.scale, dist * 0.24);
+    const bendB = -bendSign * Math.min(95 * layoutRef.current.scale, dist * 0.16);
+    return {
+      p0: from,
+      p1: { x: from.x + dx * 0.32 + nx * bendA, y: from.y + dy * 0.32 + ny * bendA },
+      p2: { x: from.x + dx * 0.68 + nx * bendB, y: from.y + dy * 0.68 + ny * bendB },
+      p3: to,
+    };
+  }
+
+  function routeProgress(route: TravelRoute, now = performance.now()) {
+    return clamp01((now - route.startedAt) / route.durationMs);
+  }
+
+  function routePoint(route: TravelRoute, now = performance.now()): Point2 | null {
+    const reconcile = route.reconcile;
+    if (reconcile) {
+      const t = clamp01((now - reconcile.startedAt) / reconcile.durationMs);
+      if (t < 1) return lerpPoint(reconcile.from, reconcile.to, easeInOutQuad(t));
+      route.reconcile = undefined;
+    }
+    const controls = routeControlPoints(route);
+    if (!controls) return null;
+    return cubicBezierPoint(controls.p0, controls.p1, controls.p2, controls.p3, routeProgress(route, now));
+  }
+
+  function redrawRouteLine(route: TravelRoute, now = performance.now(), alphaScale = 1) {
+    const controls = routeControlPoints(route);
+    route.line.clear();
+    if (!controls) return;
+    const progress = routeProgress(route, now);
+    const alpha = 0.3 * alphaScale * (1 - clamp01((progress - 0.88) / 0.12) * 0.65);
+    route.line.moveTo(controls.p0.x, controls.p0.y);
+    for (let i = 1; i <= 28; i++) {
+      const p = cubicBezierPoint(controls.p0, controls.p1, controls.p2, controls.p3, i / 28);
+      route.line.lineTo(p.x, p.y);
+    }
+    route.line.stroke({ color: route.color, width: Math.max(1.5, 2.5 * layoutRef.current.scale), alpha });
+  }
+
+  function makeRoute(fromRegionKey: string, toRegionKey: string, color: number, seed: string): TravelRoute {
+    const line = new Graphics();
+    line.alpha = 1;
+    line.zIndex = -1;
+    return {
+      fromRegionKey,
+      toRegionKey,
+      startedAt: performance.now(),
+      durationMs: OPTIMISTIC_TRAVEL_MS,
+      seed,
+      color,
+      line,
+    };
   }
 
   function regionWanderPoint(regionKey: string, marker: LiveClansmanMarker, phase = 0) {
@@ -1747,10 +1940,18 @@ export function WorldMap() {
 
   function statusTextForMarker(marker: LiveClansmanMarker, tickFloat: number) {
     if (!marker.missionActive) return '';
+    if (marker.settlesAtTick > 0 && tickFloat >= marker.settlesAtTick) return '';
+    if (
+      marker.targetRegionKey
+      && marker.targetRegionKey !== marker.regionKey
+      && (!marker.route || routeProgress(marker.route) < 1)
+    ) {
+      return `traveling to ${regionDisplayName(marker.targetRegionKey)}`;
+    }
     if (marker.arrivalTick > marker.startTick && tickFloat < marker.arrivalTick) {
       return `traveling to ${regionDisplayName(marker.targetRegionKey)}`;
     }
-    if (marker.settlesAtTick > 0 && tickFloat >= marker.settlesAtTick) return 'ready';
+    if (marker.action === 13) return '';
     return actionVerb(marker.action);
   }
 
@@ -1775,6 +1976,56 @@ export function WorldMap() {
     marker.statusBg.stroke({ color: marker.color, width: 1.4, alpha: 0.95 });
   }
 
+  function ensureLiveRoute(marker: LiveClansmanMarker, currentPosition: Point2, toRegionKey: string) {
+    const layers = layersRef.current;
+    if (!layers) return null;
+    if (
+      marker.route
+      && !marker.route.clearing
+      && marker.route.fromRegionKey === marker.regionKey
+      && marker.route.toRegionKey === toRegionKey
+    ) {
+      return marker.route;
+    }
+
+    const destination = projectedRegionAnchor(toRegionKey);
+    if (!destination) return null;
+    const previousProgress = marker.route ? routeProgress(marker.route) : 0;
+    marker.route?.line.parent?.removeChild(marker.route.line);
+    marker.route?.line.destroy();
+    const route = makeRoute(marker.regionKey, toRegionKey, marker.color, marker.key);
+    route.startedAt = performance.now() - previousProgress * route.durationMs;
+    route.reconcile = {
+      startedAt: performance.now(),
+      durationMs: TRAVEL_RECONCILE_MS,
+      from: currentPosition,
+      to: routePoint(route) ?? destination,
+    };
+    const markerIndex = marker.node.parent === layers.worldDynamic ? layers.worldDynamic.getChildIndex(marker.node) : 0;
+    layers.worldDynamic.addChildAt(route.line, Math.max(0, markerIndex));
+    marker.route = route;
+    return route;
+  }
+
+  function clearLiveRoute(marker: LiveClansmanMarker, currentPosition: Point2, destination: Point2) {
+    const route = marker.route;
+    if (!route) return;
+    if (route.clearing) return;
+    route.clearing = true;
+    route.reconcile = {
+      startedAt: performance.now(),
+      durationMs: TRAVEL_RECONCILE_MS,
+      from: currentPosition,
+      to: destination,
+    };
+    window.setTimeout(() => {
+      if (marker.route !== route) return;
+      route.line.parent?.removeChild(route.line);
+      route.line.destroy();
+      marker.route = undefined;
+    }, TRAVEL_RECONCILE_MS);
+  }
+
   function updateLiveClansmanPositions() {
     const drawn = drawnRef.current;
     if (drawn.liveClansmen.length === 0) return;
@@ -1782,19 +2033,27 @@ export function WorldMap() {
     for (const marker of drawn.liveClansmen) {
       const from = regionWanderPoint(marker.regionKey, marker, 0);
       if (!from) continue;
-      const to =
-        marker.missionActive && marker.targetRegionKey
-          ? regionWanderPoint(marker.targetRegionKey, marker, 0.37)
-          : null;
-      const travelProgress =
-        marker.missionActive && to && marker.arrivalTick > marker.startTick
-          ? clamp01((tickFloat - marker.startTick) / (marker.arrivalTick - marker.startTick))
-          : marker.missionActive && to && marker.targetRegionKey !== marker.regionKey
-            ? 0.35
-            : 0;
-      const bob = Math.sin(performance.now() / 240 + marker.offsetIndex * 1.7) * (marker.missionActive ? 3 : 1.5);
-      marker.node.x = to ? lerp(from.x, to.x, travelProgress) : from.x;
-      marker.node.y = (to ? lerp(from.y, to.y, travelProgress) : from.y) + bob;
+      const isTraveling = marker.missionActive && marker.targetRegionKey && marker.targetRegionKey !== marker.regionKey;
+      let position: Point2 = from;
+      if (isTraveling && marker.targetRegionKey) {
+        const currentPosition = { x: marker.node.x || from.x, y: marker.node.y || from.y };
+        const route = ensureLiveRoute(marker, currentPosition, marker.targetRegionKey);
+        if (route) {
+          redrawRouteLine(route);
+          position = routePoint(route) ?? from;
+        }
+      } else {
+        if (marker.route) {
+          clearLiveRoute(marker, { x: marker.node.x || from.x, y: marker.node.y || from.y }, from);
+          redrawRouteLine(marker.route, performance.now(), marker.route.clearing ? 0.35 : 1);
+          position = routePoint(marker.route) ?? from;
+        } else {
+          const bob = Math.sin(performance.now() / 320 + marker.offsetIndex * 1.7) * 1.2;
+          position = { x: from.x, y: from.y + bob };
+        }
+      }
+      marker.node.x = position.x;
+      marker.node.y = position.y;
       marker.node.zIndex = Math.round(marker.node.y + 8);
       marker.node.alpha = 1;
       marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
@@ -1902,6 +2161,7 @@ export function WorldMap() {
       banditIcon.on('pointertap', (event) => {
         event.stopPropagation();
         selectTarget(banditIcon as SelectableTarget, 0xffe9b8);
+        setSelectedClanId(null);
       });
       layers.worldDynamic.addChild(banditIcon);
       const countdown = new Text({
@@ -1935,6 +2195,7 @@ export function WorldMap() {
           sprite.on('pointertap', (event) => {
             event.stopPropagation();
             selectTarget(sprite as SelectableTarget, 0xffe9b8);
+            setSelectedClanId(null);
           });
           layers.worldDynamic.addChild(sprite);
           drawn.banditSprite = sprite;
@@ -2032,13 +2293,7 @@ export function WorldMap() {
       const isClanHome = drawn.clanZones.some(({ clan }) => clan.homeRegion === region.id);
       if (g) {
         g.clear();
-        if (SHOW_REGION_OVERLAY && region.polygon.length >= 3) {
-          g.poly(region.polygon.flatMap(([x, y]) => [projX(x / REF_W), projY(y / REF_H)]));
-          g.fill({ color: region.color, alpha: 0.34 });
-          g.stroke({ color: region.color, width: 4, alpha: 0.95 });
-          g.circle(cx, cy, regionRadius * 0.65);
-          g.fill({ color: 0xffffff, alpha: 0.55 });
-        } else if (!isClanHome) {
+        if (!isClanHome) {
           g.circle(cx, cy, regionRadius);
           g.fill({ color: region.color, alpha: 0.6 });
           g.stroke({ color: 0xffffff, width: 1, alpha: 0.4 });
@@ -2048,8 +2303,8 @@ export function WorldMap() {
       if (label) {
         label.style.fontSize = Math.max(10, Math.round(13 * cappedSizeScale));
         label.x = cx;
-        label.y = cy + (SHOW_REGION_OVERLAY ? -10 : isClanHome ? 0 : regionRadius + 4);
-        label.alpha = SHOW_REGION_OVERLAY ? 0.95 : isClanHome ? 0 : 0.8;
+        label.y = cy + (isClanHome ? 0 : regionRadius + 4);
+        label.alpha = isClanHome ? 0 : 0.8;
       }
     });
 
@@ -2447,7 +2702,9 @@ export function WorldMap() {
     // (codex 5.4 SuperSwarm catch). Correct semantic: dim down by the AMOUNT
     // of existing day/night darkening so total visual darkness stays bounded.
     // Floor at 0.2 so combat still has a visible beat even at deep night.
-    const dayNightBrightness = getDayNightFrame(getDayNightProgress()).brightness;
+    const dayNightBrightness = ENABLE_DAY_NIGHT_EFFECT
+      ? getDayNightFrame(getDayNightProgress()).brightness
+      : 1;
     const existingDarkness = clamp01(1 - dayNightBrightness);
     const dimTarget = Math.max(0.2, COMBAT_DIM_ALPHA - existingDarkness);
     const fadeOutStart = COMBAT_TOTAL_MS - 600;
@@ -2633,56 +2890,80 @@ export function WorldMap() {
     const layer = travelLayerRef.current;
     if (!layer) return;
     if (fromRegionKey === toRegionKey) return;
+    if (travelsRef.current.length >= MAX_DECORATIVE_TRAVELS) return;
     const from = REGIONS.find(r => r.id === fromRegionKey);
     const to = REGIONS.find(r => r.id === toRegionKey);
     if (!from || !to) return;
 
-    // Prefer the clansman sprite (replaces the old colored dot). Falls back to the
-    // dot if the texture hasn't loaded yet — keeps the demo robust on slow assets.
+    // Prefer the clansman sprite. If the texture is still loading, draw a dot
+    // briefly and upgrade this same node in place as soon as the PNG arrives.
     const tex = clanId ? clansmanTextureCache[clanId] : undefined;
-    let gfx: Container;
-    if (tex) {
-      const sprite = new Sprite(tex);
-      sprite.anchor.set(0.5, 0.5);
-      // Workers are smaller than bases — keep them readable but not chunky.
-      const targetH = 28;
-      const ratio = targetH / sprite.texture.height;
-      sprite.height = targetH;
-      sprite.width = sprite.texture.width * ratio;
-      sprite.alpha = 0;
-      gfx = sprite;
-    } else {
-      const dot = new Graphics();
-      dot.circle(0, 0, TRAVEL_DOT_RADIUS);
-      dot.fill({ color });
-      dot.stroke({ color: 0x000000, width: 1, alpha: 0.55 });
-      dot.alpha = 0;
-      gfx = dot;
+    const gfx = new Container();
+    const carry = makeCarryIndicator();
+    carry.container.y = tex ? -18 : -TRAVEL_DOT_RADIUS - 6;
+    let body: Container | null = null;
+    const installBody = (texture: import('pixi.js').Texture | undefined) => {
+      if (body) {
+        body.parent?.removeChild(body);
+        body.destroy({ children: true });
+      }
+      if (texture) {
+        const sprite = new Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+        const targetH = 28;
+        const ratio = targetH / sprite.texture.height;
+        sprite.height = targetH;
+        sprite.width = sprite.texture.width * ratio;
+        body = sprite;
+      } else {
+        const dot = new Graphics();
+        dot.circle(0, 0, TRAVEL_DOT_RADIUS);
+        dot.fill({ color });
+        dot.stroke({ color: 0x000000, width: 1, alpha: 0.55 });
+        body = dot;
+      }
+      gfx.addChildAt(body, 0);
+    };
+    installBody(tex);
+    if (!tex && clanId) {
+      const clansmanPng = clansmanPngForClanId(clanId);
+      if (clansmanPng) {
+        loadClansmanTexture(clanId, clansmanPng)
+          .then((texture) => {
+            if (!isMountedRef.current || !travelsRef.current.some((travel) => travel.gfx === gfx)) return;
+            installBody(texture);
+            carry.container.y = -18;
+          })
+          .catch(() => {
+            // Dot fallback stays visible.
+          });
+      }
     }
+    gfx.alpha = 0;
     gfx.eventMode = 'static';
     gfx.cursor = 'pointer';
     gfx.on('pointertap', (event) => {
       event.stopPropagation();
       selectTarget(gfx as SelectableTarget, color);
+      setSelectedClanId(null);
     });
-    const carry = makeCarryIndicator();
-    carry.container.y = tex ? -18 : -TRAVEL_DOT_RADIUS - 6;
     gfx.addChild(carry.container);
-    layer.addChild(gfx);
-
-    const durationMs =
-      TRAVEL_MIN_MS + Math.random() * (TRAVEL_MAX_MS - TRAVEL_MIN_MS);
 
     travelIdSeqRef.current += 1;
+    const id = `travel-${travelIdSeqRef.current}`;
+    const route = makeRoute(fromRegionKey, toRegionKey, color, `${clanId ?? 'demo'}:${id}`);
+    layer.addChild(route.line);
+    layer.addChild(gfx);
     travelsRef.current.push({
-      id: `travel-${travelIdSeqRef.current}`,
+      id,
       fromRegionKey,
       toRegionKey,
       startedAt: performance.now(),
-      durationMs,
+      durationMs: OPTIMISTIC_TRAVEL_MS,
       color,
       gfx,
       carry,
+      route,
     });
   }
 
@@ -2793,20 +3074,40 @@ export function WorldMap() {
             portrait: meta?.portrait ?? '',
             archetype: meta?.archetype ?? '',
             monumentLevel: c.baseLevel ?? c.monumentLevel ?? treasuryToMonument(c.treasury),
+            gold: resourceUnits(c.goldBalance),
+            vaultWood: resourceUnits(c.vaultWood),
+            vaultIron: resourceUnits(c.vaultIron),
+            vaultWheat: resourceUnits(c.vaultWheat),
+            vaultFish: resourceUnits(c.vaultFish),
           };
         })
         .sort((a, b) => b.monumentLevel - a.monumentLevel);
     }
     // Mock fallback — only used in DEMO_MODE
     if (DEMO_MODE) {
-      return MOCK_CLANS.map((c, i) => ({
-        id: c.id,
-        name: c.name,
-        color: c.color,
-        portrait: c.portrait,
-        archetype: c.archetype,
-        monumentLevel: 4 - i,
-      })).sort((a, b) => b.monumentLevel - a.monumentLevel);
+      // Static demo numbers so the resource readout reads sensibly without chain data.
+      const mockVaults: Array<{ gold: number; wood: number; iron: number; wheat: number; fish: number }> = [
+        { gold: 12, wood: 24, iron: 6, wheat: 18, fish: 4 },
+        { gold: 8,  wood: 15, iron: 12, wheat: 9,  fish: 2 },
+        { gold: 5,  wood: 9,  iron: 3,  wheat: 22, fish: 1 },
+        { gold: 3,  wood: 6,  iron: 2,  wheat: 11, fish: 14 },
+      ];
+      return MOCK_CLANS.map((c, i) => {
+        const v = mockVaults[i] ?? mockVaults[0]!;
+        return {
+          id: c.id,
+          name: c.name,
+          color: c.color,
+          portrait: c.portrait,
+          archetype: c.archetype,
+          monumentLevel: 4 - i,
+          gold: v.gold,
+          vaultWood: v.wood,
+          vaultIron: v.iron,
+          vaultWheat: v.wheat,
+          vaultFish: v.fish,
+        };
+      }).sort((a, b) => b.monumentLevel - a.monumentLevel);
     }
     return [];
   }, [snapshot]);
@@ -2846,50 +3147,77 @@ export function WorldMap() {
       {/* Event ticker — scrolling live game events */}
       <EventTicker />
 
-      {/* Compact world-pulse panel — bottom-left, semi-transparent.
-          Floating Lv badges on the canvas show per-clan level; this panel just
-          gives a glance of the world tick + a tight per-clan summary line.
+      {/* Compact world-pulse panel — top-left, semi-transparent.
+          Default: tick + per-clan IG/EH/... level summary.
+          When a clan base is selected: switches to a per-clan resource readout
+          (gold + four vaults) for that clan. Click a non-base target or press
+          Escape to clear and revert to the default view.
           Shown whenever scoreboardClans is non-empty (demo mock data OR live snapshot). */}
-      {scoreboardClans.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            left: 8,
-            padding: '5px 8px',
-            background: 'rgba(13, 26, 13, 0.7)',
-            border: '1px solid rgba(204, 170, 34, 0.35)',
-            borderRadius: 5,
-            fontFamily: 'monospace',
-            color: '#e8e2c8',
-            fontSize: 10,
-            lineHeight: 1.3,
-            boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
-            pointerEvents: 'none',
-            zIndex: 2,
-            maxWidth: '70%',
-          }}
-        >
-          <div style={{ color: '#e8d68f', fontWeight: 600, letterSpacing: '0.05em' }}>
-            tick {liveTick}
+      {scoreboardClans.length > 0 && (() => {
+        const selectedClan = selectedClanId
+          ? scoreboardClans.find((c) => c.id === selectedClanId) ?? null
+          : null;
+        return (
+          <div
+            style={{
+              position: 'absolute',
+              top: 52,
+              left: 8,
+              padding: '5px 8px',
+              background: 'rgba(13, 26, 13, 0.7)',
+              border: `1px solid ${selectedClan ? hex(selectedClan.color) : 'rgba(204, 170, 34, 0.35)'}`,
+              borderRadius: 5,
+              fontFamily: 'monospace',
+              color: '#e8e2c8',
+              fontSize: 10,
+              lineHeight: 1.3,
+              boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+              pointerEvents: 'none',
+              zIndex: 2,
+              maxWidth: '70%',
+            }}
+          >
+            {selectedClan ? (
+              <>
+                <div style={{ color: hex(selectedClan.color), fontWeight: 700, letterSpacing: '0.05em' }}>
+                  {selectedClan.name}
+                  <span style={{ marginLeft: 8, color: '#e8d68f', fontWeight: 600 }}>
+                    Lv {selectedClan.monumentLevel}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', opacity: 0.95 }}>
+                  <span>gold {selectedClan.gold}</span>
+                  <span>wood {selectedClan.vaultWood}</span>
+                  <span>iron {selectedClan.vaultIron}</span>
+                  <span>wheat {selectedClan.vaultWheat}</span>
+                  <span>fish {selectedClan.vaultFish}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ color: '#e8d68f', fontWeight: 600, letterSpacing: '0.05em' }}>
+                  tick {liveTick}
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', opacity: 0.85 }}>
+                  {scoreboardClans.map((c) => {
+                    const initials =
+                      c.name === 'Iron Guard' ? 'IG'
+                        : c.name === 'Ember Hand' ? 'EH'
+                        : c.name === 'Dawn Watch' ? 'DW'
+                        : c.name === 'Storm Riders' ? 'SR'
+                        : c.name.slice(0, 2).toUpperCase();
+                    return (
+                      <span key={c.id} style={{ color: hex(c.color), whiteSpace: 'nowrap' }}>
+                        {initials} L{c.monumentLevel}
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', opacity: 0.85 }}>
-            {scoreboardClans.map((c) => {
-              const initials =
-                c.name === 'Iron Guard' ? 'IG'
-                  : c.name === 'Ember Hand' ? 'EH'
-                  : c.name === 'Dawn Watch' ? 'DW'
-                  : c.name === 'Storm Riders' ? 'SR'
-                  : c.name.slice(0, 2).toUpperCase();
-              return (
-                <span key={c.id} style={{ color: hex(c.color), whiteSpace: 'nowrap' }}>
-                  {initials} L{c.monumentLevel}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* "No chain data yet" placeholder — shown when DEMO_MODE is off and no
           live snapshot clans are present. Centered overlay so it reads clearly

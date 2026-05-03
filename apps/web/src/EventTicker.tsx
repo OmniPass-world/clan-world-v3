@@ -82,6 +82,15 @@ function safeNum(v: unknown, fallback = 0): number {
   return fallback;
 }
 
+function resourceAmount(v: unknown): string {
+  const n = safeNum(v, 0);
+  if (n <= 0) return '';
+  const human = n >= 1e12 ? n / 1e18 : n;
+  if (human >= 10) return String(Math.round(human));
+  if (human >= 1) return human.toFixed(1).replace(/\\.0$/, '');
+  return human.toFixed(2).replace(/0+$/, '').replace(/\\.$/, '');
+}
+
 function formatChainEvent(ev: ChainEvent): TickerEntry | null {
   const args = (ev.args ?? {}) as Record<string, unknown>;
   const clanId = ev.clanId ?? safeNum(args.clanId, 0);
@@ -108,8 +117,9 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
     case 'ResourcesGathered': {
       const parts: string[] = [];
       ['wood', 'iron', 'wheat', 'fish'].forEach((r, i) => {
-        const amt = safeNum(args[r], 0);
-        if (amt > 0) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
+        const key = `${r}Gained`;
+        const amt = resourceAmount(args[key] ?? args[r]);
+        if (amt) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
       });
       if (!parts.length) return null;
       return { text: `${clanLabel} gathered ${parts.join(', ')}`, clanColor };
@@ -117,9 +127,10 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
     case 'ResourcesDeposited': {
       const parts: string[] = [];
       ['wood', 'iron', 'wheat', 'fish'].forEach((r, i) => {
-        const raw = args[r] ?? args[`amount${r.charAt(0).toUpperCase() + r.slice(1)}`];
-        const amt = safeNum(raw, 0);
-        if (amt > 0) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
+        const title = r.charAt(0).toUpperCase() + r.slice(1);
+        const raw = args[`${r}Delta`] ?? args[r] ?? args[`amount${title}`];
+        const amt = resourceAmount(raw);
+        if (amt) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
       });
       if (!parts.length) return { text: `${clanLabel} deposited resources`, clanColor };
       return { text: `${clanLabel} deposited ${parts.join(', ')}`, clanColor };
@@ -329,10 +340,10 @@ export function EventTicker() {
     <div
       style={{
         position: 'absolute',
-        bottom: 56, // sits just above the compact scoreboard panel
+        bottom: 8,
         left: 0,
         right: 0,
-        height: 32,
+        height: 24,
         background: 'rgba(10, 16, 10, 0.78)',
         borderTop: '1px solid rgba(204, 170, 34, 0.25)',
         borderBottom: '1px solid rgba(204, 170, 34, 0.12)',
@@ -365,7 +376,7 @@ export function EventTicker() {
               style={{
                 color: entry.clanColor,
                 fontFamily: '"VT323", "Courier New", monospace',
-                fontSize: 16,
+                fontSize: 14,
                 letterSpacing: '0.03em',
                 fontWeight: entry.highlight ? 700 : 400,
                 textShadow: entry.highlight
@@ -380,7 +391,7 @@ export function EventTicker() {
                 style={{
                   color: 'rgba(204, 170, 34, 0.55)',
                   fontFamily: '"VT323", "Courier New", monospace',
-                  fontSize: 16,
+                  fontSize: 14,
                   padding: '0 4px',
                 }}
               >

@@ -10,7 +10,9 @@
 #   ~/clan-world/bin/elder-inject-startup.sh 1     # inject into elder-1 only
 #   ~/clan-world/bin/elder-inject-startup.sh all   # inject into all 4
 #
-# Pauses 300ms between each command to let the CLI process them in order.
+# Pauses between commands to let the CLI process them in order. Each submit
+# sends Enter, waits 250ms, then sends Enter again because Claude Code can drop
+# the first Enter after tmux send-keys.
 # Safe to re-run — /clear is idempotent, /rename + /color are stateless setters.
 #
 # Why a separate helper instead of running these inline in run.sh:
@@ -52,12 +54,21 @@ inject_one() {
 
   echo "elder-$n: injecting /clear + /rename \"Clan World: $name\" + /color $color"
 
-  tmux send-keys -t "elder-$n" "/clear"; sleep 0.3
-  tmux send-keys -t "elder-$n" Enter; sleep 0.3
-  tmux send-keys -t "elder-$n" "/rename \"Clan World: $name\""; sleep 0.3
-  tmux send-keys -t "elder-$n" Enter; sleep 0.3
-  tmux send-keys -t "elder-$n" "/color $color"; sleep 0.3
-  tmux send-keys -t "elder-$n" Enter
+  submit_command "elder-$n" "/clear"
+  submit_command "elder-$n" "/rename \"Clan World: $name\""
+  submit_command "elder-$n" "/color $color"
+}
+
+submit_command() {
+  local target="$1"
+  local command="$2"
+
+  tmux send-keys -t "$target" "$command"
+  sleep 0.3
+  tmux send-keys -t "$target" Enter
+  sleep 0.25
+  tmux send-keys -t "$target" Enter
+  sleep 0.3
 }
 
 target="${1:-}"

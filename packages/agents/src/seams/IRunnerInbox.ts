@@ -1,17 +1,17 @@
 /**
  * IRunnerInbox — contract between the runner daemon and each Elder session.
  *
- * The runner pushes per-tick situation blocks into the Elder's tmux session;
+ * The runner pushes per-tick updates into the Elder's tmux session;
  * the Elder acknowledges consolidation readiness before a context reset.
- * Implementations must be idempotent: delivering the same situation block
+ * Implementations must be idempotent: delivering the same tick update
  * twice for the same tick must not cause duplicate processing.
  */
 export interface IRunnerInbox {
   /**
-   * Deliver a per-tick situation block to the Elder.
+   * Deliver a per-tick update to the Elder.
    *
-   * The block is a free-text summary of world state, clan state, recent events,
-   * and peer messages, composed by the runner from Convex data.
+   * The block is a short free-text marker that tells the Elder a tick started.
+   * Stable game-loop instructions live in the Elder runtime CLAUDE.md/AGENTS.md.
    *
    * Contract:
    * - Must complete (resolve or reject) within the runner's per-Elder delivery timeout.

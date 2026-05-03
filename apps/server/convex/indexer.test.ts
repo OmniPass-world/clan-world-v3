@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { encodeEventTopics, encodeAbiParameters, type Log } from "viem";
 import { CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
 import {
@@ -331,6 +331,11 @@ describe("legacy snapshot backfill", () => {
                   clanId: 2,
                   owner: "0x0000000000000000000000000000000000000000",
                   goldBalance: "250",
+                  blueprintBalance: "5",
+                  vaultWood: "1000000000000000000",
+                  vaultIron: "2000000000000000000",
+                  vaultWheat: "3000000000000000000",
+                  vaultFish: "4000000000000000000",
                 },
               },
             },
@@ -342,8 +347,76 @@ describe("legacy snapshot backfill", () => {
     const worldSnapshots = tables.worldSnapshot ?? [];
     expect(worldSnapshots).toHaveLength(1);
     expect(worldSnapshots[0].clans).toEqual([
-      { id: "2", name: "Clan 2", treasury: "250" },
+      {
+        id: "2",
+        name: "Clan 2",
+        treasury: "250",
+        goldBalance: "250",
+        blueprintBalance: "5",
+        vaultWood: "1000000000000000000",
+        vaultIron: "2000000000000000000",
+        vaultWheat: "3000000000000000000",
+        vaultFish: "4000000000000000000",
+        baseRegion: 0,
+        baseLevel: 0,
+        wallLevel: 0,
+        monumentLevel: 0,
+        livingClansmen: 0,
+        owner: "0x0000000000000000000000000000000000000000",
+        clansmen: [],
+      },
     ]);
     expect(worldSnapshots[0].regions).toHaveLength(8);
+  });
+
+  it("preserves tick epoch start across same-tick snapshot refreshes", async () => {
+    const { db, tables } = createDb();
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(1_000_000);
+
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 99,
+          world: { currentTick: 12 },
+          clans: [],
+        },
+      },
+    );
+
+    now.mockReturnValue(1_015_000);
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 100,
+          world: { currentTick: 12 },
+          clans: [],
+        },
+      },
+    );
+
+    const sameTickSnapshot = tables.worldSnapshot?.[0];
+    expect(sameTickSnapshot.tickEpochStartedAt).toBe(1_000);
+    expect(sameTickSnapshot.tickEpochDurationMs).toBe(60_000);
+
+    now.mockReturnValue(1_060_000);
+    await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 101,
+          world: { currentTick: 13 },
+          clans: [],
+        },
+      },
+    );
+
+    const advancedTickSnapshot = tables.worldSnapshot?.[0];
+    expect(advancedTickSnapshot.tickEpochStartedAt).toBe(1_060);
+    expect(advancedTickSnapshot.tickEpochDurationMs).toBe(60_000);
+
+    now.mockRestore();
   });
 });

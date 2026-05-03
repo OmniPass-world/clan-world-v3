@@ -1,6 +1,6 @@
 /**
  * Wait `ms` milliseconds before resolving — gives the Elders time to read
- * the situation block, reason, and submit on-chain orders before the runner
+ * the tick update, reason, and submit on-chain orders before the runner
  * advances the chain via heartbeat().
  *
  * Default in `RunnerConfig` is 90s. Tests pass a small value via the same

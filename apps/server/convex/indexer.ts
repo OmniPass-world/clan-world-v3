@@ -15,6 +15,7 @@ import {
   type Hex,
   type Log,
 } from "viem";
+import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
 
 const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
 const baseSepolia = defineChain({
@@ -232,6 +233,11 @@ type LegacyClanView = {
   monumentLevel?: number;
   livingClansmen?: number;
   goldBalance?: string;
+  blueprintBalance?: string;
+  vaultWood?: string;
+  vaultIron?: string;
+  vaultWheat?: string;
+  vaultFish?: string;
   clansmen?: unknown[];
 };
 
@@ -243,6 +249,12 @@ export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
       id: String(view.clanId),
       name: `Clan ${view.clanId}`,
       treasury: asString(view.goldBalance),
+      goldBalance: asString(view.goldBalance),
+      blueprintBalance: asString(view.blueprintBalance),
+      vaultWood: asString(view.vaultWood),
+      vaultIron: asString(view.vaultIron),
+      vaultWheat: asString(view.vaultWheat),
+      vaultFish: asString(view.vaultFish),
       baseRegion: asNumber(view.baseRegion),
       baseLevel: asNumber(view.baseLevel),
       wallLevel: asNumber(view.wallLevel),
@@ -467,10 +479,18 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(Boolean) as LegacyClanView[],
     );
+    const previousWorldSnapshot = await ctx.db
+      .query("worldSnapshot")
+      .order("desc")
+      .first();
+    const tickEpochStartedAt =
+      previousWorldSnapshot?.tick === tick
+        ? previousWorldSnapshot.tickEpochStartedAt
+        : Math.floor(now / 1000);
     const worldSnapshot = {
       tick,
-      tickEpochStartedAt: Math.floor(now / 1000),
-      tickEpochDurationMs: 20_000,
+      tickEpochStartedAt,
+      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
@@ -506,10 +526,6 @@ export const commitSnapshot = internalMutation({
         };
       }),
     };
-    const previousWorldSnapshot = await ctx.db
-      .query("worldSnapshot")
-      .order("desc")
-      .first();
     if (previousWorldSnapshot) {
       await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
     } else {

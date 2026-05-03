@@ -5,7 +5,7 @@
  * through a per-tick reasoning loop:
  *
  *   1. Poll Convex for the latest tick.
- *   2. For each Elder: compose situation block, deliver via tmux.
+ *   2. For each Elder: compose a short tick update, deliver via tmux.
  *   3. Wait a settle window (~90s) for Elders to act + their txs to confirm.
  *   4. Call ClanWorld.heartbeat() to advance the chain.
  */
@@ -25,7 +25,7 @@ export function asElderId(n: number): ElderId {
 export interface RunnerConfig {
   /** Milliseconds between Convex tick polls when no new tick is observed. */
   pollIntervalMs: number;
-  /** Seconds to wait after delivering situation blocks before calling heartbeat. */
+  /** Seconds to wait after delivering tick updates before calling heartbeat. */
   settleWindowSec: number;
   /** Per-Elder timeout for `deliverSituationBlock` (ms). */
   deliveryTimeoutMs: number;
@@ -35,7 +35,7 @@ export interface RunnerConfig {
   stateDir: string;
   /** tmux session name prefix. Each Elder lives in `${prefix}-${n}`. */
   tmuxSessionPrefix: string;
-  /** Map of Elder id → clan id used for situation-block context + peer routing. */
+  /** Map of Elder id → clan id used for tick-update context + peer routing. */
   elderToClanId: Record<ElderId, string>;
   /** Milliseconds between isHeartbeatDue() checks in the heartbeat scheduler. */
   heartbeatCheckIntervalMs: number;

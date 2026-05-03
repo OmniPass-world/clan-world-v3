@@ -5,7 +5,7 @@ import {
   type IRunnerInbox,
 } from '@clan-world/agents/seams';
 import type { IConvexClient } from '@clan-world/shared/adapters';
-import { composeSituationBlock } from './composeSituationBlock';
+import { composeSituationBlock, isContextResetTick } from './composeSituationBlock';
 import { pollChainTick } from './pollChainTick';
 import { settleWindow } from './settleWindow';
 import type { SettleLatch } from './settleLatch';
@@ -48,9 +48,10 @@ const consoleLogger: Logger = {
  *     chainTick = pollChainTick(convex)
  *     if chainTick > lastProcessedTick:
  *       for each elder in parallel:
- *         block  = composeSituationBlock(...)
- *         status = inbox.deliverSituationBlock(chainTick, block)
+ *         update = composeSituationBlock(...)
+ *         status = inbox.deliverSituationBlock(chainTick, update)
  *       wait settleWindow
+ *       if reset tick: wait for ack-clear, then /clear + bootstrap Elders
  *       settleLatch.markSettled(chainTick)
  *       lastProcessedTick = chainTick
  *     sleep pollIntervalMs
@@ -66,8 +67,8 @@ const consoleLogger: Logger = {
  * - Delivery is abort-aware: each per-Elder delivery uses its own AbortController
  *   linked to `deps.signal`, so SIGTERM cancels in-flight tmux children promptly.
  *
- * - `pollChainTick` and `composeSituationBlock` are wrapped in `raceAbort` so a
- *   hung Convex query does not block past shutdown.
+ * - `pollChainTick` is wrapped in `raceAbort` so a hung Convex query does not
+ *   block past shutdown. Tick update formatting is intentionally local only.
  */
 export async function tickLoop(deps: TickLoopDeps): Promise<void> {
   const log = deps.log ?? consoleLogger;
@@ -102,14 +103,11 @@ export async function tickLoop(deps: TickLoopDeps): Promise<void> {
       const attemptElder = async (elder: ElderId): Promise<boolean> => {
         const per = deps.perElder[elder];
         try {
-          const block = await raceAbort(
-            composeSituationBlock(
-              { elder, clanId: deps.config.elderToClanId[elder], tick: chainTick },
-              { convex: deps.convex, memory: per.memory, peerInbox: per.peerInbox },
-            ),
-            deps.signal,
-            `composeSituationBlock(elder=${elder})`,
-          );
+          const update = composeSituationBlock({
+            elder,
+            clanId: deps.config.elderToClanId[elder],
+            tick: chainTick,
+          });
           // MED-1: per-delivery AbortController so a timeout OR shutdown cancels the tmux child.
           const deliveryAbort = new AbortController();
           const linkAbort = (): void => deliveryAbort.abort();
@@ -117,7 +115,7 @@ export async function tickLoop(deps: TickLoopDeps): Promise<void> {
           let status: DeliveryStatus;
           try {
             status = await withTimeout(
-              per.inbox.deliverSituationBlock(chainTick, block, deliveryAbort.signal),
+              per.inbox.deliverSituationBlock(chainTick, update, deliveryAbort.signal),
               deps.config.deliveryTimeoutMs,
               `deliverSituationBlock(elder=${elder}, tick=${chainTick})`,
             );
@@ -171,6 +169,24 @@ export async function tickLoop(deps: TickLoopDeps): Promise<void> {
         log.info('settle window aborted by shutdown signal');
         break;
       }
+
+      if (isContextResetTick(chainTick)) {
+        log.info(`tick ${chainTick}: context reset boundary reached; waiting for ack-clear`);
+        const resetResults = await Promise.all(
+          ELDER_IDS.map(async elder => {
+            const result = await deps.perElder[elder].inbox.waitForAckAndClear(deps.config.ackTimeoutMs);
+            return { elder, result };
+          }),
+        );
+        for (const { elder, result } of resetResults) {
+          if (result === 'ack') {
+            log.info(`elder ${elder}: ack-clear received; context reset issued`);
+          } else {
+            log.warn(`elder ${elder}: ack-clear timeout; context reset issued anyway`);
+          }
+        }
+      }
+
       deps.settleLatch?.markSettled(chainTick);
       lastProcessedTick = chainTick;
     }

@@ -5,6 +5,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+export PATH="$HOME/.foundry/bin:$PATH"
+
 # Source .env.local from repo root if it exists
 if [ -f .env.local ]; then
   set -a
@@ -44,20 +46,21 @@ if ! command -v jq >/dev/null 2>&1; then
 fi
 
 HEARTBEAT_INTERVAL=$(grep "^export const HEARTBEAT_INTERVAL_SECONDS" packages/shared/src/generated/constants.ts | grep -oE '[0-9]+')
-HEARTBEAT_SLEEP_SECONDS=$((HEARTBEAT_INTERVAL + 5))
+HEARTBEAT_SLEEP_SECONDS="${HEARTBEAT_SLEEP_SECONDS:-$((HEARTBEAT_INTERVAL + 5))}"
+CONVEX_WEBHOOK_URL="${CONVEX_WEBHOOK_URL:-${CONVEX_DEPLOY_URL/.convex.cloud/.convex.site}}"
 
 echo "Starting heartbeat loop (interval: ${HEARTBEAT_SLEEP_SECONDS}s; avoids on-chain ${HEARTBEAT_INTERVAL}s heartbeat guard)"
 echo "  engine: $CLAN_WORLD_CONTRACT_ADDRESS"
 echo "  rpc:    $RPC_URL_PRIMARY"
 echo "  convex: $CONVEX_DEPLOY_URL"
+echo "  webhook: $CONVEX_WEBHOOK_URL"
 
 while true; do
   heartbeat_stderr="$(mktemp)"
   heartbeat_json="$(mktemp)"
-  if ! forge script packages/contracts/script/Heartbeat.s.sol \
-    --root packages/contracts \
-    --broadcast \
+  if ! cast send "$CLAN_WORLD_CONTRACT_ADDRESS" "heartbeat()" \
     --rpc-url "$RPC_URL_PRIMARY" \
+    --private-key "$DEPLOYER_PRIVATE_KEY" \
     --json \
     > "$heartbeat_json" \
     2> >(tee "$heartbeat_stderr" >&2); then
@@ -70,25 +73,24 @@ while true; do
   fi
   rm -f "$heartbeat_stderr"
 
-  tx_hash="$(jq -r '[
-      .. | objects | .transactionHash? // empty,
-      .. | objects | .hash? // empty
-    ] | map(select(type == "string" and test("^0x[0-9a-fA-F]{64}$"))) | last // empty' "$heartbeat_json")"
-  block_number="$(jq -r '[
-      .. | objects | .blockNumber? // empty
-    ] | map(select(. != null)) | last // empty' "$heartbeat_json")"
+  tx_hash="$(jq -r '.. | objects | .transactionHash? // .hash? // empty' "$heartbeat_json" | grep -E '^0x[0-9a-fA-F]{64}$' | tail -1)"
+  block_number_hex="$(jq -r '.. | objects | .blockNumber? // empty' "$heartbeat_json" | tail -1)"
   rm -f "$heartbeat_json"
 
   if [ -z "$tx_hash" ]; then
-    echo "heartbeat tx hash unavailable from forge JSON; webhook POST skipped" >&2
+    echo "heartbeat tx hash unavailable from cast JSON; webhook POST skipped" >&2
     sleep "$HEARTBEAT_SLEEP_SECONDS"
     continue
   fi
-  if [ -z "$block_number" ]; then
+  if [[ "$block_number_hex" =~ ^0x[0-9a-fA-F]+$ ]]; then
+    block_number="$((block_number_hex))"
+  elif [[ "$block_number_hex" =~ ^[0-9]+$ ]]; then
+    block_number="$block_number_hex"
+  else
     block_number="null"
   fi
 
-  curl -sS --fail -X POST "$CONVEX_DEPLOY_URL/api/heartbeat-webhook" \
+  curl -sS --fail -X POST "$CONVEX_WEBHOOK_URL/api/heartbeat-webhook" \
     -H "Authorization: Bearer $WEBHOOK_SHARED_SECRET" \
     -H "Content-Type: application/json" \
     -d "{\"chain\":\"base-sepolia\",\"engineAddress\":\"$CLAN_WORLD_CONTRACT_ADDRESS\",\"txHash\":\"$tx_hash\",\"blockNumber\":$block_number,\"firedAtTs\":$(date +%s),\"source\":\"foundry-loop\"}" \
