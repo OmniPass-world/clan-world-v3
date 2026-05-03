@@ -68,6 +68,14 @@ Before selecting a bandit target in region `R`, the engine must eagerly settle:
 
 This is required so target selection, defense totals, starvation state, and vault values are correct at attack resolution time.
 
+Diamond migration note: the facet implementation currently satisfies this by
+settling all live clans at the start of `heartbeat()` before market, bandit, and
+season logic runs. That is broader than the monolith's region-specific eager
+settle hooks, but preserves the same correctness invariant for normal heartbeat
+operation. Reintroducing narrower bandit eager-settle hooks is intentionally
+tracked as future gas/backlog work rather than part of the first diamond parity
+patch.
+
 ### 2.5 Lazy vs eager settlement
 Settlement is hybrid.
 

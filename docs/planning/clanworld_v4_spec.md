@@ -130,6 +130,13 @@ The Keeper heartbeat transaction performs the following in order:
 5. increment `currentTick += 1`
 6. publish/store the randomness seed for the newly opened tick
 
+Diamond migration note: during the EIP-2535 migration, the diamond heartbeat
+uses a broader pre-bandit settlement pass over all live clans before resolving
+market, bandit, and season work. This keeps bandit target selection, defense,
+vault, and starvation reads settled without porting the monolith's narrower
+region-specific eager-settle hooks yet. The narrower hooks remain a documented
+future optimization/backlog-hardening item.
+
 The heartbeat conceptually performs:
 - close old tick
 - resolve due effects and events
