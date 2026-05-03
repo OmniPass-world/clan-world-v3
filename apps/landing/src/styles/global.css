@@ -403,7 +403,7 @@ strong {
   top: 0;
   z-index: 50;
   backdrop-filter: blur(6px);
-  background: rgba(232, 216, 181, 0.85);
+  background: linear-gradient(135deg, #1a0f2a 0%, #2a1a3e 50%, #3a2858 100%);
   border-bottom: 1px solid var(--gold-leaf);
 }
 
@@ -426,20 +426,24 @@ strong {
   font-size: 1.15rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--ink);
+  color: var(--parchment);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 .site-brand:hover {
-  color: var(--vermillion);
+  color: var(--gold-leaf);
   text-decoration: none;
 }
 
 .site-brand-mark {
-  width: 2rem;
-  height: 2rem;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  object-fit: cover;
   flex-shrink: 0;
+  border: 1.5px solid var(--gold-leaf);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 
 .site-nav {
@@ -449,7 +453,7 @@ strong {
 }
 
 .site-nav a {
-  color: var(--ink);
+  color: var(--parchment);
   text-decoration: none;
   font-family: var(--ff-ui);
   font-weight: 500;
@@ -459,7 +463,7 @@ strong {
 }
 
 .site-nav a:hover {
-  color: var(--vermillion);
+  color: var(--gold-leaf);
 }
 
 .site-nav .pixel-link {
