@@ -13,19 +13,6 @@
   display: block;
 }
 
-/* Cockpit screenshot — below RealmMap in right column */
-.hero-cockpit-wrap {
-  margin-top: 1.5rem;
-}
-
-.hero-cockpit-img {
-  width: 100%;
-  height: auto;
-  display: block;
-  border: 1.5px solid var(--ink);
-  box-shadow: 4px 4px 0 rgba(168, 124, 47, 0.18);
-}
-
 .hero {
   position: relative;
   padding: 0 0 4rem;
@@ -301,6 +288,44 @@
     font-size: 0.95rem;
     line-height: 1.45;
   }
+}
+
+/* ============ Ælder dictionary section ============ */
+
+.section-aelder {
+  padding: 3rem 0 4rem;
+  background: var(--parchment);
+}
+
+.aelder-heading {
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  text-align: center;
+  color: var(--ink);
+  margin: 0 0 2rem;
+  letter-spacing: 0.005em;
+}
+
+.aelder-card-wrap {
+  max-width: 36rem;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.aelder-card-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(168, 124, 47, 0.18);
+}
+
+.aelder-card-caption {
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--ink-faded);
+  letter-spacing: 0.18em;
 }
 
 /* ============ Hook section ============ */
