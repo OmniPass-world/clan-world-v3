@@ -296,6 +296,18 @@ contract DiamondEventParityTest is Test {
         _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
     }
 
+    function testWarnUpgradeWallCompletionLogsMatchCore() public {
+        _warnUpgradeCompletionLogsMatchCore(ActionType.UpgradeWall, "UpgradeWall");
+    }
+
+    function testWarnUpgradeBaseCompletionLogsMatchCore() public {
+        _warnUpgradeCompletionLogsMatchCore(ActionType.UpgradeBase, "UpgradeBase");
+    }
+
+    function testWarnUpgradeMonumentCompletionLogsMatchCore() public {
+        _warnUpgradeCompletionLogsMatchCore(ActionType.UpgradeMonument, "UpgradeMonument");
+    }
+
     function testTransferGoldLogsMatchCore() public {
         ClanWorld core = new ClanWorld();
         _installRawLifecycleGoldHeartbeatFacets();
@@ -390,6 +402,38 @@ contract DiamondEventParityTest is Test {
         _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
     }
 
+    function _warnUpgradeCompletionLogsMatchCore(ActionType action, string memory label) internal {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitHeartbeatFixtureFacets();
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        uint8 coreBaseRegion = core.getClan(coreClanId).baseRegion;
+        uint8 diamondBaseRegion = IClanWorld(address(diamond)).getClan(diamondClanId).baseRegion;
+
+        core.setVault(coreClanId, 500e18, 500e18, 500e18, 500e18);
+        IEventParityFixture(address(diamond)).setVault(diamondClanId, 500e18, 500e18, 500e18, 500e18);
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _basicOrder(coreClansmanId, coreBaseRegion, action, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _basicOrder(diamondClansmanId, diamondBaseRegion, action, 0);
+
+        vm.prank(elder);
+        assertEq(uint8(core.submitClanOrders(coreClanId, coreOrders)[0].status), uint8(StatusCode.OK));
+        vm.prank(elder);
+        assertEq(
+            uint8(IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders)[0].status),
+            uint8(StatusCode.OK)
+        );
+
+        (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs) =
+            _recordCompletionHeartbeat(core, core.getActiveMission(coreClansmanId).settlesAtTick);
+        _warnEmitterLogsMatch(label, coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
     function _mintPair(ClanWorld core, address elder) internal returns (uint32 coreClanId, uint32 diamondClanId) {
         vm.prank(elder);
         (coreClanId,) = core.mintClan(elder);
@@ -467,6 +511,40 @@ contract DiamondEventParityTest is Test {
         assertEq(diamondCount, coreCount, "event count");
         for (uint256 i = 0; i < coreCount; i++) {
             assertEq(diamondFingerprints[i], coreFingerprints[i], "event fingerprint");
+        }
+    }
+
+    function _warnEmitterLogsMatch(
+        string memory label,
+        Vm.Log[] memory coreLogs,
+        address coreEmitter,
+        Vm.Log[] memory diamondLogs,
+        address diamondEmitter
+    ) internal {
+        bytes32[] memory coreFingerprints = new bytes32[](coreLogs.length);
+        bytes32[] memory diamondFingerprints = new bytes32[](diamondLogs.length);
+        uint256 coreCount = _emitterFingerprints(coreLogs, coreEmitter, coreFingerprints);
+        uint256 diamondCount = _emitterFingerprints(diamondLogs, diamondEmitter, diamondFingerprints);
+
+        if (diamondCount != coreCount) {
+            emit log_string("WARNING: non-blocking diamond event parity drift detected");
+            emit log_named_string("scenario", label);
+            emit log_named_uint("core event count", coreCount);
+            emit log_named_uint("diamond event count", diamondCount);
+            emit log_string("WARNING: do not fix before hackathon unless this affects demo-critical behavior");
+            return;
+        }
+
+        for (uint256 i = 0; i < coreCount; i++) {
+            if (diamondFingerprints[i] != coreFingerprints[i]) {
+                emit log_string("WARNING: non-blocking diamond event parity drift detected");
+                emit log_named_string("scenario", label);
+                emit log_named_uint("event index", i);
+                emit log_named_bytes32("core fingerprint", coreFingerprints[i]);
+                emit log_named_bytes32("diamond fingerprint", diamondFingerprints[i]);
+                emit log_string("WARNING: do not fix before hackathon unless this affects demo-critical behavior");
+                return;
+            }
         }
     }
 

@@ -21,6 +21,9 @@ tests pass.
   settlement path but not by diamond settlement replay. Adding that replay
   directly to `LibSettlement` would likely push `HeartbeatFacet` over EIP-170;
   after Track 1A it is only 106 bytes below the hard limit.
+- Warning tests are in place for wall/base/monument upgrade event parity. They
+  print loud `WARNING:` logs and pass during the hackathon so reviewers do not
+  treat known non-demo drift as a merge blocker.
 
 ## Phase 1: Log Parity Expansion
 
@@ -88,6 +91,9 @@ intentional spec drift, harness setup error, or diamond bug before patching.
 - Commit each passing track separately.
 - If code fixes are needed, commit tests and fixes together only when the test
   directly proves the fix.
+- Warning parity tests are allowed to pass despite known drift. Do not convert
+  them to blocking or fix their warnings before the hackathon unless the drift
+  affects demo-critical behavior.
 
 ## Assumptions
 
