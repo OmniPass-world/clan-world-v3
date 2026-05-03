@@ -249,6 +249,8 @@ export class ZeroGMemoryStore implements IElderMemoryStore {
     if (!tx?.txHash || !tx?.rootHash)
       throw new Error('[ZeroGMemoryStore] 0G write returned no txHash/rootHash');
 
+    console.log(`[ZeroGMemoryStore] save ok key=${key} txHash=${tx.txHash} rootHash=${tx.rootHash}`);
+
     // Update cache ONLY after successful write.
     this.#cache.set(key, value);
     // Persist to disk so recall() survives restart.
@@ -273,6 +275,8 @@ export interface ZeroGMemoryStoreOptions {
   env?: Record<string, string | undefined>;
   /** Override elder index (default: ELDER_INDEX from env). */
   elderIndex?: number;
+  /** Clan ID used to derive the default 0G stream namespace. */
+  clanId?: string;
   /** Override state dir for the cache file. */
   stateDir?: string;
   /** Override the batcher factory (for testing — avoids real 0G/ethers calls). */
@@ -343,15 +347,16 @@ export async function createMemoryStore(
     return new FileMemoryStore(n, opts.stateDir ?? defaultStateDir());
   }
 
-  const streamId = env['OG_STREAM_ID'];
+  const elderIndex = opts.elderIndex ?? parseInt(env['ELDER_INDEX'] ?? '1', 10);
+  const clanId = opts.clanId ?? env[`ELDER_${elderIndex}_CLAN_ID`] ?? String(elderIndex);
+  const streamId = env[`OG_STREAM_ID_CLAN_${clanId}`] ?? env['OG_STREAM_ID'];
   const resolvedStreamId = streamId
     ? streamId
     : await (async () => {
         const ethers = await import('ethers');
-        return ethers.id('clanworld-elder-memory');
+        return ethers.id(`clanworld:clan:${clanId}:memory`);
       })();
 
-  const elderIndex = opts.elderIndex ?? parseInt(env['ELDER_INDEX'] ?? '1', 10);
   const stateDirPath = opts.stateDir ?? defaultStateDir();
   const cachePath = cacheFilePath(stateDirPath, elderIndex);
 
