@@ -447,7 +447,7 @@ contract HeartbeatOrderingTest is Test {
 
         WorldState memory ws1 = world.getWorldState();
         assertEq(ws1.currentSeasonNumber, 1, "season must wait for finalizeSeason");
-        assertEq(ws1.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "tick freezes before season boundary");
+        assertEq(ws1.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS, "tick freezes after final season tick");
         assertEq(ws1.seasonStartTick, 0, "old seasonStartTick");
         assertEq(ws1.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS, "old seasonEndTick");
 

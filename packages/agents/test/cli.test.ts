@@ -53,6 +53,7 @@ function makeChain(overrides: Partial<IChainClient> = {}): IChainClient {
     async getWallUpgradeCost() { return { wood: 0n, iron: 0n }; },
     async getBaseUpgradeCost() { return { wood: 0n, iron: 0n, wheat: 0n }; },
     async getMonumentUpgradeCost() { return { wood: 0n, iron: 0n, wheat: 0n, blueprint: 0n }; },
+    async quoteTravel() { return { travelTicks: 0, path: '0x0000000000000000' as `0x${string}` }; },
     async getClanScore() { return { score: 0n, monumentReachedAtTick: 0n, monumentLevel: 0 }; },
     async getRankings() { return { clanIdsRanked: [], scores: [] }; },
     ...overrides,

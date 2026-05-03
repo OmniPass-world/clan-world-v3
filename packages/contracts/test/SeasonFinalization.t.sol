@@ -79,11 +79,11 @@ contract SeasonFinalizationTest is Test {
     }
 
     function _advanceToFrozenSeasonBoundary(uint64 seasonEndTick) internal {
-        while (world.getWorldState().currentTick < seasonEndTick - 1) {
+        while (world.getWorldState().currentTick < seasonEndTick) {
             _advanceTick();
         }
         _advanceTick();
-        assertEq(world.getWorldState().currentTick, seasonEndTick - 1, "heartbeat freezes at boundary");
+        assertEq(world.getWorldState().currentTick, seasonEndTick, "heartbeat freezes after closing boundary");
     }
 
     function _waitOrder(uint32 clansmanId, uint8 gotoRegion) internal pure returns (ClanOrder[] memory orders) {
@@ -190,7 +190,7 @@ contract SeasonFinalizationTest is Test {
 
         world.finalizeSeason();
 
-        uint64 expectedSettledTick = world.getWorldState().currentTick + 1;
+        uint64 expectedSettledTick = world.getWorldState().currentTick;
         assertEq(world.getClan(clanA).lastSettledTick, expectedSettledTick, "clan A settled");
         assertEq(world.getClan(clanB).lastSettledTick, expectedSettledTick, "clan B settled");
         assertEq(world.getClan(clanC).lastSettledTick, expectedSettledTick, "clan C settled");
@@ -226,7 +226,7 @@ contract SeasonFinalizationTest is Test {
         _advanceToFrozenSeasonBoundary(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         WorldState memory frozen = world.getWorldState();
-        assertEq(frozen.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "did not cross boundary");
+        assertEq(frozen.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS, "closed final tick");
         assertEq(frozen.currentSeasonNumber, 1, "season unchanged");
         assertFalse(frozen.seasonFinalized, "not finalized");
 
@@ -272,7 +272,7 @@ contract SeasonFinalizationTest is Test {
         }
 
         WorldState memory frozen = world.getWorldState();
-        assertEq(frozen.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "still frozen");
+        assertEq(frozen.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS, "still frozen");
         assertEq(frozen.currentSeasonNumber, 1, "season number unchanged");
     }
 
@@ -335,7 +335,7 @@ contract SeasonFinalizationTest is Test {
         world.setVault(clanId, 1000e18, 1000e18, 1000e18, 1000e18);
         world.setLivingClansmen(clanId, 0);
         uint8 homeRegion = world.getClan(clanId).baseRegion;
-        world.setCurrentTick(ClanWorldConstants.SEASON_DURATION_TICKS - 1);
+        world.setCurrentTick(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         world.finalizeSeason();
         _advanceTick();
