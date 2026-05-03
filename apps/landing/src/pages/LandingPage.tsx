@@ -3,6 +3,7 @@ import Header from '../components/Header'
 import Footer from '../components/Footer'
 import MapRevealSlider from '../components/MapRevealSlider'
 import SponsorCard from '../components/SponsorCard'
+import EngineCard from '../components/EngineCard'
 import { POWERS } from '../data/sponsors'
 import { APP_URL, GITHUB_URL } from '../constants'
 import { useReveal } from '../hooks/useReveal'
@@ -177,6 +178,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <EngineCard />
 
       <Ornament glyph="❦ ❦ ❦" />
 
