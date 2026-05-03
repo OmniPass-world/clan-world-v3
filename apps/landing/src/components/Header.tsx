@@ -9,7 +9,10 @@ export default function Header() {
       <div className="site-header-inner">
         <Link to="/" className="site-brand" aria-label="Clan World home">
           <img src="/clan-world-logo.jpg" alt="Clan World logo" className="site-brand-mark" />
-          <span>Clan World <i className="site-brand-sub">: Ælder Whispers</i></span>
+          <span className="site-brand-text">
+            <span className="site-brand-title">Clan World</span>
+            <span className="site-brand-sub">Ælder Whispers</span>
+          </span>
         </Link>
         <nav className="site-nav">
           <Link to="/lore" className="desktop-only">The Chronicle</Link>
