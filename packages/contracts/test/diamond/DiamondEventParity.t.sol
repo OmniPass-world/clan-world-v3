@@ -12,12 +12,15 @@ import {
     ClanOrder,
     ClanWorldConstants,
     IClanWorld,
+    ResourceType,
     StatusCode,
     WithdrawResourcesData
 } from "../../src/IClanWorld.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
+import {BundleTransferFacet} from "../../src/diamond/facets/BundleTransferFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
+import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
 import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {RawBanditViewsFacet} from "../../src/diamond/facets/RawBanditViewsFacet.sol";
@@ -25,6 +28,7 @@ import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol"
 import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
+import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 
 contract CoreEventParityHarness is ClanWorld {
@@ -318,11 +322,85 @@ contract DiamondEventParityTest is Test {
         _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
     }
 
+    function testTransferVaultResourceLogsMatchCore() public {
+        ClanWorld core = new ClanWorld();
+        _installRawLifecycleVaultTransferHeartbeatFacets();
+
+        address elder = address(0xA11CE);
+        address recipient = address(0xB0B);
+        (uint32 coreFromClanId, uint32 diamondFromClanId) = _mintPair(core, elder);
+        (uint32 coreToClanId, uint32 diamondToClanId) = _mintPair(core, recipient);
+        _heartbeatBoth(core);
+
+        vm.recordLogs();
+        vm.prank(elder);
+        core.transferVaultResource(coreFromClanId, coreToClanId, ResourceType.Wood, 1e18);
+        Vm.Log[] memory coreLogs = vm.getRecordedLogs();
+
+        vm.recordLogs();
+        vm.prank(elder);
+        IClanWorld(address(diamond)).transferVaultResource(diamondFromClanId, diamondToClanId, ResourceType.Wood, 1e18);
+        Vm.Log[] memory diamondLogs = vm.getRecordedLogs();
+
+        _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
+    function testTransferBundleLogsMatchCore() public {
+        ClanWorld core = new ClanWorld();
+        _installRawLifecycleBundleTransferHeartbeatFacets();
+
+        address elder = address(0xA11CE);
+        address recipient = address(0xB0B);
+        (uint32 coreFromClanId, uint32 diamondFromClanId) = _mintPair(core, elder);
+        (uint32 coreToClanId, uint32 diamondToClanId) = _mintPair(core, recipient);
+        _heartbeatBoth(core);
+
+        vm.recordLogs();
+        vm.prank(elder);
+        core.transferBundle(coreFromClanId, coreToClanId, 1e18, 0, 1e18, 0, 0, 0);
+        Vm.Log[] memory coreLogs = vm.getRecordedLogs();
+
+        vm.recordLogs();
+        vm.prank(elder);
+        IClanWorld(address(diamond)).transferBundle(diamondFromClanId, diamondToClanId, 1e18, 0, 1e18, 0, 0, 0);
+        Vm.Log[] memory diamondLogs = vm.getRecordedLogs();
+
+        _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
+    function testTransferClanOwnershipLogsMatchCore() public {
+        ClanWorld core = new ClanWorld();
+        _installRawLifecycleClanOwnershipHeartbeatFacets();
+
+        address elder = address(0xA11CE);
+        address newOwner = address(0xB0B);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        _heartbeatBoth(core);
+
+        vm.recordLogs();
+        vm.prank(elder);
+        core.transferClanOwnership(coreClanId, newOwner);
+        Vm.Log[] memory coreLogs = vm.getRecordedLogs();
+
+        vm.recordLogs();
+        vm.prank(elder);
+        IClanWorld(address(diamond)).transferClanOwnership(diamondClanId, newOwner);
+        Vm.Log[] memory diamondLogs = vm.getRecordedLogs();
+
+        _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
     function _mintPair(ClanWorld core, address elder) internal returns (uint32 coreClanId, uint32 diamondClanId) {
         vm.prank(elder);
         (coreClanId,) = core.mintClan(elder);
         vm.prank(elder);
         (diamondClanId,) = IClanWorld(address(diamond)).mintClan(elder);
+    }
+
+    function _heartbeatBoth(ClanWorld core) internal {
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        IClanWorld(address(diamond)).heartbeat();
     }
 
     function _basicOrder(uint32 clansmanId, uint8 gotoRegion, ActionType action, uint32 targetClanId)
@@ -431,6 +509,32 @@ contract DiamondEventParityTest is Test {
     function _installRawLifecycleGoldHeartbeatFacets() internal {
         _installRawAndLifecycleFacets();
         IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new GoldTransferFacet()), DiamondSelectors.goldTransferSelectors()), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
+    }
+
+    function _installRawLifecycleVaultTransferHeartbeatFacets() internal {
+        _installRawAndLifecycleFacets();
+        IDiamondCut(address(diamond)).diamondCut(
+            _singleCut(address(new VaultResourceTransferFacet()), DiamondSelectors.vaultResourceTransferSelectors()),
+            address(0),
+            ""
+        );
+        IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
+    }
+
+    function _installRawLifecycleBundleTransferHeartbeatFacets() internal {
+        _installRawAndLifecycleFacets();
+        IDiamondCut(address(diamond)).diamondCut(
+            _singleCut(address(new BundleTransferFacet()), DiamondSelectors.bundleTransferSelectors()), address(0), ""
+        );
+        IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
+    }
+
+    function _installRawLifecycleClanOwnershipHeartbeatFacets() internal {
+        _installRawAndLifecycleFacets();
+        IDiamondCut(address(diamond)).diamondCut(
+            _singleCut(address(new ClanOwnershipFacet()), DiamondSelectors.ownershipSelectors()), address(0), ""
+        );
         IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
     }
 
