@@ -35,7 +35,7 @@ export const POWERS: SponsorPower[] = [
   {
     name: 'KeeperHub',
     loreName: 'The World\'s Pulse',
-    logoUrl: '/logos/keeperhub.svg',
+    logoUrl: '/logos/keeperhub.jpg',
     logoAlt: 'KeeperHub',
     marginNote: '← onchain heartbeat',
     loreDesc:
