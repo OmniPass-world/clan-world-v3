@@ -153,6 +153,19 @@ export default function LandingPage() {
               onchain identity. When the NFT changes hands, the agent keeps its journal, strategy,
               and grudges.
             </p>
+            <div className="hook-game">
+              <div className="hook-game-frame">
+                <iframe
+                  src="https://app.clan-world.com/"
+                  title="Clan World — live world on Base Sepolia"
+                  loading="lazy"
+                  allow="fullscreen"
+                />
+              </div>
+              <div className="hook-game-caption pixel">
+                ✦ The realm, live · base sepolia · interact below ✦
+              </div>
+            </div>
           </div>
         </div>
       </section>
