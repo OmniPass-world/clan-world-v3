@@ -6,6 +6,18 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.0.1] — 2026-05-02
+
+### Fixed
+
+- **Dead-target cleanup helpers consolidated in `LibBanditCombat`** (PR #469). `releaseDefendersForDeadTarget` + `abortBanditAttacksForDeadTarget` were literally duplicated between `LibBanditCombat` (`public`) and `LibSettlement` (`internal`) after the round-1 SuperSwarm `markClanDead` parity fix. Both opus 4.6 + opus 4.7 r2 reviews flagged the silent-divergence risk: any future change to one copy without the other would re-create the round-1 parity break. Canonical copy now lives in `LibBanditCombat`; `LibSettlement` calls into it. Both functions changed from `public` to `internal` — gets inlined into callers, saves ~700 gas per call vs DELEGATECALL (also addresses opus 4.6 / opus 4.7 r2 MEDIUM about library function visibility). All 58 diamond parity tests pass.
+
+### Still queued for future patch releases
+
+The remaining v2.0.1-target items from the v2.0.0 changelog (lazy-settlement clan death event-emission parity, `_settleClan` 6× duplication, 41 library functions `public→internal` sweep, storage layout field-offset snapshot, `bac7c6a` write-then-overwrite refactor, `MAX_CROP_TRANSITION_PER_TICK` access-modifier parity, `LibDiamond.setContractOwner` zero-address guard) ship in subsequent patch releases.
+
+---
+
 ## [2.0.0] — 2026-05-02
 
 ### Highlights
