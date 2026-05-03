@@ -6,7 +6,7 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [0.0.1] — 2026-05-03
+## [2.0.2] — 2026-05-03
 
 ### Fixed
 
@@ -20,7 +20,7 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Bumped the root package and ClanWorld workspace package versions from `0.0.0` to `0.0.1`.
+- Bumped the root package and ClanWorld workspace package versions to `2.0.2`.
 
 ---
 
