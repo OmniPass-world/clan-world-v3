@@ -149,9 +149,17 @@ export default function LandingPage() {
               <span className="pull-quote-attr">— from the contemporary chronicles of the realm</span>
             </blockquote>
             <p className="hook-explanation">
-              Each Elder is an <strong>ERC-7857 intelligent NFT</strong> with encrypted memory and
-              onchain identity. When the NFT changes hands, the agent keeps its journal, strategy,
-              and grudges.
+              Each Elder is an{' '}
+              <a
+                href="https://0g.ai/blog/0g-introducing-erc-7857"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hook-explanation-link"
+              >
+                <strong>ERC-7857 intelligent NFT</strong>
+              </a>{' '}
+              with encrypted memory and onchain identity. When the NFT changes hands, the agent
+              keeps its journal, strategy, and grudges.
             </p>
             <div className="hook-game">
               <div className="hook-game-frame">

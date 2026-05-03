@@ -376,6 +376,19 @@
   text-align: center;
 }
 
+.hook-explanation-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--gold-leaf);
+  transition: color 0.2s ease;
+}
+
+.hook-explanation-link:hover {
+  color: var(--gold-leaf);
+}
+
 .hook-game {
   margin-top: 2rem;
 }
