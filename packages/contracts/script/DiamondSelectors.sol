@@ -3,6 +3,8 @@ pragma solidity ^0.8.34;
 
 import {IDiamondLoupe} from "../src/diamond/IDiamondLoupe.sol";
 import {IClanWorld} from "../src/IClanWorld.sol";
+import {HeartbeatConfigFacet} from "../src/diamond/facets/HeartbeatConfigFacet.sol";
+import {HeartbeatFacet} from "../src/diamond/facets/HeartbeatFacet.sol";
 import {OwnershipFacet} from "../src/diamond/facets/OwnershipFacet.sol";
 
 library DiamondSelectors {
@@ -16,7 +18,13 @@ library DiamondSelectors {
 
     function heartbeatSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](1);
-        selectors[0] = IClanWorld.heartbeat.selector;
+        selectors[0] = HeartbeatFacet.heartbeat.selector;
+    }
+
+    function heartbeatConfigSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](2);
+        selectors[0] = HeartbeatConfigFacet.heartbeatIntervalSeconds.selector;
+        selectors[1] = HeartbeatConfigFacet.setHeartbeatIntervalSeconds.selector;
     }
 
     function seasonSelectors() internal pure returns (bytes4[] memory selectors) {

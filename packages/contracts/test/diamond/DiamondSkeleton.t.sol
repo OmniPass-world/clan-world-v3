@@ -47,6 +47,7 @@ import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol"
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {FinalizeSeasonFacet} from "../../src/diamond/facets/FinalizeSeasonFacet.sol";
 import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
+import {HeartbeatConfigFacet} from "../../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
 import {MinimalERC20} from "../../src/MinimalERC20.sol";
@@ -77,6 +78,11 @@ contract PingFacet {
 
 interface IPing {
     function ping() external view returns (uint256);
+}
+
+interface IHeartbeatAdmin {
+    function heartbeatIntervalSeconds() external view returns (uint64);
+    function setHeartbeatIntervalSeconds(uint64 intervalSeconds) external;
 }
 
 interface IOwnershipFacet {
@@ -314,13 +320,14 @@ contract DiamondSkeletonTest is Test {
         DiamondLoupeFacet loupeFacet = new DiamondLoupeFacet();
 
         IDiamondCut(address(diamond))
-            .diamondCut(_productionCut(address(loupeFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+            .diamondCut(
+                _productionCut(address(loupeFacet)), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
 
         bytes4[] memory selectors = _expectedProductionSelectors();
         for (uint256 i = 0; i < selectors.length; i++) {
             assertTrue(
-                IDiamondLoupe(address(diamond)).facetAddress(selectors[i]) != address(0),
-                "missing expected selector"
+                IDiamondLoupe(address(diamond)).facetAddress(selectors[i]) != address(0), "missing expected selector"
             );
             for (uint256 j = i + 1; j < selectors.length; j++) {
                 assertTrue(selectors[i] != selectors[j], "duplicate expected selector");
@@ -677,11 +684,13 @@ contract DiamondSkeletonTest is Test {
     function testDiamondHeartbeatAdvancesEmptyWorldLikeCore() public {
         ClanWorld core = new ClanWorld();
         HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        HeartbeatConfigFacet heartbeatConfigFacet = new HeartbeatConfigFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
             .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatConfigCut(address(heartbeatConfigFacet)), address(0), "");
 
         vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
         core.heartbeat();
@@ -694,6 +703,33 @@ contract DiamondSkeletonTest is Test {
         IClanWorld(address(diamond)).heartbeat();
 
         _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
+    }
+
+    function testDiamondHeartbeatIntervalCanBeConfiguredByOwner() public {
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        HeartbeatConfigFacet heartbeatConfigFacet = new HeartbeatConfigFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatConfigCut(address(heartbeatConfigFacet)), address(0), "");
+
+        IHeartbeatAdmin heartbeatAdmin = IHeartbeatAdmin(address(diamond));
+        assertEq(heartbeatAdmin.heartbeatIntervalSeconds(), ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(LibDiamond.DiamondNotOwner.selector, address(0xBEEF)));
+        heartbeatAdmin.setHeartbeatIntervalSeconds(1);
+
+        heartbeatAdmin.setHeartbeatIntervalSeconds(1);
+        assertEq(heartbeatAdmin.heartbeatIntervalSeconds(), 1);
+
+        IClanWorld(address(diamond)).heartbeat();
+        vm.warp(block.timestamp + 1);
+        IClanWorld(address(diamond)).heartbeat();
+
+        assertEq(IClanWorld(address(diamond)).getWorldState().currentTick, 2);
     }
 
     function testDiamondHeartbeatAdvancesSpawnedBanditToCampedLikeCore() public {
@@ -802,11 +838,9 @@ contract DiamondSkeletonTest is Test {
         vm.prank(targetOwner);
         (uint32 targetClanId,) = IClanWorld(address(diamond)).mintClan(targetOwner);
 
-        uint32 defenderId =
-            IBanditCleanupHarness(address(diamond)).registerTargetDefender(defenderClanId, targetClanId);
-        uint32 banditId = ISpawnBandit(address(diamond)).spawnBandit(
-            IClanWorld(address(diamond)).getClan(targetClanId).baseRegion, 100
-        );
+        uint32 defenderId = IBanditCleanupHarness(address(diamond)).registerTargetDefender(defenderClanId, targetClanId);
+        uint32 banditId = ISpawnBandit(address(diamond))
+            .spawnBandit(IClanWorld(address(diamond)).getClan(targetClanId).baseRegion, 100);
         IBanditCleanupHarness(address(diamond)).forceBanditAttack(banditId, targetClanId);
 
         assertEq(IClanWorld(address(diamond)).getActiveDefenders(targetClanId).length, 1, "defender registered");
@@ -982,9 +1016,7 @@ contract DiamondSkeletonTest is Test {
         }
 
         _assertEventFingerprintMatch(coreLogs, address(core), diamondLogs, address(diamond), CLAN_SETTLED_TOPIC);
-        _assertEventFingerprintMatch(
-            coreLogs, address(core), diamondLogs, address(diamond), MISSION_COMPLETED_TOPIC
-        );
+        _assertEventFingerprintMatch(coreLogs, address(core), diamondLogs, address(diamond), MISSION_COMPLETED_TOPIC);
         _assertClansmanEq(IClanWorld(address(diamond)).getClansman(diamondClansmanId), core.getClansman(coreClansmanId));
         assertEq(core.getClansman(coreClansmanId).cooldownEndsAtTs, submittedCooldown, "core cooldown unchanged");
         assertEq(
@@ -1029,7 +1061,11 @@ contract DiamondSkeletonTest is Test {
         assertEq(uint8(diamondResults[0].status), uint8(StatusCode.OK), "diamond defend submit ok");
         assertGt(core.getActiveMission(coreClansmanId).arrivalTick, core.getWorldState().currentTick, "traveling setup");
         assertEq(core.getDefendingClans(coreTargetRegion).length, 0, "core not registered before arrival");
-        assertEq(IClanWorld(address(diamond)).getDefendingClans(diamondTargetRegion).length, 0, "diamond not registered before arrival");
+        assertEq(
+            IClanWorld(address(diamond)).getDefendingClans(diamondTargetRegion).length,
+            0,
+            "diamond not registered before arrival"
+        );
 
         uint64 arrivalTick = core.getActiveMission(coreClansmanId).arrivalTick;
         Vm.Log[] memory coreLogs;
@@ -1379,7 +1415,7 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _productionCut(address loupeFacet) internal returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](25);
+        cut = new IDiamondCut.FacetCut[](26);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -1396,111 +1432,116 @@ contract DiamondSkeletonTest is Test {
             functionSelectors: DiamondSelectors.heartbeatSelectors()
         });
         cut[3] = IDiamondCut.FacetCut({
+            facetAddress: address(new HeartbeatConfigFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.heartbeatConfigSelectors()
+        });
+        cut[4] = IDiamondCut.FacetCut({
             facetAddress: address(new FinalizeSeasonFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.seasonSelectors()
         });
-        cut[4] = IDiamondCut.FacetCut({
+        cut[5] = IDiamondCut.FacetCut({
             facetAddress: address(new RawWorldViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawWorldViewsSelectors()
         });
-        cut[5] = IDiamondCut.FacetCut({
+        cut[6] = IDiamondCut.FacetCut({
             facetAddress: address(new RawTreasuryViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawTreasuryViewsSelectors()
         });
-        cut[6] = IDiamondCut.FacetCut({
+        cut[7] = IDiamondCut.FacetCut({
             facetAddress: address(new RawClanViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawClanViewsSelectors()
         });
-        cut[7] = IDiamondCut.FacetCut({
+        cut[8] = IDiamondCut.FacetCut({
             facetAddress: address(new RawBanditViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawBanditViewsSelectors()
         });
-        cut[8] = IDiamondCut.FacetCut({
+        cut[9] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanLifecycleFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()
         });
-        cut[9] = IDiamondCut.FacetCut({
+        cut[10] = IDiamondCut.FacetCut({
             facetAddress: address(new SubmitOrdersFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.submitOrdersSelectors()
         });
-        cut[10] = IDiamondCut.FacetCut({
+        cut[11] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanOwnershipFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.ownershipSelectors()
         });
-        cut[11] = IDiamondCut.FacetCut({
+        cut[12] = IDiamondCut.FacetCut({
             facetAddress: address(new TreasuryFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.treasurySelectors()
         });
-        cut[12] = IDiamondCut.FacetCut({
+        cut[13] = IDiamondCut.FacetCut({
             facetAddress: address(new SettlementFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.settlementSelectors()
         });
-        cut[13] = IDiamondCut.FacetCut({
+        cut[14] = IDiamondCut.FacetCut({
             facetAddress: address(new GoldTransferFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.goldTransferSelectors()
         });
-        cut[14] = IDiamondCut.FacetCut({
+        cut[15] = IDiamondCut.FacetCut({
             facetAddress: address(new VaultResourceTransferFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.vaultResourceTransferSelectors()
         });
-        cut[15] = IDiamondCut.FacetCut({
+        cut[16] = IDiamondCut.FacetCut({
             facetAddress: address(new BlueprintTransferFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.blueprintTransferSelectors()
         });
-        cut[16] = IDiamondCut.FacetCut({
+        cut[17] = IDiamondCut.FacetCut({
             facetAddress: address(new BundleTransferFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.bundleTransferSelectors()
         });
-        cut[17] = IDiamondCut.FacetCut({
+        cut[18] = IDiamondCut.FacetCut({
             facetAddress: address(new DerivedViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.derivedViewsSelectors()
         });
-        cut[18] = IDiamondCut.FacetCut({
+        cut[19] = IDiamondCut.FacetCut({
             facetAddress: address(new MarketViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.marketViewsSelectors()
         });
-        cut[19] = IDiamondCut.FacetCut({
+        cut[20] = IDiamondCut.FacetCut({
             facetAddress: address(new BanditViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.banditViewsSelectors()
         });
-        cut[20] = IDiamondCut.FacetCut({
+        cut[21] = IDiamondCut.FacetCut({
             facetAddress: address(new RegionViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.regionViewsSelectors()
         });
-        cut[21] = IDiamondCut.FacetCut({
+        cut[22] = IDiamondCut.FacetCut({
             facetAddress: address(new SnapshotViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.snapshotViewsSelectors()
         });
-        cut[22] = IDiamondCut.FacetCut({
+        cut[23] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanFullViewFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.clanFullViewSelectors()
         });
-        cut[23] = IDiamondCut.FacetCut({
+        cut[24] = IDiamondCut.FacetCut({
             facetAddress: address(new QuoteViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.quoteViewsSelectors()
         });
-        cut[24] = IDiamondCut.FacetCut({
+        cut[25] = IDiamondCut.FacetCut({
             facetAddress: address(new ScoringViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.scoringViewsSelectors()
@@ -1508,12 +1549,13 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _expectedProductionSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](59);
+        selectors = new bytes4[](61);
         uint256 offset;
         selectors[offset++] = IDiamondCut.diamondCut.selector;
         offset = _copySelectors(selectors, offset, DiamondSelectors.loupeSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.ownershipFacetSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.heartbeatSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.heartbeatConfigSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.seasonSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.rawWorldViewsSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.rawTreasuryViewsSelectors());
@@ -1574,6 +1616,15 @@ contract DiamondSkeletonTest is Test {
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.heartbeatSelectors()
+        });
+    }
+
+    function _heartbeatConfigCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+        cut = new IDiamondCut.FacetCut[](1);
+        cut[0] = IDiamondCut.FacetCut({
+            facetAddress: facet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.heartbeatConfigSelectors()
         });
     }
 
