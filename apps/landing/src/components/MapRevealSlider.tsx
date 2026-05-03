@@ -174,6 +174,10 @@ export default function MapRevealSlider() {
         />
       </div>
 
+      {/* BEFORE / AFTER labels — overlaid on image layers, below handle */}
+      <span className="mrs-label mrs-label-before">BEFORE</span>
+      <span className="mrs-label mrs-label-after">AFTER</span>
+
       {/* Slider handle */}
       <div
         className="mrs-handle"
