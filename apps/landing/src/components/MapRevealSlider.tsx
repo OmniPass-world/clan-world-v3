@@ -6,11 +6,19 @@ import './MapRevealSlider.css'
  * Before/after image slider: left half shows the RealmMap concept sketch,
  * right half reveals the realized in-game map photo.
  * Pointer Events API covers mouse + touch + pen.
+ *
+ * Intro animation: when the slider first scrolls into view, the handle
+ * sweeps right (0→75), back left (75→30), then bounce-corrects to 33.
+ * Runs once per page load. User pointer input is ignored mid-animation
+ * so the choreography isn't broken by a mid-show tap. Respects
+ * prefers-reduced-motion.
  */
 export default function MapRevealSlider() {
-  const [position, setPosition] = useState(50) // percent
+  const [position, setPosition] = useState(0) // percent — starts at 0 for intro sweep
   const dragging = useRef(false)
   const containerRef = useRef<HTMLDivElement>(null)
+  const hasAnimatedRef = useRef(false)
+  const isAnimatingRef = useRef(false)
 
   const clamp = (v: number) => Math.max(0, Math.min(100, v))
 
@@ -23,6 +31,7 @@ export default function MapRevealSlider() {
   }, [])
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (isAnimatingRef.current) return // don't let user hijack the intro show
     dragging.current = true
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
     updateFromPointer(e.clientX)
@@ -39,6 +48,7 @@ export default function MapRevealSlider() {
 
   // Keyboard support: arrow keys move slider
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (isAnimatingRef.current) return
     if (e.key === 'ArrowLeft') setPosition(p => clamp(p - 2))
     else if (e.key === 'ArrowRight') setPosition(p => clamp(p + 2))
   }, [])
@@ -53,6 +63,81 @@ export default function MapRevealSlider() {
     return () => {
       el.removeEventListener('touchstart', prevent)
       el.removeEventListener('touchmove', prevent)
+    }
+  }, [])
+
+  // Intro animation: sweep right → sweep left → bounce-stop at 33%.
+  // Fires once on first intersection (threshold 0.3). Respects reduced-motion.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+
+    const reducedMotion =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (reducedMotion) {
+      hasAnimatedRef.current = true
+      setPosition(33)
+      return
+    }
+
+    const easeInOutCubic = (t: number) =>
+      t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    const easeOutQuad = (t: number) => 1 - (1 - t) * (1 - t)
+
+    const phases = [
+      { from: 0, to: 75, duration: 800, ease: easeInOutCubic },   // right sweep
+      { from: 75, to: 30, duration: 700, ease: easeInOutCubic },  // left sweep — overshoots 33 by 3pp
+      { from: 30, to: 33, duration: 220, ease: easeOutQuad },     // bounce correct up to 33
+    ]
+
+    let raf = 0
+    const runIntro = () => {
+      isAnimatingRef.current = true
+      let phaseIdx = 0
+      let phaseStart = performance.now()
+      const step = (now: number) => {
+        const phase = phases[phaseIdx]
+        if (!phase) {
+          isAnimatingRef.current = false
+          return
+        }
+        const elapsed = now - phaseStart
+        const t = Math.min(1, elapsed / phase.duration)
+        const eased = phase.ease(t)
+        const value = phase.from + (phase.to - phase.from) * eased
+        setPosition(value)
+        if (t >= 1) {
+          phaseIdx++
+          if (phaseIdx >= phases.length) {
+            isAnimatingRef.current = false
+            return
+          }
+          phaseStart = now
+        }
+        raf = requestAnimationFrame(step)
+      }
+      raf = requestAnimationFrame(step)
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry?.isIntersecting && !hasAnimatedRef.current) {
+          hasAnimatedRef.current = true
+          runIntro()
+        }
+      },
+      { threshold: 0.3 }
+    )
+    observer.observe(el)
+
+    return () => {
+      observer.disconnect()
+      if (raf) cancelAnimationFrame(raf)
+      isAnimatingRef.current = false
     }
   }, [])
 
