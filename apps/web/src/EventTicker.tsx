@@ -70,9 +70,15 @@ type ChainEvent = {
 };
 
 function safeNum(v: unknown, fallback = 0): number {
-  if (typeof v === 'number') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
   if (typeof v === 'bigint') return Number(v);
-  if (typeof v === 'string') return Number(v) || fallback;
+  if (typeof v === 'string') {
+    // `Number(v) || fallback` would treat the valid value 0 (e.g. resourceIn=0)
+    // as falsy and return the fallback. Use isFinite + isNaN guards instead so
+    // "0" round-trips correctly and only NaN/empty/non-numeric strings fall back.
+    const parsed = Number(v);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
   return fallback;
 }
 
