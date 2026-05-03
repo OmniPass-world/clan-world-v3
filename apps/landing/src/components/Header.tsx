@@ -1,9 +1,55 @@
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { GITHUB_URL } from '../constants'
 
 const REPO_LINK = GITHUB_URL
+const APP_URL = 'https://app.clan-world.com'
 
 export default function Header() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const firstLinkRef = useRef<HTMLAnchorElement>(null)
+  const menuId = useId()
+
+  // Close on ESC, focus first link on open, return focus to button on close.
+  useEffect(() => {
+    if (!menuOpen) return
+
+    // Focus the first link after the panel paints.
+    const focusTimer = window.setTimeout(() => {
+      firstLinkRef.current?.focus()
+    }, 0)
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setMenuOpen(false)
+        buttonRef.current?.focus()
+      }
+    }
+
+    function onClickOutside(e: MouseEvent) {
+      const target = e.target as Node
+      if (
+        menuRef.current?.contains(target) ||
+        buttonRef.current?.contains(target)
+      ) {
+        return
+      }
+      setMenuOpen(false)
+    }
+
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onClickOutside)
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onClickOutside)
+    }
+  }, [menuOpen])
+
+  const closeMenu = () => setMenuOpen(false)
+
   return (
     <header className="site-header">
       <div className="site-header-inner">
@@ -15,12 +61,13 @@ export default function Header() {
           </span>
         </Link>
         <nav className="site-nav">
-          <Link to="/lore" className="desktop-only">The Chronicle</Link>
+          {/* Wide-screen inline links (>=720px) */}
+          <Link to="/lore" className="site-nav-inline desktop-only">The Chronicle</Link>
           <a
             href={REPO_LINK}
             target="_blank"
             rel="noopener noreferrer"
-            className="github-button"
+            className="github-button site-nav-inline"
             aria-label="View on GitHub"
           >
             <svg className="github-button-mark" viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
@@ -28,11 +75,68 @@ export default function Header() {
             </svg>
             <span>GitHub</span>
           </a>
-          <a href="https://app.clan-world.com" className="cta-secondary">
+          <a href={APP_URL} className="cta-secondary site-nav-inline">
             Enter Realm
           </a>
+
+          {/* Narrow-screen hamburger (<720px) */}
+          <button
+            type="button"
+            ref={buttonRef}
+            className="site-nav-toggle"
+            aria-expanded={menuOpen}
+            aria-controls={menuId}
+            aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+              <path
+                d="M3 6h18M3 12h18M3 18h18"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </nav>
       </div>
+
+      {menuOpen && (
+        <div
+          id={menuId}
+          ref={menuRef}
+          className="site-nav-menu"
+          role="menu"
+        >
+          <Link
+            to="/lore"
+            ref={firstLinkRef}
+            role="menuitem"
+            className="site-nav-menu-item"
+            onClick={closeMenu}
+          >
+            The Chronicle
+          </Link>
+          <a
+            href={REPO_LINK}
+            target="_blank"
+            rel="noopener noreferrer"
+            role="menuitem"
+            className="site-nav-menu-item"
+            onClick={closeMenu}
+          >
+            GitHub
+          </a>
+          <a
+            href={APP_URL}
+            role="menuitem"
+            className="site-nav-menu-item site-nav-menu-cta"
+            onClick={closeMenu}
+          >
+            Enter Realm
+          </a>
+        </div>
+      )}
     </header>
   )
 }
