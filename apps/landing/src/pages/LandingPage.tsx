@@ -187,9 +187,9 @@ export default function LandingPage() {
             <div className="codex-eyebrow pixel">◆ A CATALOGUE ◆</div>
             <h2 className="codex-title">The <i>Codex of Powers</i></h2>
             <p className="codex-intro">
-              Eight systems shape Clan World. Some drive core gameplay. Others are sponsor
-              technologies we integrated into the prototype. Each one below shows what it does
-              in the game and why it matters technically.
+              Eight systems shape Clan World. Some drive the custom fully on-chain game engine.
+              Others enable the Agent Swarm. Each one plays a critical role in making this
+              pixelated world come alive.
             </p>
           </div>
 
