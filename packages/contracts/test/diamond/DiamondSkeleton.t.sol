@@ -83,6 +83,10 @@ interface IPing {
 interface IHeartbeatAdmin {
     function heartbeatIntervalSeconds() external view returns (uint64);
     function setHeartbeatIntervalSeconds(uint64 intervalSeconds) external;
+    function clansmanCooldownSeconds() external view returns (uint64);
+    function setClansmanCooldownSeconds(uint64 cooldownSeconds) external;
+    function banditSpawnTriggered() external view returns (bool);
+    function triggerBanditSpawn() external;
 }
 
 interface IOwnershipFacet {
@@ -724,12 +728,46 @@ contract DiamondSkeletonTest is Test {
 
         heartbeatAdmin.setHeartbeatIntervalSeconds(1);
         assertEq(heartbeatAdmin.heartbeatIntervalSeconds(), 1);
+        assertEq(heartbeatAdmin.clansmanCooldownSeconds(), ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS);
+
+        heartbeatAdmin.setClansmanCooldownSeconds(1);
+        assertEq(heartbeatAdmin.clansmanCooldownSeconds(), 1);
 
         IClanWorld(address(diamond)).heartbeat();
         vm.warp(block.timestamp + 1);
         IClanWorld(address(diamond)).heartbeat();
 
         assertEq(IClanWorld(address(diamond)).getWorldState().currentTick, 2);
+    }
+
+    function testDiamondConfigCanTriggerBanditSpawnOnNextHeartbeat() public {
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        HeartbeatConfigFacet heartbeatConfigFacet = new HeartbeatConfigFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatConfigCut(address(heartbeatConfigFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+
+        address elder = address(0xCAFE);
+        IClanWorld(address(diamond)).mintClan(elder);
+
+        IHeartbeatAdmin heartbeatAdmin = IHeartbeatAdmin(address(diamond));
+        assertFalse(heartbeatAdmin.banditSpawnTriggered());
+
+        heartbeatAdmin.triggerBanditSpawn();
+        assertTrue(heartbeatAdmin.banditSpawnTriggered());
+        assertEq(IClanWorld(address(diamond)).getWorldState().currentBanditSpawnChanceBps, 10000);
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        IClanWorld(address(diamond)).heartbeat();
+
+        WorldState memory worldState = IClanWorld(address(diamond)).getWorldState();
+        assertFalse(heartbeatAdmin.banditSpawnTriggered());
+        assertEq(worldState.activeBanditId, 1);
     }
 
     function testDiamondHeartbeatAdvancesSpawnedBanditToCampedLikeCore() public {
@@ -1549,7 +1587,7 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _expectedProductionSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](61);
+        selectors = new bytes4[](65);
         uint256 offset;
         selectors[offset++] = IDiamondCut.diamondCut.selector;
         offset = _copySelectors(selectors, offset, DiamondSelectors.loupeSelectors());

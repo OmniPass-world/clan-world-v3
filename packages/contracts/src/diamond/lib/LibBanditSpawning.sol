@@ -27,8 +27,13 @@ library LibBanditSpawning {
     event BanditSpawned(uint32 indexed banditId, uint8 region, uint8 tier, uint16 attackPower);
 
     function evaluateBanditSpawns(LibStorage.AppStorage storage s, bytes32 tickSeed) public {
+        bool forcedSpawn = s.forceBanditSpawnNextHeartbeat;
         uint256[] memory regionWeights = banditSpawnRegionWeights(s);
         if (s.activeBanditCount >= MAX_TOTAL_BANDITS) {
+            if (forcedSpawn) {
+                s.forceBanditSpawnNextHeartbeat = false;
+                s.world.currentBanditSpawnChanceBps = 0;
+            }
             refreshBanditSpawnWorldPreview(s, regionWeights);
             return;
         }
@@ -40,9 +45,10 @@ library LibBanditSpawning {
             if (weight == 0 || s.banditsByRegion[region].length >= MAX_BANDITS_PER_REGION) continue;
 
             LibStorage.BanditSpawnState storage spawnState = s.banditSpawnByRegion[region];
-            if (s.world.currentTick < spawnState.lastSpawnTick + MIN_SPAWN_COOLDOWN_TICKS) continue;
+            if (!forcedSpawn && s.world.currentTick < spawnState.lastSpawnTick + MIN_SPAWN_COOLDOWN_TICKS) continue;
 
-            spawnState.probabilityAccum = incrementBanditSpawnProbability(spawnState.probabilityAccum);
+            spawnState.probabilityAccum =
+                forcedSpawn ? uint16(10000) : incrementBanditSpawnProbability(spawnState.probabilityAccum);
             if (banditSpawnRollPasses(tickSeed, region, spawnState.probabilityAccum)) {
                 candidateWeights[region - 1] = weight;
             }
@@ -54,6 +60,9 @@ library LibBanditSpawning {
             spawnBandit(s, selectedRegion, tier, getBanditAttackPower(tier));
         }
 
+        if (forcedSpawn) {
+            s.forceBanditSpawnNextHeartbeat = false;
+        }
         refreshBanditSpawnWorldPreview(s, regionWeights);
     }
 
@@ -155,7 +164,7 @@ library LibBanditSpawning {
         }
 
         s.world.nextBanditSpawnEligibleTick = nextEligibleTick == type(uint64).max ? 0 : nextEligibleTick;
-        s.world.currentBanditSpawnChanceBps = maxChance;
+        s.world.currentBanditSpawnChanceBps = s.forceBanditSpawnNextHeartbeat ? 10000 : maxChance;
     }
 
     function incrementBanditSpawnProbability(uint16 probabilityAccum) public pure returns (uint16) {

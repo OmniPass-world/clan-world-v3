@@ -22,9 +22,13 @@ library DiamondSelectors {
     }
 
     function heartbeatConfigSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](2);
+        selectors = new bytes4[](6);
         selectors[0] = HeartbeatConfigFacet.heartbeatIntervalSeconds.selector;
         selectors[1] = HeartbeatConfigFacet.setHeartbeatIntervalSeconds.selector;
+        selectors[2] = HeartbeatConfigFacet.clansmanCooldownSeconds.selector;
+        selectors[3] = HeartbeatConfigFacet.setClansmanCooldownSeconds.selector;
+        selectors[4] = HeartbeatConfigFacet.banditSpawnTriggered.selector;
+        selectors[5] = HeartbeatConfigFacet.triggerBanditSpawn.selector;
     }
 
     function seasonSelectors() internal pure returns (bytes4[] memory selectors) {

@@ -29,3 +29,35 @@ cast call "$CLAN_WORLD_CONTRACT_ADDRESS" \
 ```
 
 The unset/default cadence remains `60` seconds. The `1` second setting is for manual test cycles and the hackathon demo only.
+
+## Demo Mission Cooldown
+
+For rapid manual testing, set the clansman submit cooldown to `1` second after deploying or upgrading `HeartbeatConfigFacet`:
+
+```bash
+cast send "$CLAN_WORLD_CONTRACT_ADDRESS" \
+  "setClansmanCooldownSeconds(uint64)" 1 \
+  --rpc-url "$RPC_URL_PRIMARY" \
+  --private-key "$DEPLOYER_PRIVATE_KEY"
+
+cast call "$CLAN_WORLD_CONTRACT_ADDRESS" \
+  "clansmanCooldownSeconds()(uint64)" \
+  --rpc-url "$RPC_URL_PRIMARY"
+```
+
+The unset/default cooldown remains `60` seconds.
+
+## Force Next Bandit Spawn
+
+For demo setup, the owner can arm a one-shot forced bandit spawn. This sets the spawn preview to `10000` bps and bypasses the normal bandit spawn cooldown for the next heartbeat only:
+
+```bash
+cast send "$CLAN_WORLD_CONTRACT_ADDRESS" \
+  "triggerBanditSpawn()" \
+  --rpc-url "$RPC_URL_PRIMARY" \
+  --private-key "$DEPLOYER_PRIVATE_KEY"
+
+cast call "$CLAN_WORLD_CONTRACT_ADDRESS" \
+  "banditSpawnTriggered()(bool)" \
+  --rpc-url "$RPC_URL_PRIMARY"
+```

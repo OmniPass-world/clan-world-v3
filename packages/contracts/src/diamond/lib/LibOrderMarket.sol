@@ -476,7 +476,7 @@ library LibOrderMarket {
         Clansman storage cs = s.clansmen[clansmanId];
         if (cs.clansmanId != 0 && cs.state != ClansmanState.DEAD) {
             cs.state = ClansmanState.WAITING;
-            cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+            cs.cooldownEndsAtTs = uint64(block.timestamp) + _clansmanCooldownSeconds(s);
         }
         emit MarketActionFailed(clanId, clansmanId, action, mode, reason, s.world.currentTick);
         return reason;
@@ -494,7 +494,7 @@ library LibOrderMarket {
         Clansman storage cs = s.clansmen[clansmanId];
         if (cs.clansmanId != 0 && cs.state != ClansmanState.DEAD) {
             cs.state = ClansmanState.WAITING;
-            cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+            cs.cooldownEndsAtTs = uint64(block.timestamp) + _clansmanCooldownSeconds(s);
         }
         emit MarketActionFailed(clanId, clansmanId, action, mode, reason, tick);
         return reason;
@@ -561,5 +561,13 @@ library LibOrderMarket {
             cs.carryFish += amount;
             return;
         }
+    }
+
+    function _clansmanCooldownSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {
+        uint64 configuredCooldownSeconds = s.clansmanCooldownSeconds;
+        if (configuredCooldownSeconds == 0) {
+            return ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+        }
+        return configuredCooldownSeconds;
     }
 }

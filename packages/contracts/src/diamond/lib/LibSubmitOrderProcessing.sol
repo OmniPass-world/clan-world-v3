@@ -124,7 +124,7 @@ library LibSubmitOrderProcessing {
             StatusCode marketStatus = LibOrderMarket.executeImmediateMarket(s, clanId, order, cs.clansmanId);
             if (marketStatus == StatusCode.OK) {
                 cs.state = ClansmanState.WAITING;
-                cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+                cs.cooldownEndsAtTs = uint64(block.timestamp) + _clansmanCooldownSeconds(s);
             }
             LibOrderDefenders.clearDefender(s, cs.clansmanId);
 
@@ -164,7 +164,7 @@ library LibSubmitOrderProcessing {
             cs.state = ClansmanState.ACTING;
             cs.currentRegion = ctx.gotoRegion;
         }
-        cs.cooldownEndsAtTs = uint64(block.timestamp) + ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+        cs.cooldownEndsAtTs = uint64(block.timestamp) + _clansmanCooldownSeconds(s);
 
         LibOrderDefenders.clearDefender(s, cs.clansmanId);
         if (order.action == ActionType.DefendBase && ctx.travelTicks == 0) {
@@ -228,5 +228,13 @@ library LibSubmitOrderProcessing {
         } else {
             delete s.marketMissionCommitSequence[cs.clansmanId];
         }
+    }
+
+    function _clansmanCooldownSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {
+        uint64 configuredCooldownSeconds = s.clansmanCooldownSeconds;
+        if (configuredCooldownSeconds == 0) {
+            return ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+        }
+        return configuredCooldownSeconds;
     }
 }

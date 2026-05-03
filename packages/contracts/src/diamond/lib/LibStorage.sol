@@ -107,6 +107,8 @@ library LibStorage {
         uint32[] allClanIds;
         mapping(uint32 => uint32[]) clanClansmanIds;
         uint64 heartbeatIntervalSeconds;
+        uint64 clansmanCooldownSeconds;
+        bool forceBanditSpawnNextHeartbeat;
     }
 
     error ReentrantCall();

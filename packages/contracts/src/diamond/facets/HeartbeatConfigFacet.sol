@@ -7,8 +7,11 @@ import {LibStorage} from "../lib/LibStorage.sol";
 
 contract HeartbeatConfigFacet {
     uint64 private constant MAX_HEARTBEAT_INTERVAL_SECONDS = 1 hours;
+    uint64 private constant MAX_CLANSMAN_COOLDOWN_SECONDS = 1 hours;
 
     event HeartbeatIntervalUpdated(uint64 oldIntervalSeconds, uint64 newIntervalSeconds, uint64 nextHeartbeatAtTs);
+    event ClansmanCooldownUpdated(uint64 oldCooldownSeconds, uint64 newCooldownSeconds);
+    event BanditSpawnTriggered(uint64 currentTick);
 
     function heartbeatIntervalSeconds() external view returns (uint64) {
         return _heartbeatIntervalSeconds(LibStorage.appStorage());
@@ -33,11 +36,51 @@ contract HeartbeatConfigFacet {
         emit HeartbeatIntervalUpdated(oldIntervalSeconds, intervalSeconds, s.world.nextHeartbeatAtTs);
     }
 
+    function clansmanCooldownSeconds() external view returns (uint64) {
+        return _clansmanCooldownSeconds(LibStorage.appStorage());
+    }
+
+    function setClansmanCooldownSeconds(uint64 cooldownSeconds) external {
+        LibDiamond.enforceIsContractOwner();
+        require(
+            cooldownSeconds > 0 && cooldownSeconds <= MAX_CLANSMAN_COOLDOWN_SECONDS,
+            "ClanWorld: invalid clansman cooldown"
+        );
+
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        uint64 oldCooldownSeconds = _clansmanCooldownSeconds(s);
+        s.clansmanCooldownSeconds = cooldownSeconds;
+
+        emit ClansmanCooldownUpdated(oldCooldownSeconds, cooldownSeconds);
+    }
+
+    function banditSpawnTriggered() external view returns (bool) {
+        return LibStorage.appStorage().forceBanditSpawnNextHeartbeat;
+    }
+
+    function triggerBanditSpawn() external {
+        LibDiamond.enforceIsContractOwner();
+
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        s.forceBanditSpawnNextHeartbeat = true;
+        s.world.currentBanditSpawnChanceBps = 10000;
+
+        emit BanditSpawnTriggered(s.world.currentTick);
+    }
+
     function _heartbeatIntervalSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {
         uint64 configuredIntervalSeconds = s.heartbeatIntervalSeconds;
         if (configuredIntervalSeconds == 0) {
             return ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
         }
         return configuredIntervalSeconds;
+    }
+
+    function _clansmanCooldownSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {
+        uint64 configuredCooldownSeconds = s.clansmanCooldownSeconds;
+        if (configuredCooldownSeconds == 0) {
+            return ClanWorldConstants.CLANSMAN_COOLDOWN_SECONDS;
+        }
+        return configuredCooldownSeconds;
     }
 }
