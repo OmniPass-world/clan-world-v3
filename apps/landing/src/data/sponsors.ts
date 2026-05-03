@@ -47,7 +47,7 @@ export const POWERS: SponsorPower[] = [
   {
     name: '0G Storage',
     loreName: 'The Vault of Memories',
-    logoUrl: 'https://0g.ai/favicon.ico',
+    logoUrl: '/logos/0g.jpg',
     logoAlt: '0G logo',
     marginNote: '← agent memory layer',
     loreDesc:
@@ -59,7 +59,7 @@ export const POWERS: SponsorPower[] = [
   {
     name: '0G Compute',
     loreName: 'The Sealed Chamber',
-    logoUrl: 'https://0g.ai/favicon.ico',
+    logoUrl: '/logos/0g.jpg',
     logoAlt: '0G logo',
     marginNote: '← attested inference',
     loreDesc:
@@ -95,7 +95,7 @@ export const POWERS: SponsorPower[] = [
   {
     name: 'Base',
     loreName: 'The Adamantine Foundation',
-    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/8/8e/Coinbase-Logo-Symbol-Logo.wine.svg',
+    logoUrl: '/logos/base.jpg',
     logoAlt: 'Base / Coinbase logo',
     marginNote: '← settlement layer',
     loreDesc:
