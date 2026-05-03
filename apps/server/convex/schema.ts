@@ -26,6 +26,13 @@ export default defineSchema({
         id: v.string(),
         name: v.string(),
         treasury: v.string(),
+        baseRegion: v.optional(v.number()),
+        baseLevel: v.optional(v.number()),
+        wallLevel: v.optional(v.number()),
+        monumentLevel: v.optional(v.number()),
+        livingClansmen: v.optional(v.number()),
+        owner: v.optional(v.string()),
+        clansmen: v.optional(v.array(v.any())),
       })
     ),
     seasonFinalized: v.optional(v.boolean()),
@@ -147,7 +154,7 @@ export default defineSchema({
     projectedTargetLootValue: v.string(),
     refreshedAt: v.number(),
     lastUpdatedBlock: v.optional(v.number()),
-  }).index("by_id", ["id"]),
+  }).index("by_bandit_id", ["id"]),
   pricePoint: defineTable({
     tick: v.number(),
     resourceType: v.string(),

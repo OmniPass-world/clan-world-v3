@@ -33,10 +33,12 @@ RPC_URL_PRIMARY=$WORLDCHAIN_SEPOLIA_RPC \
 
 # Submission 2 — Base Sepolia
 RPC_URL_PRIMARY=$BASE_SEPOLIA_RPC \
-  forge script script/Deploy.s.sol --rpc-url $RPC_URL_PRIMARY --broadcast --verify
+  forge script script/Deploy.s.sol --rpc-url $RPC_URL_PRIMARY --broadcast --slow --verify
 ```
 
 After deploy, write the engine address to `.env.local` as `CLAN_WORLD_CONTRACT_ADDRESS=0x…` so the orchestrator and indexer pick it up.
+For the current Base Sepolia demo run, also set the diamond heartbeat cadence to `1` second with
+`setHeartbeatIntervalSeconds(1)`. See `docs/runbooks/base-sepolia-deployment.md`.
 
 ## ABI extraction
 

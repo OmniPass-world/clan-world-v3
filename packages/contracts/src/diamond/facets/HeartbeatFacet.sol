@@ -23,7 +23,7 @@ contract HeartbeatFacet is IClanWorldEvents {
             return;
         }
         if (_isSeasonRolloverPending(s)) {
-            s.world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+            s.world.nextHeartbeatAtTs = uint64(block.timestamp) + _heartbeatIntervalSeconds(s);
             _rollSeason(s);
             LibStorage.exitNonReentrant(s);
             return;
@@ -31,7 +31,7 @@ contract HeartbeatFacet is IClanWorldEvents {
 
         uint64 closedTick = s.world.currentTick;
         bytes32 closedTickSeed = s.world.currentTickSeed;
-        s.world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+        s.world.nextHeartbeatAtTs = uint64(block.timestamp) + _heartbeatIntervalSeconds(s);
 
         for (uint256 i = 0; i < s.allClanIds.length; i++) {
             uint32 clanId = s.allClanIds[i];
@@ -65,6 +65,14 @@ contract HeartbeatFacet is IClanWorldEvents {
 
     function _isSeasonRolloverPending(LibStorage.AppStorage storage s) private view returns (bool) {
         return s.world.currentTick >= s.world.seasonEndTick && s.world.seasonFinalized;
+    }
+
+    function _heartbeatIntervalSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {
+        uint64 configuredIntervalSeconds = s.heartbeatIntervalSeconds;
+        if (configuredIntervalSeconds == 0) {
+            return ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+        }
+        return configuredIntervalSeconds;
     }
 
     function _rollSeason(LibStorage.AppStorage storage s) private {

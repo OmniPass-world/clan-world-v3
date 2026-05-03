@@ -21,10 +21,10 @@ const WORLD_HEIGHT = MAP_HEIGHT;
 interface RegionDef {
   id: string;
   name: string;
-  // Normalized coords (0-1) within an 800x600 reference frame, scaled at draw time
-  // so the canvas fits any viewport (portrait phone → desktop landscape).
+  // Native world-map coordinates. Keep these aligned to assets/world-map.png.
   nx: number;
   ny: number;
+  polygon: Array<[number, number]>;
   color: number;
 }
 
@@ -42,22 +42,130 @@ interface ClanDef {
   basePng: string;
   /** Clansman worker sprite shown for traveling units (replaces colored dot). */
   clansmanPng: string;
+  level?: number;
 }
 
-// Reference design size — coords below were authored against this frame.
-const REF_W = 800;
-const REF_H = 600;
+type SnapshotClan = {
+  id: string;
+  name: string;
+  treasury: string;
+  baseRegion?: number;
+  baseLevel?: number;
+  wallLevel?: number;
+  monumentLevel?: number;
+  livingClansmen?: number;
+  owner?: string;
+  clansmen?: unknown[];
+};
+
+type LiveClansmanMarker = {
+  key: string;
+  clanId: string;
+  clansmanId: string;
+  regionKey: string;
+  targetRegionKey?: string;
+  missionActive: boolean;
+  action: number;
+  startTick: number;
+  arrivalTick: number;
+  actionStartTick: number;
+  settlesAtTick: number;
+  carryWood: number;
+  carryIron: number;
+  carryWheat: number;
+  carryFish: number;
+  offsetIndex: number;
+  color: number;
+  node: Container;
+  carry: CarryIndicator;
+  statusBg: Graphics;
+  statusText: Text;
+};
+
+// Reference design size — coords below are authored against the actual map art.
+const REF_W = MAP_WIDTH;
+const REF_H = MAP_HEIGHT;
+
+// Temporary tuning overlay: keep this visible while we align regions by eye.
+const SHOW_REGION_OVERLAY = true;
 
 const REGIONS: RegionDef[] = [
-  { id: 'forest',       name: 'Forest',      nx: 150 / REF_W, ny: 100 / REF_H, color: 0x228822 },
-  { id: 'mountains',    name: 'Mountains',   nx: 500 / REF_W, ny: 100 / REF_H, color: 0x888888 },
-  { id: 'unicorn-town', name: 'Unicorn Town',nx: 330 / REF_W, ny: 280 / REF_H, color: 0xcc88cc },
-  { id: 'west-farms',   name: 'West Farms',  nx: 130 / REF_W, ny: 350 / REF_H, color: 0xaacc44 },
-  { id: 'east-farms',   name: 'East Farms',  nx: 550 / REF_W, ny: 350 / REF_H, color: 0x88bb33 },
-  { id: 'west-docks',   name: 'West Docks',  nx: 100 / REF_W, ny: 500 / REF_H, color: 0x336688 },
-  { id: 'east-docks',   name: 'East Docks',  nx: 560 / REF_W, ny: 500 / REF_H, color: 0x336688 },
-  { id: 'deep-sea',     name: 'Deep Sea',    nx: 330 / REF_W, ny: 520 / REF_H, color: 0x1144aa },
+  {
+    id: 'forest',
+    name: 'Forest',
+    nx: 210 / REF_W,
+    ny: 245 / REF_H,
+    color: 0x228822,
+    polygon: [[0, 0], [400, 0], [475, 165], [420, 355], [285, 500], [0, 555]],
+  },
+  {
+    id: 'mountains',
+    name: 'Mountains',
+    nx: 640 / REF_W,
+    ny: 245 / REF_H,
+    color: 0x888888,
+    polygon: [[545, 0], [814, 0], [814, 510], [660, 535], [525, 420], [505, 255], [485, 135]],
+  },
+  {
+    id: 'unicorn-town',
+    name: 'Unicorn Town',
+    nx: 425 / REF_W,
+    ny: 500 / REF_H,
+    color: 0xcc88cc,
+    polygon: [[400, 375], [510, 375], [610, 500], [535, 585], [410, 585], [355, 520]],
+  },
+  {
+    id: 'west-farms',
+    name: 'West Farms',
+    nx: 210 / REF_W,
+    ny: 760 / REF_H,
+    color: 0xaacc44,
+    polygon: [[0, 555], [330, 520], [425, 760], [300, 960], [0, 985]],
+  },
+  {
+    id: 'east-farms',
+    name: 'East Farms',
+    nx: 625 / REF_W,
+    ny: 760 / REF_H,
+    color: 0x88bb33,
+    polygon: [[535, 625], [814, 570], [814, 985], [535, 970], [425, 785]],
+  },
+  {
+    id: 'west-docks',
+    name: 'West Docks',
+    nx: 220 / REF_W,
+    ny: 1115 / REF_H,
+    color: 0x336688,
+    polygon: [[105, 985], [365, 985], [390, 1130], [260, 1270], [95, 1235], [55, 1085]],
+  },
+  {
+    id: 'east-docks',
+    name: 'East Docks',
+    nx: 655 / REF_W,
+    ny: 1115 / REF_H,
+    color: 0x336688,
+    polygon: [[560, 985], [814, 985], [814, 1235], [650, 1260], [540, 1135]],
+  },
+  {
+    id: 'deep-sea',
+    name: 'Deep Sea',
+    nx: 500 / REF_W,
+    ny: 1095 / REF_H,
+    color: 0x1144aa,
+    polygon: [[405, 1015], [535, 1015], [580, 1145], [500, 1230], [390, 1165]],
+  },
 ];
+
+const REGION_VISUAL_AREAS: Record<string, { rx: number; ry: number }> = {
+  forest: { rx: 120, ry: 70 },
+  mountains: { rx: 135, ry: 76 },
+  'unicorn-town': { rx: 92, ry: 62 },
+  'west-farms': { rx: 140, ry: 86 },
+  'east-farms': { rx: 150, ry: 90 },
+  'west-docks': { rx: 118, ry: 76 },
+  'east-docks': { rx: 118, ry: 76 },
+  'deep-sea': { rx: 180, ry: 90 },
+};
 
 // Clan ↔ archetype mapping (style/bandit-archetype-sprites): each clan gets a portrait
 // avatar in the scoreboard so the AI personalities are visually distinguishable.
@@ -71,6 +179,161 @@ const MOCK_CLANS: ClanDef[] = [
   { id: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/dawn-watch.png',   clansmanPng: '/clansmen/clan-dawn.png'  },
   { id: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/storm-riders.png', clansmanPng: '/clansmen/clan-storm.png' },
 ];
+
+const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
+  1: 'forest',
+  2: 'mountains',
+  4: 'west-farms',
+  5: 'east-farms',
+  6: 'west-docks',
+  7: 'east-docks',
+};
+
+const REGION_KEY_BY_CHAIN_ID: Record<number, string> = {
+  1: 'forest',
+  2: 'mountains',
+  3: 'unicorn-town',
+  4: 'west-farms',
+  5: 'east-farms',
+  6: 'west-docks',
+  7: 'east-docks',
+  8: 'deep-sea',
+};
+
+function recordAt(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : null;
+}
+
+function fieldAt(value: unknown, key: string): unknown {
+  return recordAt(value)?.[key];
+}
+
+function numberLike(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'string' && value.length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function resourceUnits(value: unknown): number {
+  if (typeof value === 'bigint') return Number(value / BigInt(WEI_PER_RESOURCE));
+  if (typeof value === 'string' && value.length > 0) {
+    try {
+      return Number(BigInt(value) / BigInt(WEI_PER_RESOURCE));
+    } catch {
+      return numberLike(value);
+    }
+  }
+  return numberLike(value);
+}
+
+function actionVerb(action: number): string {
+  if (action === 1) return 'chopping wood';
+  if (action === 2) return 'mining iron';
+  if (action === 3 || action === 4) return 'fishing';
+  if (action === 5) return 'harvesting wheat';
+  if (action === 6) return 'depositing';
+  if (action === 7) return 'building wall';
+  if (action === 8) return 'upgrading base';
+  if (action === 9) return 'upgrading monument';
+  if (action === 10) return 'defending base';
+  if (action === 11) return 'buying market';
+  if (action === 12) return 'selling market';
+  if (action === 13) return 'waiting';
+  if (action === 14) return 'withdrawing';
+  return 'working';
+}
+
+function regionDisplayName(regionKey: string | undefined): string {
+  return REGIONS.find((region) => region.id === regionKey)?.name ?? 'region';
+}
+
+function hashUnit(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+function pointInPolygon(x: number, y: number, polygon: Array<[number, number]>) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const pi = polygon[i];
+    const pj = polygon[j];
+    if (!pi || !pj) continue;
+    const intersects =
+      (pi[1] > y) !== (pj[1] > y)
+      && x < ((pj[0] - pi[0]) * (y - pi[1])) / (pj[1] - pi[1]) + pi[0];
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function polygonWanderPoint(region: RegionDef, marker: LiveClansmanMarker, phase: number) {
+  if (region.polygon.length < 3) return null;
+  const xs = region.polygon.map(([x]) => x);
+  const ys = region.polygon.map(([, y]) => y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  for (let i = 0; i < 16; i++) {
+    const x = minX + hashUnit(`${marker.clanId}:${marker.clansmanId}:${region.id}:${phase}:x:${i}`) * (maxX - minX);
+    const y = minY + hashUnit(`${marker.clanId}:${marker.clansmanId}:${region.id}:${phase}:y:${i}`) * (maxY - minY);
+    if (pointInPolygon(x, y, region.polygon)) return { x, y };
+  }
+  return { x: region.nx * REF_W, y: region.ny * REF_H };
+}
+
+const LIVE_CLAN_META = [
+  MOCK_CLANS[0]!,
+  MOCK_CLANS[1]!,
+  MOCK_CLANS[2]!,
+  MOCK_CLANS[3]!,
+  {
+    ...MOCK_CLANS[0]!,
+    id: 'clan-deployer',
+    name: 'Deployer Keep',
+    archetype: 'Manual',
+    color: 0x9bd36a,
+  },
+] as const satisfies readonly ClanDef[];
+
+function liveClansToVisualClans(live: readonly SnapshotClan[] | undefined): ClanDef[] {
+  if (!live || live.length === 0) return [];
+  return live
+    .map((clan, index) => {
+      const numericId = Number(clan.id);
+      const meta = LIVE_CLAN_META[index % LIVE_CLAN_META.length] ?? MOCK_CLANS[index % MOCK_CLANS.length]!;
+      const genericName = new RegExp(`^Clan\\s+${clan.id}$`, 'i').test(clan.name);
+      const homeRegion = LIVE_CLAN_REGION_BY_ID[clan.baseRegion ?? 0] ?? meta.homeRegion;
+      return {
+        ...meta,
+        id: clan.id,
+        name: genericName ? meta.name : clan.name,
+        homeRegion,
+        level: clan.baseLevel ?? clan.monumentLevel ?? 1,
+        archetype: Number.isFinite(numericId) && numericId === 5 ? 'Manual' : meta.archetype,
+      };
+    });
+}
+
+function levelBasePng(basePng: string, level: number | undefined): string {
+  const clamped = Math.max(1, Math.min(5, Math.floor(level ?? 1)));
+  return basePng.replace(/(?:-lv[1-5])?\.png$/, `-lv${clamped}.png`);
+}
+
+function baseVisualScale(level: number | undefined): number {
+  const clamped = Math.max(1, Math.min(5, Math.floor(level ?? 1)));
+  if (clamped <= 2) return 0.675;
+  if (clamped <= 4) return 0.81;
+  return 0.9;
+}
 
 // Worker sprite textures, loaded once at init. Keyed by clan id.
 // Falls back to colored Graphics dot if texture missing.
@@ -123,7 +386,9 @@ type WorldLayers = {
 
 type CarryIndicator = {
   container: Container;
+  bg: Graphics;
   fill: Graphics;
+  label: Text;
   displayedFill: number;
   targetFill: number;
 };
@@ -212,13 +477,13 @@ function readDemoCombatOutcome(): CombatOutcome {
   return param === 'success' ? 'success' : 'failure';
 }
 
-// TODO(contract-bindings): replace these demo defaults when carry caps are exposed.
-const WOOD_CAP = 10;
-const IRON_CAP = 5;
+const WEI_PER_RESOURCE = 1_000_000_000_000_000_000;
+const WOOD_CAP = 15;
+const IRON_CAP = 10;
 const WHEAT_CAP = 10;
 const FISH_CAP = 10;
-const CARRY_BAR_W = 16;
-const CARRY_BAR_H = 3;
+const CARRY_BAR_W = 46;
+const CARRY_BAR_H = 5;
 
 const TICKS_PER_DAY_CYCLE = 30;
 const FALLBACK_DAY_TICK_MS = 60_000;
@@ -378,9 +643,22 @@ function makeCarryIndicator(): CarryIndicator {
   bg.fill({ color: 0x1a1612, alpha: 0.95 });
   bg.stroke({ color: 0x000000, width: 1, alpha: 0.85 });
   const fill = new Graphics();
+  const label = new Text({
+    text: '',
+    style: {
+      fill: 0xfff2c6,
+      fontSize: 9,
+      fontFamily: '"Inter", Arial, sans-serif',
+      fontWeight: '800',
+      stroke: { color: 0x11100c, width: 2 },
+    },
+  });
+  label.anchor.set(0.5, 0.5);
+  label.y = -9;
   container.addChild(bg);
   container.addChild(fill);
-  return { container, fill, displayedFill: 0, targetFill: 0 };
+  container.addChild(label);
+  return { container, bg, fill, label, displayedFill: 0, targetFill: 0 };
 }
 
 function setCarryTargetFromCarry(
@@ -397,7 +675,7 @@ function setCarryTargetFromCarry(
 
 function redrawCarryIndicator(indicator: CarryIndicator) {
   const next = Math.max(0, Math.min(1, indicator.displayedFill));
-  indicator.container.alpha = next <= 0.01 ? 0 : 1;
+  indicator.container.alpha = indicator.label.text || next > 0.01 ? 1 : 0;
   indicator.fill.clear();
   if (next <= 0.01) return;
   indicator.fill.rect(-CARRY_BAR_W / 2, -CARRY_BAR_H / 2, CARRY_BAR_W * next, CARRY_BAR_H);
@@ -507,6 +785,7 @@ export function WorldMap() {
     }[];
     /** Floating "Lv N" badge beside each base. */
     levelBadges: { bg: Graphics; label: Text; clan: ClanDef }[];
+    liveClansmen: LiveClansmanMarker[];
     flags: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef }[];
     walls: { gfx: Graphics; clan: ClanDef }[];
     monuments: { gfx: Graphics; clan: ClanDef }[];
@@ -522,6 +801,7 @@ export function WorldMap() {
     clanZones: [],
     bases: [],
     levelBadges: [],
+    liveClansmen: [],
     flags: [],
     walls: [],
     monuments: [],
@@ -530,6 +810,8 @@ export function WorldMap() {
     banditCountdown: null,
     bgSprite: null,
   });
+  const liveClanVisualKeyRef = useRef<string>('');
+  const liveClansmanVisualKeyRef = useRef<string>('');
 
   const layersRef = useRef<WorldLayers | null>(null);
   const dayNightFilterRef = useRef<ColorMatrixFilter | null>(null);
@@ -945,7 +1227,6 @@ export function WorldMap() {
         // the map feels alive even when no logs are attributable. Visual heartbeat.
         const zonePulseCb = () => {
           const drawn = drawnRef.current;
-          if (drawn.clanZones.length === 0) return;
           const t = performance.now() / 1000;
           drawn.clanZones.forEach(({ gfx }, i) => {
             // Each zone breathes on a slightly different phase
@@ -961,6 +1242,7 @@ export function WorldMap() {
             base.container.y = base.baseY + Math.round(Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 1);
             base.container.zIndex = Math.round(base.baseY);
           });
+          updateLiveClansmanPositions();
         };
         app.ticker.add(zonePulseCb);
         // Stash cleanup ref via the same pattern as travel ticker (re-use travelTickerCbRef).
@@ -1068,6 +1350,7 @@ export function WorldMap() {
         clanZones: [],
         bases: [],
         levelBadges: [],
+        liveClansmen: [],
         flags: [],
         walls: [],
         monuments: [],
@@ -1150,13 +1433,378 @@ export function WorldMap() {
   // ---- One-time: create Pixi display objects (refs hold them for relayout) -
   // All layers attach to `viewport` (not app.stage) so pixi-viewport's pinch /
   // drag transforms apply to the whole map atomically.
+  function clearLiveClanVisuals() {
+    const drawn = drawnRef.current;
+    drawn.clanZones.forEach(({ gfx }) => gfx.destroy());
+    drawn.bases.forEach(({ container }) => container.destroy({ children: true }));
+    drawn.levelBadges.forEach(({ bg, label }) => {
+      bg.destroy();
+      label.destroy();
+    });
+    drawn.clanZones = [];
+    drawn.bases = [];
+    drawn.levelBadges = [];
+    flagAnchorsRef.current.clear();
+  }
+
+  function clearLiveClansmanVisuals() {
+    const drawn = drawnRef.current;
+    drawn.liveClansmen.forEach(({ node }) => {
+      node.parent?.removeChild(node);
+      node.destroy({ children: true });
+    });
+    drawn.liveClansmen = [];
+  }
+
+  function createBaseVisuals(clans: ClanDef[], isAssetLoadCancelled: () => boolean) {
+    const drawn = drawnRef.current;
+    const layers = layersRef.current;
+    if (!layers || clans.length === 0) return;
+
+    for (const clan of clans) {
+      const zoneGfx = new Graphics();
+      layers.terrainAccents.addChild(zoneGfx);
+      drawn.clanZones.push({ gfx: zoneGfx, clan });
+    }
+
+    for (const clan of clans) {
+      const container = new Container();
+      layers.worldDynamic.addChild(container);
+      const fallback = new Graphics();
+      const glow = new Graphics();
+      container.addChild(fallback);
+      container.addChild(glow);
+      container.eventMode = 'static';
+      container.cursor = 'pointer';
+      container.on('pointertap', (event) => {
+        event.stopPropagation();
+        selectTarget(container as SelectableTarget, clan.color);
+      });
+      const entry: {
+        container: Container;
+        sprite: Sprite | null;
+        fallback: Graphics;
+        glow: Graphics;
+        clan: ClanDef;
+        baseY: number;
+        phaseOffset: number;
+      } = {
+        container,
+        sprite: null,
+        fallback,
+        glow,
+        clan,
+        baseY: 0,
+        phaseOffset: 0,
+      };
+      drawn.bases.push(entry);
+
+      Assets.load(levelBasePng(clan.basePng, clan.level))
+        .then((texture) => {
+          const cancelled = isAssetLoadCancelled();
+          if (cancelled || !appRef.current) return;
+          const sprite = new Sprite(texture);
+          sprite.anchor.set(0.5, 1);
+          sprite.alpha = 0;
+          container.addChildAt(sprite, Math.min(1, container.children.length));
+          entry.sprite = sprite;
+          relayout(WORLD_WIDTH, WORLD_HEIGHT);
+        })
+        .catch(() => {
+          // fallback rect stays visible
+        });
+
+      Assets.load(clan.clansmanPng)
+        .then((texture) => {
+          const cancelled = isAssetLoadCancelled();
+          if (cancelled) return;
+          clansmanTextureCache[clan.id] = texture;
+          if (!DEMO_MODE) {
+            liveClansmanVisualKeyRef.current = '';
+            syncLiveClansmanVisuals(() => !isMountedRef.current);
+            relayout(WORLD_WIDTH, WORLD_HEIGHT);
+          }
+        })
+        .catch(() => {
+          // Travel dot fallback handles missing texture.
+        });
+    }
+
+    for (const clan of clans) {
+      const bg = new Graphics();
+      const label = new Text({
+        text: 'Lv 1',
+        style: {
+          fill: 0xffe9b8,
+          fontSize: 12,
+          fontFamily: '"Cinzel", "Times New Roman", serif',
+          fontWeight: '700',
+        },
+      });
+      label.anchor.set(0.5, 0.5);
+      const base = drawn.bases.find((b) => b.clan.id === clan.id);
+      if (base) base.container.addChild(bg, label);
+      drawn.levelBadges.push({ bg, label, clan });
+    }
+  }
+
+  function syncLiveClanVisuals(isAssetLoadCancelled: () => boolean) {
+    if (DEMO_MODE) return;
+    const liveClans = liveClansToVisualClans(snapshotRef.current?.clans as SnapshotClan[] | undefined);
+    const key = liveClans.map((clan) => `${clan.id}:${clan.homeRegion}:${clan.level ?? 0}`).join('|');
+    if (key === liveClanVisualKeyRef.current) return;
+    liveClanVisualKeyRef.current = key;
+    clearLiveClanVisuals();
+    createBaseVisuals(liveClans, isAssetLoadCancelled);
+    liveClansmanVisualKeyRef.current = '';
+    syncLiveClansmanVisuals(isAssetLoadCancelled);
+  }
+
+  function extractLiveClansmen(liveClans: readonly SnapshotClan[] | undefined) {
+    if (!liveClans || liveClans.length === 0) return [];
+    const byClan = new Map(liveClansToVisualClans(liveClans).map((clan) => [clan.id, clan]));
+    const markers: Array<Omit<LiveClansmanMarker, 'node' | 'carry' | 'statusBg' | 'statusText' | 'offsetIndex'>> = [];
+    for (const clan of liveClans) {
+      const visual = byClan.get(clan.id);
+      if (!visual || !Array.isArray(clan.clansmen)) continue;
+      for (const row of clan.clansmen) {
+        const derived = fieldAt(row, 'clansman') ?? row;
+        const clansman = fieldAt(derived, 'clansman') ?? derived;
+        const mission = fieldAt(row, 'activeMission') ?? fieldAt(derived, 'activeMission');
+        const clansmanId = numberLike(fieldAt(clansman, 'clansmanId'));
+        if (clansmanId <= 0) continue;
+        const currentRegion = numberLike(
+          fieldAt(derived, 'effectiveRegion') ?? fieldAt(clansman, 'currentRegion') ?? clan.baseRegion,
+          clan.baseRegion ?? 0,
+        );
+        const missionActive = Boolean(fieldAt(mission, 'active'));
+        const action = missionActive ? numberLike(fieldAt(mission, 'action')) : 0;
+        const startRegion = missionActive ? numberLike(fieldAt(mission, 'startRegion'), currentRegion) : currentRegion;
+        const targetRegion = missionActive ? numberLike(fieldAt(mission, 'targetRegion'), currentRegion) : currentRegion;
+        const regionKey = REGION_KEY_BY_CHAIN_ID[missionActive ? startRegion : currentRegion] ?? visual.homeRegion;
+        const targetRegionKey = REGION_KEY_BY_CHAIN_ID[targetRegion];
+        const startTick = numberLike(fieldAt(mission, 'startTick') ?? fieldAt(mission, 'submittedAtTick'));
+        const arrivalTick = numberLike(fieldAt(mission, 'arrivalTick'), startTick);
+        const actionStartTick = numberLike(fieldAt(mission, 'actionStartTick'), arrivalTick);
+        const settlesAtTick = numberLike(fieldAt(mission, 'settlesAtTick'), actionStartTick);
+        markers.push({
+          key: `${clan.id}:${clansmanId}:${regionKey}:${targetRegionKey ?? ''}:${startTick}:${arrivalTick}:${action}:${missionActive ? 'a' : 'i'}`,
+          clanId: clan.id,
+          clansmanId: String(clansmanId),
+          regionKey,
+          targetRegionKey,
+          missionActive,
+          action,
+          startTick,
+          arrivalTick,
+          actionStartTick,
+          settlesAtTick,
+          carryWood: resourceUnits(fieldAt(clansman, 'carryWood')),
+          carryIron: resourceUnits(fieldAt(clansman, 'carryIron')),
+          carryWheat: resourceUnits(fieldAt(clansman, 'carryWheat')),
+          carryFish: resourceUnits(fieldAt(clansman, 'carryFish')),
+          color: visual.color,
+        });
+      }
+    }
+    const perRegionClan = new Map<string, number>();
+    return markers.map((marker) => {
+      const bucket = `${marker.clanId}:${marker.regionKey}`;
+      const offsetIndex = perRegionClan.get(bucket) ?? 0;
+      perRegionClan.set(bucket, offsetIndex + 1);
+      return { ...marker, offsetIndex };
+    });
+  }
+
+  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean) {
+    const container = new Container();
+    const statusBg = new Graphics();
+    const statusText = new Text({
+      text: '',
+      style: {
+        fill: 0xfff2c6,
+        fontSize: 10,
+        fontFamily: '"Inter", Arial, sans-serif',
+        fontWeight: '800',
+        stroke: { color: 0x15120d, width: 2 },
+      },
+    });
+    statusText.anchor.set(0.5, 0.5);
+    const tex = clansmanTextureCache[clanId];
+    if (tex) {
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 0.82);
+      const targetH = missionActive ? 42 : 34;
+      const ratio = targetH / sprite.texture.height;
+      sprite.height = targetH;
+      sprite.width = sprite.texture.width * ratio;
+      container.addChild(sprite);
+    } else {
+      const fallback = new Graphics();
+      fallback.circle(0, 0, missionActive ? 7 : 6);
+      fallback.fill({ color, alpha: 1 });
+      fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
+      container.addChild(fallback);
+    }
+    if (missionActive) {
+      const halo = new Graphics();
+      halo.circle(0, 0, 16);
+      halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
+      container.addChildAt(halo, 0);
+    }
+    const carry = makeCarryIndicator();
+    carry.container.y = -24;
+    container.addChild(carry.container);
+    container.addChild(statusBg, statusText);
+    container.eventMode = 'static';
+    container.cursor = 'pointer';
+    container.on('pointertap', (event) => {
+      event.stopPropagation();
+      selectTarget(container as SelectableTarget, color);
+    });
+    return { container, carry, statusBg, statusText };
+  }
+
+  function syncLiveClansmanVisuals(isAssetLoadCancelled: () => boolean) {
+    if (DEMO_MODE || isAssetLoadCancelled()) return;
+    const layers = layersRef.current;
+    if (!layers) return;
+    const markers = extractLiveClansmen(snapshotRef.current?.clans as SnapshotClan[] | undefined);
+    const key = markers.map((marker) => marker.key).join('|');
+    if (key === liveClansmanVisualKeyRef.current) return;
+    liveClansmanVisualKeyRef.current = key;
+    clearLiveClansmanVisuals();
+    const drawn = drawnRef.current;
+    for (const marker of markers) {
+      const { container, carry, statusBg, statusText } = makeLiveClansmanMarker(
+        marker.color,
+        marker.clanId,
+        marker.missionActive,
+      );
+      layers.worldDynamic.addChild(container);
+      drawn.liveClansmen.push({ ...marker, node: container, carry, statusBg, statusText });
+    }
+    updateLiveClansmanPositions();
+  }
+
+  function currentTickFloat() {
+    const snap = snapshotRef.current;
+    const tick = typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current;
+    const epoch = snap?.tickEpoch;
+    if (!epoch || typeof epoch.startedAt !== 'number' || typeof epoch.durationMs !== 'number' || epoch.durationMs <= 0) {
+      return tick;
+    }
+    const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
+    return tick + clamp01((Date.now() - startedAtMs) / epoch.durationMs);
+  }
+
+  function regionWanderPoint(regionKey: string, marker: LiveClansmanMarker, phase = 0) {
+    const region = REGIONS.find(r => r.id === regionKey);
+    const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
+    if (!region) return null;
+    const point = polygonWanderPoint(region, marker, phase);
+    if (!point) return null;
+    const drift = marker.missionActive ? Math.sin(performance.now() / 900 + marker.offsetIndex) * 0.04 : 0;
+    const area = REGION_VISUAL_AREAS[regionKey] ?? { rx: 80, ry: 50 };
+    return {
+      x: offsetX + (point.x + Math.cos(drift) * area.rx * 0.04) * scaleX,
+      y: offsetY + (point.y + Math.sin(drift) * area.ry * 0.04) * scaleY,
+    };
+  }
+
+  function carryReadout(marker: LiveClansmanMarker, tickFloat: number) {
+    const options = [
+      { amount: marker.carryWood, cap: WOOD_CAP, label: 'wood', action: marker.action === 1 },
+      { amount: marker.carryIron, cap: IRON_CAP, label: 'iron', action: marker.action === 2 },
+      { amount: marker.carryWheat, cap: WHEAT_CAP, label: 'wheat', action: marker.action === 5 },
+      { amount: marker.carryFish, cap: FISH_CAP, label: 'fish', action: marker.action === 3 || marker.action === 4 },
+    ];
+    const totalCarry = options.reduce((sum, option) => sum + option.amount, 0);
+    const isWorking =
+      marker.missionActive
+      && tickFloat >= marker.actionStartTick
+      && (marker.settlesAtTick === 0 || tickFloat < marker.settlesAtTick);
+    if (!isWorking && totalCarry <= 0) return { text: '', fill: 0, visible: false };
+    const selected =
+      options.find((option) => option.action)
+      ?? options.reduce((best, option) => (option.amount > best.amount ? option : best), options[0]!);
+    return {
+      text: `${selected.amount}/${selected.cap} ${selected.label}`,
+      fill: selected.cap > 0 ? clamp01(selected.amount / selected.cap) : 0,
+      visible: true,
+    };
+  }
+
+  function statusTextForMarker(marker: LiveClansmanMarker, tickFloat: number) {
+    if (!marker.missionActive) return '';
+    if (marker.arrivalTick > marker.startTick && tickFloat < marker.arrivalTick) {
+      return `traveling to ${regionDisplayName(marker.targetRegionKey)}`;
+    }
+    if (marker.settlesAtTick > 0 && tickFloat >= marker.settlesAtTick) return 'ready';
+    return actionVerb(marker.action);
+  }
+
+  function redrawWorkerStatus(marker: LiveClansmanMarker, tickFloat: number) {
+    const status = statusTextForMarker(marker, tickFloat);
+    marker.statusText.text = status;
+    marker.statusBg.clear();
+    if (!status) {
+      marker.statusText.alpha = 0;
+      return;
+    }
+    marker.statusText.alpha = 1;
+    marker.statusText.style.fontSize = Math.max(9, Math.round(10 * layoutRef.current.scale));
+    marker.statusText.x = 0;
+    marker.statusText.y = -52;
+    const padX = 7;
+    const padY = 4;
+    const w = Math.max(48, marker.statusText.width + padX * 2);
+    const h = marker.statusText.height + padY * 2;
+    marker.statusBg.roundRect(-w / 2, marker.statusText.y - h / 2, w, h, 7);
+    marker.statusBg.fill({ color: 0x16130d, alpha: 0.84 });
+    marker.statusBg.stroke({ color: marker.color, width: 1.4, alpha: 0.95 });
+  }
+
+  function updateLiveClansmanPositions() {
+    const drawn = drawnRef.current;
+    if (drawn.liveClansmen.length === 0) return;
+    const tickFloat = currentTickFloat();
+    for (const marker of drawn.liveClansmen) {
+      const from = regionWanderPoint(marker.regionKey, marker, 0);
+      if (!from) continue;
+      const to =
+        marker.missionActive && marker.targetRegionKey
+          ? regionWanderPoint(marker.targetRegionKey, marker, 0.37)
+          : null;
+      const travelProgress =
+        marker.missionActive && to && marker.arrivalTick > marker.startTick
+          ? clamp01((tickFloat - marker.startTick) / (marker.arrivalTick - marker.startTick))
+          : marker.missionActive && to && marker.targetRegionKey !== marker.regionKey
+            ? 0.35
+            : 0;
+      const bob = Math.sin(performance.now() / 240 + marker.offsetIndex * 1.7) * (marker.missionActive ? 3 : 1.5);
+      marker.node.x = to ? lerp(from.x, to.x, travelProgress) : from.x;
+      marker.node.y = (to ? lerp(from.y, to.y, travelProgress) : from.y) + bob;
+      marker.node.zIndex = Math.round(marker.node.y + 8);
+      marker.node.alpha = 1;
+      marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
+      const carry = carryReadout(marker, tickFloat);
+      marker.carry.label.text = carry.text;
+      marker.carry.targetFill = carry.fill;
+      if (!carry.visible) marker.carry.displayedFill = 0;
+      else marker.carry.displayedFill += (marker.carry.targetFill - marker.carry.displayedFill) * 0.18;
+      redrawCarryIndicator(marker.carry);
+      redrawWorkerStatus(marker, tickFloat);
+    }
+  }
+
   function buildScene(isAssetLoadCancelled: () => boolean) {
     const drawn = drawnRef.current;
     const layers = layersRef.current;
     if (!layers) return;
 
-    // Clan zones, sigil flags, bases, walls, monuments, bandits — all mock data.
-    // Skip entirely when DEMO_MODE is off; the canvas renders as an empty terrain map.
+    // Demo-only extras use mock data. Live bases are synced from snapshot clans
+    // after regions are created, because the chain snapshot can arrive after Pixi init.
     if (DEMO_MODE) {
       // Clan zones (big translucent breathing halos) — drawn FIRST so everything else
       // sits on top. Visual sense of "this clan controls this zone."
@@ -1287,100 +1935,21 @@ export function WorldMap() {
           // Keep fallback ring visible.
         });
 
-      // Per-clan BASE SPRITES — pixel-art structures at home regions (towers / keeps / longhouses).
-      // Visible on top of region circles + sigil flags. Falls back to a simple colored rect.
-      for (const clan of MOCK_CLANS) {
-        const container = new Container();
-        layers.worldDynamic.addChild(container);
-        const fallback = new Graphics();
-        const glow = new Graphics();
-        container.addChild(fallback);
-        container.addChild(glow);
-        container.eventMode = 'static';
-        container.cursor = 'pointer';
-        container.on('pointertap', (event) => {
-          event.stopPropagation();
-          selectTarget(container as SelectableTarget, clan.color);
-        });
-        const entry: {
-          container: Container;
-          sprite: Sprite | null;
-          fallback: Graphics;
-          glow: Graphics;
-          clan: ClanDef;
-          baseY: number;
-          phaseOffset: number;
-        } = {
-          container,
-          sprite: null,
-          fallback,
-          glow,
-          clan,
-          baseY: 0,
-          phaseOffset: 0,
-        };
-        drawn.bases.push(entry);
-
-        Assets.load(clan.basePng)
-          .then((texture) => {
-            const cancelled = isAssetLoadCancelled();
-            if (cancelled || !appRef.current) return;
-            const sprite = new Sprite(texture);
-            sprite.anchor.set(0.5, 1); // anchored at bottom-center so it "stands" on the region
-            sprite.alpha = 0;
-            container.addChildAt(sprite, Math.min(1, container.children.length));
-            entry.sprite = sprite;
-            const wrap = canvasWrapRef.current;
-            if (wrap && appRef.current) {
-              relayout(WORLD_WIDTH, WORLD_HEIGHT);
-            }
-          })
-          .catch(() => {
-            // fallback rect stays visible
-          });
-
-        // Worker (clansman) sprite for traveling units. Cached per clan id.
-        // If load fails we silently fall back to the colored Graphics dot.
-        Assets.load(clan.clansmanPng)
-          .then((texture) => {
-            const cancelled = isAssetLoadCancelled();
-            if (cancelled) return;
-            clansmanTextureCache[clan.id] = texture;
-          })
-          .catch(() => {
-            // Travel dot fallback handles missing texture.
-          });
-      }
-
-      // Floating "Lv N" badges — drawn last so they overlay everything.
-      for (const clan of MOCK_CLANS) {
-        const bg = new Graphics();
-        const label = new Text({
-          text: 'Lv 1',
-          style: {
-            fill: 0xffe9b8,
-            fontSize: 12,
-            fontFamily: '"Cinzel", "Times New Roman", serif',
-            fontWeight: '700',
-          },
-        });
-        label.anchor.set(0.5, 0.5);
-        const base = drawn.bases.find((b) => b.clan.id === clan.id);
-        if (base) base.container.addChild(bg, label);
-        drawn.levelBadges.push({ bg, label, clan });
-      }
+      createBaseVisuals(MOCK_CLANS, isAssetLoadCancelled);
     } // end DEMO_MODE block
+
+    if (!DEMO_MODE) syncLiveClanVisuals(isAssetLoadCancelled);
   }
 
   // ---- Layout: scale all draw coords from REF frame to canvas dimensions ---
   // Stretches positions to fill the viewport (so 8 regions fit on tall portrait
   // phones AND wide landscape) while keeping circles circular (uniform radius).
   function relayout(w: number, h: number) {
-    // Top scoreboard removed — minimal top margin keeps zone halos centered.
-    // Bottom margin reserves space for the compact tick/level pulse panel.
-    const sideMargin = 24;
-    const topMargin = 52; // reserve space for 44px TopHud bar
-    const bottomMargin = 96; // reserve space for ticker (32px) + scoreboard (60px)
+    // Relayout operates in native world-map coordinates; the pixi viewport handles
+    // screen fit and UI chrome sits above the canvas.
+    const sideMargin = 0;
+    const topMargin = 0;
+    const bottomMargin = 0;
     const usableW = Math.max(80, w - 2 * sideMargin);
     const usableH = Math.max(80, h - topMargin - bottomMargin);
     const scaleX = usableW / REF_W;
@@ -1422,41 +1991,44 @@ export function WorldMap() {
 
     const regionMap = new Map(REGIONS.map(r => [r.id, r]));
 
-    if (DEMO_MODE) {
-      // Big translucent CLAN ZONES — drawn first, breathing animation ticker pulses alpha.
-      // Stored geometry only here; alpha applied per-tick.
-      drawn.clanZones.forEach(({ gfx, clan }) => {
-        const base = regionMap.get(clan.homeRegion);
-        if (!base) return;
-        const cx = projX(base.nx);
-        const cy = projY(base.ny);
-        // Radius targets ~150-200px range; scaled by cappedSizeScale so it stays
-        // proportionate on tall portrait screens.
-        const r = 95 * cappedSizeScale;
-        gfx.clear();
-        // Outer soft ring
-        gfx.circle(cx, cy, r);
-        gfx.fill({ color: clan.color, alpha: 0.18 });
-        // Inner brighter core for "this is the base"
-        gfx.circle(cx, cy, r * 0.55);
-        gfx.fill({ color: clan.color, alpha: 0.28 });
-        // Crisp edge stroke
-        gfx.circle(cx, cy, r);
-        gfx.stroke({ color: clan.color, width: 2, alpha: 0.55 });
-      });
-    }
+    // Big translucent CLAN ZONES — drawn first, breathing animation ticker pulses alpha.
+    // Stored geometry only here; alpha applied per-tick.
+    drawn.clanZones.forEach(({ gfx, clan }) => {
+      const base = regionMap.get(clan.homeRegion);
+      if (!base) return;
+      const cx = projX(base.nx);
+      const cy = projY(base.ny);
+      // Radius targets ~150-200px range; scaled by cappedSizeScale so it stays
+      // proportionate on tall portrait screens.
+      const r = 95 * cappedSizeScale;
+      gfx.clear();
+      // Outer soft ring
+      gfx.circle(cx, cy, r);
+      gfx.fill({ color: clan.color, alpha: 0.18 });
+      // Inner brighter core for "this is the base"
+      gfx.circle(cx, cy, r * 0.55);
+      gfx.fill({ color: clan.color, alpha: 0.28 });
+      // Crisp edge stroke
+      gfx.circle(cx, cy, r);
+      gfx.stroke({ color: clan.color, width: 2, alpha: 0.55 });
+    });
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
     REGIONS.forEach((region, i) => {
       const cx = projX(region.nx);
       const cy = projY(region.ny);
       const g = drawn.regions[i];
-      // Hide region dots that are home to a clan (zone halo replaces them visually)
-      // Only apply the "clan home" suppression when DEMO_MODE is on.
-      const isClanHome = DEMO_MODE && MOCK_CLANS.some(c => c.homeRegion === region.id);
+      // Hide region dots that are home to a clan (zone halo replaces them visually).
+      const isClanHome = drawn.clanZones.some(({ clan }) => clan.homeRegion === region.id);
       if (g) {
         g.clear();
-        if (!isClanHome) {
+        if (SHOW_REGION_OVERLAY && region.polygon.length >= 3) {
+          g.poly(region.polygon.flatMap(([x, y]) => [projX(x / REF_W), projY(y / REF_H)]));
+          g.fill({ color: region.color, alpha: 0.34 });
+          g.stroke({ color: region.color, width: 4, alpha: 0.95 });
+          g.circle(cx, cy, regionRadius * 0.65);
+          g.fill({ color: 0xffffff, alpha: 0.55 });
+        } else if (!isClanHome) {
           g.circle(cx, cy, regionRadius);
           g.fill({ color: region.color, alpha: 0.6 });
           g.stroke({ color: 0xffffff, width: 1, alpha: 0.4 });
@@ -1464,23 +2036,25 @@ export function WorldMap() {
       }
       const label = drawn.regionLabels[i];
       if (label) {
-        label.style.fontSize = Math.max(9, Math.round(10 * cappedSizeScale));
+        label.style.fontSize = Math.max(10, Math.round(13 * cappedSizeScale));
         label.x = cx;
-        label.y = cy + (isClanHome ? 0 : regionRadius + 4);
-        label.alpha = isClanHome ? 0 : 0.8;
+        label.y = cy + (SHOW_REGION_OVERLAY ? -10 : isClanHome ? 0 : regionRadius + 4);
+        label.alpha = SHOW_REGION_OVERLAY ? 0.95 : isClanHome ? 0 : 0.8;
       }
     });
 
-    if (DEMO_MODE) {
+    if (drawn.bases.length > 0) {
       // Build per-clan monument level lookup. Prefer live snapshot via treasury;
-      // fall back to mock 4-i pattern matching scoreboard demo data.
-      const liveClans = snapshot?.clans;
+      // fall back to the visual clan level/base level metadata.
+      const liveClans = snapshot?.clans as SnapshotClan[] | undefined;
       const levelByClan = new Map<string, number>();
       if (liveClans && liveClans.length > 0) {
-        for (const c of liveClans) levelByClan.set(c.id, treasuryToMonument(c.treasury));
+        for (const c of liveClans) {
+          levelByClan.set(c.id, c.baseLevel ?? c.monumentLevel ?? treasuryToMonument(c.treasury));
+        }
       }
-      MOCK_CLANS.forEach((c, i) => {
-        if (!levelByClan.has(c.id)) levelByClan.set(c.id, 4 - i);
+      drawn.bases.forEach(({ clan }, i) => {
+        if (!levelByClan.has(clan.id)) levelByClan.set(clan.id, clan.level ?? (DEMO_MODE ? 4 - i : 1));
       });
 
       // Wall rings — visually replaced by zone halos. Clear graphics; keep refs.
@@ -1504,7 +2078,8 @@ export function WorldMap() {
         if (!base) return;
         const cx = projX(base.nx);
         const cy = projY(base.ny);
-        const baseSize = Math.max(96, 144 * cappedSizeScale);
+        const level = levelByClan.get(clan.id) ?? clan.level ?? 1;
+        const baseSize = Math.max(96, 144 * cappedSizeScale) * baseVisualScale(level);
         // Hide everything visually
         gfx.clear();
         if (sprite) sprite.alpha = 0;
@@ -1521,7 +2096,8 @@ export function WorldMap() {
         const cx = projX(base.nx);
         const cy = projY(base.ny);
         // Base size: ~128px at 1x scale, scales with viewport (2x bump for phone readability)
-        const baseSize = Math.max(96, 144 * cappedSizeScale);
+        const level = levelByClan.get(clan.id) ?? clan.level ?? 1;
+        const baseSize = Math.max(96, 144 * cappedSizeScale) * baseVisualScale(level);
         entry.baseY = cy + baseSize * 0.15;
         entry.phaseOffset = ((Math.round(cx) * 73) ^ (Math.round(entry.baseY) * 31)) % 4000;
         container.x = cx;
@@ -1550,8 +2126,8 @@ export function WorldMap() {
       drawn.levelBadges.forEach(({ bg, label, clan }) => {
         const base = regionMap.get(clan.homeRegion);
         if (!base) return;
-        const baseSize = Math.max(96, 144 * cappedSizeScale);
         const lvl = levelByClan.get(clan.id) ?? 0;
+        const baseSize = Math.max(96, 144 * cappedSizeScale) * baseVisualScale(lvl);
         label.text = `Lv ${lvl}`;
         label.style.fontSize = Math.max(11, Math.round(13 * cappedSizeScale));
         // Position to the right of the base sprite, near the top
@@ -1569,13 +2145,15 @@ export function WorldMap() {
         bg.stroke({ color: clan.color, width: 1.5, alpha: 0.95 });
       });
 
+      updateLiveClansmanPositions();
+
       // Bandit redraw uses live tick — recompute alongside layout.
       // Skip during active vignette so a snapshot.clans-driven relayout
       // doesn't snap the reparented bandit back to home anchor mid-
       // choreography (opus 4.7 r4 LOW). The vignette ticker self-corrects
       // on the next frame anyway, but a one-frame snap is visible.
-      if (!combatVignetteRef.current) redrawBandit();
-    } // end DEMO_MODE relayout block
+      if (DEMO_MODE && !combatVignetteRef.current) redrawBandit();
+    } // end clan base relayout block
   }
 
   // ---- Bandit: hooded silhouette over Mountains + ticks-until-attack readout
@@ -1955,6 +2533,8 @@ export function WorldMap() {
     if (!pixiReady) return;
     const wrap = canvasWrapRef.current;
     if (!wrap) return;
+    syncLiveClanVisuals(() => !isMountedRef.current);
+    syncLiveClansmanVisuals(() => !isMountedRef.current);
     relayout(WORLD_WIDTH, WORLD_HEIGHT);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.clans, pixiReady]);
@@ -2190,18 +2770,19 @@ export function WorldMap() {
   // When DEMO_MODE is off, scoreboardClans is empty — the scoreboard panel hides
   // and the "no chain data yet" placeholder is shown instead.
   const scoreboardClans = useMemo(() => {
-    const live = snapshot?.clans;
+    const live = snapshot?.clans as SnapshotClan[] | undefined;
     if (live && live.length > 0) {
+      const visualById = new Map(liveClansToVisualClans(live).map((clan) => [clan.id, clan]));
       return live
         .map(c => {
-          const meta = MOCK_CLANS.find(m => m.id === c.id);
+          const meta = visualById.get(c.id);
           return {
             id: c.id,
-            name: c.name,
+            name: meta?.name ?? c.name,
             color: meta?.color ?? 0xcccccc,
             portrait: meta?.portrait ?? '',
             archetype: meta?.archetype ?? '',
-            monumentLevel: treasuryToMonument(c.treasury),
+            monumentLevel: c.baseLevel ?? c.monumentLevel ?? treasuryToMonument(c.treasury),
           };
         })
         .sort((a, b) => b.monumentLevel - a.monumentLevel);

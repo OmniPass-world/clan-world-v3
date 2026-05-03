@@ -21,6 +21,7 @@ import {ClanOwnershipFacet} from "../src/diamond/facets/ClanOwnershipFacet.sol";
 import {DerivedViewsFacet} from "../src/diamond/facets/DerivedViewsFacet.sol";
 import {FinalizeSeasonFacet} from "../src/diamond/facets/FinalizeSeasonFacet.sol";
 import {GoldTransferFacet} from "../src/diamond/facets/GoldTransferFacet.sol";
+import {HeartbeatConfigFacet} from "../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../src/diamond/facets/MarketViewsFacet.sol";
 import {OwnershipFacet} from "../src/diamond/facets/OwnershipFacet.sol";
@@ -58,6 +59,7 @@ contract DeployDiamond is Script {
         DiamondLoupeFacet loupeFacet = new DiamondLoupeFacet();
         OwnershipFacet adminOwnershipFacet = new OwnershipFacet();
         HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        HeartbeatConfigFacet heartbeatConfigFacet = new HeartbeatConfigFacet();
         FinalizeSeasonFacet finalizeSeasonFacet = new FinalizeSeasonFacet();
         RawWorldViewsFacet rawWorldViewsFacet = new RawWorldViewsFacet();
         RawTreasuryViewsFacet rawTreasuryViewsFacet = new RawTreasuryViewsFacet();
@@ -82,49 +84,53 @@ contract DeployDiamond is Script {
         ScoringViewsFacet scoringViewsFacet = new ScoringViewsFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
-        IDiamondCut(address(diamond)).diamondCut(
-            _coreFacetCuts(
-                address(loupeFacet),
-                address(adminOwnershipFacet),
-                address(heartbeatFacet),
-                address(finalizeSeasonFacet),
-                address(rawWorldViewsFacet),
-                address(rawTreasuryViewsFacet),
-                address(rawClanViewsFacet),
-                address(rawBanditViewsFacet),
-                address(lifecycleFacet)
-            ),
-            address(0),
-            ""
-        );
-        IDiamondCut(address(diamond)).diamondCut(
-            _orderFacetCuts(
-                address(submitOrdersFacet),
-                address(clanOwnershipFacet),
-                address(treasuryFacet),
-                address(settlementFacet),
-                address(goldTransferFacet),
-                address(vaultResourceTransferFacet),
-                address(blueprintTransferFacet),
-                address(bundleTransferFacet)
-            ),
-            address(0),
-            ""
-        );
-        IDiamondCut(address(diamond)).diamondCut(
-            _viewFacetCuts(
-                address(derivedViewsFacet),
-                address(marketViewsFacet),
-                address(banditViewsFacet),
-                address(regionViewsFacet),
-                address(snapshotViewsFacet),
-                address(clanFullViewFacet),
-                address(quoteViewsFacet),
-                address(scoringViewsFacet)
-            ),
-            address(init),
-            abi.encodeCall(ClanWorldDiamondInit.init, ())
-        );
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _coreFacetCuts(
+                    address(loupeFacet),
+                    address(adminOwnershipFacet),
+                    address(heartbeatFacet),
+                    address(heartbeatConfigFacet),
+                    address(finalizeSeasonFacet),
+                    address(rawWorldViewsFacet),
+                    address(rawTreasuryViewsFacet),
+                    address(rawClanViewsFacet),
+                    address(rawBanditViewsFacet),
+                    address(lifecycleFacet)
+                ),
+                address(0),
+                ""
+            );
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _orderFacetCuts(
+                    address(submitOrdersFacet),
+                    address(clanOwnershipFacet),
+                    address(treasuryFacet),
+                    address(settlementFacet),
+                    address(goldTransferFacet),
+                    address(vaultResourceTransferFacet),
+                    address(blueprintTransferFacet),
+                    address(bundleTransferFacet)
+                ),
+                address(0),
+                ""
+            );
+        IDiamondCut(address(diamond))
+            .diamondCut(
+                _viewFacetCuts(
+                    address(derivedViewsFacet),
+                    address(marketViewsFacet),
+                    address(banditViewsFacet),
+                    address(regionViewsFacet),
+                    address(snapshotViewsFacet),
+                    address(clanFullViewFacet),
+                    address(quoteViewsFacet),
+                    address(scoringViewsFacet)
+                ),
+                address(init),
+                abi.encodeCall(ClanWorldDiamondInit.init, ())
+            );
 
         IClanWorld game = IClanWorld(address(diamond));
         ClanWorldLens lens = new ClanWorldLens(game);
@@ -146,8 +152,8 @@ contract DeployDiamond is Script {
         address[4] memory pools = [address(woodGold), address(wheatGold), address(fishGold), address(ironGold)];
         game.initTreasury(tokens, pools);
 
-        uint256 totalGoldSeed = INITIAL_GOLD_SEED_FOR_WOOD + INITIAL_GOLD_SEED_FOR_WHEAT
-            + INITIAL_GOLD_SEED_FOR_FISH + INITIAL_GOLD_SEED_FOR_IRON;
+        uint256 totalGoldSeed = INITIAL_GOLD_SEED_FOR_WOOD + INITIAL_GOLD_SEED_FOR_WHEAT + INITIAL_GOLD_SEED_FOR_FISH
+            + INITIAL_GOLD_SEED_FOR_IRON;
         wood.seedTreasury(owner, INITIAL_WOOD_POOL_SEED);
         wheat.seedTreasury(owner, INITIAL_WHEAT_POOL_SEED);
         fish.seedTreasury(owner, INITIAL_FISH_POOL_SEED);
@@ -189,6 +195,7 @@ contract DeployDiamond is Script {
         console.log("DIAMOND_LOUPE_FACET_ADDRESS:      ", address(loupeFacet));
         console.log("OWNERSHIP_FACET_ADDRESS:          ", address(adminOwnershipFacet));
         console.log("HEARTBEAT_FACET_ADDRESS:          ", address(heartbeatFacet));
+        console.log("HEARTBEAT_CONFIG_FACET_ADDRESS:   ", address(heartbeatConfigFacet));
         console.log("FINALIZE_SEASON_FACET_ADDRESS:    ", address(finalizeSeasonFacet));
         console.log("CLAN_LIFECYCLE_FACET_ADDRESS:     ", address(lifecycleFacet));
         console.log("RAW_WORLD_VIEWS_FACET_ADDRESS:    ", address(rawWorldViewsFacet));
@@ -220,6 +227,7 @@ contract DeployDiamond is Script {
         address loupeFacet,
         address adminOwnershipFacet,
         address heartbeatFacet,
+        address heartbeatConfigFacet,
         address finalizeSeasonFacet,
         address rawWorldViewsFacet,
         address rawTreasuryViewsFacet,
@@ -227,7 +235,7 @@ contract DeployDiamond is Script {
         address rawBanditViewsFacet,
         address lifecycleFacet
     ) private pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](9);
+        cut = new IDiamondCut.FacetCut[](10);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -244,31 +252,36 @@ contract DeployDiamond is Script {
             functionSelectors: DiamondSelectors.heartbeatSelectors()
         });
         cut[3] = IDiamondCut.FacetCut({
+            facetAddress: heartbeatConfigFacet,
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.heartbeatConfigSelectors()
+        });
+        cut[4] = IDiamondCut.FacetCut({
             facetAddress: finalizeSeasonFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.seasonSelectors()
         });
-        cut[4] = IDiamondCut.FacetCut({
+        cut[5] = IDiamondCut.FacetCut({
             facetAddress: rawWorldViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawWorldViewsSelectors()
         });
-        cut[5] = IDiamondCut.FacetCut({
+        cut[6] = IDiamondCut.FacetCut({
             facetAddress: rawTreasuryViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawTreasuryViewsSelectors()
         });
-        cut[6] = IDiamondCut.FacetCut({
+        cut[7] = IDiamondCut.FacetCut({
             facetAddress: rawClanViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawClanViewsSelectors()
         });
-        cut[7] = IDiamondCut.FacetCut({
+        cut[8] = IDiamondCut.FacetCut({
             facetAddress: rawBanditViewsFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawBanditViewsSelectors()
         });
-        cut[8] = IDiamondCut.FacetCut({
+        cut[9] = IDiamondCut.FacetCut({
             facetAddress: lifecycleFacet,
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()

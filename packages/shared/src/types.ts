@@ -25,6 +25,15 @@ export interface Clan {
   name: string;
   /** Decimal string representation of wei amount; consumers parse with BigInt() if arithmetic needed. */
   treasury: string;
+  /** Numeric ClanWorld region id for the clan home/base, when sourced from chain. */
+  baseRegion?: number;
+  baseLevel?: number;
+  wallLevel?: number;
+  monumentLevel?: number;
+  livingClansmen?: number;
+  owner?: string;
+  /** Raw indexed ClanFullView.clansmen rows from chain, used by live map rendering. */
+  clansmen?: unknown[];
 }
 
 export interface WorldSnapshot {
