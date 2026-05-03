@@ -541,11 +541,98 @@ strong {
   white-space: nowrap;
 }
 
+/* Hamburger toggle — hidden on wide screens by default */
+.site-nav-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--parchment);
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.site-nav-toggle:hover {
+  color: var(--gold-leaf);
+  border-color: var(--gold-leaf);
+}
+
+.site-nav-toggle:focus-visible {
+  outline: 2px solid var(--vermillion);
+  outline-offset: 2px;
+}
+
+/* Dropdown panel — anchored top-right of header */
+.site-nav-menu {
+  position: absolute;
+  top: 100%;
+  right: 1rem;
+  margin-top: 0.5rem;
+  min-width: 14rem;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #1a0f2a 0%, #2a1a3e 50%, #3a2858 100%);
+  border: 1px solid var(--gold-leaf);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  padding: 0.4rem;
+  z-index: 60;
+  animation: site-nav-menu-fade 200ms ease-out;
+}
+
+@keyframes site-nav-menu-fade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.site-nav-menu-item {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.65rem 0.9rem;
+  color: var(--parchment);
+  font-family: var(--ff-ui);
+  font-weight: 500;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  border-radius: 6px;
+  transition: color 0.18s ease, background 0.18s ease;
+}
+
+.site-nav-menu-item:hover,
+.site-nav-menu-item:focus-visible {
+  color: var(--gold-leaf);
+  background: rgba(168, 124, 47, 0.12);
+  text-decoration: none;
+  outline: none;
+}
+
+.site-nav-menu-item:focus-visible {
+  outline: 2px solid var(--vermillion);
+  outline-offset: -2px;
+}
+
+.site-nav-menu-cta {
+  margin-top: 0.25rem;
+  border-top: 1px solid rgba(168, 124, 47, 0.35);
+  padding-top: 0.85rem;
+  font-family: var(--ff-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+  color: var(--gold-leaf);
+}
+
 @media (max-width: 720px) {
-  .site-nav { gap: 1rem; }
-  .site-nav .desktop-only { display: none; }
-  .github-button { padding: 0.5rem 0.7rem; }
-  .github-button span { display: none; }
+  .site-nav { gap: 0.5rem; }
+  .site-nav-inline { display: none !important; }
+  .site-nav-toggle { display: inline-flex; }
   .site-brand-mark { width: 2.6rem; height: 2.6rem; }
   .site-brand-sub { font-size: 0.6rem; letter-spacing: 0.03em; }
 }
