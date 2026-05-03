@@ -29,6 +29,15 @@ export default function LandingPage() {
           restructure deferred from v2 polish pass. */}
       {/* ============== HERO ============== */}
       <section className="hero">
+        <div className="hero-banner-wrap">
+          <img
+            src="https://github.com/user-attachments/assets/d5d3e907-cbc3-4fff-ad0c-cbc227360070"
+            alt="Clan World: Ælder Whispers Banner"
+            className="hero-banner-img"
+            width={1916}
+            height={821}
+          />
+        </div>
         <div className="hero-inner">
           <div className="hero-content">
             <div className="hero-eyebrow pixel">
@@ -74,6 +83,19 @@ export default function LandingPage() {
             <RealmMap />
             <div className="hero-map-caption pixel">
               ✦ A Cartographer's Folio · 8 Regions · marked AD MMXXVI ✦
+            </div>
+            <div className="hero-cockpit-wrap">
+              <img
+                src="https://github.com/user-attachments/assets/8227ca86-cad4-4895-9a72-f4aacda2e0d1"
+                alt="Four-elder cockpit view — simultaneous AI agent activity across four clans"
+                className="hero-cockpit-img"
+                loading="lazy"
+                width={1448}
+                height={1086}
+              />
+              <div className="hero-map-caption pixel" style={{ marginTop: '0.6rem' }}>
+                ✦ Four Elders · Simultaneous Ticks · Live Onchain ✦
+              </div>
             </div>
           </div>
         </div>

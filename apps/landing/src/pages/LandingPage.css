@@ -1,5 +1,31 @@
 /* ============ Hero ============ */
 
+/* Wide banner — full-bleed above the two-column hero grid */
+.hero-banner-wrap {
+  line-height: 0;
+  margin-bottom: 2.5rem;
+  border-bottom: 1px solid var(--ink-faded);
+}
+
+.hero-banner-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Cockpit screenshot — below RealmMap in right column */
+.hero-cockpit-wrap {
+  margin-top: 1.5rem;
+}
+
+.hero-cockpit-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(168, 124, 47, 0.18);
+}
+
 .hero {
   position: relative;
   padding: 3.25rem 0 4rem;
