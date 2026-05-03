@@ -20,20 +20,49 @@ contract CoreWinterBoundaryHarness is ClanWorld {
     function disableBanditsForTest() external {
         _activeBanditCount = MAX_TOTAL_BANDITS;
     }
+
+    function setCurrentTickForTest(uint64 tick) external {
+        bytes32 tickSeed = bytes32(uint256(tick));
+        _world.currentTick = tick;
+        _world.nextHeartbeatAtTick = tick + 1;
+        _world.nextHeartbeatAtTs = 0;
+        _world.currentTickSeed = tickSeed;
+    }
+
+    function setClanLastSettledTickForTest(uint32 clanId, uint64 tick) external {
+        _clans[clanId].lastSettledTick = tick;
+    }
 }
 
 interface IWinterBoundaryHarness {
     function disableBanditsForTest() external;
+    function setCurrentTickForTest(uint64 tick) external;
+    function setClanLastSettledTickForTest(uint32 clanId, uint64 tick) external;
 }
 
 contract DiamondWinterBoundaryHarnessFacet {
     function disableBanditsForTest() external {
         LibStorage.appStorage().activeBanditCount = 1;
     }
+
+    function setCurrentTickForTest(uint64 tick) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        bytes32 tickSeed = bytes32(uint256(tick));
+        s.world.currentTick = tick;
+        s.world.nextHeartbeatAtTick = tick + 1;
+        s.world.nextHeartbeatAtTs = 0;
+        s.world.currentTickSeed = tickSeed;
+        s.tickSeeds[tick] = tickSeed;
+    }
+
+    function setClanLastSettledTickForTest(uint32 clanId, uint64 tick) external {
+        LibStorage.appStorage().clans[clanId].lastSettledTick = tick;
+    }
 }
 
 contract DiamondWinterBoundaryTest is Test {
     bytes32 private constant WINTER_STARTED_TOPIC = keccak256("WinterStarted(uint64)");
+    bytes32 private constant WINTER_ENDED_TOPIC = keccak256("WinterEnded(uint64)");
 
     function testWinterStartLocksPlotsLikeCore() public {
         CoreWinterBoundaryHarness core = new CoreWinterBoundaryHarness();
@@ -72,6 +101,85 @@ contract DiamondWinterBoundaryTest is Test {
         _assertLockedPlotEq(diamondEast, coreEast, "east");
     }
 
+    function testWinterEndRestartsPlotsLikeCore() public {
+        CoreWinterBoundaryHarness core = new CoreWinterBoundaryHarness();
+        IClanWorld diamondWorld = _deployDiamondWorld();
+        core.disableBanditsForTest();
+        IWinterBoundaryHarness(address(diamondWorld)).disableBanditsForTest();
+
+        address elder = address(0xB0B);
+        vm.prank(elder);
+        (uint32 coreClanId,) = core.mintClan(elder);
+        vm.prank(elder);
+        (uint32 diamondClanId,) = diamondWorld.mintClan(elder);
+
+        uint64 winterEndTick = ClanWorldConstants.WINTER_START_TICK + ClanWorldConstants.WINTER_DURATION_TICKS;
+        _advancePairToTick(core, diamondWorld, winterEndTick - 1);
+        assertTrue(core.isWinter(), "core pre-exit winter");
+        assertTrue(diamondWorld.isWinter(), "diamond pre-exit winter");
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+
+        vm.recordLogs();
+        core.heartbeat();
+        assertEq(_countRecorded(WINTER_ENDED_TOPIC), 1, "core WinterEnded");
+
+        vm.recordLogs();
+        diamondWorld.heartbeat();
+        assertEq(_countRecorded(WINTER_ENDED_TOPIC), 1, "diamond WinterEnded");
+
+        assertFalse(core.isWinter(), "core after winter");
+        assertFalse(diamondWorld.isWinter(), "diamond after winter");
+        _assertWorldStateEq(diamondWorld.getWorldState(), core.getWorldState());
+
+        (WheatPlot memory coreWest, WheatPlot memory coreEast) = core.getWheatPlots(coreClanId);
+        (WheatPlot memory diamondWest, WheatPlot memory diamondEast) = diamondWorld.getWheatPlots(diamondClanId);
+        _assertRegrowingPlotEq(diamondWest, coreWest, winterEndTick, "west");
+        _assertRegrowingPlotEq(diamondEast, coreEast, winterEndTick, "east");
+    }
+
+    function testWinterStartHandlesMaxLiveClanCropTransitionsLikeCore() public {
+        CoreWinterBoundaryHarness core = new CoreWinterBoundaryHarness();
+        IClanWorld diamondWorld = _deployDiamondWorld();
+        IWinterBoundaryHarness diamondHarness = IWinterBoundaryHarness(address(diamondWorld));
+        uint32 clanCount = 12;
+        uint64 preWinterTick = ClanWorldConstants.WINTER_START_TICK - 1;
+
+        core.disableBanditsForTest();
+        diamondHarness.disableBanditsForTest();
+        for (uint32 clanId = 1; clanId <= clanCount; clanId++) {
+            address elder = address(uint160(0xC000 + clanId));
+            vm.prank(elder);
+            (uint32 coreClanId,) = core.mintClan(elder);
+            vm.prank(elder);
+            (uint32 diamondClanId,) = diamondWorld.mintClan(elder);
+            assertEq(coreClanId, clanId, "core clan id");
+            assertEq(diamondClanId, clanId, "diamond clan id");
+        }
+        core.setCurrentTickForTest(preWinterTick);
+        diamondHarness.setCurrentTickForTest(preWinterTick);
+        for (uint32 clanId = 1; clanId <= clanCount; clanId++) {
+            core.setClanLastSettledTickForTest(clanId, preWinterTick);
+            diamondHarness.setClanLastSettledTickForTest(clanId, preWinterTick);
+        }
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        diamondWorld.heartbeat();
+
+        assertTrue(core.isWinter(), "core winter");
+        assertTrue(diamondWorld.isWinter(), "diamond winter");
+        _assertWorldStateEq(diamondWorld.getWorldState(), core.getWorldState());
+        assertEq(diamondWorld.getClanIds().length, clanCount, "synthetic clan count");
+
+        for (uint32 clanId = 1; clanId <= clanCount; clanId++) {
+            (WheatPlot memory coreWest, WheatPlot memory coreEast) = core.getWheatPlots(clanId);
+            (WheatPlot memory diamondWest, WheatPlot memory diamondEast) = diamondWorld.getWheatPlots(clanId);
+            _assertLockedPlotEq(diamondWest, coreWest, "west");
+            _assertLockedPlotEq(diamondEast, coreEast, "east");
+        }
+    }
+
     function _deployDiamondWorld() internal returns (IClanWorld diamondWorld) {
         DiamondCutFacet cutFacet = new DiamondCutFacet();
         Diamond diamond = new Diamond(address(this), address(cutFacet));
@@ -95,8 +203,10 @@ contract DiamondWinterBoundaryTest is Test {
     }
 
     function _harnessSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](1);
+        selectors = new bytes4[](3);
         selectors[0] = DiamondWinterBoundaryHarnessFacet.disableBanditsForTest.selector;
+        selectors[1] = DiamondWinterBoundaryHarnessFacet.setCurrentTickForTest.selector;
+        selectors[2] = DiamondWinterBoundaryHarnessFacet.setClanLastSettledTickForTest.selector;
     }
 
     function _advancePairToTick(CoreWinterBoundaryHarness core, IClanWorld diamondWorld, uint64 targetTick) internal {
@@ -122,6 +232,25 @@ contract DiamondWinterBoundaryTest is Test {
         assertEq(actual.remainingWheat, 0, string.concat(label, " wheat"));
         assertEq(actual.remainingWheat, expected.remainingWheat, string.concat(label, " wheat parity"));
         assertEq(actual.regrowUntilTick, 0, string.concat(label, " regrow"));
+        assertEq(actual.regrowUntilTick, expected.regrowUntilTick, string.concat(label, " regrow parity"));
+    }
+
+    function _assertRegrowingPlotEq(
+        WheatPlot memory actual,
+        WheatPlot memory expected,
+        uint64 winterEndTick,
+        string memory label
+    ) internal pure {
+        assertEq(uint8(actual.state), uint8(WheatPlotState.Regrowing), string.concat(label, " regrowing"));
+        assertEq(uint8(actual.state), uint8(expected.state), string.concat(label, " state"));
+        assertEq(actual.region, expected.region, string.concat(label, " region"));
+        assertEq(actual.remainingWheat, 0, string.concat(label, " wheat"));
+        assertEq(actual.remainingWheat, expected.remainingWheat, string.concat(label, " wheat parity"));
+        assertEq(
+            actual.regrowUntilTick,
+            winterEndTick + ClanWorldConstants.WHEAT_PLOT_REGROW_TICKS,
+            string.concat(label, " regrow tick")
+        );
         assertEq(actual.regrowUntilTick, expected.regrowUntilTick, string.concat(label, " regrow parity"));
     }
 
