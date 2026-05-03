@@ -37,19 +37,19 @@ The UI does not depend on chain logs for winter/cold/starvation today, so event 
 
 | Deferred item | Demo impact | Recommended follow-up | Issue |
 |---|---|---|---|
-| Emit settlement simulation events for winter/cold/starvation outcomes | Only blocker if demo/indexer depends on logs for those story beats | Extend `SettlementLog` and `commitSimulation()` to emit starvation, cold shortage, wall degradation, clansman cold death, clan eliminated, and clan died events. | TBD |
-| Wire live numeric clan IDs to visual metadata | Relevant if demo shows real-chain map without demo mode | Map numeric chain clan IDs to names, sigils, portraits, bases, walls, monuments, and bandit visuals. | TBD |
-| Remove stale real-chain default contract address fallback | Could point a real-chain client at an old deployment if env is missing | Remove the fallback default and fail loudly unless `CLAN_WORLD_CONTRACT_ADDRESS` is set. | TBD |
-| Clean up season rollover pause/order window | Only relevant if demo shows season rollover live | Either roll season inside `finalizeSeason()` or block new orders until rollover completes. | TBD |
-| Refund wall upgrade reservations after cold degradation level drift | Relevant only when wall upgrades overlap winter cold degradation | If reserved `fromLevel` no longer equals current wall level, clear/refund the reservation and fail the mission. | TBD |
-| Reconcile aggregator/lens view semantics with derived state | Can make UI stale/misleading between heartbeats | Decide whether aggregator views are raw/indexer convenience views or derived views, then update code/comments accordingly. | TBD |
-| Reject empty selector arrays in diamond cuts | Hardening, not demo-blocking | Add explicit empty-selector guards in add/replace/remove paths. | TBD |
-| Reject init calldata when init address is zero | Hardening, not demo-blocking | Require `data.length == 0` when `init == address(0)`. | TBD |
-| Reject zero diamond owner in constructor | Hardening, not demo-blocking | Require `contractOwner != address(0)` in `Diamond` constructor. | TBD |
-| Decide ERC-165 support or remove unused mapping | Hardening/review clarity | Either expose/populate `supportsInterface()` or delete `supportedInterfaces`. | TBD |
-| Add freeze/immutability path or deployment governance | Production hardening | Decide whether final deploy is frozen, multisig-owned, or timelocked. | TBD |
-| Define ETH receive policy | Production hardening | Revert native ETH sends if unused, or add an explicit sweep policy. | TBD |
-| Decide diamond owner vs treasury owner policy | Production/admin hardening | Decide whether treasury ownership should follow diamond ownership or stay separate. | TBD |
+| Emit settlement simulation events for winter/cold/starvation outcomes | Only blocker if demo/indexer depends on logs for those story beats | Extend `SettlementLog` and `commitSimulation()` to emit starvation, cold shortage, wall degradation, clansman cold death, clan eliminated, and clan died events. | [#476](https://github.com/OmniPass-world/clan-world/issues/476) |
+| Wire live numeric clan IDs to visual metadata | Relevant if demo shows real-chain map without demo mode | Map numeric chain clan IDs to names, sigils, portraits, bases, walls, monuments, and bandit visuals. | [#477](https://github.com/OmniPass-world/clan-world/issues/477) |
+| Remove stale real-chain default contract address fallback | Could point a real-chain client at an old deployment if env is missing | Remove the fallback default and fail loudly unless `CLAN_WORLD_CONTRACT_ADDRESS` is set. | [#478](https://github.com/OmniPass-world/clan-world/issues/478) |
+| Clean up season rollover pause/order window | Only relevant if demo shows season rollover live | Either roll season inside `finalizeSeason()` or block new orders until rollover completes. | [#479](https://github.com/OmniPass-world/clan-world/issues/479) |
+| Refund wall upgrade reservations after cold degradation level drift | Relevant only when wall upgrades overlap winter cold degradation | If reserved `fromLevel` no longer equals current wall level, clear/refund the reservation and fail the mission. | [#480](https://github.com/OmniPass-world/clan-world/issues/480) |
+| Reconcile aggregator/lens view semantics with derived state | Can make UI stale/misleading between heartbeats | Decide whether aggregator views are raw/indexer convenience views or derived views, then update code/comments accordingly. | [#481](https://github.com/OmniPass-world/clan-world/issues/481) |
+| Reject empty selector arrays in diamond cuts | Hardening, not demo-blocking | Add explicit empty-selector guards in add/replace/remove paths. | [#482](https://github.com/OmniPass-world/clan-world/issues/482) |
+| Reject init calldata when init address is zero | Hardening, not demo-blocking | Require `data.length == 0` when `init == address(0)`. | [#483](https://github.com/OmniPass-world/clan-world/issues/483) |
+| Reject zero diamond owner in constructor | Hardening, not demo-blocking | Require `contractOwner != address(0)` in `Diamond` constructor. | [#484](https://github.com/OmniPass-world/clan-world/issues/484) |
+| Decide ERC-165 support or remove unused mapping | Hardening/review clarity | Either expose/populate `supportsInterface()` or delete `supportedInterfaces`. | [#485](https://github.com/OmniPass-world/clan-world/issues/485) |
+| Add freeze/immutability path or deployment governance | Production hardening | Decide whether final deploy is frozen, multisig-owned, or timelocked. | [#486](https://github.com/OmniPass-world/clan-world/issues/486) |
+| Define ETH receive policy | Production hardening | Revert native ETH sends if unused, or add an explicit sweep policy. | [#487](https://github.com/OmniPass-world/clan-world/issues/487) |
+| Decide diamond owner vs treasury owner policy | Production/admin hardening | Decide whether treasury ownership should follow diamond ownership or stay separate. | [#488](https://github.com/OmniPass-world/clan-world/issues/488) |
 
 ## Demo Checklist Notes
 
