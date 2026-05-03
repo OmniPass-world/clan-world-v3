@@ -58,7 +58,7 @@
     grid-template-columns: 1fr;
     gap: 2rem;
   }
-  .hero { padding: 2.5rem 0 3rem; }
+  .hero { padding: 0 0 3rem; }
 }
 
 .hero-eyebrow {
