@@ -5,14 +5,24 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { baseSepolia, CLAN_WORLD_ABI } from "@clan-world/shared/adapters";
+import clanWorldArtifact from "../../../packages/contracts/abi/IClanWorld.json";
 import {
+  defineChain,
   createPublicClient,
   http,
   parseEventLogs,
+  type Abi,
   type Hex,
   type Log,
 } from "viem";
+
+const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
+const baseSepolia = defineChain({
+  id: 84532,
+  name: "Base Sepolia",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
+});
 
 const MAX_CLANS = 12;
 const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
@@ -213,7 +223,17 @@ export function planPollLogRange(
   };
 }
 
-type LegacyClanView = { clanId: number; goldBalance?: string };
+type LegacyClanView = {
+  clanId: number;
+  owner?: string;
+  baseRegion?: number;
+  baseLevel?: number;
+  wallLevel?: number;
+  monumentLevel?: number;
+  livingClansmen?: number;
+  goldBalance?: string;
+  clansmen?: unknown[];
+};
 
 export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
   clanViews
@@ -223,6 +243,13 @@ export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
       id: String(view.clanId),
       name: `Clan ${view.clanId}`,
       treasury: asString(view.goldBalance),
+      baseRegion: asNumber(view.baseRegion),
+      baseLevel: asNumber(view.baseLevel),
+      wallLevel: asNumber(view.wallLevel),
+      monumentLevel: asNumber(view.monumentLevel),
+      livingClansmen: asNumber(view.livingClansmen),
+      owner: asString(view.owner, ""),
+      clansmen: view.clansmen ?? [],
     }));
 
 export const ingestEvents = internalMutation({

@@ -26,6 +26,13 @@ export default defineSchema({
         id: v.string(),
         name: v.string(),
         treasury: v.string(),
+        baseRegion: v.optional(v.number()),
+        baseLevel: v.optional(v.number()),
+        wallLevel: v.optional(v.number()),
+        monumentLevel: v.optional(v.number()),
+        livingClansmen: v.optional(v.number()),
+        owner: v.optional(v.string()),
+        clansmen: v.optional(v.array(v.any())),
       })
     ),
     seasonFinalized: v.optional(v.boolean()),
@@ -147,7 +154,7 @@ export default defineSchema({
     projectedTargetLootValue: v.string(),
     refreshedAt: v.number(),
     lastUpdatedBlock: v.optional(v.number()),
-  }).index("by_id", ["id"]),
+  }).index("by_bandit_id", ["id"]),
   pricePoint: defineTable({
     tick: v.number(),
     resourceType: v.string(),
@@ -162,6 +169,47 @@ export default defineSchema({
     message: v.string(),
     timestamp: v.number(),
   }),
+  inftTokens: defineTable({
+    tokenId: v.number(),
+    clanId: v.number(),
+    owner: v.string(),
+    dataHash: v.string(),
+    encryptedKeyHash: v.optional(v.string()),
+    metadataUri: v.optional(v.string()),
+    updatedAt: v.number(),
+    txHash: v.optional(v.string()),
+  }).index("by_tokenId", ["tokenId"]),
+  inftTransfers: defineTable({
+    tokenId: v.number(),
+    clanId: v.number(),
+    from: v.string(),
+    to: v.string(),
+    dataHash: v.string(),
+    encryptedKeyHash: v.string(),
+    txHash: v.string(),
+    transferredAt: v.number(),
+  })
+    .index("by_tokenId", ["tokenId"])
+    .index("by_clanId", ["clanId"]),
+  memoryEntries: defineTable({
+    clanId: v.number(),
+    key: v.string(),
+    value: v.string(),
+    dataHash: v.optional(v.string()),
+    source: v.union(v.literal("local"), v.literal("0g"), v.literal("demo")),
+    updatedAt: v.number(),
+    txHash: v.optional(v.string()),
+  })
+    .index("by_clan_key", ["clanId", "key"])
+    .index("by_clan", ["clanId"]),
+  bulletins: defineTable({
+    clanId: v.number(),
+    slot: v.number(),
+    body: v.string(),
+    updatedAt: v.number(),
+    dataHash: v.optional(v.string()),
+    txHash: v.optional(v.string()),
+  }).index("by_clan_slot", ["clanId", "slot"]),
   verifiedNullifiers: defineTable({
     nullifier: v.string(),
   }).index("by_nullifier", ["nullifier"]),
