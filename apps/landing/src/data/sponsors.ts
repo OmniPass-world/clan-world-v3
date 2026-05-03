@@ -83,7 +83,7 @@ export const POWERS: SponsorPower[] = [
   {
     name: 'Gensyn AXL',
     loreName: 'The Whisper Network',
-    logoUrl: '/logos/axl.svg',
+    logoUrl: '/logos/gensyn.jpg',
     logoAlt: 'Gensyn AXL',
     marginNote: '← p2p e2ee diplomacy',
     loreDesc:
