@@ -376,6 +376,45 @@
   text-align: center;
 }
 
+.hook-game {
+  margin-top: 2rem;
+}
+
+.hook-game-frame {
+  position: relative;
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(168, 124, 47, 0.18);
+  background: #0a0a14;
+  overflow: hidden;
+}
+
+.hook-game-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.hook-game-caption {
+  margin-top: 0.6rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--ink-faded);
+  letter-spacing: 0.18em;
+}
+
+@media (max-width: 720px) {
+  .hook-game-frame {
+    aspect-ratio: 4 / 3;
+  }
+}
+
 .hook-poster {
   margin: 3rem auto 0;
   max-width: 32rem;
