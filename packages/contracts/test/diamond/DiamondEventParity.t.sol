@@ -12,6 +12,7 @@ import {
     ClanOrder,
     ClanWorldConstants,
     IClanWorld,
+    PoolSeedConfig,
     ResourceType,
     StatusCode,
     WithdrawResourcesData
@@ -28,7 +29,10 @@ import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol"
 import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
+import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
 import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
+import {MinimalERC20} from "../../src/MinimalERC20.sol";
+import {StubPool} from "../../src/StubPool.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 
 contract CoreEventParityHarness is ClanWorld {
@@ -72,6 +76,11 @@ contract EventParityFixtureFacet {
 
 contract DiamondEventParityTest is Test {
     Diamond diamond;
+
+    struct MarketPair {
+        address woodToken;
+        address[6] tokens;
+    }
 
     function setUp() public {
         DiamondCutFacet cutFacet = new DiamondCutFacet();
@@ -308,6 +317,101 @@ contract DiamondEventParityTest is Test {
         _warnUpgradeCompletionLogsMatchCore(ActionType.UpgradeMonument, "UpgradeMonument");
     }
 
+    function testWarnScheduledMarketCommitLogsMatchCore() public {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitTreasuryHeartbeatFixtureFacets();
+        MarketPair memory market = _setupMarketPair(core);
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        core.setCarry(coreClansmanId, 5e18, 0, 0, 0);
+        IEventParityFixture(address(diamond)).setCarry(diamondClansmanId, 5e18, 0, 0, 0);
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _marketOrder(coreClansmanId, ActionType.MarketSell, market.woodToken, 1e18, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _marketOrder(diamondClansmanId, ActionType.MarketSell, market.woodToken, 1e18, 0);
+
+        vm.recordLogs();
+        vm.prank(elder);
+        assertEq(uint8(core.submitClanOrders(coreClanId, coreOrders)[0].status), uint8(StatusCode.OK));
+        Vm.Log[] memory coreLogs = vm.getRecordedLogs();
+
+        vm.recordLogs();
+        vm.prank(elder);
+        assertEq(
+            uint8(IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders)[0].status),
+            uint8(StatusCode.OK)
+        );
+        Vm.Log[] memory diamondLogs = vm.getRecordedLogs();
+
+        _warnEmitterLogsMatch("ScheduledMarketCommit", coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
+    function testWarnScheduledMarketExecutionLogsMatchCore() public {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitTreasuryHeartbeatFixtureFacets();
+        MarketPair memory market = _setupMarketPair(core);
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        core.setCarry(coreClansmanId, 5e18, 0, 0, 0);
+        IEventParityFixture(address(diamond)).setCarry(diamondClansmanId, 5e18, 0, 0, 0);
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _marketOrder(coreClansmanId, ActionType.MarketSell, market.woodToken, 1e18, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _marketOrder(diamondClansmanId, ActionType.MarketSell, market.woodToken, 1e18, 0);
+
+        vm.prank(elder);
+        assertEq(uint8(core.submitClanOrders(coreClanId, coreOrders)[0].status), uint8(StatusCode.OK));
+        vm.prank(elder);
+        assertEq(
+            uint8(IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders)[0].status),
+            uint8(StatusCode.OK)
+        );
+
+        (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs) =
+            _recordCompletionHeartbeat(core, core.getActiveMission(coreClansmanId).settlesAtTick);
+        _warnEmitterLogsMatch("ScheduledMarketExecution", coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
+    function testWarnScheduledMarketFailureLogsMatchCore() public {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitTreasuryHeartbeatFixtureFacets();
+        MarketPair memory market = _setupMarketPair(core);
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        core.setCarry(coreClansmanId, 2e18, 0, 0, 0);
+        IEventParityFixture(address(diamond)).setCarry(diamondClansmanId, 2e18, 0, 0, 0);
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _marketOrder(coreClansmanId, ActionType.MarketSell, market.woodToken, 1e18, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _marketOrder(diamondClansmanId, ActionType.MarketSell, market.woodToken, 1e18, 0);
+
+        vm.prank(elder);
+        assertEq(uint8(core.submitClanOrders(coreClanId, coreOrders)[0].status), uint8(StatusCode.OK));
+        vm.prank(elder);
+        assertEq(
+            uint8(IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders)[0].status),
+            uint8(StatusCode.OK)
+        );
+        core.setCarry(coreClansmanId, 0, 0, 0, 0);
+        IEventParityFixture(address(diamond)).setCarry(diamondClansmanId, 0, 0, 0, 0);
+
+        (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs) =
+            _recordCompletionHeartbeat(core, core.getActiveMission(coreClansmanId).settlesAtTick);
+        _warnEmitterLogsMatch("ScheduledMarketFailure", coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
     function testTransferGoldLogsMatchCore() public {
         ClanWorld core = new ClanWorld();
         _installRawLifecycleGoldHeartbeatFacets();
@@ -481,6 +585,89 @@ contract DiamondEventParityTest is Test {
         });
     }
 
+    function _marketOrder(
+        uint32 clansmanId,
+        ActionType action,
+        address marketToken,
+        uint256 marketAmount,
+        uint256 maxGoldIn
+    ) internal pure returns (ClanOrder memory) {
+        return ClanOrder({
+            clansmanId: clansmanId,
+            gotoRegion: ClanWorldConstants.REGION_UNICORN_TOWN,
+            action: action,
+            targetClanId: 0,
+            marketToken: marketToken,
+            marketAmount: marketAmount,
+            maxGoldIn: maxGoldIn,
+            withdrawResources: WithdrawResourcesData({wood: 0, iron: 0, wheat: 0, fish: 0})
+        });
+    }
+
+    function _setupMarketPair(CoreEventParityHarness core) internal returns (MarketPair memory market) {
+        market.tokens = [
+            address(new MinimalERC20("Wood", "WOOD")),
+            address(new MinimalERC20("Iron", "IRON")),
+            address(new MinimalERC20("Wheat", "WHEAT")),
+            address(new MinimalERC20("Fish", "FISH")),
+            address(new MinimalERC20("Gold", "GOLD")),
+            address(new MinimalERC20("BPRT", "BPRT"))
+        ];
+        market.woodToken = market.tokens[0];
+
+        address[4] memory corePools = _deployPools(market.tokens, address(core));
+        address[4] memory diamondPools = _deployPools(market.tokens, address(diamond));
+        PoolSeedConfig memory cfg = _marketSeedConfig();
+
+        core.initTreasury(market.tokens, corePools);
+        IClanWorld(address(diamond)).initTreasury(market.tokens, diamondPools);
+
+        _seedMarketTreasury(market.tokens, cfg);
+        _approveMarket(market.tokens, address(core));
+        _approveMarket(market.tokens, address(diamond));
+
+        core.seedPools(cfg);
+        IClanWorld(address(diamond)).seedPools(cfg);
+    }
+
+    function _deployPools(address[6] memory tokens, address engine) internal returns (address[4] memory pools) {
+        pools[0] = address(new StubPool(tokens[0], tokens[4], engine));
+        pools[1] = address(new StubPool(tokens[2], tokens[4], engine));
+        pools[2] = address(new StubPool(tokens[3], tokens[4], engine));
+        pools[3] = address(new StubPool(tokens[1], tokens[4], engine));
+    }
+
+    function _seedMarketTreasury(address[6] memory tokens, PoolSeedConfig memory cfg) internal {
+        MinimalERC20(tokens[0]).seedTreasury(address(this), cfg.woodSeed * 2);
+        MinimalERC20(tokens[1]).seedTreasury(address(this), cfg.ironSeed * 2);
+        MinimalERC20(tokens[2]).seedTreasury(address(this), cfg.wheatSeed * 2);
+        MinimalERC20(tokens[3]).seedTreasury(address(this), cfg.fishSeed * 2);
+        MinimalERC20(tokens[4]).seedTreasury(
+            address(this),
+            (cfg.goldSeedForWood + cfg.goldSeedForWheat + cfg.goldSeedForFish + cfg.goldSeedForIron) * 2
+        );
+        MinimalERC20(tokens[5]).seedTreasury(address(this), 2);
+    }
+
+    function _approveMarket(address[6] memory tokens, address spender) internal {
+        for (uint256 i = 0; i < tokens.length; i++) {
+            MinimalERC20(tokens[i]).approve(spender, type(uint256).max);
+        }
+    }
+
+    function _marketSeedConfig() internal pure returns (PoolSeedConfig memory) {
+        return PoolSeedConfig({
+            woodSeed: 1_000e18,
+            wheatSeed: 1_000e18,
+            fishSeed: 500e18,
+            ironSeed: 250e18,
+            goldSeedForWood: 500e18,
+            goldSeedForWheat: 700e18,
+            goldSeedForFish: 600e18,
+            goldSeedForIron: 800e18
+        });
+    }
+
     function _recordCompletionHeartbeat(ClanWorld core, uint64 settlesAtTick)
         internal
         returns (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs)
@@ -582,6 +769,11 @@ contract DiamondEventParityTest is Test {
         selectors[0] = EventParityFixtureFacet.setCarry.selector;
         selectors[1] = EventParityFixtureFacet.setVault.selector;
         IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new EventParityFixtureFacet()), selectors), address(0), "");
+    }
+
+    function _installRawLifecycleSubmitTreasuryHeartbeatFixtureFacets() internal {
+        _installRawLifecycleSubmitHeartbeatFixtureFacets();
+        IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new TreasuryFacet()), DiamondSelectors.treasurySelectors()), address(0), "");
     }
 
     function _installRawLifecycleGoldHeartbeatFacets() internal {

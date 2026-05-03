@@ -24,6 +24,9 @@ tests pass.
 - Warning tests are in place for wall/base/monument upgrade event parity. They
   print loud `WARNING:` logs and pass during the hackathon so reviewers do not
   treat known non-demo drift as a merge blocker.
+- Market warning tests are in place for scheduled commit, scheduled success, and
+  scheduled failure. Commit and success currently match; failure warns on one
+  event fingerprint drift and is deferred unless it affects demo indexing.
 
 ## Phase 1: Log Parity Expansion
 
