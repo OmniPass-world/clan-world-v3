@@ -16,6 +16,7 @@ import {
     WheatPlotState
 } from "../../IClanWorld.sol";
 import {RNG} from "../../lib/RNG.sol";
+import {LibBanditCombat} from "./LibBanditCombat.sol";
 import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibGameRules} from "./LibGameRules.sol";
 import {LibOrderDefenders} from "./LibOrderDefenders.sol";
@@ -58,8 +59,8 @@ library LibSettlement {
         uint256 fishDelta,
         uint64 atTick
     );
-    event BanditEscaped(uint32 indexed banditId, uint64 atTick);
-    event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
+    // BanditEscaped + BanditTargetDied moved to LibBanditCombat (canonical
+    // emitter post-dedup). Same event signatures; ABI consumers unaffected.
 
     enum SettlementLogKind {
         None,
@@ -206,8 +207,10 @@ library LibSettlement {
         s.reservedWheatByClan[clanId] = sim.reservedWheat;
         s.reservedBlueprintByClan[clanId] = sim.reservedBlueprint;
         if (sim.simClanDied) {
-            releaseDefendersForDeadTarget(s, clanId, sim.clan.baseRegion);
-            abortBanditAttacksForDeadTarget(s, clanId, ClanWorldConstants.BANDIT_ID_NULL, sim.clan.lastSettledTick);
+            LibBanditCombat.releaseDefendersForDeadTarget(s, clanId, sim.clan.baseRegion);
+            LibBanditCombat.abortBanditAttacksForDeadTarget(
+                s, clanId, ClanWorldConstants.BANDIT_ID_NULL, sim.clan.lastSettledTick
+            );
         }
         for (uint8 level = 1; level < sim.simMonumentReachedAt.length; level++) {
             if (sim.simMonumentReachedAt[level] != 0 && s.monumentLevelReachedAt[clanId][level] == 0) {
@@ -1025,53 +1028,11 @@ library LibSettlement {
         return (cs, m);
     }
 
-    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion) internal {
-        for (uint256 i = 0; i < s.allClanIds.length; i++) {
-            uint32 defenderClanId = s.allClanIds[i];
-            if (defenderClanId == deadClanId) continue;
-
-            uint32[] storage csIds = s.clanClansmanIds[defenderClanId];
-            for (uint256 j = 0; j < csIds.length; j++) {
-                uint32 clansmanId = csIds[j];
-                Mission storage mission = s.missions[clansmanId];
-                if (
-                    mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
-                ) {
-                    if (s.clansmanDefendingRegion[clansmanId] == baseRegion) {
-                        LibOrderDefenders.clearDefender(s, clansmanId);
-                    }
-                    mission.active = false;
-
-                    Clansman storage defender = s.clansmen[clansmanId];
-                    if (defender.state != ClansmanState.DEAD) {
-                        defender.state = ClansmanState.WAITING;
-                    }
-                }
-            }
-        }
-    }
-
-    function abortBanditAttacksForDeadTarget(
-        LibStorage.AppStorage storage s,
-        uint32 deadClanId,
-        uint32 excludedBanditId,
-        uint64 tick
-    ) internal {
-        for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
-            uint32[] storage regionBandits = s.banditsByRegion[region];
-            for (uint256 i = 0; i < regionBandits.length; i++) {
-                uint32 banditId = regionBandits[i];
-                if (banditId == excludedBanditId) continue;
-
-                BanditTroop storage bandit = s.bandits[banditId];
-                if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
-                    LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Escaped);
-                    emit BanditEscaped(banditId, tick);
-                    emit BanditTargetDied(banditId, deadClanId, tick);
-                }
-            }
-        }
-    }
+    // releaseDefendersForDeadTarget + abortBanditAttacksForDeadTarget were
+    // duplicated here and in LibBanditCombat. Both copies were functionally
+    // identical, which silently re-creates the round-1 markClanDead parity-
+    // break risk if one copy is patched without the other. Canonical home is
+    // now LibBanditCombat (post-merge dedup per opus 4.6 / opus 4.7 r2 review).
 
     function clearWallUpgradeReservation(LibStorage.AppStorage storage s, uint32 clansmanId) internal {
         LibStorage.WallUpgradeReservation storage reservation = s.wallUpgradeReservations[clansmanId];

@@ -498,7 +498,7 @@ library LibBanditCombat {
         emit ClanDied(clanId, tick, reason);
     }
 
-    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion) public {
+    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion) internal {
         for (uint256 i = 0; i < s.allClanIds.length; i++) {
             uint32 defenderClanId = s.allClanIds[i];
             if (defenderClanId == deadClanId) continue;
@@ -529,7 +529,7 @@ library LibBanditCombat {
         uint32 deadClanId,
         uint32 excludedBanditId,
         uint64 tick
-    ) public {
+    ) internal {
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = s.banditsByRegion[region];
             for (uint256 i = 0; i < regionBandits.length; i++) {
