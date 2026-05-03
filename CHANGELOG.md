@@ -6,6 +6,88 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.0.0] — 2026-05-02
+
+### Highlights
+
+> [!IMPORTANT]
+> **Diamond proxy migration — major architecture change.** The monolithic `ClanWorld.sol` engine (~3,500 lines, hitting EIP-170 bytecode limit) is replaced by an EIP-2535 Diamond proxy with 24 facets sharing a single `LibStorage.appStorage()` slot. The 52 `IClanWorld` selectors are preserved bit-for-bit — game logic, events, and ABI are identical from a consumer's perspective. The on-chain deploy address changes; clients hardcoding the v1.x contract address must redeploy. PR #468.
+>
+> *v1.x = monolith era. v2.x = diamond era. ClanWorld is pre-prod with no on-chain mainnet state to migrate; the version bump signals the architectural cut.*
+
+### Added
+
+- **`packages/contracts/src/diamond/`** — full diamond infrastructure
+  - `Diamond.sol` proxy entry-point + selector router
+  - `IDiamondCut.sol` + `IDiamondLoupe.sol` admin/introspection
+  - `ClanWorldDiamondInit.sol` single-shot init mirroring monolith constructor field-for-field
+  - `OwnershipFacet.sol` exposing `transferOwnership(address)` + `owner()` for upgrade-key rotation
+  - 24 logic facets covering heartbeat, settlement, submit-orders, bandit lifecycle/combat/spawning, season finalize, gold/vault/blueprint/bundle/clan-ownership transfers, treasury, market views, world/clan/bandit views, raw views, derived views, and diamond cut admin
+  - 11 shared libraries: `LibStorage`, `LibDiamond`, `LibSettlement`, `LibSettlementMath`, `LibBanditCombat`, `LibBanditLifecycle`, `LibBanditSpawning`, `LibSeason`, `LibMission`, `LibGameRules`, plus `LibOrder*` order-handling libs
+- **`packages/contracts/script/DeployDiamond.s.sol`** — full deployment lifecycle: 24 facets across 3 cut batches → `ClanWorldDiamondInit.init()` → `ClanWorldLens` → 6 boundary tokens → 4 StubPools → `initTreasury` → token seeds → `seedPools()`. CI dry-runs the script.
+- **`packages/contracts/script/DiamondSelectors.sol`** — per-domain selector enumeration (52 `IClanWorld` selectors mapped across 24 facet cuts).
+- **`packages/contracts/test/diamond/`** — 1,688-line `DiamondSkeleton.t.sol` parity test suite + `DiamondEventParity.t.sol` covering 58 tests across heartbeat / settlement / transfers / views / bandit flows. Field-level equality verification between monolith and diamond.
+- **`StorageLayoutGuard.t.sol`** — asserts `clan.world.app.storage.v1` and `clan.world.diamond.storage.v1` slot constants stay distinct + match expected keccak hashes.
+- **`docs/architecture/diamond-pattern.md`** — operator/contributor guide to the diamond architecture.
+- **CI gates** (`.github/workflows/contracts.yml`, `scripts/check-contract-sizes.mjs`):
+  - Per-facet EIP-170 size enforcement (24,576 bytes)
+  - Storage layout snapshot guard
+  - Diamond parity test suite as separate job
+  - `DeployDiamond.s.sol` dry-run
+
+### Changed
+
+- **`Deploy.s.sol`** is now a 3-line wrapper (`contract Deploy is DeployDiamond {}`) — operator muscle memory deploys the diamond, not the oversized monolith. Zero monolith-deploy paths remain.
+- **Off-chain ABI consumers** (`packages/shared/src/adapters/IChainClient.ts`, Convex `apps/server/convex/`) regenerated from updated `packages/contracts/abi/IClanWorld.json`. Event field renames (`wood/iron/wheat/fish` → `woodDelta/ironDelta/wheatDelta/fishDelta`) propagated via `pnpm gen:chainclient-abi`.
+
+### Fixed
+
+Two SuperSwarm rounds × 5 reviewers each (Codex 5.4 + 5.5 + Gemini 3 Pro + Opus 4.6 + 4.7) surfaced and resolved 5 MUST-fix items:
+
+- **OwnershipFacet** added so deployer EOA isn't permanent upgrade key (4-way convergent finding)
+- **`Deploy.s.sol` rerouted to diamond** (was still deploying oversized monolith)
+- **`DeployDiamond.s.sol` completed** with treasury init + pool seeding (was stopping after facet cut)
+- **`MAX_CROP_TRANSITION_PER_TICK`** restored to 48 — matches monolith; silent parity break in audited safety constant
+- **`markClanDead` cleanup parity** restored: `_clearDefender`, `_refundUpgradeReservation`, `_releaseDefendersForDeadTarget`, `_abortBanditAttacksForDeadTarget` all mirrored from monolith (opus 4.6 unique find — others missed entirely)
+
+Plus:
+
+- **Settlement reservation simulation** (`bac7c6a`): diamond simulation now tracks wood/iron/blueprint reservations during commit. Diamond actually IMPROVES on monolith here per opus 4.6 audit (monolith only tracked wheat in simulation).
+- **Season finalization tick boundary** (`e713728`): `currentTick = last tick closed/settled`. Heartbeat freezes at `seasonEndTick`, `finalizeSeason()` settles through `currentTick`, sets `seasonFinalized=true`. Next heartbeat rolls. No double-processing.
+- **`LibDiamond.addFunctions/replaceFunctions/initializeDiamondCut`** now have `enforceHasContractCode()` checks — owner-footgun protection against bad cuts to EOAs or dead addresses.
+- **`chainclient-abi` CI** — regenerate ABI fragment to track event field renames in `IChainClient.ts`.
+
+### Removed
+
+- `derivedViewsFacetVersion()` orphaned external function (was exposed but not wired to selectors)
+- `rawViewsSelectors()` legacy 26-entry function fully replaced by 4 per-domain functions
+- `ClanWorldFacetPlaceholders.sol` 12 empty placeholder contracts
+
+### Deferred to v2.0.1
+
+- **Helper consolidation** (PR #469): `releaseDefendersForDeadTarget` + `abortBanditAttacksForDeadTarget` literally duplicated between `LibBanditCombat` and `LibSettlement` after the round-1 markClanDead fix. Both opus 4.6 + opus 4.7 r2 reviews flagged the silent-divergence risk.
+- **Lazy-settlement clan death event-emission parity** (codex 5.4 r2 MEDIUM): observer/indexer-facing only; on-chain state correct.
+- **6× duplicated `_settleClan` private function** across 6 facets (opus 4.6 MEDIUM): extract to shared lazy-settle.
+- **41 library functions `public` instead of `internal`** (opus 4.6 MEDIUM): DELEGATECALL overhead. Optimization only.
+- **Storage layout field-offset snapshot** beyond slot constants (opus 4.7 r2 MEDIUM).
+- **`bac7c6a` write-then-overwrite pattern** in `LibSettlement.commitSimulation` (opus 4.7 r2 MEDIUM).
+- **`MAX_CROP_TRANSITION_PER_TICK` access-modifier parity** (opus 4.7 r2 LOW).
+- **`LibDiamond.setContractOwner` zero-address guard** (opus 4.7 r2 LOW).
+
+### Review coverage
+
+- 2× SuperSwarm rounds (5/5 reviewers each: Codex 5.4 + 5.5 + Gemini 3 Pro + Opus 4.6 + 4.7) — convergent SHIP verdict at HEAD `1e01c38`
+- 1× cloud (Copilot + ChatGPT codex bot)
+- Local 3-tier review on individual round-1 fix commits
+
+### Migration notes (for ops)
+
+The deploy address changes — Diamond.sol is a different contract type than the ClanWorld monolith. Consumers hardcoding the v1.x `ClanWorld` address need to redeploy with the new Diamond address. Off-chain ABI consumers regenerate from `packages/contracts/abi/IClanWorld.json` (unchanged shape; `pnpm gen:chainclient-abi` keeps `IChainClient.ts` in sync).
+
+`OwnershipFacet.transferOwnership(address)` enables upgrade-key rotation post-deploy. Recommend transferring ownership to a multisig or DAO immediately after the initial deploy + diamond cut.
+
+---
+
 ## [1.2.0] — 2026-05-02
 
 ### Highlights
