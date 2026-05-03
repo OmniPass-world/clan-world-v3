@@ -153,19 +153,6 @@ export default function LandingPage() {
               onchain identity. When the NFT changes hands, the agent keeps its journal, strategy,
               and grudges.
             </p>
-            <div className="hook-video">
-              <div className="hook-video-frame">
-                <iframe
-                  src="https://www.youtube.com/embed/BCpLRwSvReI"
-                  title="ClanWorld Submission 1 demo"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                  allowFullScreen
-                />
-              </div>
-              <div className="hook-video-caption pixel">
-                ✦ Submission 1 · 3-min demo ✦
-              </div>
-            </div>
           </div>
         </div>
       </section>
