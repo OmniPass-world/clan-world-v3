@@ -25,6 +25,46 @@ import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol"
 import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
+import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
+
+contract CoreEventParityHarness is ClanWorld {
+    function setCarry(uint32 clansmanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external {
+        _clansmen[clansmanId].carryWood = wood;
+        _clansmen[clansmanId].carryIron = iron;
+        _clansmen[clansmanId].carryWheat = wheat;
+        _clansmen[clansmanId].carryFish = fish;
+    }
+
+    function setVault(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external {
+        _clans[clanId].vaultWood = wood;
+        _clans[clanId].vaultIron = iron;
+        _clans[clanId].vaultWheat = wheat;
+        _clans[clanId].vaultFish = fish;
+    }
+}
+
+interface IEventParityFixture {
+    function setCarry(uint32 clansmanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external;
+    function setVault(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external;
+}
+
+contract EventParityFixtureFacet {
+    function setCarry(uint32 clansmanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        s.clansmen[clansmanId].carryWood = wood;
+        s.clansmen[clansmanId].carryIron = iron;
+        s.clansmen[clansmanId].carryWheat = wheat;
+        s.clansmen[clansmanId].carryFish = fish;
+    }
+
+    function setVault(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        s.clans[clanId].vaultWood = wood;
+        s.clans[clanId].vaultIron = iron;
+        s.clans[clanId].vaultWheat = wheat;
+        s.clans[clanId].vaultFish = fish;
+    }
+}
 
 contract DiamondEventParityTest is Test {
     Diamond diamond;
@@ -168,6 +208,90 @@ contract DiamondEventParityTest is Test {
         _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
     }
 
+    function testGatherWoodCompletionLogsMatchCore() public {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitHeartbeatFacets();
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _basicOrder(coreClansmanId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] =
+            _basicOrder(diamondClansmanId, ClanWorldConstants.REGION_FOREST, ActionType.ChopWood, 0);
+
+        vm.prank(elder);
+        core.submitClanOrders(coreClanId, coreOrders);
+        vm.prank(elder);
+        IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders);
+
+        (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs) =
+            _recordCompletionHeartbeat(core, core.getActiveMission(coreClansmanId).settlesAtTick);
+        _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
+    function testDepositResourceLogsMatchCore() public {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitHeartbeatFixtureFacets();
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        uint8 coreBaseRegion = core.getClan(coreClanId).baseRegion;
+        uint8 diamondBaseRegion = IClanWorld(address(diamond)).getClan(diamondClanId).baseRegion;
+
+        core.setCarry(coreClansmanId, 2e18, 1e18, 3e18, 4e18);
+        IEventParityFixture(address(diamond)).setCarry(diamondClansmanId, 2e18, 1e18, 3e18, 4e18);
+
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _basicOrder(coreClansmanId, coreBaseRegion, ActionType.DepositResources, 0);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _basicOrder(diamondClansmanId, diamondBaseRegion, ActionType.DepositResources, 0);
+
+        vm.prank(elder);
+        core.submitClanOrders(coreClanId, coreOrders);
+        vm.prank(elder);
+        IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders);
+
+        (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs) =
+            _recordCompletionHeartbeat(core, core.getActiveMission(coreClansmanId).settlesAtTick);
+        _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
+    function testWithdrawResourceLogsMatchCore() public {
+        CoreEventParityHarness core = new CoreEventParityHarness();
+        _installRawLifecycleSubmitHeartbeatFixtureFacets();
+
+        address elder = address(0xA11CE);
+        (uint32 coreClanId, uint32 diamondClanId) = _mintPair(core, elder);
+        uint32 coreClansmanId = core.getClanClansmanIds(coreClanId)[0];
+        uint32 diamondClansmanId = IClanWorld(address(diamond)).getClanClansmanIds(diamondClanId)[0];
+        uint8 coreBaseRegion = core.getClan(coreClanId).baseRegion;
+        uint8 diamondBaseRegion = IClanWorld(address(diamond)).getClan(diamondClanId).baseRegion;
+
+        core.setVault(coreClanId, 20e18, 20e18, 20e18, 20e18);
+        IEventParityFixture(address(diamond)).setVault(diamondClanId, 20e18, 20e18, 20e18, 20e18);
+
+        WithdrawResourcesData memory request = WithdrawResourcesData({wood: 2e18, iron: 1e18, wheat: 3e18, fish: 4e18});
+        ClanOrder[] memory coreOrders = new ClanOrder[](1);
+        coreOrders[0] = _withdrawOrder(coreClansmanId, coreBaseRegion, request);
+        ClanOrder[] memory diamondOrders = new ClanOrder[](1);
+        diamondOrders[0] = _withdrawOrder(diamondClansmanId, diamondBaseRegion, request);
+
+        vm.prank(elder);
+        core.submitClanOrders(coreClanId, coreOrders);
+        vm.prank(elder);
+        IClanWorld(address(diamond)).submitClanOrders(diamondClanId, diamondOrders);
+
+        (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs) =
+            _recordCompletionHeartbeat(core, core.getActiveMission(coreClansmanId).settlesAtTick);
+        _assertEmitterLogsMatch(coreLogs, address(core), diamondLogs, address(diamond));
+    }
+
     function testTransferGoldLogsMatchCore() public {
         ClanWorld core = new ClanWorld();
         _installRawLifecycleGoldHeartbeatFacets();
@@ -218,6 +342,39 @@ contract DiamondEventParityTest is Test {
         });
     }
 
+    function _withdrawOrder(uint32 clansmanId, uint8 gotoRegion, WithdrawResourcesData memory request)
+        internal
+        pure
+        returns (ClanOrder memory)
+    {
+        return ClanOrder({
+            clansmanId: clansmanId,
+            gotoRegion: gotoRegion,
+            action: ActionType.WithdrawResources,
+            targetClanId: 0,
+            marketToken: address(0),
+            marketAmount: 0,
+            maxGoldIn: 0,
+            withdrawResources: request
+        });
+    }
+
+    function _recordCompletionHeartbeat(ClanWorld core, uint64 settlesAtTick)
+        internal
+        returns (Vm.Log[] memory coreLogs, Vm.Log[] memory diamondLogs)
+    {
+        while (core.getWorldState().currentTick <= settlesAtTick) {
+            vm.warp(core.getWorldState().nextHeartbeatAtTs);
+            bool finalHeartbeat = core.getWorldState().currentTick == settlesAtTick;
+            if (finalHeartbeat) vm.recordLogs();
+            core.heartbeat();
+            if (finalHeartbeat) coreLogs = vm.getRecordedLogs();
+            if (finalHeartbeat) vm.recordLogs();
+            IClanWorld(address(diamond)).heartbeat();
+            if (finalHeartbeat) diamondLogs = vm.getRecordedLogs();
+        }
+    }
+
     function _assertEmitterLogsMatch(
         Vm.Log[] memory coreLogs,
         address coreEmitter,
@@ -261,6 +418,14 @@ contract DiamondEventParityTest is Test {
     function _installRawLifecycleSubmitHeartbeatFacets() internal {
         _installRawLifecycleSubmitFacets();
         IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
+    }
+
+    function _installRawLifecycleSubmitHeartbeatFixtureFacets() internal {
+        _installRawLifecycleSubmitHeartbeatFacets();
+        bytes4[] memory selectors = new bytes4[](2);
+        selectors[0] = EventParityFixtureFacet.setCarry.selector;
+        selectors[1] = EventParityFixtureFacet.setVault.selector;
+        IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new EventParityFixtureFacet()), selectors), address(0), "");
     }
 
     function _installRawLifecycleGoldHeartbeatFacets() internal {

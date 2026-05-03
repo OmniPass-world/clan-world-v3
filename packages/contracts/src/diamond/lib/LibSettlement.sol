@@ -29,14 +29,64 @@ library LibSettlement {
 
     event MissionCompleted(uint32 indexed clanId, uint32 indexed clansmanId, uint64 missionNonce, ActionType action);
     event WorkerArrived(uint32 indexed clanId, uint32 indexed clansmanId, uint8 region, uint64 tick);
+    event ResourcesGathered(
+        uint32 indexed clanId,
+        uint32 indexed clansmanId,
+        ActionType action,
+        uint256 woodGained,
+        uint256 ironGained,
+        uint256 wheatGained,
+        uint256 fishGained,
+        uint256 goldBonus,
+        uint64 atTick
+    );
+    event ResourcesDeposited(
+        uint32 indexed clanId,
+        uint32 indexed clansmanId,
+        uint256 woodDelta,
+        uint256 ironDelta,
+        uint256 wheatDelta,
+        uint256 fishDelta,
+        uint64 atTick
+    );
+    event ResourcesWithdrawn(
+        uint32 indexed clanId,
+        uint32 indexed clansmanId,
+        uint256 woodDelta,
+        uint256 ironDelta,
+        uint256 wheatDelta,
+        uint256 fishDelta,
+        uint64 atTick
+    );
     event BanditEscaped(uint32 indexed banditId, uint64 atTick);
     event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
+
+    enum SettlementLogKind {
+        None,
+        ResourcesGathered,
+        ResourcesDeposited,
+        ResourcesWithdrawn
+    }
+
+    struct SettlementLog {
+        SettlementLogKind kind;
+        uint32 clansmanId;
+        ActionType action;
+        uint256 wood;
+        uint256 iron;
+        uint256 wheat;
+        uint256 fish;
+        uint256 gold;
+        uint64 tick;
+    }
 
     struct SettlementSimulation {
         Clan clan;
         Clansman[] clansmen;
         Mission[] missions;
         WheatPlot[2] wheatPlots;
+        SettlementLog[] logs;
+        uint256 logCount;
         uint64[11] simMonumentReachedAt;
         bool[] simWallReservationCleared;
         bool[] simBaseReservationCleared;
@@ -96,6 +146,7 @@ library LibSettlement {
         if (toTick > fromTick + LibGameRules.MAX_LAZY_SETTLE_BACKLOG) {
             toTick = fromTick + LibGameRules.MAX_LAZY_SETTLE_BACKLOG;
         }
+        sim.logs = new SettlementLog[](sim.clansmen.length * (toTick - fromTick));
 
         for (uint64 tick = fromTick; tick < toTick; tick++) {
             applyUpkeep(s, sim, tick);
@@ -144,6 +195,7 @@ library LibSettlement {
                     LibOrderDefenders.registerDefender(s, sim.clansmen[i].currentRegion, clanId, clansmanId);
                 }
             }
+            emitSettlementLogsFor(sim, clansmanId);
             if (sim.simMissionCompletedNonce[i] != 0) {
                 emit MissionCompleted(clanId, clansmanId, sim.simMissionCompletedNonce[i], sim.missions[i].action);
             }
@@ -162,6 +214,60 @@ library LibSettlement {
                 s.monumentLevelReachedAt[clanId][level] = sim.simMonumentReachedAt[level];
             }
         }
+    }
+
+    function emitSettlementLogsFor(SettlementSimulation memory sim, uint32 clansmanId) internal {
+        for (uint256 i = 0; i < sim.logCount; i++) {
+            SettlementLog memory entry = sim.logs[i];
+            if (entry.clansmanId != clansmanId) continue;
+            if (entry.kind == SettlementLogKind.ResourcesGathered) {
+                emit ResourcesGathered(
+                    sim.clan.clanId,
+                    entry.clansmanId,
+                    entry.action,
+                    entry.wood,
+                    entry.iron,
+                    entry.wheat,
+                    entry.fish,
+                    entry.gold,
+                    entry.tick
+                );
+            } else if (entry.kind == SettlementLogKind.ResourcesDeposited) {
+                emit ResourcesDeposited(
+                    sim.clan.clanId, entry.clansmanId, entry.wood, entry.iron, entry.wheat, entry.fish, entry.tick
+                );
+            } else if (entry.kind == SettlementLogKind.ResourcesWithdrawn) {
+                emit ResourcesWithdrawn(
+                    sim.clan.clanId, entry.clansmanId, entry.wood, entry.iron, entry.wheat, entry.fish, entry.tick
+                );
+            }
+        }
+    }
+
+    function recordSettlementLog(
+        SettlementSimulation memory sim,
+        SettlementLogKind kind,
+        uint32 clansmanId,
+        ActionType action,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint64 tick
+    ) internal pure {
+        if (sim.logCount >= sim.logs.length) return;
+        sim.logs[sim.logCount++] = SettlementLog({
+            kind: kind,
+            clansmanId: clansmanId,
+            action: action,
+            wood: wood,
+            iron: iron,
+            wheat: wheat,
+            fish: fish,
+            gold: gold,
+            tick: tick
+        });
     }
 
     function applyUpkeep(LibStorage.AppStorage storage s, SettlementSimulation memory sim, uint64 tick) internal view {
@@ -428,19 +534,19 @@ library LibSettlement {
         ActionType action = m.action;
 
         if (action == ActionType.ChopWood) {
-            (cs, m) = gatherWood(cs, m, tick, starving, tickSeed);
+            (cs, m) = gatherWood(sim, cs, m, tick, starving, tickSeed);
         } else if (action == ActionType.MineIron) {
             (cs, m) = gatherIron(sim, cs, m, tick, starving, tickSeed);
         } else if (action == ActionType.FishDocks) {
-            (cs, m) = gatherFish(cs, m, tick, starving, tickSeed, ClanWorldConstants.FISH_DOCKS_BPS);
+            (cs, m) = gatherFish(sim, cs, m, tick, starving, tickSeed, ClanWorldConstants.FISH_DOCKS_BPS);
         } else if (action == ActionType.FishDeepSea) {
-            (cs, m) = gatherFish(cs, m, tick, starving, tickSeed, ClanWorldConstants.FISH_DEEP_BPS);
+            (cs, m) = gatherFish(sim, cs, m, tick, starving, tickSeed, ClanWorldConstants.FISH_DEEP_BPS);
         } else if (action == ActionType.HarvestWheat) {
             (cs, m) = gatherWheat(sim, cs, m, tick, starving);
         } else if (action == ActionType.DepositResources) {
-            (cs, m) = doDeposit(sim, cs, m);
+            (cs, m) = doDeposit(sim, cs, m, tick);
         } else if (action == ActionType.WithdrawResources) {
-            (cs, m) = doWithdrawResources(s, sim, cs, m);
+            (cs, m) = doWithdrawResources(s, sim, cs, m, tick);
         } else if (
             action == ActionType.UpgradeWall || action == ActionType.UpgradeBase || action == ActionType.UpgradeMonument
         ) {
@@ -452,11 +558,14 @@ library LibSettlement {
         return (cs, m);
     }
 
-    function gatherWood(Clansman memory cs, Mission memory m, uint64 tick, bool starving, bytes32 tickSeed)
-        internal
-        view
-        returns (Clansman memory, Mission memory)
-    {
+    function gatherWood(
+        SettlementSimulation memory sim,
+        Clansman memory cs,
+        Mission memory m,
+        uint64 tick,
+        bool starving,
+        bytes32 tickSeed
+    ) internal view returns (Clansman memory, Mission memory) {
         uint256 remaining = ClanWorldConstants.WOOD_CAP - cs.carryWood;
         if (remaining == 0) return completeMission(cs, m);
 
@@ -469,6 +578,9 @@ library LibSettlement {
         if (starving) amount = amount / 2;
         if (amount > remaining) amount = remaining;
         cs.carryWood += amount;
+        recordSettlementLog(
+            sim, SettlementLogKind.ResourcesGathered, cs.clansmanId, ActionType.ChopWood, amount, 0, 0, 0, 0, tick
+        );
 
         if (cs.carryWood >= ClanWorldConstants.WOOD_CAP) {
             return completeMission(cs, m);
@@ -494,9 +606,14 @@ library LibSettlement {
         cs.carryIron += amount;
 
         bytes32 goldRng = keccak256(abi.encode("iron_gold_bonus", tickSeed, cs.clansmanId, m.nonce, tick));
+        uint256 goldBonus;
         if (uint256(goldRng) % 10000 < ClanWorldConstants.GOLD_FROM_IRON_BPS) {
-            sim.clan.goldBalance += ClanWorldConstants.GOLD_FROM_IRON_AMOUNT;
+            goldBonus = ClanWorldConstants.GOLD_FROM_IRON_AMOUNT;
+            sim.clan.goldBalance += goldBonus;
         }
+        recordSettlementLog(
+            sim, SettlementLogKind.ResourcesGathered, cs.clansmanId, ActionType.MineIron, 0, amount, 0, 0, goldBonus, tick
+        );
 
         if (cs.carryIron >= ClanWorldConstants.IRON_CAP) {
             return completeMission(cs, m);
@@ -505,6 +622,7 @@ library LibSettlement {
     }
 
     function gatherFish(
+        SettlementSimulation memory sim,
         Clansman memory cs,
         Mission memory m,
         uint64 tick,
@@ -523,6 +641,9 @@ library LibSettlement {
         if (amount > remaining) amount = remaining;
         if (amount > 0) {
             cs.carryFish += amount;
+            recordSettlementLog(
+                sim, SettlementLogKind.ResourcesGathered, cs.clansmanId, m.action, 0, 0, 0, amount, 0, tick
+            );
         }
 
         if (cs.carryFish >= ClanWorldConstants.FISH_CAP) {
@@ -563,6 +684,9 @@ library LibSettlement {
 
         cs.carryWheat += amount;
         plot.remainingWheat -= amount;
+        recordSettlementLog(
+            sim, SettlementLogKind.ResourcesGathered, cs.clansmanId, ActionType.HarvestWheat, 0, 0, amount, 0, 0, tick
+        );
 
         if (plot.remainingWheat == 0) {
             plot.state = WheatPlotState.Regrowing;
@@ -576,7 +700,7 @@ library LibSettlement {
         return (cs, m);
     }
 
-    function doDeposit(SettlementSimulation memory sim, Clansman memory cs, Mission memory m)
+    function doDeposit(SettlementSimulation memory sim, Clansman memory cs, Mission memory m, uint64 tick)
         internal
         view
         returns (Clansman memory, Mission memory)
@@ -585,6 +709,14 @@ library LibSettlement {
 
         bool hasAnything = cs.carryWood > 0 || cs.carryIron > 0 || cs.carryWheat > 0 || cs.carryFish > 0;
         if (!hasAnything) return completeMission(cs, m);
+
+        uint256 wood = cs.carryWood;
+        uint256 iron = cs.carryIron;
+        uint256 wheat = cs.carryWheat;
+        uint256 fish = cs.carryFish;
+        recordSettlementLog(
+            sim, SettlementLogKind.ResourcesDeposited, cs.clansmanId, m.action, wood, iron, wheat, fish, 0, tick
+        );
 
         sim.clan.vaultWood += cs.carryWood;
         sim.clan.vaultIron += cs.carryIron;
@@ -603,7 +735,8 @@ library LibSettlement {
         LibStorage.AppStorage storage,
         SettlementSimulation memory sim,
         Clansman memory cs,
-        Mission memory m
+        Mission memory m,
+        uint64 tick
     ) internal view returns (Clansman memory, Mission memory) {
         if (cs.currentRegion != sim.clan.baseRegion) return completeMission(cs, m);
 
@@ -635,6 +768,18 @@ library LibSettlement {
         cs.carryIron += req.iron;
         cs.carryWheat += req.wheat;
         cs.carryFish += req.fish;
+        recordSettlementLog(
+            sim,
+            SettlementLogKind.ResourcesWithdrawn,
+            cs.clansmanId,
+            m.action,
+            req.wood,
+            req.iron,
+            req.wheat,
+            req.fish,
+            0,
+            tick
+        );
 
         return completeMission(cs, m);
     }
