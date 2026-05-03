@@ -84,19 +84,6 @@ export default function LandingPage() {
             <div className="hero-map-caption pixel">
               ✦ From concept sketch to realized living world ✦
             </div>
-            <div className="hero-cockpit-wrap">
-              <img
-                src="https://github.com/user-attachments/assets/8227ca86-cad4-4895-9a72-f4aacda2e0d1"
-                alt="Ælder dictionary entry — pronunciation, definitions, and example usage"
-                className="hero-cockpit-img"
-                loading="lazy"
-                width={1448}
-                height={1086}
-              />
-              <div className="hero-map-caption pixel" style={{ marginTop: '0.6rem' }}>
-                ✦ Ælder · /ˈaldər/ · noun · also AElder ✦
-              </div>
-            </div>
           </div>
         </div>
       </section>
@@ -123,6 +110,26 @@ export default function LandingPage() {
               icon="banner"
               copy="Raise the tallest monument before winter closes in, or watch rivals starve your clan into surrender. Outlast bandits. Crush enemies. Pass the clan on, and your successor inherits the grudge."
             />
+          </div>
+        </div>
+      </section>
+
+      {/* ============== ÆLDER DICTIONARY ============== */}
+      <section className="section section-aelder">
+        <div className="container">
+          <h2 className="aelder-heading">What is an &lsquo;Ælder&rsquo;?</h2>
+          <div className="aelder-card-wrap">
+            <img
+              src="https://github.com/user-attachments/assets/8227ca86-cad4-4895-9a72-f4aacda2e0d1"
+              alt="Ælder dictionary entry — pronunciation, definitions, and example usage"
+              className="aelder-card-img"
+              loading="lazy"
+              width={1448}
+              height={1086}
+            />
+            <div className="aelder-card-caption pixel">
+              ✦ Ælder · /ˈaldər/ · noun · also AElder ✦
+            </div>
           </div>
         </div>
       </section>
