@@ -15,6 +15,7 @@ import type {
 } from "convex/server";
 import type * as agentLogs from "../agentLogs.js";
 import type * as crons from "../crons.js";
+import type * as events from "../events.js";
 import type * as getSnapshot from "../getSnapshot.js";
 import type * as heartbeat from "../heartbeat.js";
 import type * as http from "../http.js";
@@ -33,6 +34,7 @@ import type * as verify from "../verify.js";
 declare const fullApi: ApiFromModules<{
   agentLogs: typeof agentLogs;
   crons: typeof crons;
+  events: typeof events;
   getSnapshot: typeof getSnapshot;
   heartbeat: typeof heartbeat;
   http: typeof http;

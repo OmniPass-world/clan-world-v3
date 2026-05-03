@@ -4,6 +4,8 @@ import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Te
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
+import { TopHud } from './TopHud';
+import { EventTicker } from './EventTicker';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import { DEMO_MODE } from './config/env';
@@ -153,6 +155,14 @@ interface WorkerTravel {
 }
 
 type CombatOutcome = 'success' | 'failure';
+
+type BurstParticle = {
+  gfx: Graphics;
+  vx: number;
+  vy: number;
+  life: number;
+  decayRate: number;
+};
 
 type ReparentedCombatant = {
   node: Container;
@@ -561,6 +571,11 @@ export function WorldMap() {
   const zonePulseCbRef = useRef<(() => void) | null>(null);
   const isMountedRef = useRef(true);
 
+  // Pixel-burst effect system.
+  const burstParticlesRef = useRef<BurstParticle[]>([]);
+  const burstTickerCbRef = useRef<(() => void) | null>(null);
+  const seenBurstLogIdsRef = useRef<Set<string>>(new Set());
+
   const [pixiReady, setPixiReady] = useState(false);
   const [pixiInitError, setPixiInitError] = useState<Error | null>(null);
   const [, setSize] = useState({ w: 800, h: 600 });
@@ -668,6 +683,31 @@ export function WorldMap() {
       time: 400,
       ease: 'easeInOutQuad',
     });
+  }
+
+  // ---- Pixel burst helpers --------------------------------------------------
+
+  function triggerPixelBurst(worldX: number, worldY: number, color: number, count = 12) {
+    const layer = layersRef.current?.inWorldEffects;
+    if (!layer) return;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+      const speed = 1.2 + Math.random() * 2.8;
+      const size = 2 + Math.floor(Math.random() * 3);
+      const gfx = new Graphics();
+      gfx.rect(-size / 2, -size / 2, size, size);
+      gfx.fill({ color, alpha: 1 });
+      gfx.x = worldX;
+      gfx.y = worldY;
+      layer.addChild(gfx);
+      burstParticlesRef.current.push({
+        gfx,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed * 0.65,
+        life: 1,
+        decayRate: 0.016 + Math.random() * 0.014,
+      });
+    }
   }
 
   // ---- Pixi init ------------------------------------------------------------
@@ -954,6 +994,29 @@ export function WorldMap() {
         combatTickerCbRef.current = combatCb;
         app.ticker.add(combatCb);
 
+        // Pixel burst ticker — animates flying pixels for deposit/trade events.
+        const burstCb = () => {
+          const particles = burstParticlesRef.current;
+          const layer = layersRef.current?.inWorldEffects;
+          if (!layer || particles.length === 0) return;
+          for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            if (!p) continue;
+            p.gfx.x += p.vx;
+            p.gfx.y += p.vy;
+            p.vy += 0.08; // light gravity
+            p.life -= p.decayRate;
+            p.gfx.alpha = Math.max(0, p.life);
+            if (p.life <= 0) {
+              layer.removeChild(p.gfx);
+              p.gfx.destroy();
+              particles.splice(i, 1);
+            }
+          }
+        };
+        burstTickerCbRef.current = burstCb;
+        app.ticker.add(burstCb);
+
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
         // viewport handles screen-fit transformation. Children inside the viewport
@@ -978,6 +1041,7 @@ export function WorldMap() {
       if (a && zonePulseCbRef.current) a.ticker.remove(zonePulseCbRef.current);
       if (a && dayNightTickerCbRef.current) a.ticker.remove(dayNightTickerCbRef.current);
       if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
+      if (a && burstTickerCbRef.current) a.ticker.remove(burstTickerCbRef.current);
       finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
       selectedRef.current = null;
@@ -994,6 +1058,9 @@ export function WorldMap() {
       zonePulseCbRef.current = null;
       dayNightTickerCbRef.current = null;
       combatTickerCbRef.current = null;
+      burstTickerCbRef.current = null;
+      burstParticlesRef.current = [];
+      seenBurstLogIdsRef.current.clear();
       dayNightFilterRef.current = null;
       drawnRef.current = {
         regions: [],
@@ -1312,8 +1379,8 @@ export function WorldMap() {
     // Top scoreboard removed — minimal top margin keeps zone halos centered.
     // Bottom margin reserves space for the compact tick/level pulse panel.
     const sideMargin = 24;
-    const topMargin = 24;
-    const bottomMargin = 60;
+    const topMargin = 52; // reserve space for 44px TopHud bar
+    const bottomMargin = 96; // reserve space for ticker (32px) + scoreboard (60px)
     const usableW = Math.max(80, w - 2 * sideMargin);
     const usableH = Math.max(80, h - topMargin - bottomMargin);
     const scaleX = usableW / REF_W;
@@ -2047,6 +2114,39 @@ export function WorldMap() {
     }
   }, [logs, pixiReady]);
 
+  // Pixel burst trigger: watch agentLogs for deposit and trade events,
+  // spawn a pixel burst at the appropriate world position.
+  useEffect(() => {
+    if (!pixiReady) return;
+    const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
+    const projX = (nx: number) => offsetX + nx * REF_W * scaleX;
+    const projY = (ny: number) => offsetY + ny * REF_H * scaleY;
+    const unicornRegion = REGIONS.find(r => r.id === 'unicorn-town');
+
+    for (const log of logs) {
+      if (seenBurstLogIdsRef.current.has(log._id)) continue;
+      seenBurstLogIdsRef.current.add(log._id);
+      const msg = log.message.toLowerCase();
+
+      // Deposit burst at the clan's base
+      if (/\bdeposit\b/.test(msg)) {
+        const clanId = attributeClan(log.message);
+        const anchor = clanId ? flagAnchorsRef.current.get(clanId) : null;
+        if (anchor) {
+          const clan = MOCK_CLANS.find(c => c.id === clanId);
+          triggerPixelBurst(anchor.x, anchor.y - 8, clan?.color ?? 0xe8d8b5, 14);
+        }
+      }
+
+      // Trade burst at Unicorn Town
+      if (/\b(unicorn\s*town|market|trade(?:d|s)?|sell|buy)\b/.test(msg) && unicornRegion) {
+        const ux = projX(unicornRegion.nx);
+        const uy = projY(unicornRegion.ny);
+        triggerPixelBurst(ux, uy, 0xcc88cc, 18);
+      }
+    }
+  }, [logs, pixiReady]);
+
   // Canned demo travels: continuous spawn so 4-8 dots are always in motion.
   // Hackathon visual: the map should never feel dead. Skipped when DEMO_MODE is off.
   useEffect(() => {
@@ -2148,6 +2248,12 @@ export function WorldMap() {
           height: '100%',
         }}
       />
+
+      {/* Top HUD bar — tick clock, season progress, status chips */}
+      <TopHud liveTick={liveTick} />
+
+      {/* Event ticker — scrolling live game events */}
+      <EventTicker />
 
       {/* Compact world-pulse panel — bottom-left, semi-transparent.
           Floating Lv badges on the canvas show per-clan level; this panel just
