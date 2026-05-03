@@ -271,11 +271,13 @@ interface PremiseColumnProps {
 function PremiseColumn({ tag, title, icon, copy }: PremiseColumnProps) {
   return (
     <div className="premise-col">
-      <div className="premise-icon">
-        <PremiseIcon name={icon} />
+      <div className="premise-col-left">
+        <div className="premise-icon">
+          <PremiseIcon name={icon} />
+        </div>
+        <div className="premise-tag pixel">{tag}</div>
+        <h3 className="premise-title">{title}</h3>
       </div>
-      <div className="premise-tag pixel">{tag}</div>
-      <h3 className="premise-title">{title}</h3>
       <p className="premise-copy">{copy}</p>
     </div>
   )

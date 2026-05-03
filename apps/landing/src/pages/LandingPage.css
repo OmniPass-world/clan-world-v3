@@ -202,6 +202,11 @@
   text-align: center;
 }
 
+.premise-col-left {
+  /* desktop default — preserves existing centered icon/title above copy */
+  display: contents;
+}
+
 .premise-col::before {
   content: '';
   position: absolute;
@@ -257,6 +262,45 @@
   line-height: 1.6;
   color: var(--ink);
   text-align: left;
+}
+
+@media (max-width: 720px) {
+  .premise-col {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1rem;
+    align-items: center;
+    text-align: left;
+  }
+  .premise-col-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .premise-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 0;
+    padding: 0.6rem;
+  }
+  .premise-icon svg {
+    width: 40px;
+    height: 40px;
+  }
+  .premise-tag {
+    font-size: 0.7rem !important;
+    margin-bottom: 0;
+  }
+  .premise-title {
+    /* tighten title for the cramped cell */
+    font-size: 1.4rem;
+    margin: 0;
+  }
+  .premise-copy {
+    font-size: 0.95rem;
+    line-height: 1.45;
+  }
 }
 
 /* ============ Hook section ============ */
