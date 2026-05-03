@@ -3454,25 +3454,25 @@ export const CLAN_WORLD_ABI = [
         "internalType": "uint32"
       },
       {
-        "name": "wood",
+        "name": "woodDelta",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "iron",
+        "name": "ironDelta",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "wheat",
+        "name": "wheatDelta",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
       },
       {
-        "name": "fish",
+        "name": "fishDelta",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
