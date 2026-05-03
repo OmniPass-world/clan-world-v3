@@ -20,15 +20,43 @@ contract CoreWinterBoundaryHarness is ClanWorld {
     function disableBanditsForTest() external {
         _activeBanditCount = MAX_TOTAL_BANDITS;
     }
+
+    function setCurrentTickForTest(uint64 tick) external {
+        bytes32 tickSeed = bytes32(uint256(tick));
+        _world.currentTick = tick;
+        _world.nextHeartbeatAtTick = tick + 1;
+        _world.nextHeartbeatAtTs = 0;
+        _world.currentTickSeed = tickSeed;
+    }
+
+    function setClanLastSettledTickForTest(uint32 clanId, uint64 tick) external {
+        _clans[clanId].lastSettledTick = tick;
+    }
 }
 
 interface IWinterBoundaryHarness {
     function disableBanditsForTest() external;
+    function setCurrentTickForTest(uint64 tick) external;
+    function setClanLastSettledTickForTest(uint32 clanId, uint64 tick) external;
 }
 
 contract DiamondWinterBoundaryHarnessFacet {
     function disableBanditsForTest() external {
         LibStorage.appStorage().activeBanditCount = 1;
+    }
+
+    function setCurrentTickForTest(uint64 tick) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        bytes32 tickSeed = bytes32(uint256(tick));
+        s.world.currentTick = tick;
+        s.world.nextHeartbeatAtTick = tick + 1;
+        s.world.nextHeartbeatAtTs = 0;
+        s.world.currentTickSeed = tickSeed;
+        s.tickSeeds[tick] = tickSeed;
+    }
+
+    function setClanLastSettledTickForTest(uint32 clanId, uint64 tick) external {
+        LibStorage.appStorage().clans[clanId].lastSettledTick = tick;
     }
 }
 
@@ -110,6 +138,48 @@ contract DiamondWinterBoundaryTest is Test {
         _assertRegrowingPlotEq(diamondEast, coreEast, winterEndTick, "east");
     }
 
+    function testWinterStartHandlesMaxLiveClanCropTransitionsLikeCore() public {
+        CoreWinterBoundaryHarness core = new CoreWinterBoundaryHarness();
+        IClanWorld diamondWorld = _deployDiamondWorld();
+        IWinterBoundaryHarness diamondHarness = IWinterBoundaryHarness(address(diamondWorld));
+        uint32 clanCount = 12;
+        uint64 preWinterTick = ClanWorldConstants.WINTER_START_TICK - 1;
+
+        core.disableBanditsForTest();
+        diamondHarness.disableBanditsForTest();
+        for (uint32 clanId = 1; clanId <= clanCount; clanId++) {
+            address elder = address(uint160(0xC000 + clanId));
+            vm.prank(elder);
+            (uint32 coreClanId,) = core.mintClan(elder);
+            vm.prank(elder);
+            (uint32 diamondClanId,) = diamondWorld.mintClan(elder);
+            assertEq(coreClanId, clanId, "core clan id");
+            assertEq(diamondClanId, clanId, "diamond clan id");
+        }
+        core.setCurrentTickForTest(preWinterTick);
+        diamondHarness.setCurrentTickForTest(preWinterTick);
+        for (uint32 clanId = 1; clanId <= clanCount; clanId++) {
+            core.setClanLastSettledTickForTest(clanId, preWinterTick);
+            diamondHarness.setClanLastSettledTickForTest(clanId, preWinterTick);
+        }
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        core.heartbeat();
+        diamondWorld.heartbeat();
+
+        assertTrue(core.isWinter(), "core winter");
+        assertTrue(diamondWorld.isWinter(), "diamond winter");
+        _assertWorldStateEq(diamondWorld.getWorldState(), core.getWorldState());
+        assertEq(diamondWorld.getClanIds().length, clanCount, "synthetic clan count");
+
+        for (uint32 clanId = 1; clanId <= clanCount; clanId++) {
+            (WheatPlot memory coreWest, WheatPlot memory coreEast) = core.getWheatPlots(clanId);
+            (WheatPlot memory diamondWest, WheatPlot memory diamondEast) = diamondWorld.getWheatPlots(clanId);
+            _assertLockedPlotEq(diamondWest, coreWest, "west");
+            _assertLockedPlotEq(diamondEast, coreEast, "east");
+        }
+    }
+
     function _deployDiamondWorld() internal returns (IClanWorld diamondWorld) {
         DiamondCutFacet cutFacet = new DiamondCutFacet();
         Diamond diamond = new Diamond(address(this), address(cutFacet));
@@ -133,8 +203,10 @@ contract DiamondWinterBoundaryTest is Test {
     }
 
     function _harnessSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](1);
+        selectors = new bytes4[](3);
         selectors[0] = DiamondWinterBoundaryHarnessFacet.disableBanditsForTest.selector;
+        selectors[1] = DiamondWinterBoundaryHarnessFacet.setCurrentTickForTest.selector;
+        selectors[2] = DiamondWinterBoundaryHarnessFacet.setClanLastSettledTickForTest.selector;
     }
 
     function _advancePairToTick(CoreWinterBoundaryHarness core, IClanWorld diamondWorld, uint64 targetTick) internal {
