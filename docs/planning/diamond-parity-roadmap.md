@@ -10,6 +10,18 @@ accounting, winter upkeep, death cleanup, and mission completion semantics.
 Keep each track small, independently testable, and committed after the focused
 tests pass.
 
+## Current Status
+
+- Track 1A is implemented. It found and fixed missing diamond replay for
+  `ResourcesGathered`, `ResourcesDeposited`, and `ResourcesWithdrawn`.
+- Track 1D is implemented for gold, vault resource, bundle, and clan ownership
+  transfer logs.
+- Track 1B should start with bytecode relief. Static inspection shows wall,
+  base, and monument level-change events are still emitted by the monolith
+  settlement path but not by diamond settlement replay. Adding that replay
+  directly to `LibSettlement` would likely push `HeartbeatFacet` over EIP-170;
+  after Track 1A it is only 106 bytes below the hard limit.
+
 ## Phase 1: Log Parity Expansion
 
 No public ABI changes. Extend `DiamondEventParity.t.sol` using the existing
