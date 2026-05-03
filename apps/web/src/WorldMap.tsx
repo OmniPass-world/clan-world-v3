@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from 'convex/react';
-import { Application, Assets, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
@@ -105,6 +105,40 @@ type BubbleHandle = {
   tail: Graphics; // separate from backdrop so we can hide it on stacked (non-bottom) bubbles
 };
 
+type WorldLayers = {
+  worldContainer: Container;
+  terrainBackground: Container;
+  terrainAccents: Container;
+  worldDynamic: Container;
+  inWorldEffects: Container;
+  selectionRings: Container;
+  bubbleLayer: Container;
+  screenEffects: Container;
+  combatDim: Graphics;
+  combatHighlight: Container;
+  combatFlash: Graphics;
+};
+
+type CarryIndicator = {
+  container: Container;
+  fill: Graphics;
+  displayedFill: number;
+  targetFill: number;
+};
+
+type DayNightKeyframe = {
+  r: number;
+  g: number;
+  b: number;
+  brightness: number;
+  sat: number;
+};
+
+type SelectableTarget = Container & {
+  width: number;
+  height: number;
+};
+
 // Worker travel animation (PR #44) — small clan-colored dots crossing between regions.
 interface WorkerTravel {
   id: string;
@@ -115,7 +149,30 @@ interface WorkerTravel {
   color: number;
   /** Display node — Sprite when clansman texture loaded, Graphics dot fallback. */
   gfx: Container;
+  carry: CarryIndicator;
 }
+
+type CombatOutcome = 'success' | 'failure';
+
+type ReparentedCombatant = {
+  node: Container;
+  parent: Container;
+  zIndex: number;
+  wasTemporary?: boolean;
+};
+
+type CombatVignette = {
+  startedAt: number;
+  outcome: CombatOutcome;
+  bandit: Container | null;
+  targetBase: Container;
+  defenders: Container[];
+  reparented: ReparentedCombatant[];
+  baseStart: { x: number; y: number; scaleX: number; scaleY: number };
+  banditStart: { x: number; y: number; scaleX: number; scaleY: number; alpha: number };
+  defenderStarts: { x: number; y: number }[];
+  center: { x: number; y: number };
+};
 
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
 const TRAVEL_FADE_OUT_MS = 1200; // longer linger at destination
@@ -123,6 +180,51 @@ const TRAVEL_DEST_LINGER_MS = 2500; // hold at destination at full alpha before 
 const TRAVEL_MIN_MS = 4500;
 const TRAVEL_MAX_MS = 8000;
 const CANNED_TRAVEL_INTERVAL_MS = 1800; // continuous spawn — keeps map alive
+
+const COMBAT_VIGNETTE_LEAD_MS = 4000;
+const COMBAT_ADVANCE_MS = 1500;
+const COMBAT_FLASH_START_MS = 2000;
+const COMBAT_FLASH_IN_MS = 80;
+const COMBAT_FLASH_HOLD_MS = 100;
+const COMBAT_FLASH_FADE_MS = 800;
+const COMBAT_RESOLUTION_START_MS = 2200;
+const COMBAT_RESOLUTION_CAP_MS = 1500;
+const COMBAT_TOTAL_MS = COMBAT_RESOLUTION_START_MS + COMBAT_RESOLUTION_CAP_MS + 600;
+const COMBAT_DIM_ALPHA = 0.55;
+const COMBAT_DIM_TINT = 0x1a1a3a;
+const COMBAT_TARGET_CLAN_ID = 'clan-ember';
+/** Demo combat outcome — overrideable via URL param `?combat=success|failure`
+ * for stage flexibility. Defaults to failure since wall-drop reads more
+ * dramatic. Replace with `snapshot.combatOutcome` when schema lands. */
+function readDemoCombatOutcome(): CombatOutcome {
+  if (typeof window === 'undefined') return 'failure';
+  const param = new URLSearchParams(window.location.search).get('combat');
+  return param === 'success' ? 'success' : 'failure';
+}
+
+// TODO(contract-bindings): replace these demo defaults when carry caps are exposed.
+const WOOD_CAP = 10;
+const IRON_CAP = 5;
+const WHEAT_CAP = 10;
+const FISH_CAP = 10;
+const CARRY_BAR_W = 16;
+const CARRY_BAR_H = 3;
+
+const TICKS_PER_DAY_CYCLE = 30;
+const FALLBACK_DAY_TICK_MS = 60_000;
+const DAYNIGHT_KEYFRAMES: Record<'dawn' | 'day' | 'dusk' | 'night', DayNightKeyframe> = {
+  dawn: { r: 1.10, g: 0.90, b: 0.80, brightness: 0.95, sat: 0.85 },
+  day: { r: 1.00, g: 1.00, b: 1.00, brightness: 1.00, sat: 1.00 },
+  dusk: { r: 1.15, g: 0.85, b: 0.70, brightness: 0.85, sat: 0.95 },
+  night: { r: 0.65, g: 0.70, b: 0.95, brightness: 0.55, sat: 0.70 },
+};
+const DAYNIGHT_PHASES = [
+  { at: 0.00, key: 'dawn' as const },
+  { at: 0.05, key: 'day' as const },
+  { at: 0.50, key: 'dusk' as const },
+  { at: 0.55, key: 'night' as const },
+  { at: 1.00, key: 'dawn' as const },
+];
 
 /** Map a log message to a clan id by string-matching id or name. */
 function attributeClan(msg: string): string | null {
@@ -219,6 +321,150 @@ function treasuryToMonument(treasury: string): number {
   }
 }
 
+function createWorldLayers(): WorldLayers {
+  const worldContainer = new Container();
+  const terrainBackground = new Container();
+  const terrainAccents = new Container();
+  const worldDynamic = new Container();
+  const inWorldEffects = new Container();
+  const selectionRings = new Container();
+  const bubbleLayer = new Container();
+  const screenEffects = new Container();
+  const combatDim = new Graphics();
+  const combatHighlight = new Container();
+  const combatFlash = new Graphics();
+  worldDynamic.sortableChildren = true;
+  // §14.3: combatHighlight must use insertion-order so the success-launch
+  // (bandit drawn after defenders) doesn't sort under the targeted base.
+  // No sortableChildren here. (claude r3 SHOULD #1)
+  screenEffects.sortableChildren = true;
+  combatDim.zIndex = 0;
+  combatHighlight.zIndex = 1;
+  combatFlash.zIndex = 2;
+  combatDim.alpha = 0;
+  combatFlash.alpha = 0;
+  screenEffects.addChild(combatDim, combatHighlight, combatFlash);
+  worldContainer.addChild(terrainBackground, terrainAccents, worldDynamic);
+  return {
+    worldContainer,
+    terrainBackground,
+    terrainAccents,
+    worldDynamic,
+    inWorldEffects,
+    selectionRings,
+    bubbleLayer,
+    screenEffects,
+    combatDim,
+    combatHighlight,
+    combatFlash,
+  };
+}
+
+function makeCarryIndicator(): CarryIndicator {
+  const container = new Container();
+  container.alpha = 0;
+  const bg = new Graphics();
+  bg.rect(-CARRY_BAR_W / 2, -CARRY_BAR_H / 2, CARRY_BAR_W, CARRY_BAR_H);
+  bg.fill({ color: 0x1a1612, alpha: 0.95 });
+  bg.stroke({ color: 0x000000, width: 1, alpha: 0.85 });
+  const fill = new Graphics();
+  container.addChild(bg);
+  container.addChild(fill);
+  return { container, fill, displayedFill: 0, targetFill: 0 };
+}
+
+function setCarryTargetFromCarry(
+  indicator: CarryIndicator,
+  carry: { wood?: number; iron?: number; wheat?: number; fish?: number },
+) {
+  indicator.targetFill = Math.max(
+    (carry.wood ?? 0) / WOOD_CAP,
+    (carry.iron ?? 0) / IRON_CAP,
+    (carry.wheat ?? 0) / WHEAT_CAP,
+    (carry.fish ?? 0) / FISH_CAP,
+  );
+}
+
+function redrawCarryIndicator(indicator: CarryIndicator) {
+  const next = Math.max(0, Math.min(1, indicator.displayedFill));
+  indicator.container.alpha = next <= 0.01 ? 0 : 1;
+  indicator.fill.clear();
+  if (next <= 0.01) return;
+  indicator.fill.rect(-CARRY_BAR_W / 2, -CARRY_BAR_H / 2, CARRY_BAR_W * next, CARRY_BAR_H);
+  indicator.fill.fill({ color: 0xe8d8b5, alpha: 1 });
+}
+
+function clamp01(value: number) {
+  return Math.max(0, Math.min(1, value));
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+function easeOutQuad(t: number) {
+  return 1 - (1 - t) * (1 - t);
+}
+
+function easeInQuad(t: number) {
+  return t * t;
+}
+
+function getDayNightFrame(progress01: number): DayNightKeyframe {
+  const wrapped = ((progress01 % 1) + 1) % 1;
+  for (let i = 0; i < DAYNIGHT_PHASES.length - 1; i++) {
+    const a = DAYNIGHT_PHASES[i];
+    const b = DAYNIGHT_PHASES[i + 1];
+    if (!a || !b) continue;
+    if (wrapped >= a.at && wrapped <= b.at) {
+      const t = b.at === a.at ? 0 : (wrapped - a.at) / (b.at - a.at);
+      const from = DAYNIGHT_KEYFRAMES[a.key];
+      const to = DAYNIGHT_KEYFRAMES[b.key];
+      return {
+        r: lerp(from.r, to.r, t),
+        g: lerp(from.g, to.g, t),
+        b: lerp(from.b, to.b, t),
+        brightness: lerp(from.brightness, to.brightness, t),
+        sat: lerp(from.sat, to.sat, t),
+      };
+    }
+  }
+  return DAYNIGHT_KEYFRAMES.dawn;
+}
+
+function applyDayNightFilter(filter: ColorMatrixFilter, frame: DayNightKeyframe) {
+  const r = frame.r * frame.brightness;
+  const g = frame.g * frame.brightness;
+  const b = frame.b * frame.brightness;
+  void frame.sat;
+  filter.matrix = [
+    r, 0, 0, 0, 0,
+    0, g, 0, 0, 0,
+    0, 0, b, 0, 0,
+    0, 0, 0, 1, 0,
+  ];
+}
+
+function drawSelectionRing(g: Graphics, radius: number, color: number) {
+  g.clear();
+  const segmentCount = 8;
+  const gap = 0.18;
+  const step = (Math.PI * 2) / segmentCount;
+  for (let i = 0; i < segmentCount; i++) {
+    const start = i * step + gap;
+    const end = (i + 1) * step - gap;
+    const samples = 6;
+    for (let j = 0; j <= samples; j++) {
+      const a = lerp(start, end, j / samples);
+      const x = Math.cos(a) * radius;
+      const y = Math.sin(a) * radius * 0.45;
+      if (j === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    }
+  }
+  g.stroke({ color, width: 2, alpha: 1 });
+}
+
 export function WorldMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
@@ -240,7 +486,15 @@ export function WorldMap() {
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
-    bases: { sprite: Sprite | null; fallback: Graphics; clan: ClanDef }[];
+    bases: {
+      container: Container;
+      sprite: Sprite | null;
+      fallback: Graphics;
+      glow: Graphics;
+      clan: ClanDef;
+      baseY: number;
+      phaseOffset: number;
+    }[];
     /** Floating "Lv N" badge beside each base. */
     levelBadges: { bg: Graphics; label: Text; clan: ClanDef }[];
     flags: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef }[];
@@ -267,6 +521,20 @@ export function WorldMap() {
     bgSprite: null,
   });
 
+  const layersRef = useRef<WorldLayers | null>(null);
+  const dayNightFilterRef = useRef<ColorMatrixFilter | null>(null);
+  const dayNightTickerCbRef = useRef<(() => void) | null>(null);
+  const selectedRef = useRef<{
+    target: SelectableTarget;
+    ring: Graphics;
+    color: number;
+  } | null>(null);
+  const tickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
+  // Snapshot ref populated below in a useEffect — declared up here so the
+  // day/night ticker (registered once at Pixi mount) reads current
+  // snapshot/tickEpoch instead of the stale closure capture.
+  const snapshotRef = useRef<ReturnType<typeof useQuery<typeof api.getSnapshot.getSnapshot>> | undefined>(undefined);
+
   // Per-clan speech-bubble system (PR #43).
   const bubbleLayerRef = useRef<Container | null>(null);
   const bubblesByClanRef = useRef<Map<string, BubbleHandle[]>>(new Map());
@@ -280,6 +548,14 @@ export function WorldMap() {
   const travelTickerCbRef = useRef<((ticker: { deltaMS: number }) => void) | null>(null);
   const seenTravelLogIdsRef = useRef<Set<string>>(new Set());
   const travelIdSeqRef = useRef(0);
+  const combatVignetteRef = useRef<CombatVignette | null>(null);
+  // Set true after a `?combat=success` vignette completes, so the bandit
+  // stays hidden post-fade-out instead of popping back to the home anchor.
+  const banditDefeatedRef = useRef(false);
+  const combatTickerCbRef = useRef<(() => void) | null>(null);
+  const combatPlayedTickRef = useRef<number | null>(null);
+  const liveTickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
+  const liveTickRef = useRef(0);
 
   // Zone-pulse ticker (visual heartbeat for clan zone halos).
   const zonePulseCbRef = useRef<(() => void) | null>(null);
@@ -301,6 +577,98 @@ export function WorldMap() {
   }, [logs, snapshot?.tick]);
   const banditTicksUntil = DEMO_BANDIT.attacksAtTick - liveTick;
   const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
+
+  useEffect(() => {
+    liveTickRef.current = liveTick;
+    if (liveTickClockRef.current.tick !== liveTick) {
+      liveTickClockRef.current = { tick: liveTick, seenAtMs: Date.now() };
+    }
+  }, [liveTick]);
+
+  useEffect(() => {
+    snapshotRef.current = snapshot;
+    const rawTick = snapshot?.tick;
+    if (typeof rawTick === 'number' && Number.isFinite(rawTick)) {
+      tickClockRef.current = { tick: rawTick, seenAtMs: Date.now() };
+    }
+  }, [snapshot]);
+
+  function getDayNightProgress() {
+    const snap = snapshotRef.current;
+    const tick = snap?.tick;
+    const epoch = snap?.tickEpoch;
+    const hasEpoch = !!epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0;
+    if (typeof tick === 'number' && Number.isFinite(tick) && (tick > 0 || hasEpoch)) {
+      let subTickProgress = 0;
+      if (hasEpoch && typeof epoch.durationMs === 'number' && epoch.durationMs > 0) {
+        const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
+        subTickProgress = clamp01((Date.now() - startedAtMs) / epoch.durationMs);
+      } else {
+        const elapsed = Date.now() - tickClockRef.current.seenAtMs;
+        subTickProgress = clamp01(elapsed / FALLBACK_DAY_TICK_MS);
+      }
+      return ((tick + subTickProgress) % TICKS_PER_DAY_CYCLE) / TICKS_PER_DAY_CYCLE;
+    }
+    return ((Date.now() / FALLBACK_DAY_TICK_MS) % TICKS_PER_DAY_CYCLE) / TICKS_PER_DAY_CYCLE;
+  }
+
+  function fitWorldAnimated() {
+    const viewport = viewportRef.current;
+    const wrap = canvasWrapRef.current;
+    if (!viewport || !wrap) return;
+    const fitScale = Math.max(
+      (wrap.clientWidth || viewport.screenWidth) / WORLD_WIDTH,
+      (wrap.clientHeight || viewport.screenHeight) / WORLD_HEIGHT,
+    );
+    viewport.plugins.remove('animate');
+    viewport.animate({
+      position: { x: WORLD_WIDTH / 2, y: WORLD_HEIGHT / 2 },
+      scale: fitScale,
+      time: 400,
+      ease: 'easeInOutQuad',
+    });
+  }
+
+  function clearSelection() {
+    const selected = selectedRef.current;
+    if (!selected) return;
+    selected.target.removeChild(selected.ring);
+    selected.ring.destroy();
+    selectedRef.current = null;
+    fitWorldAnimated();
+  }
+
+  function selectTarget(target: SelectableTarget, color: number) {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    // No-op during active combat vignette — a fresh selection ring would
+    // appear inside the dimmed combat scene, undercutting the focus and
+    // potentially persisting after the dim layer fades (codex 5.4 LOW).
+    if (combatVignetteRef.current) return;
+    let ring = selectedRef.current?.ring;
+    if (!ring) {
+      ring = new Graphics();
+    } else if (ring.parent) {
+      ring.parent.removeChild(ring);
+    }
+    const radius = Math.max(18, Math.max(target.width || 0, target.height || 0) * 0.7);
+    drawSelectionRing(ring, radius, color);
+    ring.visible = true;
+    ring.alpha = 1;
+    ring.rotation = 0;
+    target.addChildAt(ring, 0);
+    selectedRef.current = { target, ring, color };
+
+    const global = target.getGlobalPosition();
+    const world = viewport.toWorld(global);
+    viewport.plugins.remove('animate');
+    viewport.animate({
+      position: { x: world.x, y: world.y },
+      scale: 2.0,
+      time: 400,
+      ease: 'easeInOutQuad',
+    });
+  }
 
   // ---- Pixi init ------------------------------------------------------------
   useEffect(() => {
@@ -370,8 +738,23 @@ export function WorldMap() {
         viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
         viewportRef.current = viewport;
 
+        const layers = createWorldLayers();
+        viewport.addChild(
+          layers.worldContainer,
+          layers.inWorldEffects,
+          layers.selectionRings,
+          layers.bubbleLayer,
+          layers.screenEffects,
+        );
+        const dayNightFilter = new ColorMatrixFilter();
+        layers.worldContainer.filters = [dayNightFilter];
+        dayNightFilterRef.current = dayNightFilter;
+        layersRef.current = layers;
+        bubbleLayerRef.current = layers.bubbleLayer;
+        travelLayerRef.current = layers.worldDynamic;
+
         // 1. Background terrain map (PR #40) — fantasy strategy art generated to match REGIONS layout.
-        // Loaded async; sprite is added to viewport BEFORE buildScene so region circles render on top.
+        // Loaded async; sprite is added to terrainBackground BEFORE buildScene so region circles render on top.
         try {
           const tex = await Assets.load(worldMapBg);
           if (!mounted || !isMountedRef.current) return;
@@ -381,7 +764,7 @@ export function WorldMap() {
           bg.height = MAP_HEIGHT;
           bg.x = 0;
           bg.y = 0;
-          viewport.addChild(bg);
+          layers.terrainBackground.addChild(bg);
           drawnRef.current.bgSprite = bg;
         } catch (err) {
           // Non-fatal — fall through to flat background color set in app.init
@@ -390,12 +773,10 @@ export function WorldMap() {
 
         // 2. Build scene (regions, sigil sprites, bandit indicator) — PR #41 + PR #42 logic
         // Layers are added to `viewport` (not app.stage) so pinch/drag affect them.
-        buildScene(app, viewport, () => !mounted || !isMountedRef.current);
+        buildScene(() => !mounted || !isMountedRef.current);
 
-        // 3. Speech bubble layer + ticker (PR #43) — added last so bubbles render above everything.
-        const bubbleLayer = new Container();
-        viewport.addChild(bubbleLayer);
-        bubbleLayerRef.current = bubbleLayer;
+        // 3. Speech bubble ticker (PR #43) — bubbleLayer sits above selection/effects.
+        const bubbleLayer = layers.bubbleLayer;
 
         const cb = (ticker: { deltaMS: number }) => {
           const now = performance.now();
@@ -446,12 +827,9 @@ export function WorldMap() {
         tickerCbRef.current = cb;
         app.ticker.add(cb);
 
-        // 3b. Worker travel layer + ticker (PR #44) — clan-colored dots crossing routes.
-        // Added after bubble layer so dots can render under bubbles (less visual noise).
-        const travelLayer = new Container();
-        // Insert below bubble layer so bubbles always appear on top of moving dots.
-        viewport.addChildAt(travelLayer, viewport.getChildIndex(bubbleLayer));
-        travelLayerRef.current = travelLayer;
+        // 3b. Worker travel ticker (PR #44) — clansmen live in worldDynamic so
+        // they Y-sort against bases and bandits.
+        const travelLayer = layers.worldDynamic;
 
         const travelCb = (_ticker: { deltaMS: number }) => {
           const layer = travelLayerRef.current;
@@ -468,8 +846,9 @@ export function WorldMap() {
             const from = REGIONS.find(r => r.id === t.fromRegionKey);
             const to = REGIONS.find(r => r.id === t.toRegionKey);
             if (!from || !to) {
+              if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
               layer.removeChild(t.gfx);
-              t.gfx.destroy();
+              t.gfx.destroy({ children: true });
               list.splice(i, 1);
               continue;
             }
@@ -486,8 +865,9 @@ export function WorldMap() {
               // Linger at destination at full alpha for TRAVEL_DEST_LINGER_MS,
               // THEN fade. Keeps arrival visible — answers "clansmen disappear" bug.
               if (fadeAge >= TRAVEL_DEST_LINGER_MS + TRAVEL_FADE_OUT_MS) {
+                if (selectedRef.current?.target === t.gfx) selectedRef.current = null;
                 layer.removeChild(t.gfx);
-                t.gfx.destroy();
+                t.gfx.destroy({ children: true });
                 list.splice(i, 1);
                 continue;
               }
@@ -495,6 +875,8 @@ export function WorldMap() {
               const jit = Math.sin((now + (t.id.charCodeAt(t.id.length - 1) * 137)) / 220) * 1.5;
               t.gfx.x = tx + jit;
               t.gfx.y = ty + jit * 0.6;
+              t.gfx.zIndex = Math.round(t.gfx.y);
+              t.carry.targetFill = 0;
               if (fadeAge < TRAVEL_DEST_LINGER_MS) {
                 t.gfx.alpha = 1;
               } else {
@@ -504,9 +886,16 @@ export function WorldMap() {
             } else {
               t.gfx.x = fx + (tx - fx) * progress;
               t.gfx.y = fy + (ty - fy) * progress;
+              t.gfx.zIndex = Math.round(t.gfx.y);
+              setCarryTargetFromCarry(t.carry, {
+                wood: WOOD_CAP * Math.min(1, progress),
+              });
               // Subtle fade-in over first 150ms so dots don't pop in
               t.gfx.alpha = Math.min(1, elapsed / 150);
             }
+            const lerpFactor = t.carry.targetFill >= t.carry.displayedFill ? 0.15 : 0.28;
+            t.carry.displayedFill += (t.carry.targetFill - t.carry.displayedFill) * lerpFactor;
+            redrawCarryIndicator(t.carry);
           }
         };
         travelTickerCbRef.current = travelCb;
@@ -524,11 +913,46 @@ export function WorldMap() {
             const a = 0.78 + 0.22 * Math.sin(phase);
             gfx.alpha = a;
           });
+          const now = performance.now();
+          drawn.bases.forEach((base) => {
+            if (base.baseY <= 0) return;
+            // 0.25 Hz (4-second period). 2π/4000 = π/2000 keeps units honest:
+            // sin((t + offset) * π / period_ms_half) cycles once per period.
+            base.container.y = base.baseY + Math.round(Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 1);
+            base.container.zIndex = Math.round(base.baseY);
+          });
         };
         app.ticker.add(zonePulseCb);
         // Stash cleanup ref via the same pattern as travel ticker (re-use travelTickerCbRef).
         // Track separately:
         zonePulseCbRef.current = zonePulseCb;
+
+        const dayNightCb = () => {
+          const filter = dayNightFilterRef.current;
+          if (!filter) return;
+          const frame = getDayNightFrame(getDayNightProgress());
+          applyDayNightFilter(filter, frame);
+          const glowAlpha = clamp01(1 - frame.brightness);
+          drawnRef.current.bases.forEach((base) => {
+            base.glow.alpha = glowAlpha;
+          });
+
+          const selected = selectedRef.current;
+          if (selected) {
+            const ring = selected.ring;
+            const now = performance.now();
+            ring.rotation += (app.ticker.deltaMS / 1000) * Math.PI * 2;
+            ring.alpha = 0.6 + Math.sin((now / 1000) * Math.PI) * 0.4;
+          }
+        };
+        dayNightTickerCbRef.current = dayNightCb;
+        app.ticker.add(dayNightCb);
+
+        const combatCb = () => {
+          updateCombatVignette();
+        };
+        combatTickerCbRef.current = combatCb;
+        app.ticker.add(combatCb);
 
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
@@ -552,6 +976,11 @@ export function WorldMap() {
       if (a && tickerCbRef.current) a.ticker.remove(tickerCbRef.current);
       if (a && travelTickerCbRef.current) a.ticker.remove(travelTickerCbRef.current);
       if (a && zonePulseCbRef.current) a.ticker.remove(zonePulseCbRef.current);
+      if (a && dayNightTickerCbRef.current) a.ticker.remove(dayNightTickerCbRef.current);
+      if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
+      finishCombatVignette(true);
+      selectedRef.current?.ring.destroy();
+      selectedRef.current = null;
       bubblesByClanRef.current.clear();
       seenLogIdsRef.current.clear();
       flagAnchorsRef.current.clear();
@@ -559,9 +988,13 @@ export function WorldMap() {
       seenTravelLogIdsRef.current.clear();
       bubbleLayerRef.current = null;
       travelLayerRef.current = null;
+      layersRef.current = null;
       tickerCbRef.current = null;
       travelTickerCbRef.current = null;
       zonePulseCbRef.current = null;
+      dayNightTickerCbRef.current = null;
+      combatTickerCbRef.current = null;
+      dayNightFilterRef.current = null;
       drawnRef.current = {
         regions: [],
         regionLabels: [],
@@ -635,11 +1068,25 @@ export function WorldMap() {
     };
   }, [pixiReady]);
 
+  useEffect(() => {
+    if (!pixiReady) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        clearSelection();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixiReady]);
+
   // ---- One-time: create Pixi display objects (refs hold them for relayout) -
   // All layers attach to `viewport` (not app.stage) so pixi-viewport's pinch /
   // drag transforms apply to the whole map atomically.
-  function buildScene(app: Application, viewport: Viewport, isAssetLoadCancelled: () => boolean) {
+  function buildScene(isAssetLoadCancelled: () => boolean) {
     const drawn = drawnRef.current;
+    const layers = layersRef.current;
+    if (!layers) return;
 
     // Clan zones, sigil flags, bases, walls, monuments, bandits — all mock data.
     // Skip entirely when DEMO_MODE is off; the canvas renders as an empty terrain map.
@@ -648,14 +1095,14 @@ export function WorldMap() {
       // sits on top. Visual sense of "this clan controls this zone."
       for (const clan of MOCK_CLANS) {
         const zoneGfx = new Graphics();
-        viewport.addChild(zoneGfx);
+        layers.terrainAccents.addChild(zoneGfx);
         drawn.clanZones.push({ gfx: zoneGfx, clan });
       }
     }
 
     for (const region of REGIONS) {
       const g = new Graphics();
-      viewport.addChild(g);
+      layers.terrainBackground.addChild(g);
       drawn.regions.push(g);
 
       const label = new Text({
@@ -663,7 +1110,7 @@ export function WorldMap() {
         style: { fill: 0xdddddd, fontSize: 11, fontFamily: 'monospace' },
       });
       label.anchor.set(0.5, 0);
-      viewport.addChild(label);
+      layers.terrainBackground.addChild(label);
       drawn.regionLabels.push(label);
     }
 
@@ -671,26 +1118,26 @@ export function WorldMap() {
       // Wall rings — drawn first so they sit above region circles but under sigils.
       for (const clan of MOCK_CLANS) {
         const wallGfx = new Graphics();
-        viewport.addChild(wallGfx);
+        layers.worldDynamic.addChild(wallGfx);
         drawn.walls.push({ gfx: wallGfx, clan });
       }
 
       // Monument towers — drawn before flags so sigil layers cleanly on top.
       for (const clan of MOCK_CLANS) {
         const monGfx = new Graphics();
-        viewport.addChild(monGfx);
+        layers.worldDynamic.addChild(monGfx);
         drawn.monuments.push({ gfx: monGfx, clan });
       }
 
       for (const clan of MOCK_CLANS) {
         const flag = new Graphics();
-        viewport.addChild(flag);
+        layers.worldDynamic.addChild(flag);
         const label = new Text({
           text: clan.name,
           style: { fill: clan.color, fontSize: 10, fontFamily: 'monospace', fontWeight: 'bold' },
         });
         label.anchor.set(0, 1);
-        viewport.addChild(label);
+        layers.worldDynamic.addChild(label);
         const entry: { gfx: Graphics; sprite: Sprite | null; label: Text; clan: ClanDef } = {
           gfx: flag,
           sprite: null,
@@ -707,7 +1154,7 @@ export function WorldMap() {
             if (cancelled || !appRef.current) return;
             const sprite = new Sprite(texture);
             sprite.alpha = 0; // hidden until first relayout positions it
-            viewport.addChild(sprite);
+            layers.worldDynamic.addChild(sprite);
             entry.sprite = sprite;
             // Trigger a relayout so sprite gets positioned and shown.
             const wrap = canvasWrapRef.current;
@@ -725,13 +1172,19 @@ export function WorldMap() {
       // visible during the load and as a safety net if the asset 404s. The countdown text
       // anchors next to whichever marker is currently rendered.
       const banditIcon = new Graphics();
-      viewport.addChild(banditIcon);
+      banditIcon.eventMode = 'static';
+      banditIcon.cursor = 'pointer';
+      banditIcon.on('pointertap', (event) => {
+        event.stopPropagation();
+        selectTarget(banditIcon as SelectableTarget, 0xffe9b8);
+      });
+      layers.worldDynamic.addChild(banditIcon);
       const countdown = new Text({
         text: '',
         style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
       });
       countdown.anchor.set(0, 0.5);
-      viewport.addChild(countdown);
+      layers.inWorldEffects.addChild(countdown);
       drawn.banditIcon = banditIcon;
       drawn.banditCountdown = countdown;
 
@@ -741,11 +1194,26 @@ export function WorldMap() {
         .then((texture) => {
           const cancelled = isAssetLoadCancelled();
           if (cancelled || !appRef.current) return;
+          // The .then() fires once per page load. Earlier round-2 fix
+          // early-returned during vignette to avoid redrawBandit() snapping
+          // the reparented banditIcon back to home — but skipping creation
+          // entirely meant the sprite was permanently lost if the asset
+          // resolved mid-vignette (gemini r3 HIGH #1). Now: always create
+          // the sprite + assign to drawn; only skip the redraw if a
+          // vignette is active. finishCombatVignette() calls redrawBandit
+          // afterward which positions the new sprite.
           const sprite = new Sprite(texture);
           sprite.anchor.set(0.5, 0.5);
           sprite.alpha = 0; // hidden until first redrawBandit positions it
-          viewport.addChild(sprite);
+          sprite.eventMode = 'static';
+          sprite.cursor = 'pointer';
+          sprite.on('pointertap', (event) => {
+            event.stopPropagation();
+            selectTarget(sprite as SelectableTarget, 0xffe9b8);
+          });
+          layers.worldDynamic.addChild(sprite);
           drawn.banditSprite = sprite;
+          if (combatVignetteRef.current) return;
           redrawBandit();
         })
         .catch(() => {
@@ -755,12 +1223,34 @@ export function WorldMap() {
       // Per-clan BASE SPRITES — pixel-art structures at home regions (towers / keeps / longhouses).
       // Visible on top of region circles + sigil flags. Falls back to a simple colored rect.
       for (const clan of MOCK_CLANS) {
+        const container = new Container();
+        layers.worldDynamic.addChild(container);
         const fallback = new Graphics();
-        viewport.addChild(fallback);
-        const entry: { sprite: Sprite | null; fallback: Graphics; clan: ClanDef } = {
+        const glow = new Graphics();
+        container.addChild(fallback);
+        container.addChild(glow);
+        container.eventMode = 'static';
+        container.cursor = 'pointer';
+        container.on('pointertap', (event) => {
+          event.stopPropagation();
+          selectTarget(container as SelectableTarget, clan.color);
+        });
+        const entry: {
+          container: Container;
+          sprite: Sprite | null;
+          fallback: Graphics;
+          glow: Graphics;
+          clan: ClanDef;
+          baseY: number;
+          phaseOffset: number;
+        } = {
+          container,
           sprite: null,
           fallback,
+          glow,
           clan,
+          baseY: 0,
+          phaseOffset: 0,
         };
         drawn.bases.push(entry);
 
@@ -771,7 +1261,7 @@ export function WorldMap() {
             const sprite = new Sprite(texture);
             sprite.anchor.set(0.5, 1); // anchored at bottom-center so it "stands" on the region
             sprite.alpha = 0;
-            viewport.addChild(sprite);
+            container.addChildAt(sprite, Math.min(1, container.children.length));
             entry.sprite = sprite;
             const wrap = canvasWrapRef.current;
             if (wrap && appRef.current) {
@@ -798,7 +1288,6 @@ export function WorldMap() {
       // Floating "Lv N" badges — drawn last so they overlay everything.
       for (const clan of MOCK_CLANS) {
         const bg = new Graphics();
-        viewport.addChild(bg);
         const label = new Text({
           text: 'Lv 1',
           style: {
@@ -809,7 +1298,8 @@ export function WorldMap() {
           },
         });
         label.anchor.set(0.5, 0.5);
-        viewport.addChild(label);
+        const base = drawn.bases.find((b) => b.clan.id === clan.id);
+        if (base) base.container.addChild(bg, label);
         drawn.levelBadges.push({ bg, label, clan });
       }
     } // end DEMO_MODE block
@@ -851,6 +1341,16 @@ export function WorldMap() {
       drawn.bgSprite.height = MAP_HEIGHT;
       drawn.bgSprite.x = 0;
       drawn.bgSprite.y = 0;
+    }
+
+    const layers = layersRef.current;
+    if (layers) {
+      layers.combatDim.clear();
+      layers.combatDim.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      layers.combatDim.fill({ color: COMBAT_DIM_TINT, alpha: 1 });
+      layers.combatFlash.clear();
+      layers.combatFlash.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+      layers.combatFlash.fill({ color: 0xffffff, alpha: 1 });
     }
 
     const regionMap = new Map(REGIONS.map(r => [r.id, r]));
@@ -947,42 +1447,49 @@ export function WorldMap() {
       });
 
       // BASE SPRITES — render at clan home positions, replacing monument obelisks.
-      drawn.bases.forEach(({ sprite, fallback, clan }) => {
+      drawn.bases.forEach((entry) => {
+        const { container, sprite, fallback, glow, clan } = entry;
         const base = regionMap.get(clan.homeRegion);
         if (!base) return;
         const cx = projX(base.nx);
         const cy = projY(base.ny);
         // Base size: ~128px at 1x scale, scales with viewport (2x bump for phone readability)
         const baseSize = Math.max(96, 144 * cappedSizeScale);
+        entry.baseY = cy + baseSize * 0.15;
+        entry.phaseOffset = ((Math.round(cx) * 73) ^ (Math.round(entry.baseY) * 31)) % 4000;
+        container.x = cx;
+        container.y = entry.baseY;
+        container.zIndex = Math.round(entry.baseY);
         fallback.clear();
         if (!sprite) {
           // Simple colored fallback rect with clan-color border
-          fallback.rect(cx - baseSize / 2, cy - baseSize, baseSize, baseSize);
+          fallback.rect(-baseSize / 2, -baseSize, baseSize, baseSize);
           fallback.fill({ color: 0x444444, alpha: 0.7 });
           fallback.stroke({ color: clan.color, width: 3 });
         }
         if (sprite) {
           sprite.width = baseSize;
           sprite.height = baseSize;
-          sprite.x = cx;
-          sprite.y = cy + baseSize * 0.15; // anchor=bottom-center; sit slightly below center
+          sprite.x = 0;
+          sprite.y = 0; // anchor=bottom-center; parent sits slightly below region center
           sprite.alpha = 1;
         }
+        glow.clear();
+        glow.circle(0, -baseSize * 0.8, Math.max(6, 8 * cappedSizeScale));
+        glow.fill({ color: 0xffd27d, alpha: 0.6 });
       });
 
       // FLOATING "Lv N" BADGES — beside each base sprite. Updates with monument level.
       drawn.levelBadges.forEach(({ bg, label, clan }) => {
         const base = regionMap.get(clan.homeRegion);
         if (!base) return;
-        const cx = projX(base.nx);
-        const cy = projY(base.ny);
         const baseSize = Math.max(96, 144 * cappedSizeScale);
         const lvl = levelByClan.get(clan.id) ?? 0;
         label.text = `Lv ${lvl}`;
         label.style.fontSize = Math.max(11, Math.round(13 * cappedSizeScale));
         // Position to the right of the base sprite, near the top
-        const bx = cx + baseSize * 0.55;
-        const by = cy - baseSize * 0.55;
+        const bx = baseSize * 0.55;
+        const by = -baseSize * 0.7;
         label.x = bx;
         label.y = by;
         // Pill background
@@ -995,8 +1502,12 @@ export function WorldMap() {
         bg.stroke({ color: clan.color, width: 1.5, alpha: 0.95 });
       });
 
-      // Bandit redraw uses live tick — recompute alongside layout
-      redrawBandit();
+      // Bandit redraw uses live tick — recompute alongside layout.
+      // Skip during active vignette so a snapshot.clans-driven relayout
+      // doesn't snap the reparented bandit back to home anchor mid-
+      // choreography (opus 4.7 r4 LOW). The vignette ticker self-corrects
+      // on the next frame anyway, but a one-frame snap is visible.
+      if (!combatVignetteRef.current) redrawBandit();
     } // end DEMO_MODE relayout block
   }
 
@@ -1010,6 +1521,18 @@ export function WorldMap() {
     const sprite = drawn.banditSprite;
     const text = drawn.banditCountdown;
     if (!icon || !text) return;
+    // After a `?combat=success` vignette completes, the bandit is defeated.
+    // Skip all redraw / re-show on subsequent layouts (gemini r3 HIGH #2).
+    if (banditDefeatedRef.current) {
+      icon.visible = false;
+      icon.alpha = 0;
+      if (sprite) {
+        sprite.visible = false;
+        sprite.alpha = 0;
+      }
+      text.visible = false;
+      return;
+    }
 
     const region = REGIONS.find(r => r.id === DEMO_BANDIT.regionId);
     if (!region) return;
@@ -1023,18 +1546,24 @@ export function WorldMap() {
     const iconY = cy - 42 * scale;
     const spriteSize = Math.max(24, 32 * scale);
     const ringR = Math.max(10, 14 * scale);
+    const banditZ = Math.round(iconY);
 
     icon.clear();
+    icon.x = iconX;
+    icon.y = iconY;
+    icon.zIndex = banditZ;
     if (!sprite) {
-      // Fallback ring while the sprite loads / on asset failure
-      icon.circle(iconX, iconY, ringR);
+      // Fallback ring while the sprite loads / on asset failure.
+      // Draw shapes at icon-local origin so target.getGlobalPosition() in
+      // selectTarget() resolves to the visible center, not the parent layer's origin.
+      icon.circle(0, 0, ringR);
       icon.fill({ color: 0xcc1122, alpha: 0.85 });
       icon.stroke({ color: 0xffffff, width: 2 });
       const barW = Math.max(2, 3 * scale);
       const barH = ringR * 0.95;
-      icon.rect(iconX - barW / 2, iconY - barH / 2, barW, barH * 0.6);
+      icon.rect(-barW / 2, -barH / 2, barW, barH * 0.6);
       icon.fill({ color: 0xffffff });
-      icon.circle(iconX, iconY + barH * 0.35, Math.max(1.5, barW * 0.7));
+      icon.circle(0, barH * 0.35, Math.max(1.5, barW * 0.7));
       icon.fill({ color: 0xffffff });
     }
 
@@ -1043,6 +1572,7 @@ export function WorldMap() {
       sprite.height = spriteSize;
       sprite.x = iconX;
       sprite.y = iconY;
+      sprite.zIndex = banditZ;
       sprite.alpha = 1;
     }
 
@@ -1055,9 +1585,300 @@ export function WorldMap() {
     text.y = iconY;
   }
 
-  // Tick changes: refresh bandit countdown (demo mode only)
+  function getMsUntilTickClose() {
+    const snap = snapshotRef.current;
+    const epoch = snap?.tickEpoch;
+    const durationMs =
+      epoch && typeof epoch.durationMs === 'number' && epoch.durationMs > 0
+        ? epoch.durationMs
+        : FALLBACK_DAY_TICK_MS;
+    if (epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0 && snap?.tick === liveTickRef.current) {
+      const startedAtMs = epoch.startedAt < 10_000_000_000 ? epoch.startedAt * 1000 : epoch.startedAt;
+      return Math.max(0, durationMs - (Date.now() - startedAtMs));
+    }
+    const elapsed = Date.now() - liveTickClockRef.current.seenAtMs;
+    return Math.max(0, durationMs - elapsed);
+  }
+
+  function shouldStartCombatVignette() {
+    if (!DEMO_MODE || combatVignetteRef.current) return false;
+    const attackTick = DEMO_BANDIT.attacksAtTick;
+    if (combatPlayedTickRef.current === attackTick) return false;
+    const currentTick = liveTickRef.current;
+    if (currentTick === attackTick - 1) {
+      // Codex cloud P1: when tickEpoch is unavailable (Sub1 logs-driven liveTick
+      // mode where ticks advance every ~20s but FALLBACK_DAY_TICK_MS is 60s),
+      // `getMsUntilTickClose()` never drops to ≤4000ms before liveTick rolls
+      // forward — the precise pre-close window never fires and the vignette
+      // only triggers post-close (line below). Detect fallback mode and
+      // trigger as soon as we enter the pre-attack tick. Vignette occupies the
+      // first 4s of the pre-attack tick instead of the last 4s; visually similar.
+      const snap = snapshotRef.current;
+      const epoch = snap?.tickEpoch;
+      const havePreciseEpoch =
+        epoch && typeof epoch.startedAt === 'number' && epoch.startedAt > 0
+        && typeof epoch.durationMs === 'number' && epoch.durationMs > 0;
+      if (havePreciseEpoch) {
+        return getMsUntilTickClose() <= COMBAT_VIGNETTE_LEAD_MS;
+      }
+      return true;
+    }
+    return currentTick >= attackTick;
+  }
+
+  function makeCombatDefender(color: number, clanId: string) {
+    const tex = clansmanTextureCache[clanId];
+    if (tex) {
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 0.5);
+      const targetH = 32;
+      const ratio = targetH / sprite.texture.height;
+      sprite.height = targetH;
+      sprite.width = sprite.texture.width * ratio;
+      return sprite;
+    }
+
+    const fallback = new Graphics();
+    fallback.circle(0, 0, 8);
+    fallback.fill({ color, alpha: 1 });
+    fallback.stroke({ color: 0xffffff, width: 1, alpha: 0.75 });
+    return fallback;
+  }
+
+  function reparentForCombat(node: Container, vignette: CombatVignette, wasTemporary = false) {
+    const layers = layersRef.current;
+    const parent = node.parent;
+    if (!layers || !(parent instanceof Container)) return;
+    vignette.reparented.push({ node, parent, zIndex: node.zIndex, wasTemporary });
+    parent.removeChild(node);
+    layers.combatHighlight.addChild(node);
+    node.zIndex = Math.round(node.y);
+  }
+
+  function startCombatVignette() {
+    const layers = layersRef.current;
+    if (!layers) return;
+    const drawn = drawnRef.current;
+    const targetClan =
+      MOCK_CLANS.find(c => c.id === COMBAT_TARGET_CLAN_ID)
+      ?? MOCK_CLANS.find(c => c.homeRegion === DEMO_BANDIT.regionId);
+    if (!targetClan) return;
+    const targetBase = drawn.bases.find(b => b.clan.id === targetClan.id);
+    if (!targetBase) return;
+
+    const targetBaseNode = targetBase.container;
+    const baseSize = Math.max(96, 144 * layoutRef.current.scale);
+    const center = {
+      x: targetBaseNode.x,
+      y: targetBaseNode.y - baseSize * 0.55,
+    };
+    const bandit = drawn.banditSprite ?? drawn.banditIcon;
+    if (!bandit) return;
+
+    // Mark this tick as played BEFORE any reparenting / mutation so a partial-start
+    // throw can't loop the per-frame ticker into spawning new defender nodes every
+    // frame (codex r3 SHOULD #1).
+    combatPlayedTickRef.current = DEMO_BANDIT.attacksAtTick;
+
+    // §14.3: combatDim sits above worldDynamic and would otherwise dim the
+    // active selection ring. Clear the ring (without the camera fit-out) so
+    // the dimmed world reads cleanly. Speech bubbles still dim mid-flight
+    // (structural fix queued for v1.2) — claude r3 MUST #3 cheap fix.
+    const selected = selectedRef.current;
+    if (selected) {
+      selected.target.removeChild(selected.ring);
+      selected.ring.destroy();
+      selectedRef.current = null;
+    }
+
+    const defenderAngles = [Math.PI * 0.75, Math.PI * 0.5, Math.PI * 0.25];
+    const defenders = defenderAngles.map((angle) => {
+      const defender = makeCombatDefender(targetClan.color, targetClan.id);
+      defender.x = center.x + Math.cos(angle) * 58;
+      defender.y = center.y + Math.sin(angle) * 34;
+      defender.zIndex = Math.round(defender.y);
+      layers.worldDynamic.addChild(defender);
+      return defender;
+    });
+
+    const vignette: CombatVignette = {
+      startedAt: performance.now(),
+      outcome: readDemoCombatOutcome(),
+      bandit,
+      targetBase: targetBaseNode,
+      defenders,
+      reparented: [],
+      baseStart: {
+        x: targetBaseNode.x,
+        y: targetBaseNode.y,
+        scaleX: targetBaseNode.scale.x,
+        scaleY: targetBaseNode.scale.y,
+      },
+      banditStart: {
+        x: bandit.x,
+        y: bandit.y,
+        scaleX: bandit.scale.x,
+        scaleY: bandit.scale.y,
+        alpha: bandit.alpha,
+      },
+      defenderStarts: defenders.map(d => ({ x: d.x, y: d.y })),
+      center,
+    };
+
+    reparentForCombat(targetBaseNode, vignette);
+    reparentForCombat(bandit, vignette);
+    defenders.forEach(defender => reparentForCombat(defender, vignette, true));
+    combatVignetteRef.current = vignette;
+  }
+
+  function finishCombatVignette(force = false) {
+    const vignette = combatVignetteRef.current;
+    const layers = layersRef.current;
+    if (!vignette || !layers) return;
+
+    layers.combatDim.alpha = 0;
+    layers.combatFlash.alpha = 0;
+    vignette.targetBase.x = vignette.baseStart.x;
+    vignette.targetBase.y = vignette.baseStart.y;
+    vignette.targetBase.scale.set(vignette.baseStart.scaleX, vignette.baseStart.scaleY);
+    // On success outcome the vignette fades the bandit to alpha=0 + 0.3 scale;
+    // unconditionally restoring banditStart would pop the defeated bandit
+    // back to full opacity (gemini r3 HIGH #2). Lock the defeated state via
+    // banditDefeatedRef + skip the visual restore on success.
+    if (vignette.outcome === 'success' && !force) {
+      banditDefeatedRef.current = true;
+      if (vignette.bandit) {
+        vignette.bandit.alpha = 0;
+        vignette.bandit.visible = false;
+      }
+    } else if (vignette.bandit) {
+      vignette.bandit.x = vignette.banditStart.x;
+      vignette.bandit.y = vignette.banditStart.y;
+      vignette.bandit.scale.set(vignette.banditStart.scaleX, vignette.banditStart.scaleY);
+      vignette.bandit.alpha = vignette.banditStart.alpha;
+    }
+
+    for (const item of vignette.reparented) {
+      if (item.node.parent) item.node.parent.removeChild(item.node);
+      if (item.wasTemporary) {
+        item.node.destroy({ children: true });
+        continue;
+      }
+      item.parent.addChild(item.node);
+      item.node.zIndex = item.zIndex;
+    }
+    layers.combatHighlight.removeChildren();
+    combatVignetteRef.current = null;
+    if (!force) redrawBandit();
+  }
+
+  function updateCombatVignette() {
+    if (shouldStartCombatVignette()) startCombatVignette();
+    const vignette = combatVignetteRef.current;
+    const layers = layersRef.current;
+    if (!vignette || !layers) return;
+
+    const now = performance.now();
+    const age = now - vignette.startedAt;
+    if (age >= COMBAT_TOTAL_MS) {
+      finishCombatVignette();
+      return;
+    }
+
+    // §10.8 cap rule: combat dim must not stack with day/night darkening into
+    // an unreadable scene. The naive `min(0.55, 1 - brightness)` reads the
+    // spec literally but inverts the intent — at full daylight (brightness=1)
+    // it gives 0, killing combat dim during the brightest part of the cycle
+    // (codex 5.4 SuperSwarm catch). Correct semantic: dim down by the AMOUNT
+    // of existing day/night darkening so total visual darkness stays bounded.
+    // Floor at 0.2 so combat still has a visible beat even at deep night.
+    const dayNightBrightness = getDayNightFrame(getDayNightProgress()).brightness;
+    const existingDarkness = clamp01(1 - dayNightBrightness);
+    const dimTarget = Math.max(0.2, COMBAT_DIM_ALPHA - existingDarkness);
+    const fadeOutStart = COMBAT_TOTAL_MS - 600;
+    if (age < 600) {
+      layers.combatDim.alpha = dimTarget * clamp01(age / 600);
+    } else if (age >= fadeOutStart) {
+      layers.combatDim.alpha = dimTarget * (1 - clamp01((age - fadeOutStart) / 600));
+    } else {
+      layers.combatDim.alpha = dimTarget;
+    }
+
+    const flashAge = age - COMBAT_FLASH_START_MS;
+    if (flashAge < 0) {
+      layers.combatFlash.alpha = 0;
+    } else if (flashAge < COMBAT_FLASH_IN_MS) {
+      layers.combatFlash.alpha = clamp01(flashAge / COMBAT_FLASH_IN_MS);
+    } else if (flashAge < COMBAT_FLASH_IN_MS + COMBAT_FLASH_HOLD_MS) {
+      layers.combatFlash.alpha = 1;
+    } else {
+      const fadeAge = flashAge - COMBAT_FLASH_IN_MS - COMBAT_FLASH_HOLD_MS;
+      layers.combatFlash.alpha = Math.max(0, 1 - fadeAge / COMBAT_FLASH_FADE_MS);
+    }
+
+    if (age < COMBAT_ADVANCE_MS) {
+      const t = easeInQuad(clamp01(age / COMBAT_ADVANCE_MS));
+      if (vignette.bandit) {
+        vignette.bandit.x = lerp(vignette.banditStart.x, vignette.center.x - 24, t);
+        vignette.bandit.y = lerp(vignette.banditStart.y, vignette.center.y - 8, t);
+      }
+      vignette.defenders.forEach((defender, i) => {
+        const start = vignette.defenderStarts[i];
+        if (!start) return;
+        defender.x = lerp(start.x, vignette.center.x + 18 + i * 8, t);
+        defender.y = lerp(start.y, vignette.center.y + 10, t);
+      });
+    } else if (age < COMBAT_FLASH_START_MS) {
+      const jitter = Math.sin(now / 55) * 1;
+      if (vignette.bandit) {
+        vignette.bandit.x = vignette.center.x - 24 + jitter;
+        vignette.bandit.y = vignette.center.y - 8;
+      }
+      vignette.defenders.forEach((defender, i) => {
+        defender.x = vignette.center.x + 18 + i * 8 - jitter;
+        defender.y = vignette.center.y + 10 + Math.sin(now / 70 + i) * 1;
+      });
+    } else if (age >= COMBAT_RESOLUTION_START_MS) {
+      const rAge = age - COMBAT_RESOLUTION_START_MS;
+      if (vignette.outcome === 'success') {
+        const launchT = easeOutQuad(clamp01(rAge / 600));
+        if (vignette.bandit) {
+          vignette.bandit.x = vignette.center.x - 24 - launchT * 60;
+          vignette.bandit.y = vignette.center.y - 8 - launchT * 16;
+          const fadeT = clamp01((rAge - 250) / 600);
+          const s = lerp(1, 0.3, fadeT);
+          vignette.bandit.scale.set(vignette.banditStart.scaleX * s, vignette.banditStart.scaleY * s);
+          vignette.bandit.alpha = 1 - fadeT;
+        }
+        vignette.defenders.forEach((defender, i) => {
+          defender.y = vignette.center.y + 10 + Math.sin(now / 90 + i) * 5;
+        });
+      } else {
+        const jumpT = easeOutQuad(clamp01(rAge / 300));
+        vignette.defenders.forEach((defender, i) => {
+          const angle = Math.PI * (0.2 + i * 0.22);
+          defender.x = vignette.center.x + 16 + i * 8 + Math.cos(angle) * 28 * jumpT;
+          defender.y = vignette.center.y + 10 + Math.sin(angle) * 20 * jumpT;
+        });
+        const dropT = easeInQuad(clamp01(rAge / 400));
+        vignette.targetBase.scale.y = lerp(vignette.baseStart.scaleY, vignette.baseStart.scaleY * 0.9, dropT);
+      }
+    }
+
+    if (vignette.bandit) vignette.bandit.zIndex = Math.round(vignette.bandit.y);
+    vignette.defenders.forEach(defender => {
+      defender.zIndex = Math.round(defender.y);
+    });
+    vignette.targetBase.zIndex = Math.round(vignette.targetBase.y);
+  }
+
+  // Tick changes: refresh bandit countdown (demo mode only).
+  // Skipped while a combat vignette is animating — redrawBandit overrides the
+  // bandit sprite's x/y/zIndex back to the region anchor, snapping the bandit
+  // out of mid-flight choreography (claude r3 MUST #1).
   useEffect(() => {
     if (!pixiReady || !DEMO_MODE) return;
+    if (combatVignetteRef.current) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTick, pixiReady]);
@@ -1078,6 +1899,11 @@ export function WorldMap() {
     if (!app) return;
 
     const resetBanditAlpha = () => {
+      // Defeated bandit stays alpha=0 — don't reset to 1 (opus 4.6/4.7 r4
+      // defensive). Currently masked by visible=false but enforces the
+      // "stay hidden post-defeat" invariant against future writers that
+      // might flip visible back to true.
+      if (banditDefeatedRef.current) return;
       const icon = drawnRef.current.banditIcon;
       const sprite = drawnRef.current.banditSprite;
       if (icon) icon.alpha = 1;
@@ -1090,6 +1916,14 @@ export function WorldMap() {
     }
 
     const onTick = () => {
+      // Yield bandit alpha ownership to the combat vignette while it's active.
+      // Without this guard, the pulse keeps writing alpha every frame AFTER the
+      // vignette ticker, silently nullifying the success-outcome fade-out
+      // (opus 4.7 SuperSwarm catch). The vignette window overlaps the pulse
+      // window when banditTicksUntil ∈ [0, 2].
+      if (combatVignetteRef.current) return;
+      // Defeated bandit stays hidden — don't pulse it back into visibility.
+      if (banditDefeatedRef.current) return;
       const icon = drawnRef.current.banditIcon;
       const sprite = drawnRef.current.banditSprite;
       const t = performance.now() / 220;
@@ -1168,6 +2002,15 @@ export function WorldMap() {
       dot.alpha = 0;
       gfx = dot;
     }
+    gfx.eventMode = 'static';
+    gfx.cursor = 'pointer';
+    gfx.on('pointertap', (event) => {
+      event.stopPropagation();
+      selectTarget(gfx as SelectableTarget, color);
+    });
+    const carry = makeCarryIndicator();
+    carry.container.y = tex ? -18 : -TRAVEL_DOT_RADIUS - 6;
+    gfx.addChild(carry.container);
     layer.addChild(gfx);
 
     const durationMs =
@@ -1182,6 +2025,7 @@ export function WorldMap() {
       durationMs,
       color,
       gfx,
+      carry,
     });
   }
 
