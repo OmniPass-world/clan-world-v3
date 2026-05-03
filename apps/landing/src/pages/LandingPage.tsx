@@ -87,14 +87,14 @@ export default function LandingPage() {
             <div className="hero-cockpit-wrap">
               <img
                 src="https://github.com/user-attachments/assets/8227ca86-cad4-4895-9a72-f4aacda2e0d1"
-                alt="Four-elder cockpit view — simultaneous AI agent activity across four clans"
+                alt="Ælder dictionary entry — pronunciation, definitions, and example usage"
                 className="hero-cockpit-img"
                 loading="lazy"
                 width={1448}
                 height={1086}
               />
               <div className="hero-map-caption pixel" style={{ marginTop: '0.6rem' }}>
-                ✦ Four Elders · Simultaneous Ticks · Live Onchain ✦
+                ✦ Ælder · /ˈaldər/ · noun · also AElder ✦
               </div>
             </div>
           </div>
