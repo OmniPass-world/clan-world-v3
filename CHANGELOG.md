@@ -6,6 +6,57 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.1.1] — 2026-05-03
+
+Demo operations patch for the live Base Sepolia world.
+
+### Added
+
+- **Diamond demo config controls**: `HeartbeatConfigFacet` now exposes owner-only `setClansmanCooldownSeconds(uint64)` for rapid manual testing and owner-only `triggerBanditSpawn()` to arm a one-shot forced bandit spawn on the next heartbeat.
+- **Bandit trigger runbook notes**: Base Sepolia deployment runbook documents the 1-second cooldown setting and one-shot forced bandit spawn command.
+
+### Changed
+
+- Bumped all ClanWorld workspace package versions to `2.1.1`.
+
+---
+
+## [2.1.0] — 2026-05-03
+
+Pre-demo feature drop. iNFT demo wiring, AXL transport, 0G storage scaffolding, graphics polish, and the full pipeline from the OpenAgents Track 2 submission scope.
+
+### Added
+
+- **ERC-7857 iNFT demo flow** (PR #494): `ClanAgentNFT` contract + `Mock7857Verifier` + Foundry deploy/mint/transfer scripts, Convex `inft.ts` mirror module (auth-gated by `INDEXER_SECRET`), `OwnerEditor` + cockpit `ZeroGTab` UI for mint/transfer/edit. Includes `safeTransferFrom` with `IERC721Receiver` callback, `transferProof.newDataHash` validation, per-item `IntelligentDataItem` event for full URI list reconstruction, and `waitForTransactionReceipt` between `writeContract` and UI refresh.
+- **0G mainnet smoke test scaffolding** (`infra/0g/`, PR #494): `smoke-test.ts` exercises `ZeroGMemoryStore.save/recall` for all 4 elders, `setup-env.sh` derives env from `~/.secrets/clanworld-elder-wallets.json`, README documents operator runbook + cost model. Smoke test currently fails on mainnet `FLOW_CONTRACT` submit despite verified-correct address — open environmental issue, file fallback ready as demo path.
+- **Gensyn AXL Docker sidecar** (PR #493): `infra/axl/` — `Dockerfile` (Go 1.25 builder + alpine runtime), `docker-compose.yml` (peered axl-1/axl-2 nodes on mutual TLS), `setup.sh` (peer-ID registration for clans 1-4), `test-whisper.sh` (end-to-end `elder whisper send/recv` over real AXL transport, validates `AxlPeerInbox` path not `FilePeerInbox` fallback).
+- **8 new clan base sprite themes** (PR #491): 5-level progressions for `cobalt-keep` (knights), `bone-standard` (warlords), `gilded-hold` (merchants), `tide-wardens` (fishers), plus `pale-cathedral`, `amethyst-spire`, `black-forge`, `verdant-grove` shipped as ready-to-wire assets in `apps/web/public/bases/`. 4 active clans now reskinned via `MOCK_CLANS.basePng` swap; sprites scaled 30% from initial render for tile-proportional fit.
+- **Live event ticker, top HUD bar, pixel burst effects** (PR #489): `EventTicker.tsx` streams chain events with clan-color coding, `TopHud.tsx` shows live tick + season progress + winter indicator + bandit countdown chip, `WorldMap` agent-log → pixel burst lifecycle. Demo cockpit feels alive instead of static.
+- **`getSnapshot` exposes season/winter state** (PR #489): pure `deriveSeasonState(tick)` mirroring `LibSeason.sol` semantics — no chain or schema change needed; `seasonStartTick` / `seasonEndTick` / `winterActive` / `winterStartsAtTick` available client-side.
+- **Diamond winter boundary tests** (PRs #472, #473, #474): `DiamondWinterBoundary.t.sol` covers winter-start parity, winter-end parity, and the `MAX_CROP_TRANSITION_PER_TICK` stress path against the diamond.
+- **Expanded README** (PR #490): 86 → 215 lines. Game mechanics (regions, missions, wheelbarrows, vault, trading, bandits, winter, seasons, monument), agent architecture (Four Ælders, Elder CLI, Memory & iNFT, Communication channels), tech-stack table, beyond-the-game pitch.
+- **AGENTS.md World out-of-scope banner** (PR #495): one-line sticky directing all agents to ignore WorldChain / WorldMiniApp / MiniKit / World ID references — Submission 2 only.
+
+### Changed
+
+- **`OG_STORAGE_API_KEY` → `OG_STORAGE_ENABLED`** (PR #492). The var is a feature flag, not a credential — real auth comes from `ELDER_MNEMONIC`-derived wallets. Misleading legacy name removed across `.env.template`, runner code, README, and 54 tests. Per-clan KV stream IDs (`OG_STREAM_ID_CLAN_<id>`) and per-elder peer-ID env vars (`AXL_PEER_ID_1..4`) added alongside.
+- **iNFT identity plane env block added to `.env.template`**: `OG_INFT_ADDRESS`, `INFT_OWNER`, `INFT_NEW_OWNER`, `INFT_TOKEN_ID`, `INFT_METADATA_URI`, `INFT_TRANSFER_URI`, plus `VITE_OG_*` and `VITE_OWNER_EDITOR_ENABLED` for the cockpit owner-editor route.
+- **Convex mirror mutations gated by `INDEXER_SECRET`**: all four `mirrorToken` / `mirrorTransfer` / `mirrorMemoryEntry` / `mirrorBulletin` mutations now require the secret arg matching the deployment env var, fail-closed when env unset.
+
+### Fixed
+
+- **`OwnerEditor` stale-state on RPC failure** (PR #494): unminted-tokenId loads now reset to canonical demo state instead of leaving the prior token's owner/data on screen.
+- **`OwnerEditor` no longer optimistic-updates ahead of chain**: `setData` + `persistDemoState` only run after `loadToken()` re-fetches a confirmed receipt — rejected wallet prompts can no longer leave the cockpit lying about post-update state.
+- **`safeNum` zero-string handling** (PR #489): `Number(v) || fallback` was treating valid `"0"` as falsy. Replaced with `Number.isFinite` check; `wood=0` / `resourceIn=0` events now render correctly.
+- **Runner `txHash` surfaced on successful 0G saves**: one-line `console.log` in `ZeroGMemoryStore.save()` exposes the post-submit txHash + rootHash for ops visibility.
+
+### Notes
+
+- All 6 PR #494 review HIGHs (4 contract/Convex + 2 UI) addressed in 3 review rounds (orch inline + parallel opus-4-7 + codex-5-5 file-pointer dispatch). Reviews live in `docs/reviews/pr494-codereview-*.md`.
+- 0G mainnet smoke test FLOW_CONTRACT issue documented in PR #494 body — likely an SDK 0.3.3 estimateGas quirk or unsatisfied Market contract permission gate. File fallback works; testnet path mapped if mainnet remains blocked.
+
+---
+
 ## [2.0.2] — 2026-05-03
 
 ### Fixed
