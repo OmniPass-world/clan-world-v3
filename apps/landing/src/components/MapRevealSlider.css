@@ -1,0 +1,87 @@
+.mrs-container {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+  border: 1px solid var(--ink-faded);
+}
+
+/* Both layers fill the container absolutely */
+.mrs-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.mrs-realm-map {
+  width: 100%;
+  height: 100%;
+}
+
+.mrs-game-map {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
+/* Vertical handle line */
+.mrs-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 44px;            /* hit area */
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: col-resize;
+  z-index: 10;
+  outline: none;
+}
+
+.mrs-handle:focus-visible .mrs-handle-knob {
+  outline: 2px solid var(--gold-leaf);
+  outline-offset: 2px;
+}
+
+.mrs-handle-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  background: var(--gold-leaf);
+  box-shadow: 0 0 6px rgba(168, 124, 47, 0.6);
+  pointer-events: none;
+}
+
+.mrs-handle-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gold-leaf);
+  color: var(--ink);
+  border: 1.5px solid var(--ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mrs-container:active .mrs-handle-knob {
+  transform: translate(-50%, -50%) scale(1.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
-import RealmMap from '../components/RealmMap'
+import MapRevealSlider from '../components/MapRevealSlider'
 import SponsorCard from '../components/SponsorCard'
 import { POWERS } from '../data/sponsors'
 import { APP_URL, GITHUB_URL } from '../constants'
@@ -80,9 +80,9 @@ export default function LandingPage() {
           </div>
 
           <div ref={heroMapRef} className="reveal hero-map" style={{ transitionDelay: '0.45s' }}>
-            <RealmMap />
+            <MapRevealSlider />
             <div className="hero-map-caption pixel">
-              ✦ A Cartographer's Folio · 8 Regions · marked AD MMXXVI ✦
+              ✦ From concept sketch to realized living world ✦
             </div>
             <div className="hero-cockpit-wrap">
               <img
