@@ -6,6 +6,24 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.0.1] — 2026-05-03
+
+### Fixed
+
+- **Diamond season finalization init guard** (PR #475): `FinalizeSeasonFacet.finalizeSeason()` now requires initialized app storage before it can run, preventing a public deploy race where `finalizeSeason()` could be called after the facet selector was installed but before `ClanWorldDiamondInit.init()` executed.
+- **Diamond init season flag reset**: `ClanWorldDiamondInit.init()` explicitly sets `seasonFinalized = false`, so a newly initialized world cannot inherit poisoned pre-init season state.
+
+### Added
+
+- **Pre-init finalization regression coverage**: `testDiamondFinalizeSeasonBeforeInitReverts()` installs the season facet without running init and asserts `finalizeSeason()` reverts.
+- **GPT-5.5 Pro PR 468 follow-up triage doc**: `docs/reviews/pr468-gpt-5-5-pro-followup.md` records the stale-but-useful review, the immediate fix, and linked post-demo hardening issues.
+
+### Changed
+
+- Bumped the root package and ClanWorld workspace package versions from `0.0.0` to `0.0.1`.
+
+---
+
 ## [2.0.1] — 2026-05-02
 
 ### Fixed
