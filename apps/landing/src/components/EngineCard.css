@@ -1,0 +1,200 @@
+.section-engine {
+  padding: 4rem 0;
+  background: linear-gradient(180deg, var(--parchment) 0%, var(--parchment-aged) 100%);
+}
+
+.engine-card {
+  max-width: 56rem;
+  margin: 0 auto;
+  background: linear-gradient(135deg, #1a0f2a 0%, #2a1a3e 50%, #3a2858 100%);
+  color: var(--parchment);
+  border: 1.5px solid var(--gold-leaf);
+  box-shadow: 6px 6px 0 rgba(168, 124, 47, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.engine-card-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 2rem 2rem 1.5rem;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.engine-card-eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  color: var(--gold-leaf);
+  margin-bottom: 0.6rem;
+}
+
+.engine-card-title {
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: clamp(1.4rem, 3.2vw, 2rem);
+  margin: 0 0 1rem;
+  color: var(--parchment);
+  letter-spacing: 0.005em;
+}
+
+.engine-card-title .engine-limit {
+  color: var(--gold-leaf);
+  font-variant-numeric: tabular-nums;
+}
+
+.engine-card-pitch {
+  font-family: var(--ff-prose);
+  font-size: 1rem;
+  line-height: 1.55;
+  color: rgba(245, 235, 215, 0.85);
+  max-width: 48rem;
+  margin: 0 0 1rem;
+}
+
+.engine-card-pitch strong {
+  color: var(--parchment);
+  font-weight: 600;
+}
+
+.engine-card-cta {
+  font-size: 0.78rem;
+  letter-spacing: 0.18em;
+  color: var(--gold-leaf);
+}
+
+.engine-card-detail {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 600ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.engine-card-detail-open {
+  /* Large enough for the full expansion; transition won't animate to 'auto' */
+  max-height: 8000px;
+}
+
+.engine-card-detail-inner {
+  padding: 1rem 2rem 2.5rem;
+  border-top: 1px solid rgba(212, 166, 74, 0.3);
+}
+
+.engine-card-section-h {
+  font-family: var(--ff-display);
+  font-size: 1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold-leaf);
+  margin: 1.25rem 0 0.75rem;
+}
+
+.engine-facet-list,
+.engine-lib-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.engine-facet-row {
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+}
+
+.engine-facet-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.engine-facet-name {
+  color: rgba(245, 235, 215, 0.95);
+  letter-spacing: 0.02em;
+}
+
+.engine-facet-size {
+  font-variant-numeric: tabular-nums;
+  color: rgba(245, 235, 215, 0.7);
+  white-space: nowrap;
+}
+
+.engine-facet-size-unit {
+  opacity: 0.6;
+  font-size: 0.78em;
+  margin-left: 0.1rem;
+  margin-right: 0.6rem;
+}
+
+.engine-facet-pct {
+  color: var(--gold-leaf);
+  margin-left: 0.4rem;
+  font-size: 0.78em;
+  letter-spacing: 0.05em;
+}
+
+.engine-facet-bar {
+  height: 6px;
+  background: rgba(245, 235, 215, 0.08);
+  position: relative;
+  overflow: hidden;
+}
+
+.engine-facet-bar-fill {
+  height: 100%;
+  background: var(--bar-color, rgba(245, 235, 215, 0.5));
+  transition: width 800ms cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.engine-facet-bar-safe { --bar-color: #6ad48a; }
+.engine-facet-bar-mid { --bar-color: #d4a64a; }
+.engine-facet-bar-warn { --bar-color: #e89952; }
+.engine-facet-bar-critical { --bar-color: #d44a4a; }
+
+.engine-lib-row {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--ff-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px dotted rgba(245, 235, 215, 0.12);
+}
+
+.engine-lib-internal .engine-lib-size {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.engine-lib-name {
+  color: rgba(245, 235, 215, 0.92);
+}
+.engine-lib-size {
+  color: rgba(245, 235, 215, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+.engine-lib-blurb,
+.engine-blurb {
+  color: rgba(245, 235, 215, 0.75);
+  font-family: var(--ff-prose);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  margin: 0 0 1rem;
+}
+
+@media (max-width: 640px) {
+  .engine-card-toggle { padding: 1.5rem 1.25rem 1.25rem; }
+  .engine-card-detail-inner { padding: 0.75rem 1.25rem 2rem; }
+  .engine-facet-row-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.1rem;
+  }
+}
