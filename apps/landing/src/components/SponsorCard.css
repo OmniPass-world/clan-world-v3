@@ -67,6 +67,7 @@
   margin-bottom: 1.25rem;
   flex-shrink: 0;
   position: relative;
+  overflow: hidden;
   box-shadow:
     inset 0 0 0 3px var(--parchment-aged),
     inset 0 0 0 4px var(--ink),
@@ -74,10 +75,17 @@
 }
 
 .sponsor-card-logo {
-  max-width: 65%;
-  max-height: 65%;
-  object-fit: contain;
-  filter: contrast(1.1) brightness(0.9);
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  /* Sit inside the inner-ring shadow boundary — the seal has 4px of inset rings,
+     so we inset the image slightly to not paint over the gold-leaf inner ring. */
+  position: absolute;
+  inset: 4px;
+  width: calc(100% - 8px);
+  height: calc(100% - 8px);
+  filter: contrast(1.05);
 }
 
 .sponsor-card-fallback {
