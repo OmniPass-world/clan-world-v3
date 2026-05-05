@@ -15,6 +15,7 @@ import type {
 } from "convex/server";
 import type * as agentLogs from "../agentLogs.js";
 import type * as bulletins from "../bulletins.js";
+import type * as clansmen from "../clansmen.js";
 import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
@@ -37,6 +38,7 @@ import type * as verify from "../verify.js";
 declare const fullApi: ApiFromModules<{
   agentLogs: typeof agentLogs;
   bulletins: typeof bulletins;
+  clansmen: typeof clansmen;
   comms: typeof comms;
   crons: typeof crons;
   events: typeof events;

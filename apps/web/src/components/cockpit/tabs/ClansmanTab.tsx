@@ -1,3 +1,5 @@
+import { useQuery } from 'convex/react';
+import { api } from '../../../../../server/convex/_generated/api';
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
 
@@ -18,6 +20,9 @@ interface ClansmanRow {
   hunger: number;
 }
 
+// Stub fallback. Used whenever the live Convex query is still loading
+// (`undefined`) OR returns an empty roster (cold demo / Convex offline).
+// The cockpit must demo cleanly even with the backend unreachable.
 const STUB_CLANSMEN: ClansmanRow[] = [
   { id: 'C1', mission: 'Raid',   location: 'Forest',     eta: 2, cooldown: 0, hunger: 0.4 },
   { id: 'C2', mission: 'Mill',   location: 'East Farms', eta: 1, cooldown: 0, hunger: 0.2 },
@@ -26,6 +31,14 @@ const STUB_CLANSMEN: ClansmanRow[] = [
 ];
 
 export function ClansmanTab({ elder, testIdPrefix }: Props) {
+  // Stub-fallback pattern (mirrors VaultTab + CommsTab): live query drives the
+  // roster when present; STUB_CLANSMEN renders if the query is still loading
+  // (undefined) OR if the chain hasn't surfaced any clansmen yet (empty array).
+  // `data-source` makes the choice observable for E2E + visual debugging.
+  const live = useQuery(api.clansmen.getClanClansmen, { clanId: elder.clanId });
+  const isLive = live !== undefined && live.length > 0;
+  const rows: ClansmanRow[] = isLive ? live : STUB_CLANSMEN;
+
   return (
     <div
       data-testid={`${testIdPrefix}-content-clansman`}
@@ -56,8 +69,12 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
         Clansmen — Clan {elder.clanId}
       </h3>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        {STUB_CLANSMEN.map((c) => {
+      <div
+        data-testid={`${testIdPrefix}-clansman-list`}
+        data-source={isLive ? 'live' : 'stub'}
+        style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}
+      >
+        {rows.map((c) => {
           const starving = c.hunger > 0.7;
           return (
             <div
