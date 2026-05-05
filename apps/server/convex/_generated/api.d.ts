@@ -14,12 +14,15 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as agentLogs from "../agentLogs.js";
+import type * as bulletins from "../bulletins.js";
+import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
 import type * as getSnapshot from "../getSnapshot.js";
 import type * as heartbeat from "../heartbeat.js";
 import type * as http from "../http.js";
 import type * as indexer from "../indexer.js";
+import type * as inft from "../inft.js";
 import type * as mock from "../mock.js";
 import type * as verify from "../verify.js";
 
@@ -33,12 +36,15 @@ import type * as verify from "../verify.js";
  */
 declare const fullApi: ApiFromModules<{
   agentLogs: typeof agentLogs;
+  bulletins: typeof bulletins;
+  comms: typeof comms;
   crons: typeof crons;
   events: typeof events;
   getSnapshot: typeof getSnapshot;
   heartbeat: typeof heartbeat;
   http: typeof http;
   indexer: typeof indexer;
+  inft: typeof inft;
   mock: typeof mock;
   verify: typeof verify;
 }>;

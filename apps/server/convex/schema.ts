@@ -219,4 +219,46 @@ export default defineSchema({
   verifiedNullifiers: defineTable({
     nullifier: v.string(),
   }).index("by_nullifier", ["nullifier"]),
+
+  // Comms-tab tables (added 2026-05-04 for cockpit Comms wiring).
+  // These three feed the per-elder "AXL" view; bulletins (above) feeds the
+  // "0G Bulletin" view + the cross-clan flyout.
+
+  /** AXL chain whispers between clans. Recorded by the chain indexer. */
+  whispers: defineTable({
+    tick: v.number(),
+    fromClanId: v.number(),
+    /** Recipient clan IDs. Whispers are point-to-point or broadcast. */
+    toClanIds: v.array(v.number()),
+    body: v.string(),
+    txHash: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index("by_tick", ["tick"])
+    .index("by_from_clan", ["fromClanId", "tick"]),
+
+  /** Orchestrator-emitted world events surfaced to the cockpit Comms tab. */
+  orchEvents: defineTable({
+    tick: v.number(),
+    /** Discriminator — narration of world state vs. directive issued to clans. */
+    kind: v.union(v.literal("world_event"), v.literal("directive"), v.literal("narration")),
+    body: v.string(),
+    /** When set, orchestrator targeted a specific clan; null = global broadcast. */
+    targetClanId: v.optional(v.number()),
+    timestamp: v.number(),
+  })
+    .index("by_tick", ["tick"])
+    .index("by_target_clan", ["targetClanId", "tick"]),
+
+  /** Human ("iNFT Owner") steering messages routed to a specific clan. */
+  humanSteeringMessages: defineTable({
+    tick: v.number(),
+    targetClanId: v.number(),
+    body: v.string(),
+    /** Wallet/owner address of the sender (when known). */
+    sentBy: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index("by_target_clan", ["targetClanId", "tick"])
+    .index("by_tick", ["tick"]),
 });

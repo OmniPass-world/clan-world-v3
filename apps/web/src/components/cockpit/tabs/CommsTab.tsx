@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../../../server/convex/_generated/api';
 import { tokens, ELDERS } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
 
@@ -293,10 +295,26 @@ function ToggleButton({
 }
 
 function AxlView({ elder, testIdPrefix }: Props) {
-  const lines = STUB_LINES[elder.clanId] || [];
+  // Live combined feed from Convex. Falls back to stub when:
+  //   - useQuery returns undefined (initial load)
+  //   - the live feed is empty (no chain activity yet — common in demo prep)
+  // This way the cockpit always demos cleanly even if the backend is cold.
+  const live = useQuery(api.comms.getCombinedComms, { clanId: elder.clanId });
+  const lines: CommsLine[] =
+    live === undefined || live.length === 0
+      ? (STUB_LINES[elder.clanId] || [])
+      : live.map(l => ({
+          tick: l.tick,
+          kind: l.kind,
+          speaker: l.speaker,
+          body: l.body,
+          recipients: l.kind === 'whisper' ? l.recipients : undefined,
+        }));
+
   return (
     <ul
       data-testid={`${testIdPrefix}-comms-axl-list`}
+      data-source={live === undefined || live.length === 0 ? 'stub' : 'live'}
       style={{
         listStyle: 'none',
         margin: 0,
@@ -499,9 +517,20 @@ function SentToChips({ recipients }: { recipients: number[] }) {
 }
 
 function BulletinView({ elder, testIdPrefix }: Props) {
-  const posts = STUB_BULLETINS[elder.clanId] || [];
-  const accent = CLAN_ACCENT[elder.clanId] ?? '#5a8aa8';
+  // Live bulletins from Convex; stub fallback for cold backend / demo.
+  // The bulletins table uses `slot` as a tick-equivalent ordinal, so we
+  // map slot → tick for the existing fade/visibility logic.
+  const live = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
+  const posts: BulletinPost[] =
+    live === undefined || live.length === 0
+      ? (STUB_BULLETINS[elder.clanId] || [])
+      : live.map(b => ({
+          tick: b.slot,
+          speaker: `clan-${b.clanId}`,
+          body: b.body,
+        }));
 
+  const accent = CLAN_ACCENT[elder.clanId] ?? '#5a8aa8';
   const visible = posts.filter(p => CURRENT_TICK - p.tick <= VISIBLE_TICKS);
   const old = posts.filter(p => CURRENT_TICK - p.tick > VISIBLE_TICKS);
 
