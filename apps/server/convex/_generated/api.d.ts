@@ -24,6 +24,7 @@ import type * as http from "../http.js";
 import type * as indexer from "../indexer.js";
 import type * as inft from "../inft.js";
 import type * as mock from "../mock.js";
+import type * as vault from "../vault.js";
 import type * as verify from "../verify.js";
 
 /**
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   indexer: typeof indexer;
   inft: typeof inft;
   mock: typeof mock;
+  vault: typeof vault;
   verify: typeof verify;
 }>;
 export declare const api: FilterApi<
