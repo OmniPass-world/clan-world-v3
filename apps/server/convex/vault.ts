@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -12,12 +12,13 @@ import { v } from "convex/values";
  *      `clanId` / `targetClanId` extraction in `indexer.ts`. Covers
  *      `ResourcesGathered`, `ResourcesDeposited`, `ResourcesWithdrawn`,
  *      `BlueprintAwarded`, `BlueprintEarned`, `BanditAttackResolved`,
- *      `LootDistributedToDefender`.
- *   2. `by_event_block` over a recent window for "outgoing" / "broadcast"
+ *      `LootDistributedToDefender`, `ImmediateMarketActionExecuted`,
+ *      `ScheduledMarketActionExecuted`.
+ *   2. A recent-window scan over all events for "broadcast" / cross-clan
  *      events whose row-level `clanId` is the *other* clan or absent:
- *      `GoldTransferred`, `VaultResourceTransferred`, `LootDistributed`.
- *      We then filter by `args.fromClanId` / `args.toClanId` /
- *      `args.clanIdsRewarded` in JS.
+ *      `GoldTransferred`, `VaultResourceTransferred`, `LootDistributed`,
+ *      `BlueprintTransferred`. We then filter by `args.fromClanId` /
+ *      `args.toClanId` / `args.clanIdsRewarded` in JS.
  *
  * Returned newest-tick-first, capped at the requested limit. All amounts are
  * whole-resource `number` (wei → tokens, divided by 1e18) for friendly display.
@@ -37,14 +38,19 @@ function whole(value: unknown): number {
 }
 
 // Solidity ResourceType enum, mirrored from contracts. 0..3 = wood/iron/wheat/fish.
+// Market events use resource id 4 to mean gold (the quote asset). See
+// `packages/contracts/src/IClanWorld.sol` constant `RESOURCE_GOLD = 4` and
+// `apps/server/convex/indexer.ts::pricePointFromEvent` for the same convention.
 const RESOURCE_NAMES = ["wood", "iron", "wheat", "fish"] as const;
+const GOLD_RESOURCE_ID = 4;
 function resourceName(index: unknown): string {
   const i = Number(index);
+  if (Number.isFinite(i) && i === GOLD_RESOURCE_ID) return "gold";
   if (Number.isFinite(i) && i >= 0 && i < RESOURCE_NAMES.length) return RESOURCE_NAMES[i] ?? "resource";
   return "resource";
 }
 
-type Movement = {
+export type Movement = {
   tick: number;
   type: "gain" | "spend";
   amount: number;
@@ -66,9 +72,9 @@ function pushDelta(
   out.push({ tick, type, amount, resource, source, timestamp });
 }
 
-function projectAttributed(
+export function projectAttributed(
   event: { eventName: string; args: Record<string, unknown>; tick?: number; decodedAt: number; clanId?: number },
-  clanId: number,
+  _clanId: number,
   out: Movement[],
 ) {
   const tick = event.tick ?? 0;
@@ -118,12 +124,24 @@ function projectAttributed(
       pushDelta(out, tick, "gain", whole(args.fish), "fish", "defender loot", ts);
       return;
     }
+    case "ImmediateMarketActionExecuted":
+    case "ScheduledMarketActionExecuted": {
+      // Market trade: the clan spends `amountIn` of `resourceIn` and receives
+      // `amountOut` of `resourceOut`. resource id 4 == gold (per
+      // RESOURCE_GOLD in contracts). Emit two deltas — one spend, one gain.
+      const label = event.eventName === "ImmediateMarketActionExecuted" ? "market trade" : "market settle";
+      const resIn = resourceName(args.resourceIn);
+      const resOut = resourceName(args.resourceOut);
+      pushDelta(out, tick, "spend", whole(args.amountIn), resIn, label, ts);
+      pushDelta(out, tick, "gain", whole(args.amountOut), resOut, label, ts);
+      return;
+    }
     default:
       return;
   }
 }
 
-function projectBroadcast(
+export function projectBroadcast(
   event: { eventName: string; args: Record<string, unknown>; tick?: number; decodedAt: number },
   clanId: number,
   out: Movement[],
@@ -163,6 +181,18 @@ function projectBroadcast(
       pushDelta(out, tick, "gain", whole(args.perClanGold), "gold", "loot share", ts);
       return;
     }
+    case "BlueprintTransferred": {
+      // Direct OTC blueprint move between clans. Mirrors GoldTransferred
+      // shape but for the blueprint resource.
+      const from = Number(args.fromClanId);
+      const to = Number(args.toClanId);
+      const amount = whole(args.amount);
+      if (Number.isFinite(from) && from === clanId)
+        pushDelta(out, tick, "spend", amount, "blueprint", `transfer → clan ${to}`, ts);
+      if (Number.isFinite(to) && to === clanId)
+        pushDelta(out, tick, "gain", amount, "blueprint", `transfer ← clan ${from}`, ts);
+      return;
+    }
     default:
       return;
   }
@@ -185,39 +215,92 @@ export const getVaultMovements = query({
       .take(scanWindow);
 
     // 2. Cross-clan transfer / loot events. These don't have row.clanId === us
-    //    on the sender side, so scan a recent slice of all events and filter.
-    const recent = await ctx.db.query("chainEvents").order("desc").take(scanWindow);
-    const broadcast = recent.filter(e =>
-      e.eventName === "GoldTransferred" ||
-      e.eventName === "VaultResourceTransferred" ||
-      e.eventName === "LootDistributed",
+    //    on the sender side (or at all for LootDistributed), so we issue per-
+    //    event-name lookups via `by_event_block` so unrelated chain churn
+    //    can't push transfers out of our scan window.
+    const broadcastEventNames = [
+      "GoldTransferred",
+      "VaultResourceTransferred",
+      "LootDistributed",
+      "BlueprintTransferred",
+    ] as const;
+    const broadcastBuckets = await Promise.all(
+      broadcastEventNames.map(name =>
+        ctx.db
+          .query("chainEvents")
+          .withIndex("by_event_block", q => q.eq("eventName", name))
+          .order("desc")
+          .take(scanWindow),
+      ),
     );
+    const broadcast = broadcastBuckets.flat();
 
-    const movements: Movement[] = [];
+    type SourceEvent = {
+      eventName: string;
+      args: Record<string, unknown>;
+      tick?: number;
+      decodedAt: number;
+      txHash: string;
+      logIndex: number;
+    };
+    const movements: (Movement & { _src: string })[] = [];
+    const collect = (e: SourceEvent, project: (s: SourceEvent, c: number, out: Movement[]) => void) => {
+      const before = movements.length;
+      const buf: Movement[] = [];
+      project(e, clanId, buf);
+      for (const m of buf) movements.push({ ...m, _src: `${e.txHash}:${e.logIndex}` });
+      void before;
+    };
     for (const e of attributed) {
-      projectAttributed(
-        { eventName: e.eventName, args: (e.args ?? {}) as Record<string, unknown>, tick: e.tick, decodedAt: e.decodedAt, clanId: e.clanId },
-        clanId,
-        movements,
+      collect(
+        {
+          eventName: e.eventName,
+          args: (e.args ?? {}) as Record<string, unknown>,
+          tick: e.tick,
+          decodedAt: e.decodedAt,
+          txHash: e.txHash,
+          logIndex: e.logIndex,
+        },
+        (src, cid, out) =>
+          projectAttributed(
+            { eventName: src.eventName, args: src.args, tick: src.tick, decodedAt: src.decodedAt, clanId: e.clanId },
+            cid,
+            out,
+          ),
       );
     }
     for (const e of broadcast) {
-      projectBroadcast(
-        { eventName: e.eventName, args: (e.args ?? {}) as Record<string, unknown>, tick: e.tick, decodedAt: e.decodedAt },
-        clanId,
-        movements,
+      collect(
+        {
+          eventName: e.eventName,
+          args: (e.args ?? {}) as Record<string, unknown>,
+          tick: e.tick,
+          decodedAt: e.decodedAt,
+          txHash: e.txHash,
+          logIndex: e.logIndex,
+        },
+        (src, cid, out) =>
+          projectBroadcast(
+            { eventName: src.eventName, args: src.args, tick: src.tick, decodedAt: src.decodedAt },
+            cid,
+            out,
+          ),
       );
     }
 
-    // De-dup: same (tick, type, amount, resource, source) collapses if both
-    // attributed + broadcast scans surfaced the same row.
+    // De-dup on the unique chain log identity + projected delta — collapses
+    // entries where both index lookups surfaced the same chainEvents row,
+    // while still allowing two separate transfers in the same tick of the
+    // same shape to render as two distinct movements.
     const seen = new Set<string>();
     const deduped: Movement[] = [];
     for (const m of movements) {
-      const k = `${m.tick}|${m.type}|${m.amount}|${m.resource}|${m.source}`;
+      const k = `${m._src}|${m.type}|${m.amount}|${m.resource}|${m.source}`;
       if (seen.has(k)) continue;
       seen.add(k);
-      deduped.push(m);
+      const { _src, ...clean } = m;
+      void _src;
+      deduped.push(clean);
     }
 
     deduped.sort((a, b) => b.tick - a.tick || b.timestamp - a.timestamp);
@@ -225,10 +308,13 @@ export const getVaultMovements = query({
   },
 });
 
-// Seed mutation — used by mock/dev to populate the vault movement feed without
-// running a chain indexer. Inserts a synthetic chainEvents row that the query
-// will pick up via `by_clan_tick`.
-export const seedVaultMovement = mutation({
+// Seed mutation — used by demo prep / vitest fixtures to populate the vault
+// movement feed without running a real chain indexer. INTERNAL ONLY: writes
+// directly into `chainEvents` (the indexer's truth table), so a public
+// surface here would let any caller forge vault history. Invoke from another
+// mutation/action via `internal.vault.seedVaultMovement`, or via
+// `pnpm convex run --internal vault:seedVaultMovement`.
+export const seedVaultMovement = internalMutation({
   args: {
     clanId: v.number(),
     tick: v.number(),

@@ -75,12 +75,18 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
   const liveMovements = useQuery(api.vault.getVaultMovements, { clanId: elder.clanId });
   const movementsAreLive = Array.isArray(liveMovements) && liveMovements.length > 0;
   const movements: Movement[] = movementsAreLive
-    ? liveMovements.map((m) => ({
-        tick: m.tick,
-        type: m.type as 'gain' | 'spend',
-        amount: formatAmount(m.type as 'gain' | 'spend', m.amount, m.resource),
-        source: m.source,
-      }))
+    ? liveMovements.map((m) => {
+        // Server narrows to "gain" | "spend"; fall back defensively to "gain"
+        // if a future schema change loosens the union (renders sign-as-positive
+        // instead of crashing the demo).
+        const movementType: 'gain' | 'spend' = m.type === 'spend' ? 'spend' : 'gain';
+        return {
+          tick: m.tick,
+          type: movementType,
+          amount: formatAmount(movementType, m.amount, m.resource),
+          source: m.source,
+        };
+      })
     : STUB_MOVEMENTS;
 
   // Resources are live when a clan row exists in the snapshot. Movements are
