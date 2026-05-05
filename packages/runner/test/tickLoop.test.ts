@@ -31,6 +31,10 @@ function fakeConvex(tick: number): IConvexClient {
     subscribeWhispers() {
       return () => {};
     },
+    async postWhisper() {},
+    async postOrchEvent() {},
+    async postHumanSteering() {},
+    async postBulletin() {},
   };
 }
 

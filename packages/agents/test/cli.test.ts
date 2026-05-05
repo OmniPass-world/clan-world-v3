@@ -34,6 +34,10 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
     async getClanFullView() { return STUB_CLAN_VIEW; },
     async postLog() {},
     subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void { return () => {}; },
+    async postWhisper() {},
+    async postOrchEvent() {},
+    async postHumanSteering() {},
+    async postBulletin() {},
     ...overrides,
   };
 }

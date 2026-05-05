@@ -37,6 +37,18 @@ async function main(): Promise<void> {
     console.error('[orchestrator] convex log failed (non-fatal):', err);
   }
 
+  // Cockpit Comms feed — orchestrator-emitted "narration" each tick so the
+  // ORCH bubbles populate. World-events (e.g. bandit camp surfacing) should
+  // be a separate post() call from whichever subsystem emits them.
+  await convex.postOrchEvent({
+    tick,
+    kind: 'narration',
+    body: `Tick T${String(tick).padStart(2, '0')} begun. Orders submitted for clan-${CLAN_ID} (${
+      failedSimulationResults.length === 0 ? 'OK' : `${failedSimulationResults.length} sim warning(s)`
+    }).`,
+    targetClanId: Number(CLAN_ID),
+  });
+
   // Print final JSON summary to stdout
   process.stdout.write(
     JSON.stringify(
