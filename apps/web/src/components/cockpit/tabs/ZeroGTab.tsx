@@ -1,27 +1,46 @@
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
 import { useMemo } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../../../server/convex/_generated/api';
 
 interface Props {
   elder: ElderDef;
   testIdPrefix: string;
 }
 
-const STUB_KV = [
+interface KvRow {
+  key: string;
+  value: string;
+}
+
+interface CrudRow {
+  tick: number;
+  op: 'READ' | 'WRITE';
+  key: string;
+  note?: string;
+}
+
+interface BulletinRow {
+  body: string;
+  age: string;
+}
+
+const STUB_KV: KvRow[] = [
   { key: 'last_grudge',     value: 'clan-3'             },
   { key: 'wood_threshold',  value: '80'                 },
   { key: 'pref_target',     value: 'forest'             },
   { key: 'mood',            value: 'cautious'           },
 ];
 
-const STUB_CRUD = [
+const STUB_CRUD: CrudRow[] = [
   { tick: 4, op: 'WRITE', key: 'mood',         note: 'cautious → wary'   },
   { tick: 3, op: 'READ',  key: 'last_grudge',  note: 'planning retort'   },
   { tick: 2, op: 'WRITE', key: 'wood_threshold', note: 'raise to 80'     },
   { tick: 1, op: 'READ',  key: 'pref_target',  note: 'mission seeding'   },
 ];
 
-const STUB_BULLETINS = [
+const STUB_BULLETINS: BulletinRow[] = [
   { age: '2t', body: '"Wood scarce — millers prioritize."' },
   { age: '5t', body: '"Crimson moves — watch the river."'  },
 ];
@@ -32,6 +51,12 @@ interface DemoInftState {
   dataHash: string;
   notes?: string;
   data?: Array<{ label: string; dataHash: string; uri: string }>;
+}
+
+/** Coerce the stored bulletin slot/updatedAt pair into a short "Nt" age label. */
+function bulletinAge(slot: number, currentSlot: number): string {
+  const diff = Math.max(0, currentSlot - slot);
+  return `${diff}t`;
 }
 
 export function ZeroGTab({ elder, testIdPrefix }: Props) {
@@ -45,10 +70,57 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
       return null;
     }
   }, [elder.clanId]);
-  const kvRows = demoState?.data?.map((entry) => ({
-    key: entry.label,
-    value: entry.uri,
-  })) ?? STUB_KV;
+
+  // ─── Live Convex queries with stub fallback ────────────────────────────
+  // Every section follows the same discipline as CommsTab:
+  //   - useQuery returns undefined while loading → fallback to stub
+  //   - useQuery returns [] (cold backend, no rows) → fallback to stub
+  //   - data-source attribute on the section root advertises live vs stub
+  // The cockpit must demo cleanly on a cold Convex (free tier exhausted).
+  const liveMemory = useQuery(api.memory.getByClan, { clanId: elder.clanId });
+  const liveEvents = useQuery(api.memory.getEventsByClan, { clanId: elder.clanId });
+  const liveBulletins = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
+
+  // KV state: prefer iNFT demo localStorage if present (legacy demo path),
+  // else live memoryEntries, else stub. The iNFT-demo branch wins because
+  // the existing demo flow writes a hand-crafted state-root we want to show.
+  const memorySource: 'live' | 'stub' =
+    demoState?.data && demoState.data.length > 0
+      ? 'stub'
+      : liveMemory && liveMemory.length > 0
+        ? 'live'
+        : 'stub';
+  const kvRows: KvRow[] =
+    demoState?.data?.map((entry) => ({ key: entry.label, value: entry.uri })) ??
+    (liveMemory && liveMemory.length > 0
+      ? liveMemory.map((m) => ({ key: m.key, value: m.value }))
+      : STUB_KV);
+
+  const eventsSource: 'live' | 'stub' =
+    liveEvents && liveEvents.length > 0 ? 'live' : 'stub';
+  const crudRows: CrudRow[] =
+    liveEvents && liveEvents.length > 0
+      ? liveEvents.map((e) => ({
+          tick: e.tick,
+          op: e.op === 'write' ? 'WRITE' : 'READ',
+          key: e.key,
+          note: e.note,
+        }))
+      : STUB_CRUD;
+
+  const bulletinsSource: 'live' | 'stub' =
+    liveBulletins && liveBulletins.length > 0 ? 'live' : 'stub';
+  // Newest slot = "now" anchor for relative ages.
+  const currentSlot = liveBulletins && liveBulletins.length > 0
+    ? Math.max(...liveBulletins.map((b) => b.slot))
+    : 0;
+  const bulletinRows: BulletinRow[] =
+    liveBulletins && liveBulletins.length > 0
+      ? liveBulletins.map((b) => ({
+          body: b.body,
+          age: bulletinAge(b.slot, currentSlot),
+        }))
+      : STUB_BULLETINS;
 
   return (
     <div
@@ -89,7 +161,7 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
 
       {/* KV state + memory CRUD side-by-side on wide, stacked on narrow */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: tokens.space.md }}>
-        <div>
+        <div data-testid={`${testIdPrefix}-0g-kv`} data-source={memorySource}>
           <SectionHeader>kv state</SectionHeader>
           <div
             style={{
@@ -127,7 +199,7 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
           </div>
         )}
 
-        <div>
+        <div data-testid={`${testIdPrefix}-0g-crud`} data-source={eventsSource}>
           <SectionHeader>memory CRUD</SectionHeader>
           <ul
             style={{
@@ -141,7 +213,7 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
               gap: '2px',
             }}
           >
-            {STUB_CRUD.map((c, i) => (
+            {crudRows.map((c, i) => (
               <li
                 key={i}
                 style={{
@@ -164,16 +236,18 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
                 </span>
                 <span>
                   <span style={{ color: tokens.text.onParchmentDim }}>{c.key}</span>
-                  <span style={{ color: tokens.text.onParchment, marginLeft: '6px' }}>
-                    — {c.note}
-                  </span>
+                  {c.note && (
+                    <span style={{ color: tokens.text.onParchment, marginLeft: '6px' }}>
+                      — {c.note}
+                    </span>
+                  )}
                 </span>
               </li>
             ))}
           </ul>
         </div>
 
-        <div>
+        <div data-testid={`${testIdPrefix}-0g-bulletins`} data-source={bulletinsSource}>
           <SectionHeader>bulletins</SectionHeader>
           <ul
             style={{
@@ -188,7 +262,7 @@ export function ZeroGTab({ elder, testIdPrefix }: Props) {
               gap: '4px',
             }}
           >
-            {STUB_BULLETINS.map((b, i) => (
+            {bulletinRows.map((b, i) => (
               <li
                 key={i}
                 style={{
