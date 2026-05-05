@@ -937,6 +937,7 @@ export function WorldMap() {
 
   const [pixiReady, setPixiReady] = useState(false);
   const [pixiInitError, setPixiInitError] = useState<Error | null>(null);
+  const [webglLost, setWebglLost] = useState(false);
   const [, setSize] = useState({ w: 800, h: 600 });
   // Tracks the currently-selected clan base for the floating HUD readout.
   // Mirrors selectedRef when the selection target is a base; null otherwise.
@@ -1090,7 +1091,9 @@ export function WorldMap() {
         height: initialH,
         background: 0x1a2a1a,
         antialias: true,
-        resolution: window.devicePixelRatio || 1,
+        // Cap at 2x — uncapped dpr (3x on iPhone 14 Pro) creates a ~40MB GPU
+        // texture for the world map and accelerates WebGL context loss on mobile.
+        resolution: Math.min(window.devicePixelRatio || 1, 2),
         autoDensity: true,
       })
       .then(async () => {
@@ -1109,6 +1112,14 @@ export function WorldMap() {
         app.canvas.addEventListener('touchstart', (e) => {
           if (e.touches.length > 1) e.preventDefault();
         }, { passive: false });
+        // Mobile browsers (especially iOS Safari) reclaim WebGL contexts under
+        // memory pressure or when the tab is backgrounded. Without a handler the
+        // canvas stays black. We surface a reload prompt via React state so the
+        // WorldMapBoundary can show a recoverable overlay.
+        app.canvas.addEventListener('webglcontextlost', (e) => {
+          e.preventDefault();
+          if (isMountedRef.current) setWebglLost(true);
+        }, false);
 
         // pixi-viewport: wraps all map layers (bg, regions, sigils, bases,
         // bubbles, travel dots) so .pinch() / .drag() / .wheel() handle
@@ -3052,6 +3063,9 @@ export function WorldMap() {
 
   if (pixiInitError) {
     throw pixiInitError;
+  }
+  if (webglLost) {
+    throw new Error('WebGL context lost — tap to reload');
   }
 
   // ---- Scoreboard data: live snapshot if present, else mock metadata -------
