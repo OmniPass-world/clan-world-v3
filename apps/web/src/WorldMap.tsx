@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from 'convex/react';
+import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';

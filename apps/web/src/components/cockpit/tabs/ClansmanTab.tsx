@@ -1,4 +1,4 @@
-import { useQuery } from 'convex/react';
+import { useSafeQuery as useQuery } from '../../../hooks/useSafeQuery';
 import { api } from '../../../../../server/convex/_generated/api';
 import { tokens } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';

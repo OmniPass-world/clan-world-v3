@@ -1,5 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
-import { useQuery } from 'convex/react';
+import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
 import { useAgentLogs } from './useAgentLogs';
 import { DEMO_MODE } from './config/env';
