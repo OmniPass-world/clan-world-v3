@@ -216,6 +216,21 @@ export default defineSchema({
     dataHash: v.optional(v.string()),
     txHash: v.optional(v.string()),
   }).index("by_clan_slot", ["clanId", "slot"]),
+  /**
+   * Append-only audit log of reads/writes on memoryEntries keys. Surfaced
+   * as the cockpit "memory CRUD" section on the ZeroG tab. One row per
+   * tick operation; `note` is an optional human-readable description.
+   */
+  memoryEvents: defineTable({
+    tick: v.number(),
+    clanId: v.number(),
+    op: v.union(v.literal("read"), v.literal("write")),
+    key: v.string(),
+    note: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index("by_clan_tick", ["clanId", "tick"])
+    .index("by_tick", ["tick"]),
   verifiedNullifiers: defineTable({
     nullifier: v.string(),
   }).index("by_nullifier", ["nullifier"]),

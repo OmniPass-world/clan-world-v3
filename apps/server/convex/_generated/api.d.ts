@@ -23,6 +23,7 @@ import type * as heartbeat from "../heartbeat.js";
 import type * as http from "../http.js";
 import type * as indexer from "../indexer.js";
 import type * as inft from "../inft.js";
+import type * as memory from "../memory.js";
 import type * as mock from "../mock.js";
 import type * as verify from "../verify.js";
 
@@ -45,6 +46,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   indexer: typeof indexer;
   inft: typeof inft;
+  memory: typeof memory;
   mock: typeof mock;
   verify: typeof verify;
 }>;
