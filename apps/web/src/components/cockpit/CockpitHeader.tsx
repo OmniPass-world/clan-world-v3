@@ -3,6 +3,7 @@ import { useQuery } from 'convex/react';
 import { api } from '../../../../server/convex/_generated/api';
 import { tokens } from '../../styles/cockpit-tokens';
 import { useConnectionStatus, type ConnectionStatus } from '../../hooks/useConnectionStatus';
+import { BulletinFlyout } from './BulletinFlyout';
 
 const MEMORY_WIPE_INTERVAL_TICKS = 10;
 
@@ -50,6 +51,7 @@ export function CockpitHeader() {
         padding: `0 ${tokens.space.md}`,
         flexShrink: 0,
         gap: tokens.space.md,
+        position: 'relative',  // anchor for BulletinFlyout's absolute panel
       }}
     >
       <div
@@ -68,7 +70,7 @@ export function CockpitHeader() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: tokens.space.lg,
+          gap: tokens.space.md,
         }}
       >
         <TickCounter
@@ -76,6 +78,7 @@ export function CockpitHeader() {
           ticksUntilWipe={ticksUntilWipe}
           intervalTicks={intervalTicks}
         />
+        <BulletinFlyout />
         <ConnectionPill status={status} onRetry={retry} />
       </div>
     </header>
