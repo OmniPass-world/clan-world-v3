@@ -80,6 +80,27 @@ export class WorldMapBoundary extends Component<
                 ? `error: ${this.state.errorMessage}`
                 : 'Standalone view — backend not reachable'}
             </div>
+            {this.state.errorMessage?.includes('WebGL context lost') && (
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                style={{
+                  marginTop: tokens.space.md,
+                  padding: '6px 16px',
+                  border: `1px solid ${tokens.border.ironLight}`,
+                  borderRadius: tokens.radius.sm,
+                  background: 'transparent',
+                  color: tokens.text.accent,
+                  fontFamily: tokens.font.mono,
+                  fontSize: '10px',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  cursor: 'pointer',
+                }}
+              >
+                Tap to reload
+              </button>
+            )}
           </div>
         </div>
       );
