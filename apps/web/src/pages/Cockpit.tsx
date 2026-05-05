@@ -1,28 +1,96 @@
 import { tokens, ELDERS } from '../styles/cockpit-tokens';
 import { MiniCockpit } from '../components/cockpit/MiniCockpit';
 import { CockpitHeader } from '../components/cockpit/CockpitHeader';
+import { MobileCockpitLayout } from '../components/cockpit/MobileCockpitLayout';
 import { WorldMap } from '../WorldMap';
 import { WorldMapBoundary } from '../components/cockpit/shared/WorldMapBoundary';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 
 /**
- * Cockpit Phase A — 3-column 2-row layout shell.
+ * Cockpit shell.
  *
- *   1  |    | 2
- *   -- | 5  | --
- *   3  |    | 4
+ * Two layouts behind a single 900px breakpoint:
  *
- * Panels 1-4 are mini-cockpits (one per Elder, hardcoded clans 1-4).
- * Panel 5 is the existing WorldMap pixi canvas, spanning both rows.
+ *   - Desktop (>900px) — original 3-col 2-row grid:
+ *
+ *       1  |    | 2
+ *       -- | 5  | --
+ *       3  |    | 4
+ *
+ *     Panels 1-4 are mini-cockpits (one per Elder, hardcoded clans 1-4).
+ *     Panel 5 is the existing WorldMap pixi canvas, spanning both rows.
+ *
+ *   - Mobile (≤900px) — vertical stack with world map on top + a horizontal
+ *     scroll-snap pager of one mini-cockpit per elder on the bottom.
+ *     Implemented in `MobileCockpitLayout`. See that file for the full spec.
+ *
+ * The structural difference between the two is too large for pure CSS
+ * (grid → horizontal scroll-snap), so we branch on a media-query hook.
  *
  * Phase A.5b: terminal tabs render a live ttyd iframe; tick counter +
  * connection indicator hoisted to a single app-level CockpitHeader.
  *
- * Desktop-first; corners stack vertically below md (≤960px) so phones still
- * see the world map + each agent panel.
- *
  * Phase B (separate PR) wires real Convex data + tick subscription.
  */
 export function Cockpit() {
+  const isMobile = useMediaQuery('(max-width: 900px)');
+
+  return (
+    <main
+      data-testid="cockpit-root"
+      style={{
+        background: tokens.bg.void,
+        width: '100vw',
+        height: '100vh',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <CockpitHeader />
+
+      {/* Themed scrollbars scoped to the cockpit subtree.
+          Matches the iron palette so default light-grey browser bars don't
+          clash with the dark cockpit chrome. Standard (Firefox) +
+          ::-webkit-scrollbar (Chromium/Safari) covered.
+          NOTE: does NOT affect the ttyd terminal scrollbar — that lives
+          inside an iframe document we can't style from this parent. */}
+      <style>{`
+        [data-testid="cockpit-root"] {
+          scrollbar-width: thin;
+          scrollbar-color: ${tokens.border.iron} transparent;
+        }
+        [data-testid="cockpit-root"] ::-webkit-scrollbar {
+          width: 8px;
+          height: 8px;
+        }
+        [data-testid="cockpit-root"] ::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        [data-testid="cockpit-root"] ::-webkit-scrollbar-thumb {
+          background: ${tokens.border.iron};
+          border-radius: 4px;
+        }
+        [data-testid="cockpit-root"] ::-webkit-scrollbar-thumb:hover {
+          background: ${tokens.text.onIronDim};
+        }
+        [data-testid="cockpit-root"] ::-webkit-scrollbar-corner {
+          background: transparent;
+        }
+      `}</style>
+
+      {isMobile ? <MobileCockpitLayout /> : <DesktopCockpitLayout />}
+    </main>
+  );
+}
+
+/**
+ * Original desktop layout — 3-col 2-row grid with the world map center
+ * spanning both rows and four mini-cockpits at the corners. Untouched
+ * by the mobile redesign other than being extracted into its own
+ * component for the media-query branch.
+ */
+function DesktopCockpitLayout() {
   // Elder slot mapping — physical grid position → clanId.
   // Row 1: clan 1 left, clan 2 right.
   // Row 2: clan 3 left, clan 4 right.
@@ -41,24 +109,13 @@ export function Cockpit() {
   const el4 = findElder(4);
 
   return (
-    <main
-      data-testid="cockpit-root"
-      style={{
-        background: tokens.bg.void,
-        width: '100vw',
-        height: '100vh',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      <CockpitHeader />
-
-      {/* Responsive grid:
-          - desktop (≥960px): 3 cols × 2 rows, center spans both rows
-          - mobile  (<960px): single column, world map first then 4 panels
-          Implemented via inline media-query CSS in <style> below since
-          React inline styles can't express @media. */}
+    <>
+      {/* Desktop grid: 3 cols × 2 rows, center spans both rows.
+          Inline media-query <style> retained for parity with the previous
+          implementation — kicks in at the legacy 960px boundary so the layout
+          stays identical to before the mobile-layout split. The mobile
+          React branch above (≤900px) takes priority on phones, so this
+          desktop CSS only ever runs at viewports >900px. */}
       <style>{`
         .cockpit-grid {
           flex: 1;
@@ -99,36 +156,6 @@ export function Cockpit() {
         }
       `}</style>
 
-      {/* Themed scrollbars scoped to the cockpit subtree.
-          Matches the iron palette so default light-grey browser bars don't
-          clash with the dark cockpit chrome. Standard (Firefox) +
-          ::-webkit-scrollbar (Chromium/Safari) covered.
-          NOTE: does NOT affect the ttyd terminal scrollbar — that lives
-          inside an iframe document we can't style from this parent. */}
-      <style>{`
-        [data-testid="cockpit-root"] {
-          scrollbar-width: thin;
-          scrollbar-color: ${tokens.border.iron} transparent;
-        }
-        [data-testid="cockpit-root"] ::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
-        }
-        [data-testid="cockpit-root"] ::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        [data-testid="cockpit-root"] ::-webkit-scrollbar-thumb {
-          background: ${tokens.border.iron};
-          border-radius: 4px;
-        }
-        [data-testid="cockpit-root"] ::-webkit-scrollbar-thumb:hover {
-          background: ${tokens.text.onIronDim};
-        }
-        [data-testid="cockpit-root"] ::-webkit-scrollbar-corner {
-          background: transparent;
-        }
-      `}</style>
-
       <div className="cockpit-grid" data-testid="cockpit-grid">
         <div className="cockpit-cell-1">
           <MiniCockpit elder={el1} />
@@ -162,6 +189,6 @@ export function Cockpit() {
           </WorldMapBoundary>
         </div>
       </div>
-    </main>
+    </>
   );
 }
