@@ -9,6 +9,37 @@ export interface IConvexClient {
   getClanFullView(clanId: string): Promise<ClanFullView>;
   postLog(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
   subscribeWhispers(clanId: string, onWhisper: (w: Whisper) => void): () => void;
+
+  // Cockpit Comms write-side. Each method is best-effort: callers wrap in
+  // try/catch + treat failures as non-fatal so the cockpit display stays
+  // decoupled from the underlying domain action (a chain whisper succeeds
+  // even if the cockpit feed write fails).
+  postWhisper(args: {
+    tick: number;
+    fromClanId: number;
+    toClanIds: number[];
+    body: string;
+    txHash?: string;
+  }): Promise<void>;
+  postOrchEvent(args: {
+    tick: number;
+    kind: 'world_event' | 'directive' | 'narration';
+    body: string;
+    targetClanId?: number;
+  }): Promise<void>;
+  postHumanSteering(args: {
+    tick: number;
+    targetClanId: number;
+    body: string;
+    sentBy?: string;
+  }): Promise<void>;
+  postBulletin(args: {
+    clanId: number;
+    slot: number;
+    body: string;
+    dataHash?: string;
+    txHash?: string;
+  }): Promise<void>;
 }
 
 class StubConvexClient implements IConvexClient {
@@ -36,6 +67,11 @@ class StubConvexClient implements IConvexClient {
       // no-op unsubscribe
     };
   }
+
+  async postWhisper(_args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; txHash?: string }): Promise<void> {}
+  async postOrchEvent(_args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {}
+  async postHumanSteering(_args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {}
+  async postBulletin(_args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {}
 }
 
 // TODO(handcoded-types-audit): move Convex function references behind a server-owned
@@ -43,6 +79,10 @@ class StubConvexClient implements IConvexClient {
 const getSnapshotRef = anyApi.getSnapshot!.getSnapshot as FunctionReference<'query'>;
 // getClanFullView doesn't exist in Phase 4 convex schema yet; use anyApi so it resolves at runtime
 const getClanFullViewRef = anyApi.clan!.getClanFullView as FunctionReference<'query'>;
+const seedWhisperRef = anyApi.comms!.seedWhisper as FunctionReference<'mutation'>;
+const seedOrchEventRef = anyApi.comms!.seedOrchEvent as FunctionReference<'mutation'>;
+const seedHumanSteeringRef = anyApi.comms!.seedHumanSteering as FunctionReference<'mutation'>;
+const seedBulletinRef = anyApi.bulletins!.seedBulletin as FunctionReference<'mutation'>;
 
 class RealConvexClient implements IConvexClient {
   private readonly http: ConvexHttpClient;
@@ -89,6 +129,41 @@ class RealConvexClient implements IConvexClient {
   subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void {
     // ConvexHttpClient is non-reactive; WebSocket subscriptions need ConvexClient
     return () => {};
+  }
+
+  // Cockpit Comms write-side — best-effort, swallow + warn on failure so the
+  // domain operation that triggered the post (chain whisper, orchestrator
+  // tick, etc.) is never blocked by a Convex outage.
+  async postWhisper(args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; txHash?: string }): Promise<void> {
+    try {
+      await this.http.mutation(seedWhisperRef, args);
+    } catch (err) {
+      console.warn('[ConvexClient] postWhisper failed (non-fatal):', err);
+    }
+  }
+
+  async postOrchEvent(args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {
+    try {
+      await this.http.mutation(seedOrchEventRef, args);
+    } catch (err) {
+      console.warn('[ConvexClient] postOrchEvent failed (non-fatal):', err);
+    }
+  }
+
+  async postHumanSteering(args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {
+    try {
+      await this.http.mutation(seedHumanSteeringRef, args);
+    } catch (err) {
+      console.warn('[ConvexClient] postHumanSteering failed (non-fatal):', err);
+    }
+  }
+
+  async postBulletin(args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {
+    try {
+      await this.http.mutation(seedBulletinRef, args);
+    } catch (err) {
+      console.warn('[ConvexClient] postBulletin failed (non-fatal):', err);
+    }
   }
 }
 

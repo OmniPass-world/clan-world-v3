@@ -319,6 +319,35 @@ export const ingestEvents = internalMutation({
         });
       }
 
+      // AXL Whisper indexing for the cockpit Comms feed. The chain emits a
+      // "Whisper" event (singular point-to-point) and a "WhisperBroadcast"
+      // event (multi-recipient). Both shapes funnel into the `whispers` table.
+      if (raw.eventName === "Whisper" || raw.eventName === "WhisperBroadcast") {
+        const fromClanId = eventNumber(raw, "fromClanId");
+        const tick = eventNumber(raw, "tick") ?? eventNumber(raw, "atTick") ?? 0;
+        const body = asString(raw.args.body) ?? asString(raw.args.message) ?? "";
+        let toClanIds: number[] = [];
+        if (raw.eventName === "Whisper") {
+          const to = eventNumber(raw, "toClanId");
+          if (to !== undefined) toClanIds = [to];
+        } else {
+          const arr = (raw.args.toClanIds ?? raw.args.recipients) as unknown;
+          if (Array.isArray(arr)) {
+            toClanIds = arr.map(x => Number(x)).filter(n => Number.isFinite(n));
+          }
+        }
+        if (fromClanId !== undefined && toClanIds.length > 0 && body) {
+          await ctx.db.insert("whispers", {
+            tick,
+            fromClanId,
+            toClanIds,
+            body,
+            txHash,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
       const pricePoint = pricePointFromEvent(raw, blockNumber);
       if (pricePoint) await ctx.db.insert("pricePoint", pricePoint);
     }
