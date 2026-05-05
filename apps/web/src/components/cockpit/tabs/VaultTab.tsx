@@ -42,12 +42,25 @@ function resourcesForClan(clan: Clan | undefined, status: string): VaultResource
 }
 
 /** Asset movement event for the log strip. */
-const STUB_MOVEMENTS = [
+type Movement = {
+  tick: number;
+  type: 'gain' | 'spend';
+  amount: string;
+  source: string;
+};
+
+/** Demo stub — used when Convex is cold or the live feed is empty. */
+const STUB_MOVEMENTS: Movement[] = [
   { tick: 4, type: 'gain',  amount: '+45 gold',  source: 'raid · forest' },
   { tick: 3, type: 'spend', amount: '-12 wood',  source: 'mill upkeep'   },
   { tick: 2, type: 'gain',  amount: '+8 stone',  source: 'quarry'        },
   { tick: 1, type: 'gain',  amount: '+24 gold',  source: 'tribute'       },
 ];
+
+function formatAmount(type: 'gain' | 'spend', amount: number, resource: string): string {
+  const sign = type === 'gain' ? '+' : '-';
+  return `${sign}${amount.toLocaleString()} ${resource}`;
+}
 
 export function VaultTab({ elder, testIdPrefix }: Props) {
   const snapshot = useQuery(api.getSnapshot.getSnapshot);
@@ -55,9 +68,30 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
   const syncLabel = snapshot === undefined ? 'Syncing...' : clan ? `T${snapshot.tick}` : 'No clan';
   const resources = resourcesForClan(clan, clan ? 'live' : snapshot === undefined ? 'sync' : 'empty');
 
+  // Live vault movements from chainEvents; stub fallback for cold backend / demo.
+  // Falls back to stub when:
+  //   - useQuery returns undefined (initial load)
+  //   - the live feed is empty (no chain activity yet — common in demo prep)
+  const liveMovements = useQuery(api.vault.getVaultMovements, { clanId: elder.clanId });
+  const movementsAreLive = Array.isArray(liveMovements) && liveMovements.length > 0;
+  const movements: Movement[] = movementsAreLive
+    ? liveMovements.map((m) => ({
+        tick: m.tick,
+        type: m.type as 'gain' | 'spend',
+        amount: formatAmount(m.type as 'gain' | 'spend', m.amount, m.resource),
+        source: m.source,
+      }))
+    : STUB_MOVEMENTS;
+
+  // Resources are live when a clan row exists in the snapshot. Movements are
+  // live when the chain-events query returned at least one row. The whole tab
+  // is "live" only when both are live; otherwise we mark it stub for clarity.
+  const dataSource = clan && movementsAreLive ? 'live' : 'stub';
+
   return (
     <div
       data-testid={`${testIdPrefix}-content-vault`}
+      data-source={dataSource}
       style={{
         flex: 1,
         background: tokens.bg.parchment,
@@ -167,9 +201,9 @@ export function VaultTab({ elder, testIdPrefix }: Props) {
             gap: '4px',
           }}
         >
-          {STUB_MOVEMENTS.map((m, i) => (
+          {movements.map((m, i) => (
             <li
-              key={i}
+              key={`${m.tick}-${i}`}
               style={{
                 display: 'flex',
                 alignItems: 'baseline',
