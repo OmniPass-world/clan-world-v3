@@ -26,8 +26,20 @@ export function useMediaQuery(query: string): boolean {
     // Sync once on subscribe in case the query string changed between renders.
     setMatches(mql.matches);
     const handler = (e: MediaQueryListEvent) => setMatches(e.matches);
-    mql.addEventListener('change', handler);
-    return () => mql.removeEventListener('change', handler);
+    // Modern API (Safari ≥14, all evergreen browsers).
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', handler);
+      return () => mql.removeEventListener('change', handler);
+    }
+    // Legacy API (Safari ≤13, very old WebKit). MediaQueryList still has
+    // `addListener` / `removeListener` from the original spec; ignored if
+    // the modern API is present, used as a last-resort fallback otherwise.
+    const legacy = mql as MediaQueryList & {
+      addListener?: (cb: (e: MediaQueryListEvent) => void) => void;
+      removeListener?: (cb: (e: MediaQueryListEvent) => void) => void;
+    };
+    legacy.addListener?.(handler);
+    return () => legacy.removeListener?.(handler);
   }, [query]);
 
   return matches;

@@ -111,11 +111,13 @@ function DesktopCockpitLayout() {
   return (
     <>
       {/* Desktop grid: 3 cols × 2 rows, center spans both rows.
-          Inline media-query <style> retained for parity with the previous
-          implementation — kicks in at the legacy 960px boundary so the layout
-          stays identical to before the mobile-layout split. The mobile
-          React branch above (≤900px) takes priority on phones, so this
-          desktop CSS only ever runs at viewports >900px. */}
+          The mobile React branch in <Cockpit /> above takes priority at
+          ≤900px, so this CSS only ever applies at viewports >900px and
+          doesn't need its own breakpoint fallback. The previous 960px
+          @media single-column stack is removed because (a) it's no longer
+          reachable on phones — the React branch wins — and (b) keeping it
+          would regress 901..960px viewports into a stacked layout that
+          violates the "desktop must remain identical above 900px" spec. */}
       <style>{`
         .cockpit-grid {
           flex: 1;
@@ -141,19 +143,6 @@ function DesktopCockpitLayout() {
         .cockpit-cell-3 { grid-area: p3; }
         .cockpit-cell-4 { grid-area: p4; }
         .cockpit-cell-5 { grid-area: p5; min-width: 0; min-height: 0; position: relative; }
-
-        @media (max-width: 960px) {
-          .cockpit-grid {
-            grid-template-columns: 1fr;
-            grid-template-rows: 320px repeat(4, 1fr);
-            grid-template-areas:
-              "p5"
-              "p1"
-              "p2"
-              "p3"
-              "p4";
-          }
-        }
       `}</style>
 
       <div className="cockpit-grid" data-testid="cockpit-grid">

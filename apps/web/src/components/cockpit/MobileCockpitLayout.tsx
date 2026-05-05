@@ -13,9 +13,11 @@ const VALID_CLAN_IDS: ReadonlySet<number> = new Set([1, 2, 3, 4]);
 
 /**
  * Read the persisted active clan id from localStorage, or fall back to 1.
- * Wrapped in try/catch — Safari private mode throws on access.
+ * Wrapped in try/catch — Safari private mode throws on access. SSR-safe:
+ * returns the default if `window` is undefined.
  */
 function readActiveClan(): ClanId {
+  if (typeof window === 'undefined') return 1;
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY_CLAN);
     const parsed = raw == null ? NaN : parseInt(raw, 10);
@@ -29,6 +31,7 @@ function readActiveClan(): ClanId {
 }
 
 function readCollapsed(): boolean {
+  if (typeof window === 'undefined') return false;
   try {
     return window.localStorage.getItem(STORAGE_KEY_COLLAPSED) === '1';
   } catch {
@@ -37,15 +40,16 @@ function readCollapsed(): boolean {
 }
 
 function writeStorage(key: string, value: string): void {
+  if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(key, value);
   } catch {
-    // ignore — private mode
+    // ignore — private mode / disabled storage
   }
 }
 
 /**
- * Cockpit layout for viewports < 900px. Vertical stack:
+ * Cockpit layout for viewports ≤900px. Vertical stack:
  *   - top half: WorldMap + collapse-toggle button
  *   - bottom half: page-indicator dots + horizontal scroll-snap pager
  *     of one MiniCockpit per elder (clan 1..4)
@@ -196,6 +200,12 @@ export function MobileCockpitLayout() {
           data-testid="cockpit-mobile-pager"
           onScroll={handleScroll}
           style={{
+            // `position: relative` makes this element the offsetParent for
+            // its children, so `child.offsetLeft` measures from the
+            // container's own left edge — correct relative to scrollLeft
+            // regardless of any upstream padding or sidebar later added
+            // above the cockpit-root.
+            position: 'relative',
             flex: 1,
             display: 'flex',
             flexDirection: 'row',
@@ -302,7 +312,7 @@ function PageIndicatorDots({ elders, activeClanId, onSelect }: PageIndicatorDots
   return (
     <div
       data-testid="cockpit-mobile-page-dots"
-      role="tablist"
+      role="group"
       aria-label="Elder selector"
       style={{
         display: 'flex',
@@ -321,8 +331,7 @@ function PageIndicatorDots({ elders, activeClanId, onSelect }: PageIndicatorDots
           <button
             key={elder.clanId}
             type="button"
-            role="tab"
-            aria-selected={active}
+            aria-current={active ? 'true' : undefined}
             aria-label={`Show ${elder.name}`}
             data-testid={`cockpit-mobile-page-dot-${elder.clanId}`}
             data-active={active}
