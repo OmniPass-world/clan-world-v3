@@ -7,6 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AXL_1_URL="${AXL_1_URL:-http://127.0.0.1:9002}"
 AXL_2_URL="${AXL_2_URL:-http://127.0.0.1:9003}"
+AXL_3_URL="${AXL_3_URL:-http://127.0.0.1:9004}"
+AXL_4_URL="${AXL_4_URL:-http://127.0.0.1:9005}"
 
 wait_for_node() {
   local url="$1" label="$2"
@@ -25,10 +27,14 @@ wait_for_node() {
 
 wait_for_node "$AXL_1_URL" "axl-1"
 wait_for_node "$AXL_2_URL" "axl-2"
+wait_for_node "$AXL_3_URL" "axl-3"
+wait_for_node "$AXL_4_URL" "axl-4"
 
 echo "Fetching peer IDs from /topology..."
 CLAN1_PEER_ID=$(curl -sf --max-time 5 "$AXL_1_URL/topology" | jq -r '.our_public_key')
 CLAN2_PEER_ID=$(curl -sf --max-time 5 "$AXL_2_URL/topology" | jq -r '.our_public_key')
+CLAN3_PEER_ID=$(curl -sf --max-time 5 "$AXL_3_URL/topology" | jq -r '.our_public_key')
+CLAN4_PEER_ID=$(curl -sf --max-time 5 "$AXL_4_URL/topology" | jq -r '.our_public_key')
 
 if [ -z "$CLAN1_PEER_ID" ] || [ "$CLAN1_PEER_ID" = "null" ]; then
   echo "ERROR: could not read clan-1 peer ID from $AXL_1_URL/topology" >&2
@@ -38,21 +44,31 @@ if [ -z "$CLAN2_PEER_ID" ] || [ "$CLAN2_PEER_ID" = "null" ]; then
   echo "ERROR: could not read clan-2 peer ID from $AXL_2_URL/topology" >&2
   exit 1
 fi
+if [ -z "$CLAN3_PEER_ID" ] || [ "$CLAN3_PEER_ID" = "null" ]; then
+  echo "ERROR: could not read clan-3 peer ID from $AXL_3_URL/topology" >&2
+  exit 1
+fi
+if [ -z "$CLAN4_PEER_ID" ] || [ "$CLAN4_PEER_ID" = "null" ]; then
+  echo "ERROR: could not read clan-4 peer ID from $AXL_4_URL/topology" >&2
+  exit 1
+fi
 
 echo "clan-1 peer ID: $CLAN1_PEER_ID"
 echo "clan-2 peer ID: $CLAN2_PEER_ID"
+echo "clan-3 peer ID: $CLAN3_PEER_ID"
+echo "clan-4 peer ID: $CLAN4_PEER_ID"
 
-# Write .env — clans 3+4 map to the same nodes for demo purposes;
-# production deployments need one AXL node (and unique keypair) per clan.
 cat > "$SCRIPT_DIR/.env" <<EOF
 AXL_NETWORK_ID=testnet
 AXL_API_KEY=local-dev-key
 AXL_NODE_URL_CLAN_1=$AXL_1_URL
 AXL_NODE_URL_CLAN_2=$AXL_2_URL
+AXL_NODE_URL_CLAN_3=$AXL_3_URL
+AXL_NODE_URL_CLAN_4=$AXL_4_URL
 AXL_PEER_ID_CLAN_1=$CLAN1_PEER_ID
 AXL_PEER_ID_CLAN_2=$CLAN2_PEER_ID
-AXL_PEER_ID_CLAN_3=$CLAN1_PEER_ID
-AXL_PEER_ID_CLAN_4=$CLAN2_PEER_ID
+AXL_PEER_ID_CLAN_3=$CLAN3_PEER_ID
+AXL_PEER_ID_CLAN_4=$CLAN4_PEER_ID
 EOF
 
 echo "Peer IDs written to $SCRIPT_DIR/.env"

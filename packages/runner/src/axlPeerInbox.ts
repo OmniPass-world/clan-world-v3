@@ -6,7 +6,7 @@
  *   - AXL_API_KEY set → uses AxlClient for durable peer messaging.
  *
  * AXL transport model (see https://docs.gensyn.ai/tech/agent-exchange-layer):
- *   - AXL runs as a local sidecar node at 127.0.0.1:9002 (configurable via AXL_NODE_URL).
+ *   - AXL runs as local sidecar nodes (configurable via AXL_NODE_URL_<CLAN_ID> or AXL_NODE_URL).
  *   - send()  → POST /send with X-Destination-Peer-Id header (ed25519 public key of recipient).
  *   - inbox() → GET  /recv polls the inbound FIFO queue; called repeatedly until 204.
  *   - Channel naming: each clan's Elder owns a dedicated AXL keypair;
@@ -167,7 +167,7 @@ function isJournalEntry(val: unknown): val is JournalEntry {
 
 /**
  * Concrete HTTP client talking to a local AXL node.
- * Requires AXL_NODE_URL (default: http://127.0.0.1:9002).
+ * Requires AXL_NODE_URL_<CLAN_ID> or AXL_NODE_URL (default: http://127.0.0.1:9002).
  */
 export class AxlHttpClient implements IAxlClient {
   readonly #baseUrl: string;
@@ -341,6 +341,8 @@ export class AxlPeerInbox implements IElderPeerInbox {
     const peerToClan = new Map<string, string>();
     for (const [clanId, peerId] of this.#peerIdMap) {
       peerToClan.set(peerId, clanId);
+      const recvPeerId = axlRecvPeerIdFromPublicKey(peerId);
+      if (recvPeerId) peerToClan.set(recvPeerId, clanId);
     }
 
     for (;;) {
@@ -502,6 +504,72 @@ export function buildPeerIdMap(env: Record<string, string | undefined>): Map<str
   return map;
 }
 
+function clanEnvSuffix(clanId: string): string {
+  return clanId.toUpperCase().replace(/-/g, '_');
+}
+
+/**
+ * AXL sends to a node's full ed25519 public key, but /recv reports the sender
+ * as Yggdrasil's address-derived partial key. Mirror Yggdrasil's Address.GetKey
+ * projection so spoof checks can validate real AXL traffic without disabling
+ * sender verification.
+ */
+function axlRecvPeerIdFromPublicKey(peerId: string): string | null {
+  if (!/^[0-9a-fA-F]{64}$/.test(peerId)) return null;
+
+  const publicKey = Buffer.from(peerId, 'hex');
+  const inverted = Buffer.from(publicKey.map((b) => b ^ 0xff));
+  const address = Buffer.alloc(16);
+  const temp: number[] = [];
+  let done = false;
+  let ones = 0;
+  let bits = 0;
+  let nBits = 0;
+
+  for (let idx = 0; idx < 8 * inverted.length; idx += 1) {
+    const bit = (inverted[Math.floor(idx / 8)]! & (0x80 >> idx % 8)) >> (7 - idx % 8);
+    if (!done && bit !== 0) {
+      ones += 1;
+      continue;
+    }
+    if (!done && bit === 0) {
+      done = true;
+      continue;
+    }
+    bits = (bits << 1) | bit;
+    nBits += 1;
+    if (nBits === 8) {
+      temp.push(bits);
+      bits = 0;
+      nBits = 0;
+    }
+  }
+
+  address[0] = 0x02;
+  address[1] = ones;
+  for (let i = 0; i < 14; i += 1) address[2 + i] = temp[i] ?? 0;
+
+  const partialKey = Buffer.alloc(32);
+  for (let idx = 0; idx < ones; idx += 1) {
+    partialKey[Math.floor(idx / 8)]! |= 0x80 >> idx % 8;
+  }
+
+  const keyOffset = ones + 1;
+  const addrOffset = 16;
+  for (let idx = addrOffset; idx < 8 * address.length; idx += 1) {
+    let shiftedBits = address[Math.floor(idx / 8)]! & (0x80 >> idx % 8);
+    shiftedBits <<= idx % 8;
+    const keyIdx = keyOffset + (idx - addrOffset);
+    shiftedBits >>= keyIdx % 8;
+    const byteIdx = Math.floor(keyIdx / 8);
+    if (byteIdx >= partialKey.length) break;
+    partialKey[byteIdx]! |= shiftedBits;
+  }
+
+  for (let i = 0; i < partialKey.length; i += 1) partialKey[i]! ^= 0xff;
+  return partialKey.toString('hex');
+}
+
 /**
  * Create a peer inbox adapter.
  *
@@ -534,7 +602,9 @@ export async function createPeerInbox(
   if (opts.axlClient) {
     client = opts.axlClient;
   } else {
-    const nodeUrl = env['AXL_NODE_URL'] ?? 'http://127.0.0.1:9002';
+    const nodeUrl = env[`AXL_NODE_URL_${clanEnvSuffix(myClanId)}`] ??
+      env['AXL_NODE_URL'] ??
+      'http://127.0.0.1:9002';
     client = new AxlHttpClient(nodeUrl, apiKey);
   }
 

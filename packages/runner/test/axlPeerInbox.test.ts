@@ -476,6 +476,33 @@ describe('AxlPeerInbox — security: spoofed-peer rejection (HIGH 1)', () => {
     expect(msgs[0]!.fromClanId).toBe('clan-ember');
   });
 
+  it('accepts AXL recv partial peer IDs derived from full public keys', async () => {
+    const clan1PublicKey = 'db34f0f5a554cce9ae00a3a02894514909023e67c1d8eb4525a6eb77ffa21d23';
+    const clan1RecvPeerId = 'db34f0f5a554cce9ae00a3a028947fffffffffffffffffffffffffffffffffff';
+    const peerIdMap = new Map([
+      ['clan-1', clan1PublicKey],
+      ['clan-2', 'a2d3c3e93a02cb7b1a4648a490939ee207998b53486b4fe8aabc0c054dbc0953'],
+    ]);
+    const legitimateEnvelope = JSON.stringify({
+      fromClanId: 'clan-1',
+      toClanId: 'clan-2',
+      message: 'real axl header form',
+      tick: 2,
+      sentAt: new Date().toISOString(),
+      msgId: 'legit-partial-1',
+      networkId: 'testnet',
+    });
+    const client = makeMockAxlClient([
+      { fromPeerId: clan1RecvPeerId, body: legitimateEnvelope },
+    ]);
+    const inbox = new AxlPeerInbox('clan-2', 'testnet', client, peerIdMap);
+
+    const msgs = await inbox.inbox();
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0]!.message).toBe('real axl header form');
+    expect(msgs[0]!.fromClanId).toBe('clan-1');
+  });
+
   it('rejects a message from an unknown peer not in the peerIdMap', async () => {
     const peerIdMap = new Map([
       ['clan-ember', 'pubkey_ember'],
