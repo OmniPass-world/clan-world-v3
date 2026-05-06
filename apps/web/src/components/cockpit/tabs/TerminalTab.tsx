@@ -61,6 +61,37 @@ export function TerminalTab({ elder, testIdPrefix }: Props) {
       >
         ── Elder-{elder.clanId} tmux mirror (read-only) ──
       </div>
+      <a
+        data-testid="owner-control-floating"
+        data-clan-id={elder.clanId}
+        href={`/agents/${elder.clanId}`}
+        aria-label={`Open Owner Control for ${elder.name}`}
+        style={{
+          position: 'absolute',
+          top: '32px',
+          left: tokens.space.md,
+          zIndex: 2,
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '6px 10px',
+          border: `1px solid ${elder.accent}80`,
+          borderRadius: tokens.radius.sm,
+          color: elder.accent,
+          textDecoration: 'none',
+          fontFamily: tokens.font.body,
+          fontSize: '11px',
+          letterSpacing: '0.06em',
+          fontWeight: 700,
+          background: 'rgba(0,0,0,0.72)',
+          boxShadow: `0 0 14px ${elder.accent}22, 0 2px 8px rgba(0,0,0,0.65)`,
+          backdropFilter: 'blur(3px)',
+          flexShrink: 0,
+        }}
+      >
+        <span aria-hidden style={{ fontSize: '12px', lineHeight: 1 }}>⟢</span>
+        <span>Owner Control</span>
+      </a>
       <iframe
         key={src}
         src={src}
