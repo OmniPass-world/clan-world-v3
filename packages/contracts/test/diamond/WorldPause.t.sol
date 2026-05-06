@@ -16,6 +16,7 @@ import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
 import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol";
+import {RawBanditViewsFacet} from "../../src/diamond/facets/RawBanditViewsFacet.sol";
 import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {SettlementFacet} from "../../src/diamond/facets/SettlementFacet.sol";
@@ -26,7 +27,18 @@ import {WorldPauseFacet} from "../../src/diamond/facets/WorldPauseFacet.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 import {MinimalERC20} from "../../src/MinimalERC20.sol";
 import {StubPool} from "../../src/StubPool.sol";
-import {IClanWorld, ClanOrder, ClanWorldConstants, OrderResult, ResourceType, TreasuryState} from "../../src/IClanWorld.sol";
+import {
+    IClanWorld,
+    BanditTroop,
+    Clan,
+    ClanOrder,
+    ClanWorldConstants,
+    OrderResult,
+    ResourceType,
+    ScheduledMarketAction,
+    TreasuryState,
+    WorldState
+} from "../../src/IClanWorld.sol";
 
 interface IWorldPause {
     function pauseWorld() external;
@@ -34,9 +46,14 @@ interface IWorldPause {
     function isWorldPaused() external view returns (bool);
 }
 
+interface IHeartbeatAdmin {
+    function setHeartbeatIntervalSeconds(uint64 intervalSeconds) external;
+}
+
 interface IWorldPauseHarness {
     function grantBlueprint(uint32 clanId, uint256 amount) external;
     function setCurrentTick(uint64 tick) external;
+    function pausedAtTs() external view returns (uint64);
 }
 
 contract WorldPauseHarnessFacet {
@@ -50,9 +67,16 @@ contract WorldPauseHarnessFacet {
         s.world.nextHeartbeatAtTick = tick + 1;
         s.world.nextHeartbeatAtTs = 0;
     }
+
+    function pausedAtTs() external view returns (uint64) {
+        return LibStorage.appStorage().world.pausedAtTs;
+    }
 }
 
 contract WorldPauseTest is Test {
+    event WorldPaused(uint64 indexed tick, uint64 pausedAtTs);
+    event WorldUnpaused(uint64 indexed tick, uint64 durationSeconds, uint64 nextHeartbeatAtTs);
+
     IClanWorld private world;
     IWorldPause private pause;
     IWorldPauseHarness private harness;
@@ -78,6 +102,59 @@ contract WorldPauseTest is Test {
 
         vm.expectRevert(bytes("ClanWorld: world paused"));
         world.heartbeat();
+    }
+
+    function test_pauseWorldAndUnpauseWorldEmitPayloadsAndClearPausedAtTs() public {
+        uint64 pausedAt = uint64(block.timestamp);
+        vm.expectEmit(true, true, true, true, address(world));
+        emit WorldPaused(0, pausedAt);
+        pause.pauseWorld();
+        assertTrue(pause.isWorldPaused(), "paused");
+        assertEq(harness.pausedAtTs(), pausedAt, "pausedAt stored");
+
+        vm.warp(block.timestamp + 37);
+        uint64 expectedNextHeartbeatAtTs = uint64(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        vm.expectEmit(true, true, true, true, address(world));
+        emit WorldUnpaused(0, 37, expectedNextHeartbeatAtTs);
+        pause.unpauseWorld();
+
+        assertFalse(pause.isWorldPaused(), "unpaused");
+        assertEq(harness.pausedAtTs(), 0, "pausedAt cleared");
+        assertEq(world.getWorldState().nextHeartbeatAtTs, expectedNextHeartbeatAtTs, "next heartbeat");
+    }
+
+    function test_nonOwnerCannotPauseOrUnpause() public {
+        vm.prank(address(0xBEEF));
+        vm.expectRevert();
+        pause.pauseWorld();
+
+        pause.pauseWorld();
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert();
+        pause.unpauseWorld();
+    }
+
+    function test_doublePauseReverts() public {
+        pause.pauseWorld();
+
+        vm.expectRevert(bytes("ClanWorld: already paused"));
+        pause.pauseWorld();
+    }
+
+    function test_doubleUnpauseReverts() public {
+        vm.expectRevert(bytes("ClanWorld: not paused"));
+        pause.unpauseWorld();
+    }
+
+    function test_heartbeatIntervalChangeWhilePausedAffectsUnpauseCadence() public {
+        pause.pauseWorld();
+        IHeartbeatAdmin(address(world)).setHeartbeatIntervalSeconds(7);
+        vm.warp(block.timestamp + 5);
+
+        pause.unpauseWorld();
+
+        assertEq(world.getWorldState().nextHeartbeatAtTs, block.timestamp + 7, "unpause cadence");
     }
 
     function test_settleClanWorksWhenNotPaused() public {
@@ -276,12 +353,51 @@ contract WorldPauseTest is Test {
         assertTrue(world.getWorldState().seasonFinalized, "season finalized while paused");
     }
 
+    function test_invariantPausedWorldStateFrozenAcrossWarpAndRevertedWrites() public {
+        address elder = address(0xA11CE);
+        (uint32 clanId,) = world.mintClan(elder);
+        uint32 clansmanId = world.getClanClansmanIds(clanId)[0];
+        pause.pauseWorld();
+
+        WorldState memory beforeWorld = world.getWorldState();
+        Clan memory beforeClan = world.getClan(clanId);
+        BanditTroop memory beforeBandit = world.getBanditTroop(1);
+        ScheduledMarketAction[] memory beforeMarketQueue =
+            world.getScheduledMarketActionsForTick(beforeWorld.currentTick + 1);
+
+        vm.warp(block.timestamp + 10 minutes);
+
+        vm.expectRevert(bytes("ClanWorld: world paused"));
+        world.heartbeat();
+        vm.expectRevert(bytes("ClanWorld: world paused"));
+        world.settleClan(clanId);
+        vm.expectRevert(bytes("ClanWorld: world paused"));
+        world.settleClansman(clansmanId);
+        vm.prank(elder);
+        vm.expectRevert(bytes("ClanWorld: world paused"));
+        world.transferGold(clanId, clanId + 1, 1e18);
+
+        WorldState memory afterWorld = world.getWorldState();
+        Clan memory afterClan = world.getClan(clanId);
+        BanditTroop memory afterBandit = world.getBanditTroop(1);
+        ScheduledMarketAction[] memory afterMarketQueue =
+            world.getScheduledMarketActionsForTick(beforeWorld.currentTick + 1);
+
+        assertEq(afterWorld.currentTick, beforeWorld.currentTick, "currentTick frozen");
+        assertEq(afterWorld.currentTickSeed, beforeWorld.currentTickSeed, "tick seed frozen");
+        assertEq(afterClan.lastSettledTick, beforeClan.lastSettledTick, "lastSettledTick frozen");
+        assertEq(afterClan.livingClansmen, beforeClan.livingClansmen, "living clansmen frozen");
+        assertEq(afterClan.vaultWheat, beforeClan.vaultWheat, "wheat/starvation state frozen");
+        assertEq(uint8(afterBandit.state), uint8(beforeBandit.state), "bandit state frozen");
+        assertEq(afterMarketQueue.length, beforeMarketQueue.length, "market queue frozen");
+    }
+
     function _deployPauseHeartbeatDiamond() internal returns (IClanWorld diamondWorld) {
         DiamondCutFacet cutFacet = new DiamondCutFacet();
         Diamond diamond = new Diamond(address(this), address(cutFacet));
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
-        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](17);
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](18);
         cut[0] = _facetCut(address(new RawWorldViewsFacet()), DiamondSelectors.rawWorldViewsSelectors());
         cut[1] = _facetCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors());
         cut[2] = _facetCut(address(new HeartbeatConfigFacet()), DiamondSelectors.heartbeatConfigSelectors());
@@ -299,6 +415,7 @@ contract WorldPauseTest is Test {
         cut[14] = _facetCut(address(new TreasuryFacet()), DiamondSelectors.treasurySelectors());
         cut[15] = _facetCut(address(new RawTreasuryViewsFacet()), DiamondSelectors.rawTreasuryViewsSelectors());
         cut[16] = _facetCut(address(new FinalizeSeasonFacet()), DiamondSelectors.seasonSelectors());
+        cut[17] = _facetCut(address(new RawBanditViewsFacet()), DiamondSelectors.rawBanditViewsSelectors());
 
         IDiamondCut(address(diamond)).diamondCut(cut, address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         diamondWorld = IClanWorld(address(diamond));
@@ -320,9 +437,10 @@ contract WorldPauseTest is Test {
     }
 
     function _worldPauseHarnessSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](2);
+        selectors = new bytes4[](3);
         selectors[0] = WorldPauseHarnessFacet.grantBlueprint.selector;
         selectors[1] = WorldPauseHarnessFacet.setCurrentTick.selector;
+        selectors[2] = WorldPauseHarnessFacet.pausedAtTs.selector;
     }
 
     function _mintTwoClans() internal returns (uint32 fromClanId, uint32 toClanId, address fromOwner, address toOwner) {
