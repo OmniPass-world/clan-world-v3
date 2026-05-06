@@ -43,11 +43,20 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 // env is missing. The Phase-A panels are pure placeholders; the embedded
 // WorldMap consumes Convex via useQuery which returns undefined when no
 // data is available, so a stub client is enough to satisfy the provider.
-const isCockpitPath =
-  typeof window !== 'undefined' &&
-  window.location.pathname.startsWith('/cockpit');
+//
+// `/agents/:id` (PR #9) + `/owner` (PR #14) are also Convex-free: they
+// render without any useQuery/useMutation calls, so the stub provider is
+// sufficient. Without these exemptions, screenshot/dev environments
+// without VITE_CONVEX_URL render "Backend not configured" instead of the
+// actual page.
+const pathname =
+  typeof window !== 'undefined' ? window.location.pathname : '';
+const isStandalonePath =
+  pathname.startsWith('/cockpit') ||
+  pathname.startsWith('/agents') ||
+  pathname.startsWith('/owner');
 
-if (!convexUrl && !isCockpitPath) {
+if (!convexUrl && !isStandalonePath) {
   // Fail soft instead of throwing — a thrown error here leaves a blank page,
   // which is unacceptable for the hackathon submission. Render a visible
   // message so the user sees something even if the build is misconfigured.

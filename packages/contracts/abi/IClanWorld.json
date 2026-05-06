@@ -2444,6 +2444,16 @@
               "internalType": "uint64"
             },
             {
+              "name": "worldPaused",
+              "type": "bool",
+              "internalType": "bool"
+            },
+            {
+              "name": "pausedAtTs",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
               "name": "winterActive",
               "type": "bool",
               "internalType": "bool"
@@ -2604,6 +2614,16 @@
               "name": "nextCommitSequence",
               "type": "uint64",
               "internalType": "uint64"
+            },
+            {
+              "name": "worldPaused",
+              "type": "bool",
+              "internalType": "bool"
+            },
+            {
+              "name": "pausedAtTs",
+              "type": "uint64",
+              "internalType": "uint64"
             }
           ]
         }
@@ -2650,6 +2670,19 @@
     },
     {
       "type": "function",
+      "name": "isWorldPaused",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "bool",
+          "internalType": "bool"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
       "name": "mintClan",
       "inputs": [
         {
@@ -2670,6 +2703,13 @@
           "internalType": "uint256"
         }
       ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "pauseWorld",
+      "inputs": [],
+      "outputs": [],
       "stateMutability": "nonpayable"
     },
     {
@@ -3072,6 +3112,13 @@
           "internalType": "uint256"
         }
       ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "unpauseWorld",
+      "inputs": [],
       "outputs": [],
       "stateMutability": "nonpayable"
     },
@@ -4638,6 +4685,50 @@
         },
         {
           "name": "tick",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "WorldPaused",
+      "inputs": [
+        {
+          "name": "tick",
+          "type": "uint64",
+          "indexed": true,
+          "internalType": "uint64"
+        },
+        {
+          "name": "pausedAtTs",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "WorldUnpaused",
+      "inputs": [
+        {
+          "name": "tick",
+          "type": "uint64",
+          "indexed": true,
+          "internalType": "uint64"
+        },
+        {
+          "name": "durationSeconds",
+          "type": "uint64",
+          "indexed": false,
+          "internalType": "uint64"
+        },
+        {
+          "name": "nextHeartbeatAtTs",
           "type": "uint64",
           "indexed": false,
           "internalType": "uint64"

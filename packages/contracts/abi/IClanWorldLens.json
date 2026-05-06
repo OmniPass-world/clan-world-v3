@@ -1368,6 +1368,16 @@
               "internalType": "uint64"
             },
             {
+              "name": "worldPaused",
+              "type": "bool",
+              "internalType": "bool"
+            },
+            {
+              "name": "pausedAtTs",
+              "type": "uint64",
+              "internalType": "uint64"
+            },
+            {
               "name": "winterActive",
               "type": "bool",
               "internalType": "bool"
