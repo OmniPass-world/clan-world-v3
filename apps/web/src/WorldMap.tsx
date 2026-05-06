@@ -19,6 +19,11 @@ const MAP_HEIGHT = 1448;
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
 
+// On first mount we look at the most recent BanditAttackResolved logs and
+// only animate ones decoded within this window — older events are marked
+// as already-seen so we don't replay history on a refresh.
+const RECENT_BANDIT_EVENT_THRESHOLD_MS = 15_000;
+
 interface RegionDef {
   id: string;
   name: string;
@@ -997,7 +1002,7 @@ export function WorldMap() {
   const liveTick = useMemo(() => {
     return Math.max(snapshot?.tick ?? 0, logs.length);
   }, [logs, snapshot?.tick]);
-  const liveBandit = ((snapshot as { bandit?: SnapshotBandit | null } | undefined)?.bandit ?? null);
+  const liveBandit = snapshot?.bandit ?? null;
   const visibleBandit = DEMO_MODE
     ? {
       regionKey: DEMO_BANDIT.regionId,
@@ -2902,7 +2907,7 @@ export function WorldMap() {
       combatEventsInitializedRef.current = true;
       for (const ev of sorted) {
         if (ev.eventName !== 'BanditAttackResolved') continue;
-        const isRecent = typeof ev.decodedAt === 'number' && now - ev.decodedAt <= 15_000;
+        const isRecent = typeof ev.decodedAt === 'number' && now - ev.decodedAt <= RECENT_BANDIT_EVENT_THRESHOLD_MS;
         if (!isRecent) seen.add(eventKey(ev));
       }
     }
@@ -2925,6 +2930,9 @@ export function WorldMap() {
         playKey: key,
         liveMode: true,
       };
+      // Only one trigger fits in pendingCombatTriggerRef; remaining unseen
+      // events are kept (NOT in `seen`) and picked up on the next render.
+      break;
     }
   }, [rawChainEvents, liveBandit, visibleBandit]);
 
