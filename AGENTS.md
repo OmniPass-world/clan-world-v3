@@ -4,7 +4,7 @@ Top-level instructions for any agent (human or LLM) working in this repo. Keep t
 
 > **🚧 V3 — Post-ETHGlobal continuation.** Forked from `clan-world-v2` at tag `demo-2026-05-06` (HEAD `5503747`). Use this repo for active development. The v2 repo (`clan-world-v2`) is **frozen** at `demo-2026-05-06` for the May 6 ETHGlobal demo — do not modify it. v3 has its own Convex deployment (`valuable-kudu-985`) and its own diamond contract (set after first deploy).
 
-> **⚠️ World is out of scope.** WorldChain, WorldMiniApp, MiniKit, and World ID are no longer part of this project. The Submission 1 calendar entry below is historical only — ignore any code or docs referencing World/Worldchain. Active scope is Submission 2 only (Base Sepolia + 0G + AXL + KeeperHub).
+> **Active V3 scope:** Base Sepolia + 0G + AXL + KeeperHub. Historical mobile-app hackathon material is archived under `docs/archive/` and is not part of the active build.
 
 ## 1. Project Overview
 
@@ -14,7 +14,7 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 
 | Path | Name | Role |
 |---|---|---|
-| `apps/web/` | `@clan-world/web` | Vite + React frontend; wraps as a World mini app for Submission 1 |
+| `apps/web/` | `@clan-world/web` | Vite + React frontend for the live game and cockpit |
 | `apps/landing/` | `@clan-world/landing` | Vite + React marketing/lore site at clan-world.com |
 | `apps/server/` | `@clan-world/server` | Convex backend (queries, mutations, indexer cron, webhook) |
 | `apps/orchestrator/` | `@clan-world/orchestrator` | Spawns and pumps the 4 long-running Elder Claude Code sessions |
@@ -23,17 +23,14 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 | `packages/runner/` | `@clan-world/runner` | Daemon orchestrating per-tick reasoning loop for the 4 Elders (Cycle A heartbeat scheduler + Cycle B tick loop, with pluggable IElderMemoryStore + IElderPeerInbox + IRunnerInbox + IHeartbeatCaller adapters) |
 | `packages/shared/` | `@clan-world/shared` | TypeScript types + adapter interfaces consumed by every other workspace |
 
-## 2. Hackathon Submissions Calendar
+## 2. Active Hackathon Target
 
-| | Submission 1 | Submission 2 |
-|---|---|---|
-| Deadline | **2026-04-26 14:00 ET** (today) | **2026-05-05** |
-| Track | World mini app hackathon | OpenAgents Track 2 (iNFT transfer demo) |
-| Chain | World Chain Sepolia | Base Sepolia |
-| Heartbeat | Foundry shell loop, 20s ticks | KeeperHub workflow, 60s ticks |
-| Stretch deps | MiniKit + World ID (thin wrapper) | 0G Storage KV, 0G iNFT (ERC-7857), AXL whispers, KeeperHub |
-
-Submission 1 is a thin wrapper — MiniKit + idkit are listed as deps and mentioned in the README, but real integration is **out of scope for Wave 0**. See `docs/reference/prize-strategy.md`.
+| | Active V3 Demo |
+|---|---|
+| Track | OpenAgents Track 2 (iNFT transfer demo) |
+| Chain | Base Sepolia |
+| Heartbeat | KeeperHub workflow, 60s ticks |
+| Stretch deps | 0G Storage KV, 0G iNFT (ERC-7857), AXL whispers, KeeperHub |
 
 ## 3. Gitflow Light — V3 Branching (canonical for this repo)
 
@@ -86,12 +83,11 @@ Per `docs/planning/V1/07 clanworld_v4_5_alignment_addendum.md` (authoritative; s
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Realms | One realm at a time (S1 World, S2 Base — never both live) | Cuts coordination story in half; one frontend, one Convex deployment |
+| Realms | One Base Sepolia realm | Cuts coordination story in half; one frontend, one Convex deployment |
 | Tick cadence | 20s for S1 + dev, 60s for S2 KeeperHub | KeeperHub cron has 1-min floor; S1 wants tight demo |
 | Heartbeat caller | Foundry loop primary (S1), KeeperHub (S2 live), Convex cron = disaster fallback | Foundry has no cadence floor; Convex stays for DR |
 | Indexer trigger | Webhook-primary, 5s poll = safety net | Lower latency than 5s poll, eliminates race vs `TickAdvanced` |
 | Webhook payload | Minimal: `{chain, engineAddress, txHash, firedAtTs, source}` — NO `currentTick` | Avoid extra RPC read; Convex re-derives from chain |
-| World mini app integration | Thin wrapper for S1 (deps + README sentence); UX TBD pre-M5 | Optical signal sufficient; UX requirements not yet researched |
 | Convex deployment | Single deployment, reconfigured between submissions (or two toggled by env var) | One realm at a time → no cross-chain logic ever needed |
 | Heartbeat caller flag | `HEARTBEAT_CALLER_ENABLED=false` by default; on for DR | Per v4.5 §3.2 — multiple keepers are safe per §5.1 |
 
@@ -119,8 +115,8 @@ Start at the package-level `AGENTS.md` for whatever you're touching, then dive i
 
 **Reference (`docs/reference/`):**
 - `architecture-decisions.md` — every validated decision from the addendum
-- `prize-strategy.md` — S1 thin wrapper rationale, S2 OpenAgents Track 2 punchline
-- `sponsor-tech.md` — World SDK, 0G Storage, ERC-7857, AXL, KeeperHub notes
+- `prize-strategy.md` — OpenAgents Track 2 punchline
+- `sponsor-tech.md` — 0G Storage, ERC-7857, AXL, KeeperHub notes
 
 **Guides (`docs/guides/`):**
 - `stream-contracts.md` — Foundry workflow, deploy script, typechain
@@ -150,5 +146,4 @@ Start at the package-level `AGENTS.md` for whatever you're touching, then dive i
 - **Two-wallet model (S2):** treasury wallet for high-value ops is offline-signed; agent wallets are hot but capped.
 - **No secrets in commits.** `.env*` files (except `.env.template` and `.env.example`) are gitignored.
 - **Webhook auth:** keepers and Convex share a `WEBHOOK_SHARED_SECRET` header — do not log it.
-- **World ID humanity verification:** at clan mint only (S2 if scoped); never as gating for read paths.
 - **0G iNFT key custody (S2):** the iNFT transfer demo punchline depends on key authorization handover; treat the key blob as a secret artifact.

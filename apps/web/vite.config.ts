@@ -23,7 +23,7 @@ const DEFAULT_PORT = (() => {
 // envDir: load .env.local from the monorepo root, not the web app folder.
 // .env.local lives at <repo-root>/.env.local and is shared with server/agents.
 // Without this, VITE_* values are undefined at build time and the prod bundle
-// has no Convex URL / World App ID baked in (white screen).
+// has no Convex URL or demo-mode configuration baked in.
 export default defineConfig({
   plugins: [react()],
   envDir: path.resolve(__dirname, '../..'),

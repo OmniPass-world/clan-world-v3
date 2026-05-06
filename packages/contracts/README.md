@@ -2,7 +2,7 @@
 
 Solidity contracts for ClanWorld. The canonical interface is `src/IClanWorld.sol` — every other component (frontend, backend, orchestrator, agents) talks to the chain through this seam. See `docs/adr/ADR001-IClanWorld-as-web2-web3-integration-seam.md`.
 
-For Submission 1 (World mini app) the contracts deploy to **World Chain Sepolia**. Submission 2 redeploys the same code to **Base Sepolia** with KeeperHub-driven heartbeat.
+Contracts deploy to **Base Sepolia** for the active ClanWorld V3 build, with heartbeat driven by the runner/foundry loop in dev and KeeperHub for live demo flows.
 
 ## Workflow
 

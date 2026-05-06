@@ -43,7 +43,7 @@ Example: `feat(orchestrator): foundry loop heartbeat keeper (#7)`.
 (Wave 5+) Once `dev` is stable for a submission:
 
 1. Open release PR `dev → main`.
-2. Title: `release: Submission 1 (worldchain-sepolia)`.
+2. Title: `release: Base Sepolia demo`.
 3. Tag after merge: `git tag s1-v0.1.0 && git push origin s1-v0.1.0`.
 4. Tag commits trigger downstream deploys (manual for hackathon scope).
 

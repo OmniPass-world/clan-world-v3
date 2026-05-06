@@ -835,8 +835,8 @@ export function WorldMap() {
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const appRef = useRef<Application | null>(null);
   // pixi-viewport instance — wraps all map layers so multi-touch pinch / drag /
-  // wheel are handled at the application layer (works in iOS WebKit + World App
-  // WebView where browser-level pinch is unreliable).
+  // wheel are handled at the application layer where browser-level pinch can be
+  // unreliable.
   const viewportRef = useRef<Viewport | null>(null);
   const layoutRef = useRef<{ scale: number; scaleX: number; scaleY: number; offsetX: number; offsetY: number }>({
     scale: 1,
@@ -1124,8 +1124,8 @@ export function WorldMap() {
         // pixi-viewport: wraps all map layers (bg, regions, sigils, bases,
         // bubbles, travel dots) so .pinch() / .drag() / .wheel() handle
         // multi-touch math at the application layer. Round 5's
-        // canvas.style.touchAction='pinch-zoom' approach failed in World App
-        // WebView; this is the canonical fix per Pixi docs.
+        // canvas.style.touchAction='pinch-zoom' approach was unreliable on
+        // mobile WebKit; this is the canonical fix per Pixi docs.
         const viewport = new Viewport({
           screenWidth: initialW,
           screenHeight: initialH,
