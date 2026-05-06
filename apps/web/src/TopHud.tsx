@@ -23,9 +23,15 @@ type TickCountdownAnchor = {
   durationMs: number;
 };
 
-function useBanditWarning(liveTick: number): { active: boolean; ticksUntil: number } {
-  if (!DEMO_MODE) return { active: false, ticksUntil: 999 };
-  const ticksUntil = DEMO_BANDIT_ATTACKS_AT_TICK - liveTick;
+type SnapshotBandit = {
+  state: number;
+  nextActionTick: number;
+};
+
+function useBanditWarning(liveTick: number, bandit: SnapshotBandit | null): { active: boolean; ticksUntil: number } {
+  const attackTick = DEMO_MODE ? DEMO_BANDIT_ATTACKS_AT_TICK : bandit?.nextActionTick;
+  if (typeof attackTick !== 'number') return { active: false, ticksUntil: 999 };
+  const ticksUntil = attackTick - liveTick;
   return { active: ticksUntil <= 8 && ticksUntil >= 0, ticksUntil };
 }
 
@@ -103,7 +109,8 @@ export function TopHud({ liveTick }: { liveTick: number }) {
     return winterStartsAtTick - liveTick <= 20 && winterStartsAtTick > liveTick;
   }, [winterActive, winterStartsAtTick, liveTick]);
 
-  const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick);
+  const snapshotBandit = snapshot?.bandit ?? null;
+  const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick, snapshotBandit);
   const tickCountdown = useMemo(() => {
     const { startedAtMs, durationMs } = tickCountdownAnchorRef.current;
     const elapsed = Math.max(0, nowMs - startedAtMs);

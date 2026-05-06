@@ -7,29 +7,28 @@ description: ClanWorld project management — milestones, labels, hackathon dead
 
 Just-in-time reference for the orchestrator and any PM-style agent working in this repo. Heavier reference (decision rationale, demo strategy) lives in `docs/reference/prize-strategy.md`.
 
-## Submissions calendar
+## Active target
 
-| | Submission 1 | Submission 2 |
-|---|---|---|
-| Deadline | **2026-04-26 14:00 ET** (today) | **2026-05-05** |
-| Track | World mini app hackathon | OpenAgents Track 2 (iNFT transfer demo) |
-| Chain | World Chain Sepolia | Base Sepolia |
-| Heartbeat | Foundry shell loop, 20s ticks | KeeperHub workflow, 60s ticks |
-| Demo punchline | 8 demo moments running inside World App | clan iNFT mint → mid-game transfer → memory continuity |
+| | V3 demo |
+|---|---|
+| Track | OpenAgents Track 2 (iNFT transfer demo) |
+| Chain | Base Sepolia |
+| Heartbeat | KeeperHub workflow, 60s ticks |
+| Demo punchline | clan iNFT mint → mid-game transfer → memory continuity |
 
 ## Milestones
 
-Nine numbered milestones spanning both submissions:
+Milestones for the active V3 track:
 
 | # | Name | Description |
 |---|---|---|
 | M0 | Foundation | Wave 0 scaffold + adapter interfaces + docs (Issue #1) |
 | M1 | Core engine | `IClanWorld` impl + Foundry deploy + first heartbeat tx |
-| M2 | S1 Integration | Convex schema + frontend wiring + 4 Elders + orchestrator |
-| M3 | S1 Polish | Whisper UI + region polygon visuals + World mini app wrapper |
-| M4 | S1 Shipped | Demo recording + submission upload + tag `s1-v0.1.0` |
-| M5 | S2 Master Plan | Submission 2 master spec written; KeeperHub + 0G + AXL integration plan locked |
-| M6 | S2 Integration | Base Sepolia redeploy + KeeperHub + 0G Storage KV + ERC-7857 iNFT minted |
+| M2 | Integration | Convex schema + frontend wiring + 4 Elders + orchestrator |
+| M3 | Polish | Whisper UI + region polygon visuals + cockpit readiness |
+| M4 | Demo Ready | Demo recording + submission upload + tag |
+| M5 | Master Plan | KeeperHub + 0G + AXL integration plan locked |
+| M6 | iNFT Integration | Base Sepolia deploy + KeeperHub + 0G Storage KV + ERC-7857 iNFT minted |
 | M7 | Track 2 Demo | Clan iNFT transfer flow with key handover + memory continuity verified |
 | M8 | S2 Shipped | Demo recording + submission upload + tag `s2-v0.1.0` |
 
@@ -41,7 +40,7 @@ Five axes; one value per axis per issue.
 
 | Axis | Values |
 |---|---|
-| `track:` | `s1-world`, `s2-openagents`, `cross-cutting` |
+| `track:` | `openagents`, `cross-cutting` |
 | `priority:` | `p0-blocker`, `p1-must-fix`, `p2-should`, `p3-nice` |
 | `status:` | `triage`, `ready`, `in-progress`, `blocked`, `review`, `done` |
 | `type:` | `feat`, `bug`, `chore`, `docs`, `refactor`, `infra` |
@@ -57,7 +56,7 @@ Time pressure is real. If we're behind at a runtime gate (H3 or H5 in `BUILD_PLA
 
 1. **Real Elders → mock Elders** driving canned moves (orchestrator emits orders directly).
 2. **Pixi sprites → SVG region polygons** only.
-3. **Live phone demo via World App → screen-recorded desktop demo.**
+3. **Live demo ceremony → screen-recorded desktop demo.**
 
 ### Cut-if-desperate (after the above)
 
@@ -67,7 +66,7 @@ Time pressure is real. If we're behind at a runtime gate (H3 or H5 in `BUILD_PLA
 
 ### Never cut
 
-- `IClanWorld` deployed on World Chain Sepolia.
+- `IClanWorld` deployed on Base Sepolia.
 - At least one real `heartbeat()` tx on testnet with a public tx hash.
 - The 8 demo moments visible (even if scripted) — see `docs/planning/V1/01 Blockchain Game Spec/clanworld_v1_implementation_profile.md` §8.
 - For Submission 2: live iNFT mint + transfer + key-authorization handover demonstrating memory continuity.

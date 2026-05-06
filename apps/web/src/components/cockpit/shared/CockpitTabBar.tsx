@@ -25,6 +25,8 @@ interface Props {
   clanName: string;
   clanAccent: string;
   clanGlyph: string;
+  /** Clan id — used to link to the per-agent control page (1-4). */
+  clanId: number;
   /** data-testid prefix to scope test selectors to this mini-cockpit. */
   testIdPrefix: string;
 }
@@ -45,6 +47,7 @@ export function CockpitTabBar({
   clanName,
   clanAccent,
   clanGlyph,
+  clanId,
   testIdPrefix,
 }: Props) {
   return (
@@ -113,13 +116,14 @@ export function CockpitTabBar({
         })}
       </div>
 
-      {/* Right: clan badge */}
+      {/* Right: clan badge + control link */}
       <div
         style={{
           flex: 1,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center',
+          justifyContent: 'space-between',
+          gap: tokens.space.sm,
           padding: `0 ${tokens.space.sm}`,
           color: tokens.text.onIron,
           fontFamily: tokens.font.display,
@@ -130,18 +134,52 @@ export function CockpitTabBar({
         }}
         title={clanName}
       >
-        <span style={{ color: clanAccent, marginRight: '6px', fontSize: '14px' }}>
-          {clanGlyph}
-        </span>
-        <span
+        <div
           style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            display: 'flex',
+            alignItems: 'center',
+            minWidth: 0,
+            flex: 1,
           }}
         >
-          {clanName}
-        </span>
+          <span style={{ color: clanAccent, marginRight: '6px', fontSize: '14px' }}>
+            {clanGlyph}
+          </span>
+          <span
+            style={{
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {clanName}
+          </span>
+        </div>
+        {/* Per-agent control page link — opens the single-agent page (mock SIWS, owner controls). */}
+        <a
+          data-testid={`${testIdPrefix}-control-link`}
+          href={`/agents/${clanId}`}
+          aria-label={`Open control page for ${clanName}`}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '4px',
+            padding: '3px 7px',
+            border: `1px solid ${clanAccent}66`,
+            borderRadius: '2px',
+            color: clanAccent,
+            textDecoration: 'none',
+            fontFamily: tokens.font.body,
+            fontSize: '8.5px',
+            letterSpacing: '0.24em',
+            fontWeight: 600,
+            background: 'rgba(0,0,0,0.3)',
+            flexShrink: 0,
+          }}
+        >
+          <span aria-hidden style={{ fontSize: '10px' }}>⟢</span>
+          <span>CONTROL</span>
+        </a>
       </div>
     </div>
   );

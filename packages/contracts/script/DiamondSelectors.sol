@@ -6,6 +6,7 @@ import {IClanWorld} from "../src/IClanWorld.sol";
 import {HeartbeatConfigFacet} from "../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../src/diamond/facets/HeartbeatFacet.sol";
 import {OwnershipFacet} from "../src/diamond/facets/OwnershipFacet.sol";
+import {WorldPauseFacet} from "../src/diamond/facets/WorldPauseFacet.sol";
 
 library DiamondSelectors {
     function loupeSelectors() internal pure returns (bytes4[] memory selectors) {
@@ -29,6 +30,13 @@ library DiamondSelectors {
         selectors[3] = HeartbeatConfigFacet.setClansmanCooldownSeconds.selector;
         selectors[4] = HeartbeatConfigFacet.banditSpawnTriggered.selector;
         selectors[5] = HeartbeatConfigFacet.triggerBanditSpawn.selector;
+    }
+
+    function worldPauseSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](3);
+        selectors[0] = WorldPauseFacet.pauseWorld.selector;
+        selectors[1] = WorldPauseFacet.unpauseWorld.selector;
+        selectors[2] = WorldPauseFacet.isWorldPaused.selector;
     }
 
     function seasonSelectors() internal pure returns (bytes4[] memory selectors) {

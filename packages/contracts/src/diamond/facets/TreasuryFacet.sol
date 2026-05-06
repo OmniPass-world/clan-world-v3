@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {IClanWorldEvents, PoolSeedConfig} from "../../IClanWorld.sol";
 import {MinimalERC20} from "../../MinimalERC20.sol";
 import {StubPool} from "../../StubPool.sol";
+import {LibGameRules} from "../lib/LibGameRules.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 
 contract TreasuryFacet is IClanWorldEvents {
@@ -16,6 +17,7 @@ contract TreasuryFacet is IClanWorldEvents {
 
     function initTreasury(address[6] calldata tokens, address[4] calldata pools) external nonReentrant {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
+        LibGameRules.requireWorldNotPaused(s);
         require(!s.treasury.poolsSeeded && s.treasury.woodToken == address(0), "ClanWorld: treasury already init");
         require(msg.sender == s.treasury.treasuryOwner, "ClanWorld: not owner");
         _validateTreasuryInit(tokens, pools);
@@ -35,6 +37,7 @@ contract TreasuryFacet is IClanWorldEvents {
 
     function seedPools(PoolSeedConfig calldata cfg) external nonReentrant {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
+        LibGameRules.requireWorldNotPaused(s);
         require(msg.sender == s.treasury.treasuryOwner, "ClanWorld: not owner");
         require(!s.treasury.poolsSeeded, "ClanWorld: pools already seeded");
         require(s.treasury.woodToken != address(0), "ClanWorld: treasury not init");

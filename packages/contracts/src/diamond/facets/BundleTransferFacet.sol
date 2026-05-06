@@ -20,6 +20,7 @@ contract BundleTransferFacet is IClanWorldEvents {
     ) external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
         require(gold > 0 || blueprint > 0 || wood > 0 || iron > 0 || wheat > 0 || fish > 0, "ClanWorld: empty bundle");
         require(fromClanId != toClanId, "ClanWorld: same clan");

@@ -24,13 +24,3 @@
  * explicit `'true'` string enables it.
  */
 export const DEMO_MODE = import.meta.env.VITE_CLANWORLD_DEMO_MODE === 'true';
-
-/**
- * REQUIRE_WORLD_APP_GUARD — require the user to be in World App context.
- *
- * true  (VITE_REQUIRE_WORLD_APP_GUARD='true'): render the Open-in-World-App
- * gate unless the app is already installed in MiniKit.
- * false/unset: bypass the gate and render directly in browser/dev.
- */
-export const REQUIRE_WORLD_APP_GUARD =
-  import.meta.env.VITE_REQUIRE_WORLD_APP_GUARD === 'true';

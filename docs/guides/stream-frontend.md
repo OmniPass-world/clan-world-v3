@@ -55,26 +55,14 @@ Don't reach for `pixi-react` until you've prototyped the canvas in vanilla Pixi.
 - If you find yourself reaching for Zustand or Redux, reconsider — the Convex subscription IS the state store.
 - For derived values (e.g., "list of clans owned by current user"), use `useMemo` with the live snapshot.
 
-## MiniKit + World ID
-
-Wave 0 stance: deps installed, **no integration code**. See `docs/reference/sponsor-tech.md` for the open questions that block Wave 4 integration.
-
-When integration lands:
-
-```tsx
-// apps/web/src/main.tsx (Wave 4)
-import { MiniKitProvider } from '@worldcoin/minikit-js';
-// wrap <App /> in <MiniKitProvider appId={import.meta.env.VITE_WORLD_APP_ID}>
-```
-
 ## Build & deploy
 
 ```bash
 pnpm --filter @clan-world/web build   # → apps/web/dist/
 ```
 
-Static output. Deploy to Vercel or Cloudflare Pages, register the URL with the World App as a mini app.
+Static output. Deploy to Vercel or Cloudflare Pages.
 
 ## Mobile testing
 
-The World App is a phone-first surface. Test on a real device or use Chrome devtools mobile emulation with the World App user-agent.
+Test on a real phone and in Chrome devtools mobile emulation. The frontend should work in an ordinary browser URL.

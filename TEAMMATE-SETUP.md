@@ -38,11 +38,9 @@ cp .env.template .env.local
 | `DEPLOYER_ADDRESS` | derive from your private key: `cast wallet address --private-key <key>` | |
 | `ELDER_MNEMONIC` | from Liam (12-word phrase) | shared across all 4 elder wallets via BIP-44. Same for everyone. |
 | `CONVEX_URL`, `VITE_CONVEX_URL`, `CONVEX_DEPLOY_URL` | `https://valuable-kudu-985.convex.cloud` | shared dev Convex |
-| `WORLD_APP_ID`, `WORLD_ID_RP_ID`, `VITE_WORLD_APP_ID`, `VITE_WORLD_RP_ID`, `VITE_WORLD_ACTION_ID` | from .env.template, hardcoded values | Worldcoin app IDs (out of scope but referenced) |
 | `VITE_CLAN_WORLD_USE_STUB_*=false` | hardcode | want real chain + real Convex by default |
 | `VITE_CLAN_WORLD_USE_STUB_LLM=true` | hardcode | LLM stubbed for local dev unless testing real elder loop |
 | `VITE_CLANWORLD_DEMO_MODE=false` | hardcode | demo mode is for hackathon submission only |
-| `VITE_DEMO_BYPASS_WORLD_GUARD=true` | hardcode | unblocks dev without Worldcoin auth |
 | `EVM_RPC=https://evmrpc.0g.ai` | hardcode | 0G mainnet RPC |
 | `INDEXER_RPC=https://indexer-storage-turbo.0g.ai` | hardcode | 0G indexer |
 | `FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526` | hardcode | 0G flow contract (currently broken — see "Known Issues" below) |

@@ -17,8 +17,6 @@ import { expect, test } from '@playwright/test';
 // Keep this list minimal — false negatives (real errors swallowed) are worse
 // than false positives (expected warnings re-flagged).
 const BENIGN_PATTERNS: RegExp[] = [
-  /SES Removing unpermitted intrinsics/i, // Worldcoin SDK lockdown.js — informational
-  /MiniKit is not installed/i, // expected outside World App
   /favicon\.ico.*404/i, // no favicon shipped yet
   /Download the React DevTools/i, // dev hint
 ];
@@ -44,7 +42,7 @@ test('mini app loads with no console errors', async ({ page }) => {
   await page.goto('/');
 
   // Wait for canvas to mount — WorldMap renders one.
-  // 10s gives PIXI v8 + Convex client + IDKit time to initialize.
+  // 10s gives PIXI v8 + Convex client time to initialize.
   await page.waitForSelector('canvas', { timeout: 10_000 });
 
   // Give async effects a beat to fire so we capture any post-mount errors.

@@ -227,6 +227,8 @@ struct WorldState {
     uint64 winterEndsAtTick; // 0 if not active
 
     uint64 nextCommitSequence; // global FIFO sequence for scheduled market actions
+    bool worldPaused;
+    uint64 pausedAtTs;
 }
 
 struct TreasuryState {
@@ -457,6 +459,8 @@ struct WorldSnapshot {
     bool seasonFinalized;
     uint64 currentSeasonNumber;
     uint64 nextHeartbeatAtTick;
+    bool worldPaused;
+    uint64 pausedAtTs;
     bool winterActive;
     uint64 winterStartsAtTick;
     uint64 winterEndsAtTick;
@@ -537,6 +541,8 @@ struct RegionOccupant {
 interface IClanWorldEvents {
     // ----- world clock -----
     event TickAdvanced(uint64 closedTick, uint64 openedTick, bytes32 tickSeed);
+    event WorldPaused(uint64 indexed tick, uint64 pausedAtTs);
+    event WorldUnpaused(uint64 indexed tick, uint64 durationSeconds, uint64 nextHeartbeatAtTs);
     event WinterStarted(uint64 indexed tick);
     event WinterEnded(uint64 indexed tick);
     event SeasonFinalized(uint64 indexed tick, uint32[] rankedClanIds, uint256[] scores);
@@ -731,6 +737,15 @@ interface IClanWorld is IClanWorldEvents {
     ///         scheduled market actions and world events, advances the tick.
     ///         Rate-limited by WorldState.nextHeartbeatAtTs.
     function heartbeat() external;
+
+    /// @notice Owner-only emergency freeze for game-time advancement and gameplay writes.
+    function pauseWorld() external;
+
+    /// @notice Owner-only emergency unfreeze. Reschedules the next heartbeat from the unpause timestamp.
+    function unpauseWorld() external;
+
+    /// @notice True iff emergency world pause is currently active.
+    function isWorldPaused() external view returns (bool);
 
     /// @notice Lazily settle a clan forward to current tick. Idempotent.
     function settleClan(uint32 clanId) external;

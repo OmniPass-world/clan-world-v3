@@ -231,10 +231,6 @@ export default defineSchema({
   })
     .index("by_clan_tick", ["clanId", "tick"])
     .index("by_tick", ["tick"]),
-  verifiedNullifiers: defineTable({
-    nullifier: v.string(),
-  }).index("by_nullifier", ["nullifier"]),
-
   // Comms-tab tables (added 2026-05-04 for cockpit Comms wiring).
   // These three feed the per-elder "AXL" view; bulletins (above) feeds the
   // "0G Bulletin" view + the cross-clan flyout.

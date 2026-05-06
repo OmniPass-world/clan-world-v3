@@ -3,6 +3,7 @@ pragma solidity ^0.8.34;
 
 import {ClanState, IClanWorldEvents} from "../../IClanWorld.sol";
 import {LibScoring} from "../../lib/LibScoring.sol";
+import {LibGameRules} from "../lib/LibGameRules.sol";
 import {LibSettlement} from "../lib/LibSettlement.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 
@@ -13,6 +14,7 @@ contract FinalizeSeasonFacet is IClanWorldEvents {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
         require(s.initialized, "ClanWorld: not initialized");
+        LibGameRules.requireWorldNotPaused(s);
         require(s.world.currentTick >= s.world.seasonEndTick, "ClanWorld: season not ended");
         require(!s.world.seasonFinalized, "ClanWorld: season finalized");
 
