@@ -344,13 +344,20 @@ contract WorldPauseTest is Test {
         world.initTreasury(tokens, pools);
     }
 
-    function test_finalizeSeasonSucceedsWhilePausedAtSeasonBoundary() public {
+    function test_finalizeSeasonSucceedsWhenNotPausedAtSeasonBoundary() public {
         harness.setCurrentTick(ClanWorldConstants.SEASON_DURATION_TICKS);
-        pause.pauseWorld();
 
         world.finalizeSeason();
 
-        assertTrue(world.getWorldState().seasonFinalized, "season finalized while paused");
+        assertTrue(world.getWorldState().seasonFinalized, "season finalized");
+    }
+
+    function test_finalizeSeasonRevertsWhilePaused() public {
+        harness.setCurrentTick(ClanWorldConstants.SEASON_DURATION_TICKS);
+        pause.pauseWorld();
+
+        vm.expectRevert(bytes("ClanWorld: world paused"));
+        world.finalizeSeason();
     }
 
     function test_invariantPausedWorldStateFrozenAcrossWarpAndRevertedWrites() public {
