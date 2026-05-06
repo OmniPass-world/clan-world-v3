@@ -35,6 +35,8 @@ contract SnapshotViewsFacet {
             seasonFinalized: s.world.seasonFinalized,
             currentSeasonNumber: s.world.currentSeasonNumber,
             nextHeartbeatAtTick: s.world.nextHeartbeatAtTick,
+            worldPaused: s.world.worldPaused,
+            pausedAtTs: s.world.pausedAtTs,
             winterActive: winterActive,
             winterStartsAtTick: winterStartsAtTick,
             winterEndsAtTick: winterEndsAtTick,

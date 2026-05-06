@@ -110,6 +110,8 @@ contract WorldPauseTest is Test {
         emit WorldPaused(0, pausedAt);
         pause.pauseWorld();
         assertTrue(pause.isWorldPaused(), "paused");
+        assertTrue(world.getWorldState().worldPaused, "world state paused");
+        assertEq(world.getWorldState().pausedAtTs, pausedAt, "world state pausedAt");
         assertEq(harness.pausedAtTs(), pausedAt, "pausedAt stored");
 
         vm.warp(block.timestamp + 37);
@@ -119,6 +121,8 @@ contract WorldPauseTest is Test {
         pause.unpauseWorld();
 
         assertFalse(pause.isWorldPaused(), "unpaused");
+        assertFalse(world.getWorldState().worldPaused, "world state unpaused");
+        assertEq(world.getWorldState().pausedAtTs, 0, "world state pausedAt cleared");
         assertEq(harness.pausedAtTs(), 0, "pausedAt cleared");
         assertEq(world.getWorldState().nextHeartbeatAtTs, expectedNextHeartbeatAtTs, "next heartbeat");
     }
