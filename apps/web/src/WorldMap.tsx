@@ -1422,12 +1422,16 @@ export function WorldMap() {
           const now = performance.now();
           drawn.bases.forEach((base) => {
             if (base.baseY <= 0) return;
-            base.container.zIndex = Math.round(base.baseY);
             // Breathing: scaleY stretches upward from the sprite's bottom anchor
             // (0.5, 1). 0.25 Hz period; 3% amplitude reads as alive without skewing
             // the painted rooflines. phaseOffset keeps bases out of sync.
+            // zIndex is already set during relayout (base.baseY is static between
+            // relayouts), so no need to reassign each tick.
+            const scaleY = 1 + Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 0.03;
             if (base.sprite) {
-              base.sprite.scale.y = 1 + Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 0.03;
+              base.sprite.scale.y = scaleY;
+            } else {
+              base.fallback.scale.y = scaleY;
             }
           });
           updateLiveClansmanPositions();
