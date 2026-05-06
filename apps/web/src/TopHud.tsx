@@ -109,7 +109,7 @@ export function TopHud({ liveTick }: { liveTick: number }) {
     return winterStartsAtTick - liveTick <= 20 && winterStartsAtTick > liveTick;
   }, [winterActive, winterStartsAtTick, liveTick]);
 
-  const snapshotBandit = ((snapshot as { bandit?: SnapshotBandit | null } | undefined)?.bandit ?? null);
+  const snapshotBandit = snapshot?.bandit ?? null;
   const { active: banditActive, ticksUntil: banditTicksUntil } = useBanditWarning(liveTick, snapshotBandit);
   const tickCountdown = useMemo(() => {
     const { startedAtMs, durationMs } = tickCountdownAnchorRef.current;
