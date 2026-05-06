@@ -14,10 +14,6 @@ library LibWorldEvents {
     function resolveWorldEvents(LibStorage.AppStorage storage s, uint64 closedTick) internal {
         uint64 newTick = closedTick + 1;
 
-        if (newTick >= s.world.seasonEndTick && s.world.seasonFinalized) {
-            rollSeason(s);
-        }
-
         bool wasWinter = LibSeason.isWinterActiveAt(closedTick);
         bool nowWinter = LibSeason.isWinterActiveAt(newTick);
         if (!wasWinter && nowWinter) {

@@ -35,6 +35,7 @@ import {
     ClanOrder,
     ClanWorldConstants,
     OrderResult,
+    PoolSeedConfig,
     ResourceType,
     ScheduledMarketAction,
     TreasuryState,
@@ -379,6 +380,14 @@ contract WorldPauseTest is Test {
 
         vm.expectRevert(bytes("ClanWorld: world paused"));
         world.initTreasury(tokens, pools);
+    }
+
+    function test_seedPoolsRevertsWhenPaused() public {
+        PoolSeedConfig memory cfg;
+        pause.pauseWorld();
+
+        vm.expectRevert(bytes("ClanWorld: world paused"));
+        world.seedPools(cfg);
     }
 
     function test_finalizeSeasonSucceedsWhenNotPausedAtSeasonBoundary() public {

@@ -47,6 +47,11 @@ contract StorageLayoutGuardTest is Test {
         probe.writeWorldTailSentinels();
 
         uint256 appSlot = uint256(probe.appStorageSlot());
+        // StoredWorldState starts at AppStorage slot 0. Slots 0-5 hold the
+        // earlier world fields through `currentTickSeed`; slot 6 packs
+        // `activeBanditId`, `nextCommitSequence`, `worldPaused`, and
+        // `pausedAtTs`. Treasury is the next AppStorage field, so it must still
+        // begin at appSlot + 7 after appending the pause fields.
         uint256 worldTailSlot = uint256(appSlot) + 6;
         uint256 expectedTail = uint256(0xaabbccdd) | (uint256(0x1122334455667788) << 32) | (uint256(1) << 96)
             | (uint256(0x99aabbccddeeff00) << 104);

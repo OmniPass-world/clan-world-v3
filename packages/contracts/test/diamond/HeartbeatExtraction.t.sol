@@ -118,7 +118,16 @@ contract HeartbeatExtractionTest is Test {
         assertEq(actual.seasonFinalized, expected.seasonFinalized, "seasonFinalized");
         assertEq(actual.currentSeasonNumber, expected.currentSeasonNumber, "currentSeasonNumber");
         assertEq(actual.nextHeartbeatAtTick, expected.nextHeartbeatAtTick, "nextHeartbeatAtTick");
+        assertEq(actual.nextHeartbeatAtTs, expected.nextHeartbeatAtTs, "nextHeartbeatAtTs");
         assertEq(actual.nextBanditSpawnEligibleTick, expected.nextBanditSpawnEligibleTick, "nextBanditSpawnEligibleTick");
         assertEq(actual.currentBanditSpawnChanceBps, expected.currentBanditSpawnChanceBps, "spawn chance");
+        assertEq(actual.currentTickSeed, expected.currentTickSeed, "currentTickSeed");
+        assertEq(actual.activeBanditId, expected.activeBanditId, "activeBanditId");
+        assertEq(actual.winterActive, expected.winterActive, "winterActive");
+        assertEq(actual.winterStartsAtTick, expected.winterStartsAtTick, "winterStartsAtTick");
+        assertEq(actual.winterEndsAtTick, expected.winterEndsAtTick, "winterEndsAtTick");
+        assertEq(actual.nextCommitSequence, expected.nextCommitSequence, "nextCommitSequence");
+        assertEq(actual.worldPaused, expected.worldPaused, "worldPaused");
+        assertEq(actual.pausedAtTs, expected.pausedAtTs, "pausedAtTs");
     }
 }
