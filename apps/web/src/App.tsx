@@ -6,6 +6,7 @@ import type { IDKitRequestHookConfig } from '@worldcoin/idkit';
 import { WorldMap } from './WorldMap';
 import { Cockpit } from './pages/Cockpit';
 import { OwnerEditor } from './pages/OwnerEditor';
+import { AgentControlPage } from './pages/agent/AgentControlPage';
 import { WorldMapBoundary } from './components/cockpit/shared/WorldMapBoundary';
 
 class CockpitErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
@@ -119,6 +120,20 @@ function isOwnerRoute(): boolean {
   );
 }
 
+/**
+ * /agents/:agentId — single-agent control page (mobile-portrait first).
+ * Pure mock — no real Solana wallet, no Convex. Routed here BEFORE any
+ * World-App / IDKit hooks fire so it works in a plain browser tab.
+ */
+function parseAgentRoute(): number | null {
+  if (typeof window === 'undefined') return null;
+  const m = window.location.pathname.match(/^\/agents\/(\d+)\/?$/);
+  const raw = m?.[1];
+  if (!raw) return null;
+  const id = parseInt(raw, 10);
+  return Number.isFinite(id) ? id : null;
+}
+
 export function App() {
   // /cockpit route — standalone judge view, bypasses World App / verify gate.
   // Pure read-only frontend for now (Phase B will wire live data).
@@ -129,6 +144,14 @@ export function App() {
     return (
       <CockpitErrorBoundary>
         <Cockpit />
+      </CockpitErrorBoundary>
+    );
+  }
+  const agentId = parseAgentRoute();
+  if (agentId !== null) {
+    return (
+      <CockpitErrorBoundary>
+        <AgentControlPage agentId={agentId} />
       </CockpitErrorBoundary>
     );
   }
