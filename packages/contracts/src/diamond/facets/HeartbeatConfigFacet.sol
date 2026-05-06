@@ -59,6 +59,12 @@ contract HeartbeatConfigFacet {
         return LibStorage.appStorage().forceBanditSpawnNextHeartbeat;
     }
 
+    /// @notice Owner-only pause allowlist action.
+    /// @dev Allowed during pause. This sets a queued flag
+    ///      (`forceBanditSpawnNextHeartbeat = true`) that fires on the first
+    ///      post-unpause heartbeat. Owners can use it to stage recovery scenarios;
+    ///      the spawn itself does not happen until the world is unpaused. See the
+    ///      contracts README pause allowlist for the full policy.
     function triggerBanditSpawn() external {
         LibDiamond.enforceIsContractOwner();
 

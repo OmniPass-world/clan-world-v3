@@ -2,6 +2,7 @@
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {DiamondSelectors} from "../../script/DiamondSelectors.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
@@ -48,6 +49,8 @@ interface IWorldPause {
 
 interface IHeartbeatAdmin {
     function setHeartbeatIntervalSeconds(uint64 intervalSeconds) external;
+    function triggerBanditSpawn() external;
+    function banditSpawnTriggered() external view returns (bool);
 }
 
 interface IWorldPauseHarness {
@@ -76,6 +79,7 @@ contract WorldPauseHarnessFacet {
 contract WorldPauseTest is Test {
     event WorldPaused(uint64 indexed tick, uint64 pausedAtTs);
     event WorldUnpaused(uint64 indexed tick, uint64 durationSeconds, uint64 nextHeartbeatAtTs);
+    event BanditSpawned(uint32 indexed banditId, uint8 region, uint8 tier, uint16 attackPower);
 
     IClanWorld private world;
     IWorldPause private pause;
@@ -159,6 +163,35 @@ contract WorldPauseTest is Test {
         pause.unpauseWorld();
 
         assertEq(world.getWorldState().nextHeartbeatAtTs, block.timestamp + 7, "unpause cadence");
+    }
+
+    function test_triggerBanditSpawnQueuedDuringPause_FiresAfterUnpause() public {
+        world.mintClan(address(0xA11CE));
+        IHeartbeatAdmin heartbeatAdmin = IHeartbeatAdmin(address(world));
+        pause.pauseWorld();
+
+        uint64 pausedTick = world.getWorldState().currentTick;
+        vm.recordLogs();
+        heartbeatAdmin.triggerBanditSpawn();
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        assertEq(logs.length, 1, "only queue event emitted");
+        assertTrue(heartbeatAdmin.banditSpawnTriggered(), "spawn queued");
+        assertEq(world.getWorldState().currentBanditSpawnChanceBps, 10000, "preview chance");
+        assertEq(world.getWorldState().currentTick, pausedTick, "tick frozen");
+        assertEq(world.getWorldState().activeBanditId, 0, "no immediate active bandit");
+        assertEq(world.getBanditTroop(1).id, 0, "no immediate bandit");
+
+        pause.unpauseWorld();
+        vm.warp(world.getWorldState().nextHeartbeatAtTs);
+
+        vm.expectEmit(true, false, false, false, address(world));
+        emit BanditSpawned(1, 0, 0, 0);
+        world.heartbeat();
+
+        assertFalse(heartbeatAdmin.banditSpawnTriggered(), "queue consumed");
+        assertEq(world.getWorldState().activeBanditId, 1, "bandit active after heartbeat");
+        assertEq(world.getBanditTroop(1).id, 1, "bandit spawned after unpause");
     }
 
     function test_settleClanWorksWhenNotPaused() public {
