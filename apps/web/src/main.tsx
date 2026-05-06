@@ -51,10 +51,9 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 // actual page.
 const pathname =
   typeof window !== 'undefined' ? window.location.pathname : '';
-const isStandalonePath =
-  pathname.startsWith('/cockpit') ||
-  pathname.startsWith('/agents') ||
-  pathname.startsWith('/owner');
+const isStandalonePath = ['/cockpit', '/agents', '/owner'].some(
+  (p) => pathname === p || pathname.startsWith(p + '/'),
+);
 
 if (!convexUrl && !isStandalonePath) {
   // Fail soft instead of throwing — a thrown error here leaves a blank page,
