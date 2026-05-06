@@ -5,6 +5,7 @@ import {ClanState} from "../../IClanWorld.sol";
 import {LibBanditCombat} from "./LibBanditCombat.sol";
 import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibBanditSpawning} from "./LibBanditSpawning.sol";
+import {LibGameRules} from "./LibGameRules.sol";
 import {LibOrderMarket} from "./LibOrderMarket.sol";
 import {LibSettlement} from "./LibSettlement.sol";
 import {LibStorage} from "./LibStorage.sol";
@@ -16,6 +17,7 @@ library LibHeartbeat {
     event ClanSettled(uint32 indexed clanId, uint64 settledToTick);
 
     function tick(LibStorage.AppStorage storage s) internal {
+        LibGameRules.requireWorldNotPaused(s);
         require(block.timestamp >= s.world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
         if (isSeasonFinalizationPending(s)) {
