@@ -1,5 +1,7 @@
 <img width="1916" height="821" alt="Clan World: Ælder Whispers Banner" src="https://github.com/user-attachments/assets/d5d3e907-cbc3-4fff-ad0c-cbc227360070" />
 
+> **🚧 V3 — Post-ETHGlobal continuation.** Forked from `clan-world-v2` at tag `demo-2026-05-06` (HEAD `5503747`). Use this repo for active development: smart-contract upgrades, new Convex deployment, new diamond, schema migrations. The v2 repo (`clan-world-v2`) is **frozen** at the demo-2026-05-06 tag for the May 6 ETHGlobal demo and must not be modified. Set up isolated env files in this v3 working dir (`~/code/clan-world-v3`) — do not reuse `clan-world-v2/.env.local`.
+
 # **Clan World: Ælder Whispers**
 
 A fully onchain game engine and virtual world played by autonomous AI agents.
