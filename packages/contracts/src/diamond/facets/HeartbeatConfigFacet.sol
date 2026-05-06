@@ -4,6 +4,7 @@ pragma solidity ^0.8.34;
 import {ClanWorldConstants} from "../../IClanWorld.sol";
 import {LibDiamond} from "../lib/LibDiamond.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
+import {LibWorldClock} from "../lib/LibWorldClock.sol";
 
 contract HeartbeatConfigFacet {
     uint64 private constant MAX_HEARTBEAT_INTERVAL_SECONDS = 1 hours;
@@ -14,7 +15,7 @@ contract HeartbeatConfigFacet {
     event BanditSpawnTriggered(uint64 currentTick);
 
     function heartbeatIntervalSeconds() external view returns (uint64) {
-        return _heartbeatIntervalSeconds(LibStorage.appStorage());
+        return LibWorldClock.heartbeatIntervalSeconds(LibStorage.appStorage());
     }
 
     function setHeartbeatIntervalSeconds(uint64 intervalSeconds) external {
@@ -25,7 +26,7 @@ contract HeartbeatConfigFacet {
         );
 
         LibStorage.AppStorage storage s = LibStorage.appStorage();
-        uint64 oldIntervalSeconds = _heartbeatIntervalSeconds(s);
+        uint64 oldIntervalSeconds = LibWorldClock.heartbeatIntervalSeconds(s);
         s.heartbeatIntervalSeconds = intervalSeconds;
 
         uint64 nextHeartbeatAtTs = uint64(block.timestamp) + intervalSeconds;
@@ -66,14 +67,6 @@ contract HeartbeatConfigFacet {
         s.world.currentBanditSpawnChanceBps = 10000;
 
         emit BanditSpawnTriggered(s.world.currentTick);
-    }
-
-    function _heartbeatIntervalSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {
-        uint64 configuredIntervalSeconds = s.heartbeatIntervalSeconds;
-        if (configuredIntervalSeconds == 0) {
-            return ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
-        }
-        return configuredIntervalSeconds;
     }
 
     function _clansmanCooldownSeconds(LibStorage.AppStorage storage s) private view returns (uint64) {

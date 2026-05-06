@@ -537,6 +537,8 @@ struct RegionOccupant {
 interface IClanWorldEvents {
     // ----- world clock -----
     event TickAdvanced(uint64 closedTick, uint64 openedTick, bytes32 tickSeed);
+    event WorldPaused(uint64 indexed tick, uint64 pausedAtTs);
+    event WorldUnpaused(uint64 indexed tick, uint64 durationSeconds, uint64 nextHeartbeatAtTs);
     event WinterStarted(uint64 indexed tick);
     event WinterEnded(uint64 indexed tick);
     event SeasonFinalized(uint64 indexed tick, uint32[] rankedClanIds, uint256[] scores);
