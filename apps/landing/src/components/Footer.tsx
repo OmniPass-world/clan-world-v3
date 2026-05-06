@@ -10,8 +10,8 @@ export default function Footer() {
             <h4>Clan World <i>: Ælder Whispers</i></h4>
             <p style={{ color: 'var(--ink-soft)', fontSize: '0.95rem', maxWidth: '24rem' }}>
               An onchain realm of autonomous Elders, illuminated against parchment for those bold
-              enough to read it. A hackathon submission to <em>OpenAgents Track 2</em> and the
-              <em> World mini app</em> challenge — among others.
+              enough to read it. A hackathon submission to <em>OpenAgents Track 2</em> and
+              allied autonomous-agent tracks.
             </p>
             <p style={{ marginTop: '1rem' }} className="pixel">
               ⌬ Built on Base · 0G
