@@ -9,6 +9,7 @@ import { EventTicker } from './EventTicker';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import { DEMO_MODE } from './config/env';
+import { BanditState } from '@clan-world/shared/generated/enums';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
@@ -61,6 +62,30 @@ type SnapshotClan = {
   livingClansmen?: number;
   owner?: string;
   clansmen?: unknown[];
+};
+
+type SnapshotBandit = {
+  id: number;
+  region: number;
+  state: number;
+  tier: number;
+  attackPower: number;
+  stateEnteredTick: number;
+  nextActionTick: number;
+  projectedTargetClanId: number;
+};
+
+type ChainEvent = {
+  _id?: string;
+  txHash?: string;
+  logIndex?: number;
+  blockNumber?: number;
+  eventName: string;
+  tick?: number;
+  banditId?: number;
+  clanId?: number;
+  decodedAt?: number;
+  args: unknown;
 };
 
 type LiveClansmanMarker = {
@@ -233,6 +258,12 @@ function numberLike(value: unknown, fallback = 0): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
+}
+
+function eventKey(ev: ChainEvent): string {
+  if (ev._id) return ev._id;
+  if (ev.txHash && typeof ev.logIndex === 'number') return `${ev.txHash}:${ev.logIndex}`;
+  return `${ev.eventName}:${ev.blockNumber ?? 0}:${ev.logIndex ?? 0}:${ev.tick ?? 0}`;
 }
 
 function resourceUnits(value: unknown): number {
@@ -508,6 +539,7 @@ type ReparentedCombatant = {
 type CombatVignette = {
   startedAt: number;
   outcome: CombatOutcome;
+  liveMode: boolean;
   bandit: Container | null;
   targetBase: Container;
   defenders: Container[];
@@ -516,6 +548,14 @@ type CombatVignette = {
   banditStart: { x: number; y: number; scaleX: number; scaleY: number; alpha: number };
   defenderStarts: { x: number; y: number }[];
   center: { x: number; y: number };
+};
+
+type CombatTrigger = {
+  outcome: CombatOutcome;
+  targetClanId?: string;
+  regionKey?: string;
+  playKey: string;
+  liveMode: boolean;
 };
 
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
@@ -923,6 +963,9 @@ export function WorldMap() {
   const banditDefeatedRef = useRef(false);
   const combatTickerCbRef = useRef<(() => void) | null>(null);
   const combatPlayedTickRef = useRef<number | null>(null);
+  const pendingCombatTriggerRef = useRef<CombatTrigger | null>(null);
+  const seenCombatEventKeysRef = useRef<Set<string>>(new Set());
+  const combatEventsInitializedRef = useRef(false);
   const liveTickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
   const liveTickRef = useRef(0);
 
@@ -945,6 +988,7 @@ export function WorldMap() {
 
   const logs = useAgentLogs();
   const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const rawChainEvents = useQuery(api.events.getRecentChainEvents) as ChainEvent[] | undefined;
 
   // Derived live tick counter — the worldSnapshot.tick field is currently
   // unwritten by the orchestrator script (it only writes to agentLogs), so
@@ -953,8 +997,31 @@ export function WorldMap() {
   const liveTick = useMemo(() => {
     return Math.max(snapshot?.tick ?? 0, logs.length);
   }, [logs, snapshot?.tick]);
-  const banditTicksUntil = DEMO_BANDIT.attacksAtTick - liveTick;
-  const shouldPulseBandit = DEMO_MODE && banditTicksUntil <= 2 && banditTicksUntil >= 0;
+  const liveBandit = ((snapshot as { bandit?: SnapshotBandit | null } | undefined)?.bandit ?? null);
+  const visibleBandit = DEMO_MODE
+    ? {
+      regionKey: DEMO_BANDIT.regionId,
+      state: BanditState.Camped,
+      nextActionTick: DEMO_BANDIT.attacksAtTick,
+      projectedTargetClanId: 2,
+      isLive: false,
+    }
+    : liveBandit
+      ? {
+        regionKey: REGION_KEY_BY_CHAIN_ID[liveBandit.region],
+        state: liveBandit.state,
+        nextActionTick: liveBandit.nextActionTick,
+        projectedTargetClanId: liveBandit.projectedTargetClanId,
+        isLive: true,
+      }
+      : null;
+  const banditTicksUntil = visibleBandit ? visibleBandit.nextActionTick - liveTick : 999;
+  const shouldPulseBandit =
+    !!visibleBandit
+    && (
+      visibleBandit.state === BanditState.Attacking
+      || (banditTicksUntil <= 2 && banditTicksUntil >= 0)
+    );
 
   useEffect(() => {
     liveTickRef.current = liveTick;
@@ -2078,6 +2145,56 @@ export function WorldMap() {
     }
   }
 
+  function createBanditVisuals(isAssetLoadCancelled: () => boolean) {
+    const drawn = drawnRef.current;
+    const layers = layersRef.current;
+    if (!layers || drawn.banditIcon || drawn.banditCountdown) return;
+
+    // Bandit indicator (style/bandit-archetype-sprites): stylized hooded silhouette.
+    // Pixi loads /sprites/bandit.png async; we keep a Graphics fallback (red ring + "!")
+    // visible during the load and as a safety net if the asset 404s.
+    const banditIcon = new Graphics();
+    banditIcon.eventMode = 'static';
+    banditIcon.cursor = 'pointer';
+    banditIcon.on('pointertap', (event) => {
+      event.stopPropagation();
+      selectTarget(banditIcon as SelectableTarget, 0xffe9b8);
+      setSelectedClanId(null);
+    });
+    layers.worldDynamic.addChild(banditIcon);
+    const countdown = new Text({
+      text: '',
+      style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
+    });
+    countdown.anchor.set(0, 0.5);
+    layers.inWorldEffects.addChild(countdown);
+    drawn.banditIcon = banditIcon;
+    drawn.banditCountdown = countdown;
+
+    Assets.load('/sprites/bandit.png')
+      .then((texture) => {
+        const cancelled = isAssetLoadCancelled();
+        if (cancelled || !appRef.current) return;
+        const sprite = new Sprite(texture);
+        sprite.anchor.set(0.5, 0.5);
+        sprite.alpha = 0;
+        sprite.eventMode = 'static';
+        sprite.cursor = 'pointer';
+        sprite.on('pointertap', (event) => {
+          event.stopPropagation();
+          selectTarget(sprite as SelectableTarget, 0xffe9b8);
+          setSelectedClanId(null);
+        });
+        layers.worldDynamic.addChild(sprite);
+        drawn.banditSprite = sprite;
+        if (combatVignetteRef.current) return;
+        redrawBandit();
+      })
+      .catch(() => {
+        // Keep fallback ring visible.
+      });
+  }
+
   function buildScene(isAssetLoadCancelled: () => boolean) {
     const drawn = drawnRef.current;
     const layers = layersRef.current;
@@ -2162,64 +2279,10 @@ export function WorldMap() {
           });
       }
 
-      // Bandit indicator (style/bandit-archetype-sprites): stylized hooded silhouette.
-      // Pixi loads /sprites/bandit.png async; we keep a Graphics fallback (red ring + "!")
-      // visible during the load and as a safety net if the asset 404s. The countdown text
-      // anchors next to whichever marker is currently rendered.
-      const banditIcon = new Graphics();
-      banditIcon.eventMode = 'static';
-      banditIcon.cursor = 'pointer';
-      banditIcon.on('pointertap', (event) => {
-        event.stopPropagation();
-        selectTarget(banditIcon as SelectableTarget, 0xffe9b8);
-        setSelectedClanId(null);
-      });
-      layers.worldDynamic.addChild(banditIcon);
-      const countdown = new Text({
-        text: '',
-        style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
-      });
-      countdown.anchor.set(0, 0.5);
-      layers.inWorldEffects.addChild(countdown);
-      drawn.banditIcon = banditIcon;
-      drawn.banditCountdown = countdown;
-
-      // Async-load the bandit sprite — once ready, redrawBandit positions it and
-      // hides the fallback ring. Catch silently so the ring stays visible on failure.
-      Assets.load('/sprites/bandit.png')
-        .then((texture) => {
-          const cancelled = isAssetLoadCancelled();
-          if (cancelled || !appRef.current) return;
-          // The .then() fires once per page load. Earlier round-2 fix
-          // early-returned during vignette to avoid redrawBandit() snapping
-          // the reparented banditIcon back to home — but skipping creation
-          // entirely meant the sprite was permanently lost if the asset
-          // resolved mid-vignette (gemini r3 HIGH #1). Now: always create
-          // the sprite + assign to drawn; only skip the redraw if a
-          // vignette is active. finishCombatVignette() calls redrawBandit
-          // afterward which positions the new sprite.
-          const sprite = new Sprite(texture);
-          sprite.anchor.set(0.5, 0.5);
-          sprite.alpha = 0; // hidden until first redrawBandit positions it
-          sprite.eventMode = 'static';
-          sprite.cursor = 'pointer';
-          sprite.on('pointertap', (event) => {
-            event.stopPropagation();
-            selectTarget(sprite as SelectableTarget, 0xffe9b8);
-            setSelectedClanId(null);
-          });
-          layers.worldDynamic.addChild(sprite);
-          drawn.banditSprite = sprite;
-          if (combatVignetteRef.current) return;
-          redrawBandit();
-        })
-        .catch(() => {
-          // Keep fallback ring visible.
-        });
-
       createBaseVisuals(MOCK_CLANS, isAssetLoadCancelled);
     } // end DEMO_MODE block
 
+    createBanditVisuals(isAssetLoadCancelled);
     if (!DEMO_MODE) syncLiveClanVisuals(isAssetLoadCancelled);
   }
 
@@ -2428,11 +2491,11 @@ export function WorldMap() {
       // doesn't snap the reparented bandit back to home anchor mid-
       // choreography (opus 4.7 r4 LOW). The vignette ticker self-corrects
       // on the next frame anyway, but a one-frame snap is visible.
-      if (DEMO_MODE && !combatVignetteRef.current) redrawBandit();
+      if (!combatVignetteRef.current) redrawBandit();
     } // end clan base relayout block
   }
 
-  // ---- Bandit: hooded silhouette over Mountains + ticks-until-attack readout
+  // ---- Bandit: hooded silhouette + ticks-until-attack readout
   // (style/bandit-archetype-sprites): replaces the prior red "!" disc with a
   // codex/PIL-rendered bandit sprite. A subtle red ring stays as fallback while
   // the sprite loads or if the asset fails.
@@ -2442,9 +2505,8 @@ export function WorldMap() {
     const sprite = drawn.banditSprite;
     const text = drawn.banditCountdown;
     if (!icon || !text) return;
-    // After a `?combat=success` vignette completes, the bandit is defeated.
-    // Skip all redraw / re-show on subsequent layouts (gemini r3 HIGH #2).
-    if (banditDefeatedRef.current) {
+    if (!visibleBandit || !visibleBandit.regionKey) {
+      icon.clear();
       icon.visible = false;
       icon.alpha = 0;
       if (sprite) {
@@ -2455,7 +2517,20 @@ export function WorldMap() {
       return;
     }
 
-    const region = REGIONS.find(r => r.id === DEMO_BANDIT.regionId);
+    // After a `?combat=success` demo vignette completes, the demo bandit is defeated.
+    // Skip all redraw / re-show on subsequent layouts (gemini r3 HIGH #2).
+    if (DEMO_MODE && banditDefeatedRef.current) {
+      icon.visible = false;
+      icon.alpha = 0;
+      if (sprite) {
+        sprite.visible = false;
+        sprite.alpha = 0;
+      }
+      text.visible = false;
+      return;
+    }
+
+    const region = REGIONS.find(r => r.id === visibleBandit.regionKey);
     if (!region) return;
     const { scale, scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
     const cx = offsetX + region.nx * REF_W * scaleX;
@@ -2470,6 +2545,8 @@ export function WorldMap() {
     const banditZ = Math.round(iconY);
 
     icon.clear();
+    icon.visible = true;
+    icon.alpha = 1;
     icon.x = iconX;
     icon.y = iconY;
     icon.zIndex = banditZ;
@@ -2494,11 +2571,13 @@ export function WorldMap() {
       sprite.x = iconX;
       sprite.y = iconY;
       sprite.zIndex = banditZ;
+      sprite.visible = true;
       sprite.alpha = 1;
     }
 
-    const ticksUntil = Math.max(0, DEMO_BANDIT.attacksAtTick - liveTick);
-    text.text = `${ticksUntil}t`;
+    const ticksUntil = Math.max(0, visibleBandit.nextActionTick - liveTick);
+    text.visible = true;
+    text.text = visibleBandit.state === BanditState.Attacking ? 'raid' : `${ticksUntil}t`;
     text.style.fontSize = Math.max(10, Math.round(12 * scale));
     // Anchor the countdown to the right edge of whichever marker is active.
     const markerHalfW = sprite ? spriteSize / 2 : ringR;
@@ -2521,8 +2600,8 @@ export function WorldMap() {
     return Math.max(0, durationMs - elapsed);
   }
 
-  function shouldStartCombatVignette() {
-    if (!DEMO_MODE || combatVignetteRef.current) return false;
+  function shouldStartDemoCombatVignette() {
+    if (!DEMO_MODE || combatVignetteRef.current || pendingCombatTriggerRef.current) return false;
     const attackTick = DEMO_BANDIT.attacksAtTick;
     if (combatPlayedTickRef.current === attackTick) return false;
     const currentTick = liveTickRef.current;
@@ -2576,16 +2655,16 @@ export function WorldMap() {
     node.zIndex = Math.round(node.y);
   }
 
-  function startCombatVignette() {
+  function startCombatVignette(trigger?: CombatTrigger): boolean {
     const layers = layersRef.current;
-    if (!layers) return;
+    if (!layers) return false;
     const drawn = drawnRef.current;
-    const targetClan =
-      MOCK_CLANS.find(c => c.id === COMBAT_TARGET_CLAN_ID)
-      ?? MOCK_CLANS.find(c => c.homeRegion === DEMO_BANDIT.regionId);
-    if (!targetClan) return;
-    const targetBase = drawn.bases.find(b => b.clan.id === targetClan.id);
-    if (!targetBase) return;
+    const targetBase = trigger?.targetClanId
+      ? drawn.bases.find(b => b.clan.id === trigger.targetClanId)
+      : drawn.bases.find(b => b.clan.id === COMBAT_TARGET_CLAN_ID)
+        ?? drawn.bases.find(b => b.clan.homeRegion === DEMO_BANDIT.regionId);
+    if (!targetBase) return false;
+    const targetClan = targetBase.clan;
 
     const targetBaseNode = targetBase.container;
     const baseSize = Math.max(67, 101 * layoutRef.current.scale);
@@ -2594,12 +2673,20 @@ export function WorldMap() {
       y: targetBaseNode.y - baseSize * 0.55,
     };
     const bandit = drawn.banditSprite ?? drawn.banditIcon;
-    if (!bandit) return;
+    if (!bandit) return false;
+    if (trigger?.liveMode && !visibleBandit) {
+      bandit.visible = true;
+      bandit.alpha = 1;
+      bandit.x = center.x - 96;
+      bandit.y = center.y - 16;
+    }
 
     // Mark this tick as played BEFORE any reparenting / mutation so a partial-start
     // throw can't loop the per-frame ticker into spawning new defender nodes every
     // frame (codex r3 SHOULD #1).
-    combatPlayedTickRef.current = DEMO_BANDIT.attacksAtTick;
+    if (!trigger?.liveMode) {
+      combatPlayedTickRef.current = DEMO_BANDIT.attacksAtTick;
+    }
 
     // §14.3: combatDim sits above worldDynamic and would otherwise dim the
     // active selection ring. Clear the ring (without the camera fit-out) so
@@ -2622,10 +2709,11 @@ export function WorldMap() {
       return defender;
     });
 
-    const vignette: CombatVignette = {
-      startedAt: performance.now(),
-      outcome: readDemoCombatOutcome(),
-      bandit,
+	    const vignette: CombatVignette = {
+	      startedAt: performance.now(),
+	      outcome: trigger?.outcome ?? readDemoCombatOutcome(),
+	      liveMode: trigger?.liveMode ?? false,
+	      bandit,
       targetBase: targetBaseNode,
       defenders,
       reparented: [],
@@ -2650,6 +2738,7 @@ export function WorldMap() {
     reparentForCombat(bandit, vignette);
     defenders.forEach(defender => reparentForCombat(defender, vignette, true));
     combatVignetteRef.current = vignette;
+    return true;
   }
 
   function finishCombatVignette(force = false) {
@@ -2667,7 +2756,7 @@ export function WorldMap() {
     // back to full opacity (gemini r3 HIGH #2). Lock the defeated state via
     // banditDefeatedRef + skip the visual restore on success.
     if (vignette.outcome === 'success' && !force) {
-      banditDefeatedRef.current = true;
+      if (!vignette.liveMode) banditDefeatedRef.current = true;
       if (vignette.bandit) {
         vignette.bandit.alpha = 0;
         vignette.bandit.visible = false;
@@ -2694,7 +2783,14 @@ export function WorldMap() {
   }
 
   function updateCombatVignette() {
-    if (shouldStartCombatVignette()) startCombatVignette();
+    const pendingTrigger = pendingCombatTriggerRef.current;
+    if (pendingTrigger && !combatVignetteRef.current) {
+      if (startCombatVignette(pendingTrigger)) {
+        pendingCombatTriggerRef.current = null;
+      }
+    } else if (shouldStartDemoCombatVignette()) {
+      startCombatVignette();
+    }
     const vignette = combatVignetteRef.current;
     const layers = layersRef.current;
     if (!vignette || !layers) return;
@@ -2788,23 +2884,60 @@ export function WorldMap() {
       }
     }
 
-    if (vignette.bandit) vignette.bandit.zIndex = Math.round(vignette.bandit.y);
-    vignette.defenders.forEach(defender => {
-      defender.zIndex = Math.round(defender.y);
-    });
-    vignette.targetBase.zIndex = Math.round(vignette.targetBase.y);
-  }
+	  if (vignette.bandit) vignette.bandit.zIndex = Math.round(vignette.bandit.y);
+	  vignette.defenders.forEach(defender => {
+	    defender.zIndex = Math.round(defender.y);
+	  });
+	  vignette.targetBase.zIndex = Math.round(vignette.targetBase.y);
+	}
 
-  // Tick changes: refresh bandit countdown (demo mode only).
+  useEffect(() => {
+    if (DEMO_MODE || !rawChainEvents || rawChainEvents.length === 0) return;
+    const seen = seenCombatEventKeysRef.current;
+    const now = Date.now();
+    const sorted = rawChainEvents
+      .slice()
+      .sort((a, b) => (a.blockNumber ?? 0) - (b.blockNumber ?? 0) || (a.logIndex ?? 0) - (b.logIndex ?? 0));
+    if (!combatEventsInitializedRef.current) {
+      combatEventsInitializedRef.current = true;
+      for (const ev of sorted) {
+        if (ev.eventName !== 'BanditAttackResolved') continue;
+        const isRecent = typeof ev.decodedAt === 'number' && now - ev.decodedAt <= 15_000;
+        if (!isRecent) seen.add(eventKey(ev));
+      }
+    }
+    for (const ev of sorted) {
+      if (ev.eventName !== 'BanditAttackResolved') continue;
+      const key = eventKey(ev);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const args = (ev.args ?? {}) as Record<string, unknown>;
+      const targetClanId = numberLike(args.targetClanId ?? ev.clanId);
+      const defended = args.defended === true || numberLike(args.defended) === 1;
+      const liveRegionKey =
+        visibleBandit?.regionKey
+        ?? REGION_KEY_BY_CHAIN_ID[liveBandit?.region ?? 0]
+        ?? undefined;
+      pendingCombatTriggerRef.current = {
+        outcome: defended ? 'success' : 'failure',
+        targetClanId: targetClanId > 0 ? String(targetClanId) : undefined,
+        regionKey: liveRegionKey,
+        playKey: key,
+        liveMode: true,
+      };
+    }
+  }, [rawChainEvents, liveBandit, visibleBandit]);
+
+  // Tick/snapshot changes: refresh bandit countdown and live visibility.
   // Skipped while a combat vignette is animating — redrawBandit overrides the
   // bandit sprite's x/y/zIndex back to the region anchor, snapping the bandit
   // out of mid-flight choreography (claude r3 MUST #1).
   useEffect(() => {
-    if (!pixiReady || !DEMO_MODE) return;
+    if (!pixiReady) return;
     if (combatVignetteRef.current) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveTick, pixiReady]);
+  }, [liveTick, pixiReady, liveBandit]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.
   useEffect(() => {
@@ -2817,9 +2950,9 @@ export function WorldMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snapshot?.clans, pixiReady]);
 
-  // Pulse the bandit icon when 1-2 ticks from attacking — urgency cue for the demo
+  // Pulse the bandit icon when the raid is imminent or attacking.
   useEffect(() => {
-    if (!pixiReady || !DEMO_MODE) return;
+    if (!pixiReady) return;
     const app = appRef.current;
     if (!app) return;
 
