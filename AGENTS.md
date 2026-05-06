@@ -1,6 +1,8 @@
-# ClanWorld — AGENTS.md
+# ClanWorld V3 — AGENTS.md
 
 Top-level instructions for any agent (human or LLM) working in this repo. Keep this file under 500 lines; deeper reference belongs in `docs/`.
+
+> **🚧 V3 — Post-ETHGlobal continuation.** Forked from `clan-world-v2` at tag `demo-2026-05-06` (HEAD `5503747`). Use this repo for active development. The v2 repo (`clan-world-v2`) is **frozen** at `demo-2026-05-06` for the May 6 ETHGlobal demo — do not modify it. v3 has its own Convex deployment (`valuable-kudu-985`) and its own diamond contract (set after first deploy).
 
 > **⚠️ World is out of scope.** WorldChain, WorldMiniApp, MiniKit, and World ID are no longer part of this project. The Submission 1 calendar entry below is historical only — ignore any code or docs referencing World/Worldchain. Active scope is Submission 2 only (Base Sepolia + 0G + AXL + KeeperHub).
 
@@ -33,15 +35,30 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 
 Submission 1 is a thin wrapper — MiniKit + idkit are listed as deps and mentioned in the README, but real integration is **out of scope for Wave 0**. See `docs/reference/prize-strategy.md`.
 
-## 3. Gitflow Rules (light)
+## 3. Gitflow Light — V3 Branching (canonical for this repo)
 
-- `main` is sacred — only tagged release merges.
-- `dev` is the integration branch — feature PRs target it.
-- Feature branches: `feat/issue-N-short-desc`, branched off `dev`.
+Phases bundle features. Phase branches integrate; releases tag.
+
+```
+main                  ← sacred. Only tagged release merges.
+  ↑
+  └── dev             ← integration. Phase branches merge in when all features green.
+        ↑
+        └── dev-phase-N-<bundle-name>   ← phase integration. Per-phase work happens here.
+              ↑
+              └── feat/issue-N-foo      ← feature branch. PR targets the phase branch.
+```
+
+**Rules:**
+
+- `main` is **sacred**. The only commits that land on `main` are merges of fully-green `dev` releases, immediately followed by a semver tag (`vN.N.N`). Never push a hotfix straight to `main`.
+- `dev` is the integration branch. Phase branches merge into `dev` once every feature in the phase is GREEN.
+- **Phase branches** (`dev-phase-N-<bundle-name>`, e.g. `dev-phase-1-clansmen-revival`) bundle related features. They live until all features in the phase merge in, then squash-merge into `dev`.
+- **Feature branches** (`feat/issue-N-short-desc`) target the active phase branch, not `dev` directly. One PR closes one issue (`Closes #N` in body).
 - Commits: conventional commits + issue ref → `type(scope): desc (#N)`.
-- One PR closes one issue (`Closes #N` in the body).
-- All 3 local reviewers (Claude subagent → Codex → Gemini flash) must be GREEN before opening a PR. Cloud is a single sanity pass per the cloud-thrift policy.
-- Full rules: `docs/conventions/gitflow.md`.
+- All 3 local reviewers (Claude subagent → Codex → Gemini flash) must be GREEN before opening a PR. Cloud reviewers (Copilot + Gemini Code Assist) are a single sanity pass per cloud-thrift.
+- **Releases:** when `dev` is GREEN and we want to ship, merge `dev` → `main` and tag `vN.N.N`. The tag is what frontend deploys reference.
+- Full rules + memory: `docs/conventions/gitflow.md` + memories `feedback_stacked_phase_branches.md` + `feedback_default_feature_workflow.md`.
 
 ## 4. Hackathon Coding Rules
 
