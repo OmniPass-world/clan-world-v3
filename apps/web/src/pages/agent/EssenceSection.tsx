@@ -73,15 +73,18 @@ export function EssenceSection({
             limit={STRATEGY_LIMIT}
             dirty={strategyDirty}
             testId="strategy-field"
+            inputId="essence-strategy"
           >
             <textarea
+              id="essence-strategy"
               data-testid="strategy-input"
               value={strategy}
               onChange={(e) => onStrategyChange(e.target.value.slice(0, STRATEGY_LIMIT))}
               maxLength={STRATEGY_LIMIT}
               rows={4}
+              disabled={signing}
               placeholder="Tell your Elder what to focus on this season — economy, alliances, defense priorities. They'll read this every time their context resets."
-              style={textareaStyle(76)}
+              style={textareaStyle(76, signing)}
               spellCheck={false}
             />
           </FieldShell>
@@ -93,15 +96,18 @@ export function EssenceSection({
             limit={NOTES_LIMIT}
             dirty={notesDirty}
             testId="notes-field"
+            inputId="essence-notes"
           >
             <textarea
+              id="essence-notes"
               data-testid="notes-input"
               value={notes}
               onChange={(e) => onNotesChange(e.target.value.slice(0, NOTES_LIMIT))}
               maxLength={NOTES_LIMIT}
               rows={3}
+              disabled={signing}
               placeholder="Free-form reminders, intel about other clans, debts owed. Anything you want them to remember."
-              style={textareaStyle(54)}
+              style={textareaStyle(54, signing)}
               spellCheck={false}
             />
           </FieldShell>
@@ -281,6 +287,7 @@ function FieldShell({
   dirty,
   children,
   testId,
+  inputId,
 }: {
   label: string;
   charCount: number;
@@ -288,6 +295,8 @@ function FieldShell({
   dirty: boolean;
   children: React.ReactNode;
   testId: string;
+  /** id of the textarea inside `children` — used for <label htmlFor>. */
+  inputId: string;
 }) {
   const overshoot = charCount > limit * 0.9;
   return (
@@ -319,7 +328,9 @@ function FieldShell({
           textTransform: 'uppercase',
         }}
       >
-        <span>{label}</span>
+        <label htmlFor={inputId} style={{ cursor: 'pointer' }}>
+          {label}
+        </label>
         {dirty && (
           <span
             data-testid="dirty-dot"
@@ -344,7 +355,7 @@ function FieldShell({
   );
 }
 
-function textareaStyle(minHeight: number): React.CSSProperties {
+function textareaStyle(minHeight: number, disabled = false): React.CSSProperties {
   return {
     width: '100%',
     minHeight: `${minHeight}px`,
@@ -359,6 +370,8 @@ function textareaStyle(minHeight: number): React.CSSProperties {
     lineHeight: 1.45,
     letterSpacing: '0.01em',
     boxSizing: 'border-box',
+    opacity: disabled ? 0.6 : 1,
+    cursor: disabled ? 'not-allowed' : 'text',
   };
 }
 

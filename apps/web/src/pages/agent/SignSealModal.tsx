@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { agentTokens as t } from './agent-tokens';
 
@@ -21,11 +22,42 @@ interface Props {
  *     annoying / unstoppable).
  */
 export function SignSealModal({ open, caption, sigil }: Props) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Save the previously-focused element BEFORE we steal focus, so we can
+  // restore it on close. Refs persist across renders without triggering them.
+  const prevFocusRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      // Capture currently-focused element (e.g. the button that triggered
+      // the modal) so we can return focus to it when the modal closes.
+      const active =
+        typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
+      prevFocusRef.current = active;
+      // Move focus into the modal so screen readers announce it and
+      // keyboard users land on the dialog rather than behind the scrim.
+      dialogRef.current?.focus();
+    } else {
+      // Restore focus to whatever held it before we opened. Guard against
+      // stale references — element may have unmounted while modal was open.
+      const prev = prevFocusRef.current;
+      if (prev && typeof prev.focus === 'function' && document.contains(prev)) {
+        prev.focus();
+      }
+      prevFocusRef.current = null;
+    }
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && (
         <motion.div
+          ref={dialogRef}
           data-testid="sign-seal-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sign-seal-title"
+          tabIndex={-1}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -40,6 +72,7 @@ export function SignSealModal({ open, caption, sigil }: Props) {
             justifyContent: 'center',
             zIndex: 100,
             padding: '24px',
+            outline: 'none',
           }}
         >
           <style>{`
@@ -123,6 +156,7 @@ export function SignSealModal({ open, caption, sigil }: Props) {
             }}
           >
             <div
+              id="sign-seal-title"
               style={{
                 fontFamily: t.font.display,
                 fontSize: '18px',

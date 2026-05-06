@@ -20,6 +20,7 @@ import { EssenceSection } from './EssenceSection';
 import { WhispersSection } from './WhispersSection';
 import { SignSealModal } from './SignSealModal';
 import { ToastStack, type ToastDef } from './Toast';
+import { useTimeouts } from './useTimeouts';
 
 /**
  * Single-Agent Control Page.
@@ -86,10 +87,8 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
 
   // Whispers
   const [draft, setDraft] = useState<string>('');
-  const [cooldownMs, setCooldownMs] = useState<number>(0);
   const [sentCount, setSentCount] = useState<number>(0);
   const [lastSentAt, setLastSentAt] = useState<number>(-1);
-  const [now, setNow] = useState<number>(() => Date.now());
   const [sending, setSending] = useState(false);
   const [whisperStatus, setWhisperStatus] = useState<{
     kind: 'success' | 'error';
@@ -100,11 +99,8 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
   const [toasts, setToasts] = useState<ToastDef[]>([]);
   const toastIdRef = useRef(0);
 
-  /* ---------- ticking clock ---------- */
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(id);
-  }, []);
+  // Centralized setTimeout tracker — auto-clears all pending IDs on unmount.
+  const tt = useTimeouts();
 
   /* ---------- test hook (Playwright only) ---------------------------- */
   // Exposes a tiny mutator for deterministic screenshots. Lives on
@@ -127,22 +123,15 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     };
   }, []);
 
-  // Recompute cooldownMs from lastSentAt every tick.
-  useEffect(() => {
-    if (lastSentAt < 0) {
-      setCooldownMs(0);
-      return;
-    }
-    const elapsed = now - lastSentAt;
-    setCooldownMs(Math.max(0, WHISPER_COOLDOWN_MS - elapsed));
-  }, [now, lastSentAt]);
-
   /* ---------- toast helper ---------- */
-  const pushToast = useCallback((kind: ToastDef['kind'], body: string, ttl = 2400) => {
-    const id = ++toastIdRef.current;
-    setToasts((arr) => [...arr, { id, kind, body }]);
-    setTimeout(() => setToasts((arr) => arr.filter((t) => t.id !== id)), ttl);
-  }, []);
+  const pushToast = useCallback(
+    (kind: ToastDef['kind'], body: string, ttl = 2400) => {
+      const id = ++toastIdRef.current;
+      setToasts((arr) => [...arr, { id, kind, body }]);
+      tt.set(() => setToasts((arr) => arr.filter((t) => t.id !== id)), ttl);
+    },
+    [tt],
+  );
 
   /* ---------- ambient burn-counter drift ---------- */
   // Slow background increment so the counter looks "alive" even without user
@@ -181,11 +170,11 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).has('fast');
     const sealDelay = fast ? 200 : 800;
-    setTimeout(() => {
+    tt.set(() => {
       setSignSeal({ open: false, caption: 'to authenticate' });
       setAuth('decrypting');
       const decryptDuration = fast ? 400 : 1500 + Math.random() * 1500;
-      setTimeout(() => {
+      tt.set(() => {
         // Hydrate essence from mock
         const ess = MOCK_ESSENCE[agent.id] ?? { strategy: '', notes: '' };
         setCommittedStrategy(ess.strategy);
@@ -196,7 +185,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
         pushToast('success', 'iNFT unsealed · welcome, ælder-keeper');
       }, decryptDuration);
     }, sealDelay);
-  }, [agent.id, pushToast]);
+  }, [agent.id, pushToast, tt]);
 
   const handleCopyWallet = useCallback(() => {
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -211,9 +200,9 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     setGold((g) => g + FAUCET_DROP);
     setGoldBouncing(true);
     pushToast('success', `${FAUCET_DROP.toLocaleString()} GOLD added to your wallet`);
-    setTimeout(() => setGoldBouncing(false), 800);
-    setTimeout(() => setFaucetCooling(false), 1200);
-  }, [faucetCooling, pushToast]);
+    tt.set(() => setGoldBouncing(false), 800);
+    tt.set(() => setFaucetCooling(false), 1200);
+  }, [faucetCooling, pushToast, tt]);
 
   const handleCommitEssence = useCallback(() => {
     if (signing) return;
@@ -221,7 +210,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     setEssenceStatus(null);
     setSignSeal({ open: true, caption: 'to commit ælder essence' });
 
-    setTimeout(() => {
+    tt.set(() => {
       setSignSeal({ open: false, caption: 'to commit ælder essence' });
       setCommittedStrategy(strategy);
       setCommittedNotes(notes);
@@ -234,11 +223,15 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
         body: `essence sealed · ${fields.join(' + ')} written to 0G`,
       });
     }, 900);
-  }, [signing, strategy, notes, committedStrategy, committedNotes]);
+  }, [signing, strategy, notes, committedStrategy, committedNotes, tt]);
 
   const handleSendWhisper = useCallback(() => {
     const empty = draft.trim().length === 0;
     if (empty || sending) return;
+    // Re-derive cooldown at click-time from lastSentAt — no longer carried
+    // as parent state (LOW-1 fix: clock is owned by WhispersSection).
+    const cooldownMs =
+      lastSentAt < 0 ? 0 : Math.max(0, WHISPER_COOLDOWN_MS - (Date.now() - lastSentAt));
     const fullMinutes = Math.ceil(cooldownMs / 60_000);
     const skipTax = cooldownMs > 0 ? fullMinutes * SKIP_TAX_PER_FULL_MINUTE : 0;
     const total = WHISPER_BURN + skipTax;
@@ -250,7 +243,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     setSending(true);
     setWhisperStatus(null);
 
-    setTimeout(() => {
+    tt.set(() => {
       setGold((g) => g - total);
       setBurned((b) => b + WHISPER_BURN); // only the 5-burn counts toward burn target
       setSentCount((n) => n + 1);
@@ -266,7 +259,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
       });
       pushToast('success', 'whisper delivered');
     }, 700);
-  }, [draft, sending, cooldownMs, gold, pushToast]);
+  }, [draft, sending, lastSentAt, gold, pushToast, tt]);
 
   /* ---------- render ---------- */
 
@@ -340,11 +333,10 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
             decrypting={auth === 'decrypting'}
             draft={draft}
             onDraftChange={setDraft}
-            cooldownMs={cooldownMs}
+            lastSentAt={lastSentAt}
             cooldownTotalMs={WHISPER_COOLDOWN_MS}
             gold={gold}
             sentCount={sentCount}
-            msSinceLast={lastSentAt < 0 ? -1 : now - lastSentAt}
             sending={sending}
             status={whisperStatus}
             onSend={handleSendWhisper}

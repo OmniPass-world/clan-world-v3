@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { agentTokens as t, WHISPER_BURN, SKIP_TAX_PER_FULL_MINUTE } from './agent-tokens';
 import { DecryptingSkeleton } from './DecryptingSkeleton';
+import { useNow } from './useNow';
 
 const WHISPER_LIMIT = 1000;
 
@@ -8,14 +9,14 @@ interface Props {
   decrypting: boolean;
   draft: string;
   onDraftChange: (s: string) => void;
-  /** Cooldown remaining in ms. 0 = ready. */
-  cooldownMs: number;
+  /** Wall-clock ms when the last whisper was sent. -1 if no sends yet.
+   *  This component derives cooldownMs + msSinceLast itself via useNow()
+   *  so the parent doesn't re-render every tick (LOW-1 fix). */
+  lastSentAt: number;
   /** Total cooldown window length (used for the bar). */
   cooldownTotalMs: number;
   gold: number;
   sentCount: number;
-  /** ms since last send. -1 if no sends yet. */
-  msSinceLast: number;
   sending: boolean;
   status: { kind: 'success' | 'error'; body: string } | null;
   onSend: () => void;
@@ -25,15 +26,20 @@ export function WhispersSection({
   decrypting,
   draft,
   onDraftChange,
-  cooldownMs,
+  lastSentAt,
   cooldownTotalMs,
   gold,
   sentCount,
-  msSinceLast,
   sending,
   status,
   onSend,
 }: Props) {
+  // Subscribe to ticking clock — only this component re-renders every 250ms,
+  // not the parent AgentControlPage subtree.
+  const now = useNow(250);
+  const cooldownMs =
+    lastSentAt < 0 ? 0 : Math.max(0, cooldownTotalMs - (now - lastSentAt));
+  const msSinceLast = lastSentAt < 0 ? -1 : now - lastSentAt;
   const cooldownActive = cooldownMs > 0;
   const fullMinutesRemaining = Math.ceil(cooldownMs / 60_000);
   const skipTax = cooldownActive ? fullMinutesRemaining * SKIP_TAX_PER_FULL_MINUTE : 0;
@@ -129,6 +135,7 @@ export function WhispersSection({
             onChange={(e) => onDraftChange(e.target.value.slice(0, WHISPER_LIMIT))}
             maxLength={WHISPER_LIMIT}
             rows={4}
+            aria-label="Whisper message to elder"
             placeholder="Send a private message that only this Elder will receive. Used sparingly — burns 5 GOLD."
             style={{
               width: '100%',

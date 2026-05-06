@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { agentTokens as t, BURN_TARGET } from './agent-tokens';
+import { useTimeouts } from './useTimeouts';
 
 interface Props {
   /** Live target — counter animates toward this on change. */
@@ -18,6 +19,7 @@ export function BurnCounter({ burned }: Props) {
   const [display, setDisplay] = useState<number>(burned);
   const [pulse, setPulse] = useState(false);
   const fromRef = useRef(burned);
+  const tt = useTimeouts();
 
   useEffect(() => {
     fromRef.current = display;
@@ -30,14 +32,14 @@ export function BurnCounter({ burned }: Props) {
     let raf = 0;
 
     const step = (now: number) => {
-      const tt = Math.min(1, (now - start) / dur);
-      const eased = 1 - Math.pow(1 - tt, 3); // easeOutCubic
+      const progress = Math.min(1, (now - start) / dur);
+      const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
       const v = Math.round(fromRef.current + (target - fromRef.current) * eased);
       setDisplay(v);
-      if (tt < 1) {
+      if (progress < 1) {
         raf = requestAnimationFrame(step);
       } else {
-        setTimeout(() => setPulse(false), 240);
+        tt.set(() => setPulse(false), 240);
       }
     };
     raf = requestAnimationFrame(step);
