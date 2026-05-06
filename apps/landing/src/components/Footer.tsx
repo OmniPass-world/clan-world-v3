@@ -42,7 +42,6 @@ export default function Footer() {
               <li><a href="https://uniswap.org" target="_blank" rel="noopener noreferrer">Uniswap</a></li>
               <li><a href="https://0g.ai" target="_blank" rel="noopener noreferrer">0G Labs</a></li>
               <li><a href="https://base.org" target="_blank" rel="noopener noreferrer">Base</a></li>
-              <li><a href="https://world.org" target="_blank" rel="noopener noreferrer">World</a></li>
               <li><a href="https://gensyn.ai" target="_blank" rel="noopener noreferrer">Gensyn</a></li>
             </ul>
           </div>

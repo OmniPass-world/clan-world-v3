@@ -3,7 +3,7 @@
 **Status:** Authoritative addendum, scoped to bandit mechanics only
 **Read order:** This doc supersedes the bandit-mechanic language in `clanworld_v4_spec.md` §6, `clanworld_v4_1_addendum.md` (A3, A4, A11), and the bandit-relevant constants in `clanworld_v4_2_state_schema_interface_spec.md` §5 / §7.7 / §7.10 / §7.11. When implementers find disagreement on bandit behavior, this doc wins.
 **Purpose:** Canonize the as-built Phase 9 bandit implementation in `packages/contracts/src/ClanWorld.sol` as the new authoritative ruleset for the hackathon submissions, and explicitly enumerate the v4 mechanics that did not ship as DEFERRED-TO-RESTORATION.
-**Audience:** Reviewers, UAT runs against the contract on World Chain Sepolia / Base Sepolia, future restoration work.
+**Audience:** Reviewers, UAT runs against the contract on Base Sepolia, future restoration work.
 
 ---
 

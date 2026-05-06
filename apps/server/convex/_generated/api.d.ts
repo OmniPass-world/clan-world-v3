@@ -27,7 +27,6 @@ import type * as inft from "../inft.js";
 import type * as memory from "../memory.js";
 import type * as mock from "../mock.js";
 import type * as vault from "../vault.js";
-import type * as verify from "../verify.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -52,7 +51,6 @@ declare const fullApi: ApiFromModules<{
   memory: typeof memory;
   mock: typeof mock;
   vault: typeof vault;
-  verify: typeof verify;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

@@ -69,18 +69,6 @@ export const POWERS: SponsorPower[] = [
     href: 'https://0g.ai/compute',
   },
   {
-    name: 'World MiniKit',
-    loreName: 'The Pocket Realm',
-    logoUrl: 'https://world.org/favicon.ico',
-    logoAlt: 'World logo',
-    marginNote: '← mobile gateway',
-    loreDesc:
-      'A realm that fits in a pocket, summoned through a glass slate. The Elders speak; the player listens; the world unfolds in miniature, between heartbeats.',
-    techDesc:
-      'Native mini-app integration for the World App. Authenticated through World ID, distributed through the in-app directory. Mobile-first by design.',
-    href: 'https://world.org',
-  },
-  {
     name: 'Gensyn AXL',
     loreName: 'The Whisper Network',
     logoUrl: '/logos/gensyn.jpg',

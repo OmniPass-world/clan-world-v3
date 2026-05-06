@@ -63,7 +63,7 @@ This codebase has no production users yet. Break env-var names freely when somet
 
 ### What this means
 
-- Each conceptual configuration value has exactly ONE name. If a value reaches both server and browser, the browser variant uses the Vite-required `VITE_` prefix on the SAME base name (e.g., `WORLD_APP_ID` server / `VITE_WORLD_APP_ID` browser). That is one concept, two transport names — fine. What's NOT fine is `WORLD_ID_APP_ID` AND `WORLD_APP_ID` both meaning "the World mini app's app id."
+- Each conceptual configuration value has exactly ONE name. If a value reaches both server and browser, the browser variant uses the Vite-required `VITE_` prefix on the SAME base name (e.g., `CONVEX_URL` server / `VITE_CONVEX_URL` browser). That is one concept, two transport names.
 - Sensible defaults baked into code so most users can deploy with an empty `.env.local`. Required-no-default values are the exception, not the rule.
 - When you rename or restructure: rename in all readers, delete the old name, ship. Do NOT add a fallback like `readEnv('NEW_NAME') ?? readEnv('OLD_NAME')`. That fallback becomes permanent technical debt within a week.
 - Complex config (nested objects, JSON-encoded blobs) only when truly needed. When needed: colocated with the consumer, with a sensible default and a one-line comment explaining the shape.
@@ -79,12 +79,12 @@ This codebase has no production users yet. Break env-var names freely when somet
 
 Vite only exposes vars prefixed with `VITE_` to the browser bundle. Some values legitimately need to reach both contexts. The pattern is:
 
-- ONE base name (e.g., `WORLD_APP_ID`).
-- Server-side: `WORLD_APP_ID` in `.env.local`, read directly via `process.env`.
-- Browser-side: `VITE_WORLD_APP_ID` in `.env.local`, read via `import.meta.env.VITE_WORLD_APP_ID`.
-- Code uses the `readEnv('WORLD_APP_ID')` helper in `packages/shared/src/adapters/_env.ts`, which tries both transport prefixes transparently.
+- ONE base name (e.g., `CONVEX_URL`).
+- Server-side: `CONVEX_URL` in `.env.local`, read directly via `process.env`.
+- Browser-side: `VITE_CONVEX_URL` in `.env.local`, read via `import.meta.env.VITE_CONVEX_URL`.
+- Code uses the `readEnv('CONVEX_URL')` helper in `packages/shared/src/adapters/_env.ts`, which tries both transport prefixes transparently.
 
-This is one concept with two transport names. It's allowed. What violates Rule 2 is having BOTH `WORLD_APP_ID` and `WORLD_ID_APP_ID` server-side, or `VITE_WORLD_APP_ID` and `VITE_WORLD_MINI_APP_ID` browser-side.
+This is one concept with two transport names. It's allowed. What violates Rule 2 is having multiple server-side or browser-side names for the same value.
 
 ### Applies to
 
@@ -97,22 +97,22 @@ This is one concept with two transport names. It's allowed. What violates Rule 2
 ### Anti-patterns
 
 ```bash
-# BAD — two names for the same World mini app id
-WORLD_ID_APP_ID=...
-VITE_WORLD_APP_ID=...
+# BAD — two names for the same Convex deployment URL
+CONVEX_DEPLOY_URL=...
+VITE_CONVEX_URL=...
 
 # GOOD — one base name, with the Vite-required browser variant
-WORLD_APP_ID=...
-VITE_WORLD_APP_ID=...
+CONVEX_URL=...
+VITE_CONVEX_URL=...
 ```
 
 ```ts
 // BAD — backwards-compat shim
-const appId = readEnv('WORLD_APP_ID') ?? readEnv('WORLD_ID_APP_ID');
+const convexUrl = readEnv('CONVEX_URL') ?? readEnv('CONVEX_DEPLOY_URL');
 
 // GOOD — one canonical name, hard fail if unset and required
-const appId = readEnv('WORLD_APP_ID');
-if (!appId) throw new Error('WORLD_APP_ID is required for World mini app integration');
+const convexUrl = readEnv('CONVEX_URL');
+if (!convexUrl) throw new Error('CONVEX_URL is required for live backend integration');
 ```
 
 ---
