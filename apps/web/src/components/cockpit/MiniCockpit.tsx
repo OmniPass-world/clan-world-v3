@@ -29,6 +29,7 @@ export function MiniCockpit({ elder, initialTab = 'terminal' }: Props) {
       data-testid={testIdPrefix}
       data-clan-id={elder.clanId}
       style={{
+        flex: 1,
         display: 'flex',
         flexDirection: 'column',
         background: tokens.bg.iron,
