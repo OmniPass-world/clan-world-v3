@@ -543,6 +543,11 @@ type CombatVignette = {
   bandit: Container | null;
   targetBase: Container;
   defenders: Container[];
+  warningRing: Graphics;
+  targetPulse: Graphics;
+  marchLine: Graphics;
+  aftermath: Graphics;
+  warningText: Text;
   reparented: ReparentedCombatant[];
   baseStart: { x: number; y: number; scaleX: number; scaleY: number };
   banditStart: { x: number; y: number; scaleX: number; scaleY: number; alpha: number };
@@ -566,15 +571,18 @@ const TRAVEL_RECONCILE_MS = 450;
 const MAX_DECORATIVE_TRAVELS = 8;
 const CANNED_TRAVEL_INTERVAL_MS = 4500; // long 60s paths need a quieter spawn cadence
 
-const COMBAT_VIGNETTE_LEAD_MS = 4000;
-const COMBAT_ADVANCE_MS = 1500;
-const COMBAT_FLASH_START_MS = 2000;
+const COMBAT_VIGNETTE_LEAD_MS = 10_200;
+const COMBAT_WARNING_MS = 1200;
+const COMBAT_ADVANCE_MS = 3600;
+const COMBAT_STANDOFF_MS = 1000;
+const COMBAT_FLASH_START_MS = COMBAT_WARNING_MS + COMBAT_ADVANCE_MS + COMBAT_STANDOFF_MS;
 const COMBAT_FLASH_IN_MS = 80;
 const COMBAT_FLASH_HOLD_MS = 100;
 const COMBAT_FLASH_FADE_MS = 800;
-const COMBAT_RESOLUTION_START_MS = 2200;
-const COMBAT_RESOLUTION_CAP_MS = 1500;
-const COMBAT_TOTAL_MS = COMBAT_RESOLUTION_START_MS + COMBAT_RESOLUTION_CAP_MS + 600;
+const COMBAT_RESOLUTION_START_MS = COMBAT_FLASH_START_MS + 320;
+const COMBAT_RESOLUTION_CAP_MS = 2600;
+const COMBAT_AFTERMATH_MS = 1400;
+const COMBAT_TOTAL_MS = COMBAT_RESOLUTION_START_MS + COMBAT_RESOLUTION_CAP_MS + COMBAT_AFTERMATH_MS;
 const COMBAT_DIM_ALPHA = 0.55;
 const COMBAT_DIM_TINT = 0x1a1a3a;
 const COMBAT_TARGET_CLAN_ID = 'clan-ember';
@@ -678,6 +686,16 @@ const DEMO_BANDIT = {
   state: 'CAMPING' as const,
   attacksAtTick: 48,
 };
+
+const BANDIT_ANIMATION_META = {
+  fallbackAsset: '/sprites/bandit.png',
+  states: {
+    idle: { frames: 4, fps: 4, loop: true },
+    march: { frames: 4, fps: 6, loop: true },
+    attack: { frames: 4, fps: 8, loop: true },
+    death: { frames: 6, fps: 8, loop: false },
+  },
+} as const;
 
 // Mock wall levels, indexed by MOCK_CLANS position (0..3). Clan 2 (Dawn Watch)
 // is bandit-damaged so its ring is faint. Replace with snapshot.walls[clanId]
@@ -2171,7 +2189,7 @@ export function WorldMap() {
     drawn.banditIcon = banditIcon;
     drawn.banditCountdown = countdown;
 
-    Assets.load('/sprites/bandit.png')
+    Assets.load(BANDIT_ANIMATION_META.fallbackAsset)
       .then((texture) => {
         const cancelled = isAssetLoadCancelled();
         if (cancelled || !appRef.current) return;
@@ -2708,14 +2726,35 @@ export function WorldMap() {
       layers.worldDynamic.addChild(defender);
       return defender;
     });
+    const warningRing = new Graphics();
+    const targetPulse = new Graphics();
+    const marchLine = new Graphics();
+    const aftermath = new Graphics();
+    const warningText = new Text({
+      text: 'RAID',
+      style: {
+        fill: 0xffe9b8,
+        fontSize: 14,
+        fontFamily: '"Cinzel", "Times New Roman", serif',
+        fontWeight: '900',
+        stroke: { color: 0x2b0909, width: 3 },
+      },
+    });
+    warningText.anchor.set(0.5, 1);
+    layers.inWorldEffects.addChild(marchLine, targetPulse, warningRing, aftermath, warningText);
 
-	    const vignette: CombatVignette = {
-	      startedAt: performance.now(),
-	      outcome: trigger?.outcome ?? readDemoCombatOutcome(),
-	      liveMode: trigger?.liveMode ?? false,
-	      bandit,
+    const vignette: CombatVignette = {
+      startedAt: performance.now(),
+      outcome: trigger?.outcome ?? readDemoCombatOutcome(),
+      liveMode: trigger?.liveMode ?? false,
+      bandit,
       targetBase: targetBaseNode,
       defenders,
+      warningRing,
+      targetPulse,
+      marchLine,
+      aftermath,
+      warningText,
       reparented: [],
       baseStart: {
         x: targetBaseNode.x,
@@ -2778,6 +2817,11 @@ export function WorldMap() {
       item.node.zIndex = item.zIndex;
     }
     layers.combatHighlight.removeChildren();
+    vignette.warningRing.destroy();
+    vignette.targetPulse.destroy();
+    vignette.marchLine.destroy();
+    vignette.aftermath.destroy();
+    vignette.warningText.destroy();
     combatVignetteRef.current = null;
     if (!force) redrawBandit();
   }
@@ -2835,52 +2879,103 @@ export function WorldMap() {
       layers.combatFlash.alpha = Math.max(0, 1 - fadeAge / COMBAT_FLASH_FADE_MS);
     }
 
-    if (age < COMBAT_ADVANCE_MS) {
-      const t = easeInQuad(clamp01(age / COMBAT_ADVANCE_MS));
+    const warningT = clamp01(age / COMBAT_WARNING_MS);
+    const pulseR = 28 + Math.sin(now / 110) * 4;
+    vignette.warningRing.clear();
+    vignette.warningRing.circle(vignette.banditStart.x, vignette.banditStart.y, 16 + warningT * 34);
+    vignette.warningRing.stroke({ color: 0xcc1122, width: 2, alpha: Math.max(0, 0.85 - warningT * 0.65) });
+    vignette.targetPulse.clear();
+    vignette.targetPulse.circle(vignette.center.x, vignette.center.y, pulseR);
+    vignette.targetPulse.stroke({ color: 0xff3333, width: 3, alpha: 0.35 + Math.abs(Math.sin(now / 180)) * 0.35 });
+    vignette.warningText.x = vignette.center.x;
+    vignette.warningText.y = vignette.center.y - 72;
+    vignette.warningText.alpha = age < COMBAT_RESOLUTION_START_MS ? 0.85 + Math.sin(now / 120) * 0.15 : 0;
+
+    const marchEnd = { x: vignette.center.x - 28, y: vignette.center.y - 10 };
+    vignette.marchLine.clear();
+    vignette.marchLine.moveTo(vignette.banditStart.x, vignette.banditStart.y);
+    vignette.marchLine.lineTo(marchEnd.x, marchEnd.y);
+    vignette.marchLine.stroke({ color: 0x7f1d1d, width: 3, alpha: age < COMBAT_FLASH_START_MS ? 0.45 : 0.1 });
+
+    if (age < COMBAT_WARNING_MS) {
+      const brace = 1 + Math.sin(now / 90) * 0.04;
       if (vignette.bandit) {
-        vignette.bandit.x = lerp(vignette.banditStart.x, vignette.center.x - 24, t);
-        vignette.bandit.y = lerp(vignette.banditStart.y, vignette.center.y - 8, t);
+        vignette.bandit.x = vignette.banditStart.x;
+        vignette.bandit.y = vignette.banditStart.y + Math.sin(now / 140) * 2;
+        vignette.bandit.scale.set(vignette.banditStart.scaleX * brace, vignette.banditStart.scaleY * brace);
       }
       vignette.defenders.forEach((defender, i) => {
         const start = vignette.defenderStarts[i];
         if (!start) return;
-        defender.x = lerp(start.x, vignette.center.x + 18 + i * 8, t);
-        defender.y = lerp(start.y, vignette.center.y + 10, t);
+        defender.x = start.x;
+        defender.y = start.y + Math.sin(now / 180 + i) * 1;
       });
-    } else if (age < COMBAT_FLASH_START_MS) {
-      const jitter = Math.sin(now / 55) * 1;
+    } else if (age < COMBAT_WARNING_MS + COMBAT_ADVANCE_MS) {
+      const t = easeInOutQuad(clamp01((age - COMBAT_WARNING_MS) / COMBAT_ADVANCE_MS));
       if (vignette.bandit) {
-        vignette.bandit.x = vignette.center.x - 24 + jitter;
-        vignette.bandit.y = vignette.center.y - 8;
+        vignette.bandit.x = lerp(vignette.banditStart.x, marchEnd.x, t);
+        vignette.bandit.y = lerp(vignette.banditStart.y, marchEnd.y, t);
       }
       vignette.defenders.forEach((defender, i) => {
-        defender.x = vignette.center.x + 18 + i * 8 - jitter;
-        defender.y = vignette.center.y + 10 + Math.sin(now / 70 + i) * 1;
+        const start = vignette.defenderStarts[i];
+        if (!start) return;
+        defender.x = lerp(start.x, vignette.center.x + 20 + i * 10, t);
+        defender.y = lerp(start.y, vignette.center.y + 12, t);
+      });
+    } else if (age < COMBAT_FLASH_START_MS) {
+      const anticipationT = clamp01((age - COMBAT_WARNING_MS - COMBAT_ADVANCE_MS) / COMBAT_STANDOFF_MS);
+      const jitter = Math.sin(now / 55) * (1 + anticipationT * 2);
+      if (vignette.bandit) {
+        const grow = 1 + anticipationT * 0.08;
+        vignette.bandit.x = marchEnd.x + jitter;
+        vignette.bandit.y = marchEnd.y;
+        vignette.bandit.scale.set(vignette.banditStart.scaleX * grow, vignette.banditStart.scaleY * grow);
+      }
+      vignette.defenders.forEach((defender, i) => {
+        defender.x = vignette.center.x + 20 + i * 10 - jitter;
+        defender.y = vignette.center.y + 12 + Math.sin(now / 70 + i) * 2;
       });
     } else if (age >= COMBAT_RESOLUTION_START_MS) {
       const rAge = age - COMBAT_RESOLUTION_START_MS;
+      vignette.aftermath.clear();
       if (vignette.outcome === 'success') {
-        const launchT = easeOutQuad(clamp01(rAge / 600));
+        const launchT = easeOutQuad(clamp01(rAge / 850));
         if (vignette.bandit) {
-          vignette.bandit.x = vignette.center.x - 24 - launchT * 60;
-          vignette.bandit.y = vignette.center.y - 8 - launchT * 16;
-          const fadeT = clamp01((rAge - 250) / 600);
+          vignette.bandit.x = marchEnd.x - launchT * 92;
+          vignette.bandit.y = marchEnd.y - launchT * 24;
+          const fadeT = clamp01((rAge - 400) / 900);
           const s = lerp(1, 0.3, fadeT);
           vignette.bandit.scale.set(vignette.banditStart.scaleX * s, vignette.banditStart.scaleY * s);
           vignette.bandit.alpha = 1 - fadeT;
         }
         vignette.defenders.forEach((defender, i) => {
-          defender.y = vignette.center.y + 10 + Math.sin(now / 90 + i) * 5;
+          defender.y = vignette.center.y + 12 + Math.sin(now / 90 + i) * 6;
         });
+        const burstT = clamp01((rAge - 500) / 1400);
+        for (let i = 0; i < 10; i++) {
+          const a = (Math.PI * 2 * i) / 10;
+          const d = 8 + burstT * (22 + i * 1.8);
+          vignette.aftermath.rect(vignette.center.x + Math.cos(a) * d, vignette.center.y + Math.sin(a) * d * 0.55, 3, 3);
+          vignette.aftermath.fill({ color: i % 3 === 0 ? 0xfff2a6 : 0xd4a24c, alpha: Math.max(0, 1 - burstT) });
+        }
       } else {
-        const jumpT = easeOutQuad(clamp01(rAge / 300));
+        const jumpT = easeOutQuad(clamp01(rAge / 500));
         vignette.defenders.forEach((defender, i) => {
           const angle = Math.PI * (0.2 + i * 0.22);
-          defender.x = vignette.center.x + 16 + i * 8 + Math.cos(angle) * 28 * jumpT;
-          defender.y = vignette.center.y + 10 + Math.sin(angle) * 20 * jumpT;
+          defender.x = vignette.center.x + 18 + i * 10 + Math.cos(angle) * 34 * jumpT;
+          defender.y = vignette.center.y + 12 + Math.sin(angle) * 24 * jumpT;
         });
-        const dropT = easeInQuad(clamp01(rAge / 400));
+        const dropT = easeInQuad(clamp01(rAge / 700));
         vignette.targetBase.scale.y = lerp(vignette.baseStart.scaleY, vignette.baseStart.scaleY * 0.9, dropT);
+        const lootT = clamp01((rAge - 350) / 1300);
+        for (let i = 0; i < 8; i++) {
+          const sx = vignette.center.x + (i - 3.5) * 5;
+          const sy = vignette.center.y + 4 + Math.sin(i) * 5;
+          const tx = marchEnd.x - 28 + (i % 3) * 5;
+          const ty = marchEnd.y - 6 + Math.floor(i / 3) * 4;
+          vignette.aftermath.rect(lerp(sx, tx, lootT), lerp(sy, ty, lootT), 4, 4);
+          vignette.aftermath.fill({ color: [0x8b5a2b, 0x9ca3af, 0xd6b85a, 0x5aa7d6][i % 4]!, alpha: Math.max(0, 1 - lootT * 0.25) });
+        }
       }
     }
 
