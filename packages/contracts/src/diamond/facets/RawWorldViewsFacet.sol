@@ -22,6 +22,8 @@ contract RawWorldViewsFacet {
         ws.currentTickSeed = s.world.currentTickSeed;
         ws.activeBanditId = s.world.activeBanditId;
         ws.nextCommitSequence = s.world.nextCommitSequence;
+        ws.worldPaused = s.world.worldPaused;
+        ws.pausedAtTs = s.world.pausedAtTs;
         (ws.winterActive, ws.winterStartsAtTick, ws.winterEndsAtTick) =
             LibSeason.winterWindowForTick(s.world.currentTick);
     }

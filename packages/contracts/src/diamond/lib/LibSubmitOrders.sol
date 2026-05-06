@@ -23,6 +23,7 @@ library LibSubmitOrders {
     {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
 
         Clan storage clan = s.clans[clanId];

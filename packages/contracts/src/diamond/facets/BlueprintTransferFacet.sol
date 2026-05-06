@@ -11,6 +11,7 @@ contract BlueprintTransferFacet is IClanWorldEvents {
     function transferBlueprint(uint32 fromClanId, uint32 toClanId, uint256 amount) external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
         require(amount > 0, "ClanWorld: zero amount");
         require(fromClanId != toClanId, "ClanWorld: same clan");

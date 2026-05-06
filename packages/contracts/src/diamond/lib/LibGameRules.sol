@@ -18,6 +18,10 @@ library LibGameRules {
         );
     }
 
+    function requireWorldNotPaused(LibStorage.AppStorage storage s) internal view {
+        require(!s.world.worldPaused, "ClanWorld: world paused");
+    }
+
     function wallUpgradeCost(uint8 currentLevel) internal pure returns (uint256 wood, uint256 iron) {
         if (currentLevel == 0) return (20e18, 0);
         if (currentLevel == 1) return (35e18, 0);

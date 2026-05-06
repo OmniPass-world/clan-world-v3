@@ -10,6 +10,7 @@ contract ClanOwnershipFacet is IClanWorldEvents {
     function transferClanOwnership(uint32 clanId, address newOwner) external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
 
         require(s.clans[clanId].clanId != 0, "ClanWorld: clan not found");
