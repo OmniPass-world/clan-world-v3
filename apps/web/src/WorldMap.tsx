@@ -1332,10 +1332,17 @@ export function WorldMap() {
           const now = performance.now();
           drawn.bases.forEach((base) => {
             if (base.baseY <= 0) return;
-            // 0.25 Hz (4-second period). 2π/4000 = π/2000 keeps units honest:
-            // sin((t + offset) * π / period_ms_half) cycles once per period.
-            base.container.y = base.baseY + Math.round(Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 1);
-            base.container.zIndex = Math.round(base.baseY);
+            // Breathing: scaleY stretches upward from the sprite's bottom anchor
+            // (0.5, 1). 0.25 Hz period; 3% amplitude reads as alive without skewing
+            // the painted rooflines. phaseOffset keeps bases out of sync.
+            // zIndex is already set during relayout (base.baseY is static between
+            // relayouts), so no need to reassign each tick.
+            const scaleY = 1 + Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 0.03;
+            if (base.sprite) {
+              base.sprite.scale.y = scaleY;
+            } else {
+              base.fallback.scale.y = scaleY;
+            }
           });
           updateLiveClansmanPositions();
         };
