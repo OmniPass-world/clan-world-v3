@@ -22,6 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
@@ -155,22 +156,28 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     }
   }
 
-  val onDisconnect: () -> Unit = remember {
-    {
-      // Snapshot the auth token before clearing the session — we need
-      // it for the wallet-side disconnect call below.
-      val authToken = app.sessionStore.read()?.mwaAuthToken
-      app.sessionStore.clear()
-      nav.navigate(Routes.Connect) {
-        popUpTo(0) { inclusive = true }
-      }
-      // Fire-and-forget wallet-side teardown so Phantom's connected-dApps
-      // list clears. Failures don't matter — the local session is already
-      // gone and the user is on Connect.
-      if (authToken != null) {
-        kotlinx.coroutines.MainScope().launch(kotlinx.coroutines.Dispatchers.IO) {
-          app.mwaClient.disconnect(hostActivity, authToken)
-        }
+  // Compose-managed scope for the wallet-side fire-and-forget. Cancels
+  // automatically when ClanWorldApp leaves composition, vs MainScope()
+  // which leaks both the Job and captured hostActivity reference per
+  // Disconnect tap.
+  val coroutineScope = rememberCoroutineScope()
+  val onDisconnect: () -> Unit = {
+    // Snapshot the auth token before clearing the session — we need
+    // it for the wallet-side disconnect call below.
+    val authToken = app.sessionStore.read()?.mwaAuthToken
+    // Route through ConnectViewModel.disconnect() so the VM's phase
+    // flips off Connected. Otherwise ConnectScreen's auto-route on
+    // Phase.Connected immediately bounces the user back to Hearth.
+    connectVm.disconnect()
+    nav.navigate(Routes.Connect) {
+      popUpTo(0) { inclusive = true }
+    }
+    // Fire-and-forget wallet-side teardown so Phantom's connected-dApps
+    // list clears. Failures don't matter — the local session is already
+    // gone and the user is on Connect.
+    if (authToken != null) {
+      coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        app.mwaClient.disconnect(hostActivity, authToken)
       }
     }
   }
