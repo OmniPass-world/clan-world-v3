@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
@@ -65,8 +64,8 @@ import { RaidAlertOverlay } from './src/components/RaidAlertOverlay';
 import {
   cancelRaidAlert,
   installRaidNotificationHandler,
-  parseRaidResponse,
   scheduleRaidAlert,
+  subscribeToRaidResponses,
 } from './src/raid';
 import { findExtraInft } from './src/extraInfts';
 import { mergeRealClan, REAL_CLAN_DISPLAY } from './src/clanData';
@@ -131,34 +130,18 @@ export default function App() {
 
   // Notification-tap handler: when the user taps a raid notification while
   // the app was backgrounded, route them to Hearth with the raid banner
-  // active. Also handles the "app launched from notification" cold-start
-  // case via getLastNotificationResponseAsync().
+  // active. Handled by the raid module so it's a safe no-op when
+  // expo-notifications isn't available (old dev client APK).
   useEffect(() => {
-    let cancelled = false;
-    const apply = (response: Notifications.NotificationResponse | null) => {
-      if (!response) return;
-      const meta = parseRaidResponse(response);
-      if (!meta) return;
+    const unsubscribe = subscribeToRaidResponses((meta) => {
       setRaid(meta);
-      // Land on Hearth so the banner is the first thing seen
       setStack([]);
       setTab('hearth');
       setForge(false);
       setCockpit(null);
       setBridge(false);
-    };
-
-    // Cold-start: app launched by tapping the notification
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (!cancelled) apply(response);
     });
-
-    // Warm-start: app already running when notification tapped
-    const sub = Notifications.addNotificationResponseReceivedListener(apply);
-    return () => {
-      cancelled = true;
-      sub.remove();
-    };
+    return unsubscribe;
   }, []);
 
   // Cleanup the raid timer if App unmounts mid-countdown

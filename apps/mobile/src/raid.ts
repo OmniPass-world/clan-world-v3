@@ -13,9 +13,29 @@
 // We schedule the notification *and* a JS-side timer that flips raidActive
 // when the app is foregrounded. If both fire (foreground case) the notif
 // is silently dropped by the handler.
+//
+// Note: expo-notifications is loaded defensively. If the dev client APK
+// doesn't have the native module (e.g. user is running the new JS bundle
+// against the old APK), every raid function becomes a safe no-op and the
+// rest of the app keeps working. Install the latest APK to get the
+// raid demo back online.
 
-import * as Notifications from 'expo-notifications';
 import { MMKV } from 'react-native-mmkv';
+
+type NotificationsModule = typeof import('expo-notifications');
+
+let Notifications: NotificationsModule | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Notifications = require('expo-notifications');
+} catch {
+  Notifications = null;
+  if (__DEV__) {
+    console.warn(
+      '[raid] expo-notifications native module not available — install the latest dev client APK to enable raid alerts.',
+    );
+  }
+}
 
 const raidStore = new MMKV({ id: 'clan-world-raid' });
 
@@ -32,6 +52,7 @@ const ANDROID_CHANNEL_ID = 'cw-raid-alerts';
  *  fired while the app is open does NOT show a system banner — we render
  *  the themed overlay instead. */
 export const installRaidNotificationHandler = (): void => {
+  if (!Notifications) return;
   Notifications.setNotificationHandler({
     handleNotification: async (notif) => {
       const data = notif.request.content.data as { type?: string } | null;
@@ -59,8 +80,9 @@ export const installRaidNotificationHandler = (): void => {
 };
 
 /** Ensure the Android notification channel exists. Needs to run once on
- *  app start before scheduling. */
+ *  app start before scheduling. No-op when expo-notifications isn't available. */
 export const ensureRaidChannel = async (): Promise<void> => {
+  if (!Notifications) return;
   try {
     await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
       name: 'Raid alerts',
@@ -77,6 +99,7 @@ export const ensureRaidChannel = async (): Promise<void> => {
 
 /** Request notification permission. Returns true when granted. */
 export const requestRaidPermission = async (): Promise<boolean> => {
+  if (!Notifications) return false;
   const { status: existing } = await Notifications.getPermissionsAsync();
   if (existing === 'granted') return true;
   const { status } = await Notifications.requestPermissionsAsync();
@@ -86,12 +109,15 @@ export const requestRaidPermission = async (): Promise<boolean> => {
 /**
  * Schedule a demo raid alert to fire `delaySec` seconds from now.
  * Returns the notification ID (caller can pass it to cancelRaid).
+ * Returns null when expo-notifications isn't available — caller should
+ * still arm a foreground JS timer.
  */
 export const scheduleRaidAlert = async (
   delaySec: number,
   victimName: string,
   tick: number,
-): Promise<string> => {
+): Promise<string | null> => {
+  if (!Notifications) return null;
   await ensureRaidChannel();
   const granted = await requestRaidPermission();
   if (!granted && __DEV__) {
@@ -121,6 +147,7 @@ export const scheduleRaidAlert = async (
 /** Cancel a pending raid notification (used when foreground timer wins
  *  and we want to drop the system notif before it fires). */
 export const cancelRaidAlert = async (): Promise<void> => {
+  if (!Notifications) return;
   const id = raidStore.getString(KEYS.pendingRaidId);
   if (id) {
     try {
@@ -133,17 +160,48 @@ export const cancelRaidAlert = async (): Promise<void> => {
   }
 };
 
+export type NotificationResponseLike = {
+  notification: {
+    request: {
+      content: {
+        data: { type?: string; victim?: string; tick?: number } | null;
+      };
+    };
+  };
+};
+
 /** When a notification response is received (user tapped a notif), check
  *  if it was a raid alert. Returns metadata if so, else null. */
 export const parseRaidResponse = (
-  response: Notifications.NotificationResponse,
+  response: NotificationResponseLike,
 ): { victim: string; tick: number } | null => {
-  const data = response.notification.request.content.data as
-    | { type?: string; victim?: string; tick?: number }
-    | null;
-  if (data?.type !== RAID_NOTIFICATION_DATA_TYPE) return null;
+  const data = response.notification.request.content.data ?? null;
+  if (!data || data.type !== RAID_NOTIFICATION_DATA_TYPE) return null;
   return {
     victim: data.victim ?? 'your settlement',
     tick: data.tick ?? 0,
   };
+};
+
+/** Subscribe to incoming notification taps. Returns a cleanup function.
+ *  No-op when expo-notifications isn't available. */
+export const subscribeToRaidResponses = (
+  handler: (meta: { victim: string; tick: number }) => void,
+): (() => void) => {
+  if (!Notifications) return () => {};
+
+  // Cold-start: app launched by tapping the notification
+  Notifications.getLastNotificationResponseAsync().then((response) => {
+    if (!response) return;
+    const meta = parseRaidResponse(response);
+    if (meta) handler(meta);
+  });
+
+  // Warm-start: app already running when notification tapped
+  const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+    const meta = parseRaidResponse(response);
+    if (meta) handler(meta);
+  });
+
+  return () => sub.remove();
 };
