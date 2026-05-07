@@ -348,12 +348,18 @@ private fun ClanCard(
   }
   val borderStroke = if (selected && !owned) 2.dp else 1.dp
   val cardAlpha = if (owned) 0.45f else 1f
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   Box(
     modifier = Modifier
       .fillMaxWidth()
       .alpha(cardAlpha)
-      .clickable(enabled = !owned) { onClick() }
+      .clickable(enabled = !owned) {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .drawBehind {
         drawRoundRect(
           color = borderColor,
@@ -536,11 +542,17 @@ private fun HarnessCard(harness: Harness, selected: Boolean, onClick: () -> Unit
   }
   val border = if (selected) accent else ClanWorldTheme.colors.hairline
   val stroke = if (selected) 2.dp else 1.dp
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .clickable { onClick() }
+      .clickable {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .drawBehind {
         drawRoundRect(
           color = border,

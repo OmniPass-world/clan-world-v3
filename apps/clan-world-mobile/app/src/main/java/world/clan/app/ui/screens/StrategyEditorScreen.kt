@@ -308,6 +308,7 @@ private fun PosturePill(posture: Posture, selected: Boolean, onClick: () -> Unit
   val bg = if (selected) accent.copy(alpha = 0.18f) else Color.Transparent
   val border = if (selected) accent else ClanWorldTheme.colors.hairline
   val tint = if (selected) ClanWorldTheme.colors.parchment else ClanWorldTheme.colors.warmDim
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   Row(
     modifier = Modifier
       .clip(RoundedCornerShape(4.dp))
@@ -319,7 +320,12 @@ private fun PosturePill(posture: Posture, selected: Boolean, onClick: () -> Unit
           style = Stroke(width = 1.dp.toPx()),
         )
       }
-      .clickable { onClick() }
+      .clickable {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .padding(horizontal = 14.dp, vertical = 10.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
