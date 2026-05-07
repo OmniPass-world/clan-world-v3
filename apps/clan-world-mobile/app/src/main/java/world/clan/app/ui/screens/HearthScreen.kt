@@ -116,6 +116,7 @@ private fun HearthScreen(
               seasonNumber = state.seasonNumber,
               seasonStartTick = state.seasonStartTick,
               seasonEndTick = state.seasonEndTick,
+              winterActive = state.winterActive,
             )
           }
 
@@ -153,6 +154,7 @@ private fun HearthBanner(
   seasonNumber: Int,
   seasonStartTick: Long,
   seasonEndTick: Long,
+  winterActive: Boolean = false,
 ) {
   val iron = ClanWorldTheme.colors.iron
   val gold = ClanWorldTheme.colors.gold
@@ -257,6 +259,20 @@ private fun HearthBanner(
           verticalArrangement = Arrangement.spacedBy(6.dp),
           modifier = Modifier.widthIn(min = 120.dp),
         ) {
+          if (winterActive) {
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(2.dp))
+                .background(rune.copy(alpha = 0.18f))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+              Text(
+                text = "WINTER",
+                style = ClanWorldTheme.type.monoNano,
+                color = rune,
+              )
+            }
+          }
           Text(
             text = seasonName.uppercase(),
             style = ClanWorldTheme.type.crownLabel,
