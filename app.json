@@ -3,6 +3,7 @@
     "name": "Clan World",
     "slug": "clan-world-mobile",
     "version": "0.1.0",
+    "scheme": "clanworld",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
@@ -10,14 +11,18 @@
       "resizeMode": "contain",
       "backgroundColor": "#0B0A0E"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "platforms": [
+      "android"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "army.shib.clanworld"
     },
     "android": {
-      "package": "army.shib.clanworld",
-      "edgeToEdgeEnabled": true
+      "package": "army.shib.clanworld"
     },
     "plugins": [
       "expo-dev-client",
@@ -26,10 +31,18 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 24
+            "minSdkVersion": 24,
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "kotlinVersion": "1.9.25"
           }
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b4091d11-daf2-4f15-aee2-984f70198a9d"
+      }
+    }
   }
 }
