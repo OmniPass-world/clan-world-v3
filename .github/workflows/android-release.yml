@@ -41,6 +41,13 @@ jobs:
 
       - name: Build Kickstart APK
         working-directory: apps/kickstart-mobile
+        env:
+          # build.gradle.kts now refuses to fall back to a hardcoded URL.
+          # These currently point at the dev Convex deployment + production
+          # Kickstart home; promote to repo secrets when the prod Convex URL
+          # is provisioned.
+          CLANWORLD_CONVEX_URL: ${{ secrets.CLANWORLD_CONVEX_URL || 'https://valuable-kudu-985.convex.cloud' }}
+          KICKSTART_HOME_URL: ${{ secrets.KICKSTART_HOME_URL || 'https://kickstart.easya.io' }}
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Prepare release assets
