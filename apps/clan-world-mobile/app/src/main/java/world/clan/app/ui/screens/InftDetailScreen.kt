@@ -88,6 +88,16 @@ fun InftDetailScreenRoute(
 ) {
   val vm: InftDetailViewModel = viewModel(factory = InftDetailViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
+  // Per-detail provenance derived from sessionStore membership; bazaar
+  // mode skips the lookup since we're previewing not owning.
+  val provenance = androidx.compose.runtime.remember(clanId, isBazaar) {
+    if (isBazaar) world.clan.app.viewmodel.HallProvenance.Linked
+    else when {
+      clanId in app.sessionStore.getForgedClanIds() -> world.clan.app.viewmodel.HallProvenance.Forged
+      clanId in app.sessionStore.getHiredClanIds() -> world.clan.app.viewmodel.HallProvenance.Hired
+      else -> world.clan.app.viewmodel.HallProvenance.Linked
+    }
+  }
   InftDetailScreen(
     state = state,
     clanId = clanId,
@@ -98,6 +108,7 @@ fun InftDetailScreenRoute(
     onEditStrategy = onEditStrategy,
     onOpenTreasury = onOpenTreasury,
     isBazaar = isBazaar,
+    provenance = provenance,
     app = app,
     mwaSender = mwaSender,
     onHireConfirmed = onHireConfirmed ?: onBack,
@@ -115,6 +126,7 @@ private fun InftDetailScreen(
   onEditStrategy: () -> Unit = {},
   onOpenTreasury: () -> Unit = {},
   isBazaar: Boolean = false,
+  provenance: world.clan.app.viewmodel.HallProvenance = world.clan.app.viewmodel.HallProvenance.Linked,
   app: App? = null,
   mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
   onHireConfirmed: () -> Unit = {},
@@ -133,6 +145,7 @@ private fun InftDetailScreen(
     HeroLetter(
       clanId = clanId,
       state = state,
+      provenance = provenance,
       modifier = Modifier.padding(horizontal = 22.dp),
     )
 
@@ -233,6 +246,7 @@ private fun DetailBackBar(clanId: Int, onBack: () -> Unit) {
 private fun HeroLetter(
   clanId: Int,
   state: InftDetailUiState,
+  provenance: world.clan.app.viewmodel.HallProvenance = world.clan.app.viewmodel.HallProvenance.Linked,
   modifier: Modifier = Modifier,
 ) {
   ParchmentCard(
@@ -261,6 +275,21 @@ private fun HeroLetter(
           color = Ink2,
           modifier = Modifier.padding(top = 4.dp),
         )
+        when (provenance) {
+          world.clan.app.viewmodel.HallProvenance.Hired -> Text(
+            text = "HIRED · 1 SEASON",
+            style = ClanWorldTheme.type.monoMicro,
+            color = ClanWorldTheme.colors.rune,
+            modifier = Modifier.padding(top = 6.dp),
+          )
+          world.clan.app.viewmodel.HallProvenance.Forged -> Text(
+            text = "FORGED · BY YOU",
+            style = ClanWorldTheme.type.monoMicro,
+            color = ClanWorldTheme.colors.ember,
+            modifier = Modifier.padding(top = 6.dp),
+          )
+          world.clan.app.viewmodel.HallProvenance.Linked -> Unit
+        }
       }
       HeroClanPill(clanId = clanId)
     }
