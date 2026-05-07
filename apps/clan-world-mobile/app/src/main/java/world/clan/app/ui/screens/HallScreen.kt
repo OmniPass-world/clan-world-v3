@@ -59,16 +59,18 @@ fun HallScreenRoute(
   app: App,
   factory: ClanWorldViewModelFactory,
   onOpenInft: (Int) -> Unit,
+  onForge: () -> Unit = {},
 ) {
   val vm: HallViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
-  HallScreen(state = state, onOpenInft = onOpenInft)
+  HallScreen(state = state, onOpenInft = onOpenInft, onForge = onForge)
 }
 
 @Composable
 private fun HallScreen(
   state: HallUiState,
   onOpenInft: (Int) -> Unit,
+  onForge: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
   Column(
@@ -86,7 +88,21 @@ private fun HallScreen(
       HallHead(count = state.items.size)
     }
 
-    Spacer(Modifier.height(18.dp))
+    // Forge entry — sits between the head divider and the list. Always
+    // available; an empty hall still wants the option to forge a new one.
+    Text(
+      text = "+ FORGE A NEW SIGIL",
+      style = ClanWorldTheme.type.monoMicro,
+      color = ClanWorldTheme.colors.gold,
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(top = 18.dp, bottom = 8.dp)
+        .clickable { onForge() }
+        .padding(vertical = 8.dp),
+      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+
+    Spacer(Modifier.height(10.dp))
 
     if (state.isLoading) {
       Text(

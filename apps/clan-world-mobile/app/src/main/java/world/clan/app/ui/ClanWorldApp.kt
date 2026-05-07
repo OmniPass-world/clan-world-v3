@@ -67,6 +67,7 @@ object Routes {
   const val SteeringConsole = "steer/{clanId}"
   const val StrategyEditor = "strategy/{clanId}"
   const val Treasury = "treasury/{clanId}"
+  const val Forge = "forge"
   const val Bridge = "bridge/{clanId}"
   const val Cockpit = "cockpit"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
@@ -220,7 +221,8 @@ fun ClanWorldApp(
     currentRoute?.startsWith("bazaarInft/") == true ||
     currentRoute?.startsWith("whispers/") == true ||
     currentRoute?.startsWith("strategy/") == true ||
-    currentRoute?.startsWith("treasury/") == true
+    currentRoute?.startsWith("treasury/") == true ||
+    currentRoute == Routes.Forge
   // Cockpit + Owner sign-in / coming-soon are full-screen flows: tabbar hidden.
   val selectedTab = when {
     currentRoute == Routes.Hearth -> RootTab.Hearth
@@ -232,6 +234,7 @@ fun ClanWorldApp(
     currentRoute?.startsWith("whispers/") == true -> RootTab.Hall // inbox is a Hall drill-in
     currentRoute?.startsWith("strategy/") == true -> RootTab.Hall // editor is a Hall drill-in
     currentRoute?.startsWith("treasury/") == true -> RootTab.Hall // treasury is a Hall drill-in
+    currentRoute == Routes.Forge -> RootTab.Hall // forge wizard surfaces from Hall
     currentRoute?.startsWith("steer/") == true ||
       currentRoute?.startsWith("bridge/") == true ||
       currentRoute == Routes.Cockpit ||
@@ -324,6 +327,7 @@ fun ClanWorldApp(
               app = app,
               factory = factory,
               onOpenInft = { clanId -> nav.navigate(Routes.inftDetail(clanId)) },
+              onForge = { nav.navigate(Routes.Forge) },
             )
           }
 
@@ -461,6 +465,22 @@ fun ClanWorldApp(
               initialClanId = clanId,
               onBack = { nav.popBackStack() },
               onSent = { nav.popBackStack() },
+            )
+          }
+
+          // ── Forge (4-step mint wizard; surfaces from Hall) ──────────────
+          composable(
+            route = Routes.Forge,
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) {
+            world.clan.app.ui.screens.ForgeScreenRoute(
+              app = app,
+              factory = factory,
+              mwaSender = mwaSender,
+              onBack = { nav.popBackStack() },
+              onForged = { nav.popBackStack() },
             )
           }
 
