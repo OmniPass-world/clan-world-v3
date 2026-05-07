@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import world.clan.app.data.LineageStore
 import world.clan.app.data.Session
 import world.clan.app.data.SessionStore
 import world.clan.app.wallet.MwaClient
@@ -48,6 +49,7 @@ data class ConnectUiState(
 class ConnectViewModel(
   private val mwa: MwaClient,
   private val sessionStore: SessionStore,
+  private val lineageStore: LineageStore? = null,
 ) : ViewModel() {
 
   private val _state = MutableStateFlow(initialState())
@@ -81,6 +83,10 @@ class ConnectViewModel(
 
   fun disconnect() {
     sessionStore.clear()
+    // Lineage lives in a separate prefs file from sessionStore; clear
+    // it on disconnect so the next-connected wallet doesn't see the
+    // previous wallet's owner-action history.
+    lineageStore?.clear()
     _state.value = ConnectUiState()
   }
 

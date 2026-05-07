@@ -48,19 +48,21 @@ fun BazaarScreenRoute(
   app: App,
   factory: ClanWorldViewModelFactory,
   onOpenListing: (Int) -> Unit,
+  onForge: () -> Unit = {},
 ) {
   val vm: BazaarViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
   // Re-apply the hired-clan filter on (re-)entry so a freshly-hired
   // sigil drops out of the listings without an app kill.
   androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
-  BazaarScreen(state = state, onOpenListing = onOpenListing)
+  BazaarScreen(state = state, onOpenListing = onOpenListing, onForge = onForge)
 }
 
 @Composable
 private fun BazaarScreen(
   state: BazaarUiState,
   onOpenListing: (Int) -> Unit,
+  onForge: () -> Unit = {},
 ) {
   Column(
     modifier = Modifier
@@ -86,11 +88,11 @@ private fun BazaarScreen(
         modifier = Modifier.padding(top = 24.dp),
       )
     } else if (state.listings.isEmpty()) {
-      Text(
-        text = state.errorMessage ?: "the bazaar is quiet — no listings posted.",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.warmFaint,
-        modifier = Modifier.padding(top = 24.dp),
+      world.clan.app.ui.components.EmptyState(
+        title = "the bazaar is quiet",
+        body = "every sigil has been claimed. forge a new line of your own.",
+        ctaLabel = "+ Forge a sigil",
+        onCta = onForge,
       )
     } else {
       LazyColumn(

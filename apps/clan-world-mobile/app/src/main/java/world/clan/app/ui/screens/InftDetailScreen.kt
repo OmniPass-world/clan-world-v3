@@ -3,6 +3,8 @@ package world.clan.app.ui.screens
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -88,6 +90,16 @@ fun InftDetailScreenRoute(
 ) {
   val vm: InftDetailViewModel = viewModel(factory = InftDetailViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
+  // Per-detail provenance derived from sessionStore membership; bazaar
+  // mode skips the lookup since we're previewing not owning.
+  val provenance = androidx.compose.runtime.remember(clanId, isBazaar) {
+    if (isBazaar) world.clan.app.viewmodel.HallProvenance.Linked
+    else when {
+      clanId in app.sessionStore.getForgedClanIds() -> world.clan.app.viewmodel.HallProvenance.Forged
+      clanId in app.sessionStore.getHiredClanIds() -> world.clan.app.viewmodel.HallProvenance.Hired
+      else -> world.clan.app.viewmodel.HallProvenance.Linked
+    }
+  }
   InftDetailScreen(
     state = state,
     clanId = clanId,
@@ -98,6 +110,7 @@ fun InftDetailScreenRoute(
     onEditStrategy = onEditStrategy,
     onOpenTreasury = onOpenTreasury,
     isBazaar = isBazaar,
+    provenance = provenance,
     app = app,
     mwaSender = mwaSender,
     onHireConfirmed = onHireConfirmed ?: onBack,
@@ -115,6 +128,7 @@ private fun InftDetailScreen(
   onEditStrategy: () -> Unit = {},
   onOpenTreasury: () -> Unit = {},
   isBazaar: Boolean = false,
+  provenance: world.clan.app.viewmodel.HallProvenance = world.clan.app.viewmodel.HallProvenance.Linked,
   app: App? = null,
   mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
   onHireConfirmed: () -> Unit = {},
@@ -133,6 +147,7 @@ private fun InftDetailScreen(
     HeroLetter(
       clanId = clanId,
       state = state,
+      provenance = provenance,
       modifier = Modifier.padding(horizontal = 22.dp),
     )
 
@@ -233,6 +248,7 @@ private fun DetailBackBar(clanId: Int, onBack: () -> Unit) {
 private fun HeroLetter(
   clanId: Int,
   state: InftDetailUiState,
+  provenance: world.clan.app.viewmodel.HallProvenance = world.clan.app.viewmodel.HallProvenance.Linked,
   modifier: Modifier = Modifier,
 ) {
   ParchmentCard(
@@ -261,6 +277,21 @@ private fun HeroLetter(
           color = Ink2,
           modifier = Modifier.padding(top = 4.dp),
         )
+        when (provenance) {
+          world.clan.app.viewmodel.HallProvenance.Hired -> Text(
+            text = "HIRED · 1 SEASON",
+            style = ClanWorldTheme.type.monoMicro,
+            color = ClanWorldTheme.colors.rune,
+            modifier = Modifier.padding(top = 6.dp),
+          )
+          world.clan.app.viewmodel.HallProvenance.Forged -> Text(
+            text = "FORGED · BY YOU",
+            style = ClanWorldTheme.type.monoMicro,
+            color = ClanWorldTheme.colors.ember,
+            modifier = Modifier.padding(top = 6.dp),
+          )
+          world.clan.app.viewmodel.HallProvenance.Linked -> Unit
+        }
       }
       HeroClanPill(clanId = clanId)
     }
@@ -380,40 +411,67 @@ private fun DetailTabs(active: DetailTab, onSelect: (DetailTab) -> Unit) {
   val ember = ClanWorldTheme.colors.ember
   val warmFaint = ClanWorldTheme.colors.warmFaint
   val hairline = ClanWorldTheme.colors.hairline
-  Row(
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  val activeIdx = DetailTab.values().indexOf(active)
+  val tabCount = DetailTab.values().size
+
+  androidx.compose.foundation.layout.BoxWithConstraints(
     modifier = Modifier
       .fillMaxWidth()
       .padding(horizontal = 22.dp)
       .drawBehind {
-        // Bottom hairline (inactive tabs underline)
+        // Bottom hairline that the inactive tabs share
         drawLine(hairline, Offset(0f, size.height), Offset(size.width, size.height), 1f)
       },
   ) {
-    DetailTab.values().forEach { tab ->
-      Box(
-        modifier = Modifier
-          .weight(1f)
-          .clickable { onSelect(tab) }
-          .padding(vertical = 10.dp)
-          .drawBehind {
-            if (tab == active) {
-              drawLine(
-                color = ember,
-                start = Offset(0f, size.height),
-                end = Offset(size.width, size.height),
-                strokeWidth = 1.5.dp.toPx(),
-              )
+    val tabWidth = maxWidth / tabCount
+    val targetX = tabWidth * activeIdx
+    val sliderX by androidx.compose.animation.core.animateDpAsState(
+      targetValue = targetX,
+      animationSpec = androidx.compose.animation.core.tween(
+        320,
+        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+      ),
+      label = "detail-tab-x",
+    )
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+      DetailTab.values().forEach { tab ->
+        Box(
+          modifier = Modifier
+            .weight(1f)
+            .clickable {
+              if (tab != active) {
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+              }
+              onSelect(tab)
             }
-          },
-        contentAlignment = Alignment.Center,
-      ) {
-        Text(
-          text = tab.label.uppercase(),
-          style = ClanWorldTheme.type.ctaLabel.copy(fontSize = 10.sp),
-          color = if (tab == active) ember else warmFaint,
-        )
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          val tint by androidx.compose.animation.animateColorAsState(
+            targetValue = if (tab == active) ember else warmFaint,
+            animationSpec = androidx.compose.animation.core.tween(220),
+            label = "detail-tab-tint",
+          )
+          Text(
+            text = tab.label.uppercase(),
+            style = ClanWorldTheme.type.ctaLabel.copy(fontSize = 10.sp),
+            color = tint,
+          )
+        }
       }
     }
+
+    // Single sliding underline at the bottom of the strip.
+    Box(
+      modifier = Modifier
+        .align(Alignment.BottomStart)
+        .offset(x = sliderX)
+        .width(tabWidth)
+        .height(1.5.dp)
+        .background(ember),
+    )
   }
 }
 

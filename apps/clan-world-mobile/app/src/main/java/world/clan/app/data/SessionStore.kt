@@ -83,6 +83,24 @@ class SessionStore(context: Context) {
     prefs.edit().clear().apply()
   }
 
+  /**
+   * Wipe demo-only state (hired clans, forged clans, drafts, hint flags)
+   * but KEEP the auth token + pubkey + walletLabel so the user doesn't
+   * need to re-pair MWA after a reset. Used by the "reset demo state"
+   * button in Codex.
+   */
+  fun resetDemoState() {
+    val ed = prefs.edit()
+    prefs.all.keys.forEach { key ->
+      val isDemoState = key.startsWith("hired:") ||
+        key.startsWith("forged:") ||
+        key.startsWith("draft:") ||
+        key.startsWith("flag:")
+      if (isDemoState) ed.remove(key)
+    }
+    ed.apply()
+  }
+
   // ── Form-draft persistence ────────────────────────────────────────────
   //
   // SteeringConsole / StrategyEditor / Forge text inputs survive process
