@@ -82,4 +82,68 @@ class SessionStore(context: Context) {
   fun clear() {
     prefs.edit().clear().apply()
   }
+
+  // ── Form-draft persistence ────────────────────────────────────────────
+  //
+  // SteeringConsole / StrategyEditor / Forge text inputs survive process
+  // death + backgrounding. Keys are namespaced "draft:<scope>:<field>".
+  // On successful submit the relevant scope is cleared.
+
+  fun getDraft(scope: String, field: String): String? =
+    prefs.getString("draft:$scope:$field", null)
+
+  fun setDraft(scope: String, field: String, value: String) {
+    prefs.edit().putString("draft:$scope:$field", value).apply()
+  }
+
+  fun clearDrafts(scope: String) {
+    val toRemove = prefs.all.keys.filter { it.startsWith("draft:$scope:") }
+    if (toRemove.isEmpty()) return
+    val ed = prefs.edit()
+    toRemove.forEach { ed.remove(it) }
+    ed.apply()
+  }
+
+  // ── Hired / Forged clan IDs ───────────────────────────────────────────
+  // After a successful Bazaar hire OR a Forge wizard mint, the clan is
+  // added to the matching set. Hall + Hearth + Codex union LINKED_CLAN_IDS
+  // with both sets when displaying "your" sigils — a freshly-hired or
+  // freshly-forged card appears in the user's hall without a relaunch.
+  //
+  // Sets are kept separate so Lineage / future analytics can tell forged
+  // from hired; ownership unions read both via getOwnedClanIdsExtra().
+
+  fun getHiredClanIds(): Set<Int> = readClanIdSet("hired:clanIds")
+
+  fun addHiredClanId(clanId: Int) = writeClanIdSet("hired:clanIds", clanId)
+
+  fun getForgedClanIds(): Set<Int> = readClanIdSet("forged:clanIds")
+
+  fun addForgedClanId(clanId: Int) = writeClanIdSet("forged:clanIds", clanId)
+
+  /** Union of hired + forged. LINKED_CLAN_IDS is added by ViewModels. */
+  fun getOwnedClanIdsExtra(): Set<Int> = getHiredClanIds() + getForgedClanIds()
+
+  private fun readClanIdSet(prefKey: String): Set<Int> =
+    prefs.getStringSet(prefKey, emptySet())
+      ?.mapNotNullTo(mutableSetOf()) { it.toIntOrNull() }
+      ?: emptySet()
+
+  private fun writeClanIdSet(prefKey: String, clanId: Int) {
+    val current = readClanIdSet(prefKey)
+    if (clanId in current) return
+    val next = (current + clanId).map { it.toString() }.toSet()
+    prefs.edit().putStringSet(prefKey, next).apply()
+  }
+
+  // ── One-shot UI flags ─────────────────────────────────────────────────
+  // Persisted booleans for onboarding hints / coachmarks. Once a flag is
+  // marked seen, it stays seen across reinstalls (within EncryptedShared
+  // Preferences' device-keystore lifetime).
+
+  fun hasSeenFlag(key: String): Boolean = prefs.getBoolean("flag:$key", false)
+
+  fun markFlagSeen(key: String) {
+    prefs.edit().putBoolean("flag:$key", true).apply()
+  }
 }

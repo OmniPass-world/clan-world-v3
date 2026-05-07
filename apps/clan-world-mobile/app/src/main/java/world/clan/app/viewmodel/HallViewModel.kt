@@ -46,15 +46,15 @@ data class HallCard(
  */
 class HallViewModel(
   private val convex: ClanWorldConvexClient,
-  sessionStore: SessionStore,
+  private val sessionStore: SessionStore,
 ) : ViewModel() {
 
-  private val _state = MutableStateFlow(initial(sessionStore))
+  private val _state = MutableStateFlow(initial())
   val state: StateFlow<HallUiState> = _state.asStateFlow()
 
   init { refresh() }
 
-  private fun initial(sessionStore: SessionStore): HallUiState {
+  private fun initial(): HallUiState {
     val s = sessionStore.read()
     return HallUiState(walletShort = s?.solanaPubkeyBase58?.shortenPubkey().orEmpty())
   }
@@ -62,9 +62,10 @@ class HallViewModel(
   fun refresh() {
     viewModelScope.launch {
       _state.update { it.copy(isRefreshing = true, errorMessage = null) }
+      val ownedClanIds = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getOwnedClanIdsExtra()).distinct()
       runCatching {
         coroutineScope {
-          HearthViewModel.LINKED_CLAN_IDS
+          ownedClanIds
             .map { clanId -> async { runCatching { convex.getInftDemoState(clanId) }.getOrNull() to clanId } }
             .awaitAll()
         }

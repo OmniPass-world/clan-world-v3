@@ -14,8 +14,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -59,16 +63,45 @@ fun HallScreenRoute(
   app: App,
   factory: ClanWorldViewModelFactory,
   onOpenInft: (Int) -> Unit,
+  onForge: () -> Unit = {},
 ) {
   val vm: HallViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
-  HallScreen(state = state, onOpenInft = onOpenInft)
+  // Refresh on every (re)entry into the Hall route. The HallViewModel is
+  // held by the NavHost across navigations (Hall → Forge/Hire → celebration
+  // → back), so without this LaunchedEffect the user sees a stale list
+  // until pull-to-refresh. SessionStore.add{Forged,Hired}ClanId() are
+  // called before the celebration screen lands, so by the time we pop
+  // back to Hall the extras are already present.
+  LaunchedEffect(Unit) {
+    vm.refresh()
+  }
+  // First-launch coachmark: read once from SessionStore, dismiss-on-tap
+  // toggles the local state and writes the persistent flag.
+  val hintFlagKey = "hall.hintSeen"
+  val hintInitial = remember { !app.sessionStore.hasSeenFlag(hintFlagKey) }
+  var hintVisible by remember { mutableStateOf(hintInitial) }
+  HallScreen(
+    state = state,
+    onOpenInft = onOpenInft,
+    onForge = onForge,
+    onRefresh = vm::refresh,
+    showHint = hintVisible,
+    onDismissHint = {
+      hintVisible = false
+      app.sessionStore.markFlagSeen(hintFlagKey)
+    },
+  )
 }
 
 @Composable
 private fun HallScreen(
   state: HallUiState,
   onOpenInft: (Int) -> Unit,
+  onForge: () -> Unit = {},
+  onRefresh: () -> Unit = {},
+  showHint: Boolean = false,
+  onDismissHint: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
   Column(
@@ -86,34 +119,76 @@ private fun HallScreen(
       HallHead(count = state.items.size)
     }
 
-    Spacer(Modifier.height(18.dp))
+    // First-launch coachmark — points new users at the FORGE entry below.
+    Spacer(Modifier.height(14.dp))
+    world.clan.app.ui.components.OnboardingHint(
+      visible = showHint,
+      title = "Begin your line",
+      body = "Tap “+ Forge a new sigil” below to mint your first iNFT.",
+      onDismiss = onDismissHint,
+    )
+
+    // Forge entry — sits between the head divider and the list. Always
+    // available; an empty hall still wants the option to forge a new one.
+    Text(
+      text = "+ FORGE A NEW SIGIL",
+      style = ClanWorldTheme.type.monoMicro,
+      color = ClanWorldTheme.colors.gold,
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(top = 18.dp, bottom = 8.dp)
+        .clickable { onForge() }
+        .padding(vertical = 8.dp),
+      textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+    )
+
+    Spacer(Modifier.height(10.dp))
 
     if (state.isLoading) {
-      Text(
-        text = "gathering the sigils…",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.warmFaint,
-        modifier = Modifier.padding(top = 24.dp),
-      )
-    } else if (state.items.isEmpty()) {
-      Text(
-        text = state.errorMessage ?: "your hall is quiet — no sigils linked.",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.warmFaint,
-        modifier = Modifier.padding(top = 24.dp),
+      Column(
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+      ) {
+        repeat(3) { world.clan.app.ui.components.SkeletonLetterCard() }
+      }
+    } else if (state.errorMessage != null && state.items.isEmpty()) {
+      world.clan.app.ui.components.RetryNotice(
+        message = state.errorMessage,
+        onRetry = onRefresh,
       )
     } else {
-      LazyColumn(
+      world.clan.app.ui.components.RefreshableContent(
+        isRefreshing = state.isRefreshing,
+        onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
       ) {
-        items(state.items, key = { it.tokenId }) { card ->
-          StaggeredEntry(index = card.tokenId.coerceAtMost(8)) {
-            LetterCard(
-              card = card,
-              onClick = { onOpenInft(card.clanId) },
-            )
+        if (state.items.isEmpty()) {
+          LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+              world.clan.app.ui.components.EmptyState(
+                title = "your hall is quiet",
+                body = "no sigils stand under your hand yet — forge one to begin.",
+                ctaLabel = "+ Forge a sigil",
+                onCta = onForge,
+              )
+            }
+          }
+        } else {
+          LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+          ) {
+            items(state.items, key = { it.tokenId }) { card ->
+              StaggeredEntry(index = card.tokenId.coerceAtMost(8)) {
+                LetterCard(
+                  card = card,
+                  onClick = { onOpenInft(card.clanId) },
+                )
+              }
+            }
           }
         }
       }
