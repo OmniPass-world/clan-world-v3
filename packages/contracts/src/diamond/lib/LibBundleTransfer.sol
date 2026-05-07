@@ -1,13 +1,20 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.34;
 
-import {Clan, ClanState, IClanWorldEvents, ResourceType} from "../../IClanWorld.sol";
-import {LibGameRules} from "../lib/LibGameRules.sol";
-import {LibSettlement} from "../lib/LibSettlement.sol";
-import {LibSettlementMath} from "../lib/LibSettlementMath.sol";
-import {LibStorage} from "../lib/LibStorage.sol";
+import {Clan, ClanState, ResourceType} from "../../IClanWorld.sol";
+import {LibGameRules} from "./LibGameRules.sol";
+import {LibSettlement} from "./LibSettlement.sol";
+import {LibSettlementMath} from "./LibSettlementMath.sol";
+import {LibStorage} from "./LibStorage.sol";
 
-contract BundleTransferFacet is IClanWorldEvents {
+library LibBundleTransfer {
+    event GoldTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
+    event VaultResourceTransferred(
+        uint32 indexed fromClanId, uint32 indexed toClanId, ResourceType resource, uint256 amount, uint64 atTick
+    );
+    event BlueprintTransferred(uint32 indexed fromClanId, uint32 indexed toClanId, uint256 amount, uint64 atTick);
+    event ClanSettled(uint32 indexed clanId, uint64 settledAtTick);
+
     function transferBundle(
         uint32 fromClanId,
         uint32 toClanId,
@@ -16,28 +23,12 @@ contract BundleTransferFacet is IClanWorldEvents {
         uint256 wood,
         uint256 iron,
         uint256 wheat,
-        uint256 fish
-    ) external {
+        uint256 fish,
+        address caller
+    ) public {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
-        LibStorage.enterNonReentrant(s);
-        LibGameRules.requireWorldNotPaused(s);
-        LibGameRules.requireNoPendingSeasonFinalization(s);
+        _requireTransferReady(s, fromClanId, toClanId, caller);
         require(gold > 0 || blueprint > 0 || wood > 0 || iron > 0 || wheat > 0 || fish > 0, "ClanWorld: empty bundle");
-        require(fromClanId != toClanId, "ClanWorld: same clan");
-
-        require(s.clans[fromClanId].clanId != 0, "ClanWorld: from clan not found");
-        require(s.clans[fromClanId].owner == msg.sender, "ClanWorld: not clan owner");
-        require(s.clans[toClanId].clanId != 0, "ClanWorld: to clan not found");
-
-        _settleClan(s, fromClanId);
-        _settleClan(s, toClanId);
-
-        require(
-            s.clans[fromClanId].lastSettledTick == s.world.currentTick
-                && s.clans[toClanId].lastSettledTick == s.world.currentTick,
-            "ERR_MUST_SETTLE_FIRST"
-        );
-        require(s.clans[fromClanId].clanState != ClanState.DEAD, "ClanWorld: clan dead");
 
         Clan storage fromClan = s.clans[fromClanId];
         Clan storage toClan = s.clans[toClanId];
@@ -71,7 +62,31 @@ contract BundleTransferFacet is IClanWorldEvents {
         if (fish > 0) {
             emit VaultResourceTransferred(fromClanId, toClanId, ResourceType.Fish, fish, s.world.currentTick);
         }
-        LibStorage.exitNonReentrant(s);
+    }
+
+    function _requireTransferReady(
+        LibStorage.AppStorage storage s,
+        uint32 fromClanId,
+        uint32 toClanId,
+        address caller
+    ) private {
+        LibGameRules.requireWorldNotPaused(s);
+        LibGameRules.requireNoPendingSeasonFinalization(s);
+        require(fromClanId != toClanId, "ClanWorld: same clan");
+
+        require(s.clans[fromClanId].clanId != 0, "ClanWorld: from clan not found");
+        require(s.clans[fromClanId].owner == caller, "ClanWorld: not clan owner");
+        require(s.clans[toClanId].clanId != 0, "ClanWorld: to clan not found");
+
+        _settleClan(s, fromClanId);
+        _settleClan(s, toClanId);
+
+        require(
+            s.clans[fromClanId].lastSettledTick == s.world.currentTick
+                && s.clans[toClanId].lastSettledTick == s.world.currentTick,
+            "ERR_MUST_SETTLE_FIRST"
+        );
+        require(s.clans[fromClanId].clanState != ClanState.DEAD, "ClanWorld: clan dead");
     }
 
     function _settleClan(LibStorage.AppStorage storage s, uint32 clanId) private {

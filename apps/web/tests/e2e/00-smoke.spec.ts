@@ -1,7 +1,7 @@
 /**
  * Smoke test — captures all browser console + pageerror events on initial
  * load and surfaces them. This is the orchestrator's "remote DevTools" for
- * the mini app: instead of asking the user to paste console logs, run this
+ * the web app: instead of asking the user to paste console logs, run this
  * and read the failure output.
  *
  * Usage:
@@ -23,7 +23,7 @@ const BENIGN_PATTERNS: RegExp[] = [
 
 const isBenign = (text: string) => BENIGN_PATTERNS.some((re) => re.test(text));
 
-test('mini app loads with no console errors', async ({ page }) => {
+test('web app loads with no console errors', async ({ page }) => {
   const consoleErrors: string[] = [];
   const consoleWarnings: string[] = [];
   const pageErrors: { message: string; stack: string | undefined }[] = [];

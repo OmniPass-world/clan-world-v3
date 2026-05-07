@@ -146,6 +146,8 @@ dist
 **/local.properties
 **/build/
 *.apk
+# JVM heap dumps (gradle daemon can drop these on OOM)
+*.hprof
 
 # yarn v3
 .pnp.*

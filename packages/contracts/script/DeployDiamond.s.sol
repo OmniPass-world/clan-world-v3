@@ -13,14 +13,12 @@ import {IDiamondCut} from "../src/diamond/IDiamondCut.sol";
 import {DiamondCutFacet} from "../src/diamond/facets/DiamondCutFacet.sol";
 import {DiamondLoupeFacet} from "../src/diamond/facets/DiamondLoupeFacet.sol";
 import {BanditViewsFacet} from "../src/diamond/facets/BanditViewsFacet.sol";
-import {BlueprintTransferFacet} from "../src/diamond/facets/BlueprintTransferFacet.sol";
-import {BundleTransferFacet} from "../src/diamond/facets/BundleTransferFacet.sol";
 import {ClanFullViewFacet} from "../src/diamond/facets/ClanFullViewFacet.sol";
 import {ClanLifecycleFacet} from "../src/diamond/facets/ClanLifecycleFacet.sol";
 import {ClanOwnershipFacet} from "../src/diamond/facets/ClanOwnershipFacet.sol";
 import {DerivedViewsFacet} from "../src/diamond/facets/DerivedViewsFacet.sol";
 import {FinalizeSeasonFacet} from "../src/diamond/facets/FinalizeSeasonFacet.sol";
-import {GoldTransferFacet} from "../src/diamond/facets/GoldTransferFacet.sol";
+import {DirectTransfersFacet} from "../src/diamond/facets/DirectTransfersFacet.sol";
 import {HeartbeatConfigFacet} from "../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../src/diamond/facets/MarketViewsFacet.sol";
@@ -36,7 +34,6 @@ import {SettlementFacet} from "../src/diamond/facets/SettlementFacet.sol";
 import {SnapshotViewsFacet} from "../src/diamond/facets/SnapshotViewsFacet.sol";
 import {SubmitOrdersFacet} from "../src/diamond/facets/SubmitOrdersFacet.sol";
 import {TreasuryFacet} from "../src/diamond/facets/TreasuryFacet.sol";
-import {VaultResourceTransferFacet} from "../src/diamond/facets/VaultResourceTransferFacet.sol";
 import {WorldPauseFacet} from "../src/diamond/facets/WorldPauseFacet.sol";
 
 contract DeployDiamond is Script {
@@ -72,10 +69,7 @@ contract DeployDiamond is Script {
         ClanOwnershipFacet clanOwnershipFacet = new ClanOwnershipFacet();
         TreasuryFacet treasuryFacet = new TreasuryFacet();
         SettlementFacet settlementFacet = new SettlementFacet();
-        GoldTransferFacet goldTransferFacet = new GoldTransferFacet();
-        VaultResourceTransferFacet vaultResourceTransferFacet = new VaultResourceTransferFacet();
-        BlueprintTransferFacet blueprintTransferFacet = new BlueprintTransferFacet();
-        BundleTransferFacet bundleTransferFacet = new BundleTransferFacet();
+        DirectTransfersFacet directTransfersFacet = new DirectTransfersFacet();
         DerivedViewsFacet derivedViewsFacet = new DerivedViewsFacet();
         MarketViewsFacet marketViewsFacet = new MarketViewsFacet();
         BanditViewsFacet banditViewsFacet = new BanditViewsFacet();
@@ -111,10 +105,7 @@ contract DeployDiamond is Script {
                     address(clanOwnershipFacet),
                     address(treasuryFacet),
                     address(settlementFacet),
-                    address(goldTransferFacet),
-                    address(vaultResourceTransferFacet),
-                    address(blueprintTransferFacet),
-                    address(bundleTransferFacet)
+                    address(directTransfersFacet)
                 ),
                 address(0),
                 ""
@@ -211,10 +202,7 @@ contract DeployDiamond is Script {
         console.log("DERIVED_VIEWS_FACET_ADDRESS:      ", address(derivedViewsFacet));
         console.log("TREASURY_FACET_ADDRESS:           ", address(treasuryFacet));
         console.log("SETTLEMENT_FACET_ADDRESS:         ", address(settlementFacet));
-        console.log("GOLD_TRANSFER_FACET_ADDRESS:      ", address(goldTransferFacet));
-        console.log("VAULT_RESOURCE_TRANSFER_FACET_ADDRESS:", address(vaultResourceTransferFacet));
-        console.log("BLUEPRINT_TRANSFER_FACET_ADDRESS: ", address(blueprintTransferFacet));
-        console.log("BUNDLE_TRANSFER_FACET_ADDRESS:    ", address(bundleTransferFacet));
+        console.log("DIRECT_TRANSFERS_FACET_ADDRESS:   ", address(directTransfersFacet));
         console.log("MARKET_VIEWS_FACET_ADDRESS:       ", address(marketViewsFacet));
         console.log("BANDIT_VIEWS_FACET_ADDRESS:       ", address(banditViewsFacet));
         console.log("REGION_VIEWS_FACET_ADDRESS:       ", address(regionViewsFacet));
@@ -303,12 +291,9 @@ contract DeployDiamond is Script {
         address clanOwnershipFacet,
         address treasuryFacet,
         address settlementFacet,
-        address goldTransferFacet,
-        address vaultResourceTransferFacet,
-        address blueprintTransferFacet,
-        address bundleTransferFacet
+        address directTransfersFacet
     ) private pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](8);
+        cut = new IDiamondCut.FacetCut[](5);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: submitOrdersFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -330,24 +315,9 @@ contract DeployDiamond is Script {
             functionSelectors: DiamondSelectors.settlementSelectors()
         });
         cut[4] = IDiamondCut.FacetCut({
-            facetAddress: goldTransferFacet,
+            facetAddress: directTransfersFacet,
             action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.goldTransferSelectors()
-        });
-        cut[5] = IDiamondCut.FacetCut({
-            facetAddress: vaultResourceTransferFacet,
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.vaultResourceTransferSelectors()
-        });
-        cut[6] = IDiamondCut.FacetCut({
-            facetAddress: blueprintTransferFacet,
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.blueprintTransferSelectors()
-        });
-        cut[7] = IDiamondCut.FacetCut({
-            facetAddress: bundleTransferFacet,
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.bundleTransferSelectors()
+            functionSelectors: DiamondSelectors.directTransferSelectors()
         });
     }
 

@@ -75,6 +75,10 @@ jobs:
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug
 
+      - name: Build Clan World APK
+        working-directory: apps/clan-world-mobile
+        run: ./gradlew --no-daemon assembleDebug
+
       - name: Prepare release assets
         run: |
           mkdir -p release-assets

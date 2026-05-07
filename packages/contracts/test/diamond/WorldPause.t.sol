@@ -7,11 +7,9 @@ import {DiamondSelectors} from "../../script/DiamondSelectors.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
-import {BlueprintTransferFacet} from "../../src/diamond/facets/BlueprintTransferFacet.sol";
-import {BundleTransferFacet} from "../../src/diamond/facets/BundleTransferFacet.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {FinalizeSeasonFacet} from "../../src/diamond/facets/FinalizeSeasonFacet.sol";
-import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
+import {DirectTransfersFacet} from "../../src/diamond/facets/DirectTransfersFacet.sol";
 import {HeartbeatConfigFacet} from "../../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
@@ -23,7 +21,6 @@ import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.so
 import {SettlementFacet} from "../../src/diamond/facets/SettlementFacet.sol";
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
-import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
 import {WorldPauseFacet} from "../../src/diamond/facets/WorldPauseFacet.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 import {MinimalERC20} from "../../src/MinimalERC20.sol";
@@ -450,7 +447,7 @@ contract WorldPauseTest is Test {
         Diamond diamond = new Diamond(address(this), address(cutFacet));
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
-        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](18);
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](15);
         cut[0] = _facetCut(address(new RawWorldViewsFacet()), DiamondSelectors.rawWorldViewsSelectors());
         cut[1] = _facetCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors());
         cut[2] = _facetCut(address(new HeartbeatConfigFacet()), DiamondSelectors.heartbeatConfigSelectors());
@@ -460,15 +457,12 @@ contract WorldPauseTest is Test {
         cut[6] = _facetCut(address(new SettlementFacet()), DiamondSelectors.settlementSelectors());
         cut[7] = _facetCut(address(new SubmitOrdersFacet()), DiamondSelectors.submitOrdersSelectors());
         cut[8] = _facetCut(address(new ClanOwnershipFacet()), DiamondSelectors.ownershipSelectors());
-        cut[9] = _facetCut(address(new GoldTransferFacet()), DiamondSelectors.goldTransferSelectors());
-        cut[10] = _facetCut(address(new VaultResourceTransferFacet()), DiamondSelectors.vaultResourceTransferSelectors());
-        cut[11] = _facetCut(address(new BlueprintTransferFacet()), DiamondSelectors.blueprintTransferSelectors());
-        cut[12] = _facetCut(address(new BundleTransferFacet()), DiamondSelectors.bundleTransferSelectors());
-        cut[13] = _facetCut(address(new WorldPauseHarnessFacet()), _worldPauseHarnessSelectors());
-        cut[14] = _facetCut(address(new TreasuryFacet()), DiamondSelectors.treasurySelectors());
-        cut[15] = _facetCut(address(new RawTreasuryViewsFacet()), DiamondSelectors.rawTreasuryViewsSelectors());
-        cut[16] = _facetCut(address(new FinalizeSeasonFacet()), DiamondSelectors.seasonSelectors());
-        cut[17] = _facetCut(address(new RawBanditViewsFacet()), DiamondSelectors.rawBanditViewsSelectors());
+        cut[9] = _facetCut(address(new DirectTransfersFacet()), DiamondSelectors.directTransferSelectors());
+        cut[10] = _facetCut(address(new WorldPauseHarnessFacet()), _worldPauseHarnessSelectors());
+        cut[11] = _facetCut(address(new TreasuryFacet()), DiamondSelectors.treasurySelectors());
+        cut[12] = _facetCut(address(new RawTreasuryViewsFacet()), DiamondSelectors.rawTreasuryViewsSelectors());
+        cut[13] = _facetCut(address(new FinalizeSeasonFacet()), DiamondSelectors.seasonSelectors());
+        cut[14] = _facetCut(address(new RawBanditViewsFacet()), DiamondSelectors.rawBanditViewsSelectors());
 
         IDiamondCut(address(diamond)).diamondCut(cut, address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         diamondWorld = IClanWorld(address(diamond));

@@ -49,7 +49,6 @@ export function MiniCockpit({ elder, initialTab = 'terminal' }: Props) {
         clanName={elder.name}
         clanAccent={elder.accent}
         clanGlyph={elder.glyph}
-        clanId={elder.clanId}
         testIdPrefix={testIdPrefix}
       />
       <div

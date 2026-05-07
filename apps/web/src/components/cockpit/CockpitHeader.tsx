@@ -64,7 +64,7 @@ export function CockpitHeader() {
           whiteSpace: 'nowrap',
         }}
       >
-        ClanWorld Cockpit
+        Clan World Cockpit
       </div>
       <div
         style={{

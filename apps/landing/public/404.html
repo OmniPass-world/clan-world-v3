@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lost to the Winter — Clan World</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&family=EB+Garamond:ital,wght@0,400;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --parchment: #e8d8b5;
+        --parchment-aged: #c9b58a;
+        --ink: #2a1810;
+        --ink-soft: #5a3d28;
+        --ink-faded: #8a6f4f;
+        --crest: #9b2a2f;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        min-height: 100vh;
+        background: var(--parchment);
+        color: var(--ink);
+        font-family: 'EB Garamond', Georgia, serif;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+      }
+      main {
+        max-width: 38rem;
+        text-align: center;
+        padding: 3rem 2rem;
+        border: 1.5px solid var(--ink);
+        background: var(--parchment-aged);
+        box-shadow: 0 4px 24px rgba(42, 24, 16, 0.18);
+      }
+      .crest {
+        display: inline-block;
+        width: 5rem;
+        height: 5rem;
+        line-height: 5rem;
+        border-radius: 50%;
+        background: var(--crest);
+        color: var(--parchment);
+        font-family: 'IM Fell English', serif;
+        font-style: italic;
+        font-size: 3rem;
+        font-weight: 400;
+        margin-bottom: 1.25rem;
+        border: 2px solid var(--ink);
+      }
+      h1 {
+        font-family: 'Cinzel', serif;
+        font-weight: 700;
+        font-size: 2rem;
+        margin: 0 0 0.5rem;
+        letter-spacing: 0.04em;
+        color: var(--ink);
+      }
+      .subtitle {
+        font-family: 'IM Fell English', serif;
+        font-style: italic;
+        font-size: 1.1rem;
+        color: var(--ink-soft);
+        margin: 0 0 1.5rem;
+      }
+      p {
+        font-size: 1.05rem;
+        line-height: 1.6;
+        color: var(--ink-soft);
+        margin: 0 0 2rem;
+      }
+      a.return {
+        display: inline-block;
+        padding: 0.75rem 1.75rem;
+        font-family: 'Cinzel', serif;
+        font-weight: 500;
+        font-size: 0.95rem;
+        letter-spacing: 0.08em;
+        color: var(--parchment);
+        background: var(--ink);
+        text-decoration: none;
+        border: 1.5px solid var(--ink);
+        transition: background 0.15s ease;
+      }
+      a.return:hover {
+        background: var(--ink-soft);
+      }
+      .footnote {
+        margin-top: 2rem;
+        font-size: 0.85rem;
+        color: var(--ink-faded);
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="crest" aria-hidden="true">Æ</span>
+      <h1>404 &mdash; Lost to the Winter</h1>
+      <p class="subtitle">No chronicle bears this name.</p>
+      <p>
+        The page you sought is not in our records. Perhaps the path was mis-spoken,
+        or the scribe who copied it perished before completing the line.
+      </p>
+      <a class="return" href="/">Return to the Realm</a>
+      <p class="footnote">Clan World: &AElig;lder Whispers</p>
+    </main>
+  </body>
+</html>
