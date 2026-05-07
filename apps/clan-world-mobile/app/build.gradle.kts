@@ -77,6 +77,7 @@ android {
         signingConfig = signingConfigs.getByName("stable")
       }
     }
+  }
 
   buildFeatures {
     buildConfig = true
