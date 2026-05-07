@@ -319,6 +319,11 @@ export const seedVaultMovement = internalMutation({
     clanId: v.number(),
     tick: v.number(),
     eventName: v.string(),
+    // TODO(post-demo): tighten validator (M-5 audit). `args` is a free-form
+    // event-payload blob persisted directly into `chainEvents.args`, which
+    // is itself v.any() in schema by design — narrowing here would over-
+    // constrain the event-name discriminated union (dozens of variants).
+    // Internal-only seed mutation; not reachable from public surface.
     args: v.any(),
   },
   handler: async (ctx, args) => {
