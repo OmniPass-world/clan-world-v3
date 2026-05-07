@@ -4,8 +4,9 @@
   "env": {
     "TZ": "America/New_York"
   },
+  "skipAutoPermissionPrompt": true,
   "permissions": {
-    "defaultMode": "default",
+    "defaultMode": "deny",
     "allow": [
       "Bash(elder *)",
       "Bash(date)",
@@ -14,12 +15,6 @@
       "Edit"
     ],
     "deny": [
-      "Bash(rm -rf *)",
-      "Bash(curl *)",
-      "Bash(wget *)",
-      "Bash(git *)",
-      "Bash(systemctl *)",
-      "Bash(sudo *)",
       "WebFetch",
       "WebSearch"
     ]
