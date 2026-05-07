@@ -1,5 +1,7 @@
 package world.clan.app.data.convex
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -45,38 +47,47 @@ object ConvexClient {
   private val endpoint: String
     get() = "${BuildConfig.CONVEX_URL.trimEnd('/')}/api/query"
 
-  /** Generic POST — returns parsed `value` field on success. */
+  /**
+   * Generic POST — returns parsed `value` field on success.
+   *
+   * `OkHttp.execute()` is blocking, so the entire body is shifted to
+   * [Dispatchers.IO] to keep this `suspend` function main-safe.
+   * Coroutine-cancellation cooperation (calling `Call.cancel()` on
+   * cancellation) is a follow-up — see PR #45 thread.
+   */
   suspend fun <T> query(
     path: String,
     args: JsonObject = JsonObject(emptyMap()),
     valueDeserializer: KSerializer<T>,
-  ): Result<T> = runCatching {
-    val body = buildJsonObject {
-      put("path", path)
-      put("args", args)
-      put("format", "json")
-    }
-    val request = Request.Builder()
-      .url(endpoint)
-      .post(body.toString().toRequestBody(MediaJson))
-      .build()
+  ): Result<T> = withContext(Dispatchers.IO) {
+    runCatching {
+      val body = buildJsonObject {
+        put("path", path)
+        put("args", args)
+        put("format", "json")
+      }
+      val request = Request.Builder()
+        .url(endpoint)
+        .post(body.toString().toRequestBody(MediaJson))
+        .build()
 
-    http.newCall(request).execute().use { resp ->
-      val text = resp.body?.string().orEmpty()
-      if (!resp.isSuccessful) {
-        error("HTTP ${resp.code}: ${text.take(200)}")
+      http.newCall(request).execute().use { resp ->
+        val text = resp.body?.string().orEmpty()
+        if (!resp.isSuccessful) {
+          error("HTTP ${resp.code}: ${text.take(200)}")
+        }
+        val root = json.parseToJsonElement(text).jsonObject
+        val status = root["status"]?.jsonPrimitive?.contentOrNull
+        if (status != "success") {
+          val msg = root["errorMessage"]?.jsonPrimitive?.contentOrNull
+            ?: root["message"]?.jsonPrimitive?.contentOrNull
+            ?: text.take(200)
+          error("Convex query error: $msg")
+        }
+        val valueElement = root["value"]
+          ?: error("Missing `value` field in Convex response")
+        json.decodeFromJsonElement(valueDeserializer, valueElement)
       }
-      val root = json.parseToJsonElement(text).jsonObject
-      val status = root["status"]?.jsonPrimitive?.contentOrNull
-      if (status != "success") {
-        val msg = root["errorMessage"]?.jsonPrimitive?.contentOrNull
-          ?: root["message"]?.jsonPrimitive?.contentOrNull
-          ?: text.take(200)
-        error("Convex query error: $msg")
-      }
-      val valueElement = root["value"]
-        ?: error("Missing `value` field in Convex response")
-      json.decodeFromJsonElement(valueDeserializer, valueElement)
     }
   }
 
