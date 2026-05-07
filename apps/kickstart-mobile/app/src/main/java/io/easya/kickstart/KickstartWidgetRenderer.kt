@@ -23,11 +23,12 @@ object KickstartWidgetRenderer {
     coinBitmap: Bitmap? = null,
   ): RemoteViews {
     val views = RemoteViews(context.packageName, layoutRes)
-    views.setTextViewText(R.id.symbol, token?.symbol ?: "PICK")
+    val symbol = token?.symbol ?: "PICK"
+    val projectName = token?.name ?: "Choose a token"
+    views.setTextViewText(R.id.symbol_glow, symbol)
+    views.setTextViewText(R.id.symbol, symbol)
     views.setTextViewText(R.id.price, token?.let { formatPrice(it.usdPrice) } ?: "$--")
-    if (layoutRes == R.layout.gold_widget_tall) {
-      views.setTextViewText(R.id.project_name, token?.name ?: "Choose a token")
-    }
+    views.setTextViewText(R.id.project_name, projectName)
     views.setChange(R.id.change_1h, "1H", token?.priceChange1h)
     views.setChange(R.id.change_6h, "6H", token?.priceChange6h)
     views.setChange(R.id.change_24h, "24H", token?.priceChange24h)

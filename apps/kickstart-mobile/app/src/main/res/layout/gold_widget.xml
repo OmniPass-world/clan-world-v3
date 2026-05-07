@@ -20,6 +20,24 @@
     android:src="@drawable/gold_widget_logo" />
 
   <TextView
+    android:id="@+id/symbol_glow"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="top|start"
+    android:layout_marginStart="8dp"
+    android:layout_marginTop="8dp"
+    android:fontFamily="sans-serif-black"
+    android:includeFontPadding="false"
+    android:letterSpacing="0"
+    android:shadowColor="#E6000000"
+    android:shadowDx="0"
+    android:shadowDy="1"
+    android:shadowRadius="7"
+    android:text="GOLD"
+    android:textColor="@android:color/transparent"
+    android:textSize="24sp" />
+
+  <TextView
     android:id="@+id/symbol"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
@@ -35,7 +53,7 @@
     android:shadowRadius="3"
     android:text="GOLD"
     android:textColor="@color/widget_text"
-    android:textSize="22sp" />
+    android:textSize="24sp" />
 
   <LinearLayout
     android:id="@+id/change_column"
@@ -97,24 +115,48 @@
     android:layout_width="match_parent"
     android:layout_height="42dp"
     android:layout_gravity="center"
-    android:layout_marginStart="16dp"
+    android:layout_marginStart="12dp"
     android:layout_marginTop="8dp"
-    android:layout_marginEnd="82dp"
+    android:layout_marginEnd="64dp"
     android:background="@drawable/sparkline_placeholder"
     android:contentDescription="@string/app_name"
     android:scaleType="fitXY" />
 
-  <TextView
-    android:id="@+id/price"
+  <LinearLayout
+    android:id="@+id/price_block"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:layout_gravity="bottom|start"
     android:layout_marginStart="8dp"
-    android:layout_marginBottom="7dp"
-    android:fontFamily="sans-serif-black"
-    android:includeFontPadding="false"
-    android:maxLines="1"
-    android:text="$--"
-    android:textColor="@color/widget_text"
-    android:textSize="19sp" />
+    android:layout_marginBottom="6dp"
+    android:orientation="vertical">
+
+    <TextView
+      android:id="@+id/price"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:fontFamily="sans-serif-black"
+      android:includeFontPadding="false"
+      android:maxLines="1"
+      android:text="$--"
+      android:textColor="@color/widget_text"
+      android:textSize="18sp" />
+
+    <TextView
+      android:id="@+id/project_name"
+      android:layout_width="128dp"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="1dp"
+      android:ellipsize="end"
+      android:fontFamily="sans-serif-medium"
+      android:includeFontPadding="false"
+      android:maxLines="1"
+      android:shadowColor="#CC000000"
+      android:shadowDx="1"
+      android:shadowDy="1"
+      android:shadowRadius="3"
+      android:text="Choose a token"
+      android:textColor="@color/widget_muted"
+      android:textSize="9sp" />
+  </LinearLayout>
 </FrameLayout>
