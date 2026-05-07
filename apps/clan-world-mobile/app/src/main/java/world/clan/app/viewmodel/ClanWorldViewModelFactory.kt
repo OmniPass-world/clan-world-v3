@@ -42,11 +42,12 @@ class WhispersViewModelFactory(
 
 /** Per-route factory for SteeringConsole, parameterized by the initial target clan. */
 class SteeringConsoleViewModelFactory(
+  private val app: App,
   private val initialClanId: Int,
 ) : ViewModelProvider.Factory {
   @Suppress("UNCHECKED_CAST")
   override fun <T : ViewModel> create(modelClass: Class<T>): T =
-    SteeringConsoleViewModel(initialClanId) as T
+    SteeringConsoleViewModel(app.convexClient, initialClanId) as T
 }
 
 /** Per-route factory for StrategyEditor, parameterized by clanId. */

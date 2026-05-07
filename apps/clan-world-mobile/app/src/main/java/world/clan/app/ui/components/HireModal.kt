@@ -111,7 +111,11 @@ fun HireModal(
                 return@launch
               }
               val message = "ClanWorld Hire — token 0x${"%04x".format(listing.tokenId)} clan ${listing.clanId}".toByteArray()
-              val result = app.mwaClient.signMessage(hostActivity, token, message)
+              val result = app.mwaClient.signMessage(
+                com.solana.mobilewalletadapter.clientlib.ActivityResultSender(hostActivity),
+                token,
+                message,
+              )
               when (result) {
                 is MwaResult.Ok -> state.value = HireState.Sealed
                 is MwaResult.WalletNotFound -> {

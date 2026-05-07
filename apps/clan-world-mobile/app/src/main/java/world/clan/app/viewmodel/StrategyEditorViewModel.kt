@@ -9,26 +9,28 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import world.clan.app.data.ClanWorldConvexClient
 
-enum class Posture { Defensive, Balanced, Aggressive }
-
 data class StrategyEditorUiState(
   val isLoading: Boolean = true,
   val clanId: Int,
-  val posture: Posture = Posture.Balanced,
-  val doctrine: String = "",
-  val pinnedKey: String = "",
+  /** Server-truth strategy + notes. Used to detect dirty state on the drafts. */
+  val committedStrategy: String = "",
+  val committedNotes: String = "",
+  /** Live editor drafts. */
+  val draftStrategy: String = "",
+  val draftNotes: String = "",
   val savePhase: SendPhase = SendPhase.Idle,
   val errorMessage: String? = null,
+  val statusBody: String? = null,
 )
 
 /**
- * Slice 4c: per-iNFT strategy form.
+ * Slice 4d redesign of StrategyEditor — dual STRATEGY + NOTES textarea
+ * pattern that mirrors the polished web design from PR #51
+ * (`apps/web/src/pages/agent/EssenceSection.tsx`).
  *
- * No real strategy mutation exists yet. We seed initial draft state from
- * the clan's first memory entry (best-effort) and call sign-only on save,
- * then surface a "Sealed" state for ~1.3s before pop. When the backend
- * mutation lands, the only change is swapping the no-op send for a real
- * convex.setStrategy(...) call inside the screen.
+ * State is per-iNFT; hydration seeds the drafts from the clan's first two
+ * memory entries. No real Convex mutation yet — `confirmSeal()` flips
+ * commit values to drafts (locally; chain integration is a follow-up).
  */
 class StrategyEditorViewModel(
   private val convex: ClanWorldConvexClient,
@@ -44,12 +46,21 @@ class StrategyEditorViewModel(
     viewModelScope.launch {
       runCatching { convex.getInftDemoState(clanId) }
         .onSuccess { demo ->
-          val firstMem = demo.memory.firstOrNull()
+          val strategy = demo.memory.firstOrNull { it.key.contains("strategy", ignoreCase = true) }
+            ?.value
+            ?: demo.memory.firstOrNull()?.value
+            ?: defaultStrategy(clanId)
+          val notes = demo.memory.firstOrNull { it.key.contains("notes", ignoreCase = true) }
+            ?.value
+            ?: demo.memory.getOrNull(1)?.value
+            ?: defaultNotes(clanId)
           _state.update {
             it.copy(
               isLoading = false,
-              doctrine = firstMem?.value?.take(180) ?: defaultDoctrine(clanId),
-              pinnedKey = firstMem?.key ?: "policy:default",
+              committedStrategy = strategy,
+              committedNotes = notes,
+              draftStrategy = strategy,
+              draftNotes = notes,
             )
           }
         }
@@ -57,29 +68,59 @@ class StrategyEditorViewModel(
           _state.update {
             it.copy(
               isLoading = false,
-              doctrine = defaultDoctrine(clanId),
-              pinnedKey = "policy:default",
+              committedStrategy = defaultStrategy(clanId),
+              committedNotes = defaultNotes(clanId),
+              draftStrategy = defaultStrategy(clanId),
+              draftNotes = defaultNotes(clanId),
             )
           }
         }
     }
   }
 
-  fun setPosture(p: Posture) = _state.update { it.copy(posture = p) }
-  fun setDoctrine(text: String) = _state.update { it.copy(doctrine = text.take(280)) }
-  fun setPinnedKey(text: String) = _state.update { it.copy(pinnedKey = text.take(64)) }
+  fun setDraftStrategy(text: String) =
+    _state.update { it.copy(draftStrategy = text.take(800), errorMessage = null) }
+
+  fun setDraftNotes(text: String) =
+    _state.update { it.copy(draftNotes = text.take(400), errorMessage = null) }
+
   fun setSavePhase(phase: SendPhase, error: String? = null) =
     _state.update { it.copy(savePhase = phase, errorMessage = error) }
 
-  private fun defaultDoctrine(clanId: Int): String = when (clanId) {
-    1 -> "Hold the high pass. Trade no ground without iron."
-    2 -> "Read the strait. Move only when both shores agree."
-    3 -> "Coin discipline first. Spend gold the way a hawk spends wing."
-    4 -> "Tend the green country. Refuse winter; outlast it."
-    5 -> "Watch the signs. The first move is rarely the right one."
-    6 -> "Forge before all. Steel pays for itself."
-    7 -> "The iron that holds. Build slow; break later."
-    8 -> "Walk the longer line. The season is a cipher; read it twice."
+  /** Optimistic commit after the wallet seal succeeds. */
+  fun confirmSeal() {
+    val s = _state.value
+    val fields = buildList {
+      if (s.draftStrategy != s.committedStrategy) add("strategy")
+      if (s.draftNotes != s.committedNotes) add("notes")
+    }
+    _state.update {
+      it.copy(
+        committedStrategy = it.draftStrategy,
+        committedNotes = it.draftNotes,
+        savePhase = SendPhase.Queued,
+        errorMessage = null,
+        statusBody = if (fields.isEmpty()) "essence sealed"
+        else "essence sealed · ${fields.joinToString(" + ")} written to 0G",
+      )
+    }
+  }
+
+  fun clearStatus() = _state.update { it.copy(statusBody = null, errorMessage = null) }
+
+  private fun defaultStrategy(clanId: Int): String = when (clanId) {
+    1 -> "Forest economy first. Build wood vault to 50, secure forest perimeter. Ally with clan-2 if Iron Guard whispers cooperation by tick 80. Don't trust clan-3 — Crimson burns bridges by tick 60 every season."
+    2 -> "Patient stockpile. Hold ore at 240+ before any trade. Defensive posture until tick 90, then exploit whoever starves first. Never raid first — counter-raid only."
+    3 -> "Volatility is leverage. Burn one bridge per season for shock value. Raid the weakest stockpile at tick 70. Don't hoard — convert wins into pressure immediately."
+    4 -> "Build for the long arc. Wood + ore parity by tick 60. Form a 3-clan defensive pact early, then break it the season AFTER everyone trusts us. Patience compounds."
+    else -> "Hold the line. Read the signs. Move only when both shores agree."
+  }
+
+  private fun defaultNotes(clanId: Int): String = when (clanId) {
+    1 -> "Crimson owes 8 wood from T42 trade. Iron Guard prefers ore-for-wood at 3:1. Verdant Wardens reliable on truces but slow to strike."
+    2 -> "Storm Riders aggressive on T20-40, then exhausted. Crimson volatile — never trust truce past tick 70. Verdant Wardens make solid 3-clan defensive pacts."
+    3 -> "Storm Riders mirror our energy — match their tempo, then break it. Iron Guard slow to react; raid them before tick 80 for clean wins."
+    4 -> "Truces hold us back if we keep them past tick 100. Storm Riders predictable raiders — let them tire on Iron Guard. Crimson hates being mirrored."
     else -> "—"
   }
 }
