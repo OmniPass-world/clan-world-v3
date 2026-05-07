@@ -580,10 +580,16 @@ private fun VaultPanel(
             color = ClanWorldTheme.colors.parchment,
             modifier = Modifier.weight(1f),
           )
+          val sign = if (mv.type == "spend") "−" else "+"
+          val amountColor = when (mv.type) {
+            "spend" -> ClanWorldTheme.colors.danger
+            "transfer" -> ClanWorldTheme.colors.rune
+            else -> ClanWorldTheme.colors.gold
+          }
           Text(
-            text = "${if (mv.type == "spend") "−" else "+"}%.2f".format(mv.amount),
+            text = "$sign%.2f".format(mv.amount),
             style = ClanWorldTheme.type.monoData,
-            color = if (mv.type == "spend") ClanWorldTheme.colors.danger else ClanWorldTheme.colors.gold,
+            color = amountColor,
           )
         }
       }
