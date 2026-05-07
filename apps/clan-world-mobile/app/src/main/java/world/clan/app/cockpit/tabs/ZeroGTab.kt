@@ -27,6 +27,11 @@ import androidx.compose.ui.unit.sp
 import world.clan.app.cockpit.tabs.shared.SectionHeader
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
+import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.toDomain
+import world.clan.app.data.convex.useBulletins
+import world.clan.app.data.convex.useMemoryEvents
+import world.clan.app.data.convex.useMemoryKv
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
@@ -40,10 +45,30 @@ private val ACCENT_TINT = Color(0x1AD4A544) // ~10% of accent for bulletin row b
  */
 @Composable
 fun ZeroGTab(elder: Elder, modifier: Modifier = Modifier) {
+  // iNFT metadata is still stub-only — there's no canonical Convex source
+  // for it yet (would need 0G iNFT registry wiring). Live data flows in
+  // for KV / CRUD / bulletins; falls back to per-clan stubs when empty.
   val meta = StubData.inftMeta(elder.clanId)
-  val kvRows = StubData.kv(elder.clanId)
-  val crudRows = StubData.crud(elder.clanId)
-  val bulletins = StubData.bulletinsForOwner(elder.clanId)
+
+  val kvState = useMemoryKv(elder.clanId)
+  val crudState = useMemoryEvents(elder.clanId)
+  val bulletinState = useBulletins(elder.clanId)
+
+  val kvRows = when (kvState) {
+    is QueryState.Live -> kvState.data.map { it.toDomain() }
+    else -> StubData.kv(elder.clanId)
+  }
+  val crudRows = when (crudState) {
+    is QueryState.Live -> crudState.data.map { it.toDomain() }
+    else -> StubData.crud(elder.clanId)
+  }
+  val bulletins = when (bulletinState) {
+    is QueryState.Live -> {
+      val currentSlot = bulletinState.data.maxOfOrNull { it.slot.toInt() } ?: 0
+      bulletinState.data.map { it.toDomain(currentSlot = currentSlot) }
+    }
+    else -> StubData.bulletinsForOwner(elder.clanId)
+  }
 
   Column(
     modifier = modifier

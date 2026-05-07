@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.sp
 import world.clan.app.data.ELDERS
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
+import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.toPublicPost
+import world.clan.app.data.convex.useBulletins
 import world.clan.app.data.fadeOpacityForTick
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
@@ -246,9 +249,14 @@ private fun PanelHeader(onClose: () -> Unit) {
 @Composable
 private fun ClanBulletinCard(elder: Elder, modifier: Modifier = Modifier) {
   val accent = elder.accent
-  val posts = StubData.publicBulletins(elder.clanId)
-  val visible = posts.filter { (StubData.CURRENT_TICK - it.tick) <= StubData.VISIBLE_TICKS }
-  val old     = posts.filter { (StubData.CURRENT_TICK - it.tick)  > StubData.VISIBLE_TICKS }
+  val live = useBulletins(elder.clanId)
+  val posts = when (live) {
+    is QueryState.Live -> live.data.map { it.toPublicPost() }
+    else -> StubData.publicBulletins(elder.clanId)
+  }
+  val currentTick = posts.maxOfOrNull { it.tick } ?: StubData.CURRENT_TICK
+  val visible = posts.filter { (currentTick - it.tick) <= StubData.VISIBLE_TICKS }
+  val old     = posts.filter { (currentTick - it.tick)  > StubData.VISIBLE_TICKS }
 
   Column(
     modifier = modifier

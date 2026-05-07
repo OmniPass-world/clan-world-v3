@@ -2,6 +2,7 @@ plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.android")
   id("org.jetbrains.kotlin.plugin.compose")
+  id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 // Build-time URL config.
@@ -41,6 +42,9 @@ val hasStableSigning = releaseKeystorePath != null &&
   !releaseKeyAlias.isNullOrBlank() &&
   !releaseKeyPassword.isNullOrBlank()
 
+val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
+  .orElse("https://valuable-kudu-985.convex.cloud")
+
 android {
   namespace = "world.clan.app"
   compileSdk = 35
@@ -53,6 +57,7 @@ android {
     versionName = "0.1.13"
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
+    buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
   }
 
   if (hasStableSigning) {
@@ -72,7 +77,6 @@ android {
         signingConfig = signingConfigs.getByName("stable")
       }
     }
-  }
 
   buildFeatures {
     buildConfig = true
@@ -123,4 +127,8 @@ dependencies {
 
   // Solana Mobile Wallet Adapter — real signing
   implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.7")
+
+  // Live Convex data wiring
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+  implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
