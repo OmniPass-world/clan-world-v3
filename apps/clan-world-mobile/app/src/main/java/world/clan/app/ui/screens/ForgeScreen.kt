@@ -136,7 +136,7 @@ private fun ForgeScreen(
     BackBar(text = "back to hall", onBack = onBack)
 
     Column(modifier = Modifier.padding(horizontal = 22.dp)) {
-      ForgeHead()
+      ForgeHead(state.clanId, showClanContext = state.step != ForgeStep.PickClan)
       Spacer(Modifier.height(10.dp))
       ProgressDots(step = state.step)
       Spacer(Modifier.height(18.dp))
@@ -206,7 +206,7 @@ private fun BackBar(text: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ForgeHead() {
+private fun ForgeHead(clanId: Int?, showClanContext: Boolean) {
   val parchment = ClanWorldTheme.colors.parchment
   val warmDim = ClanWorldTheme.colors.warmDim
   val hairline = ClanWorldTheme.colors.hairline
@@ -224,12 +224,33 @@ private fun ForgeHead() {
       },
   ) {
     Text(text = "FORGE", style = ClanWorldTheme.type.displayHero, color = parchment)
-    Text(
-      text = "the unmade seal awaits its line",
-      style = ClanWorldTheme.type.scriptItalic,
-      color = warmDim,
-      modifier = Modifier.padding(top = 2.dp),
-    )
+    if (showClanContext && clanId != null) {
+      val accent = clanColor(clanId)
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 4.dp),
+      ) {
+        Box(
+          modifier = Modifier
+            .size(8.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(accent),
+        )
+        Text(
+          text = "FORGING IN ${clanDisplayName(clanId).uppercase()}",
+          style = ClanWorldTheme.type.monoMicro,
+          color = accent,
+        )
+      }
+    } else {
+      Text(
+        text = "the unmade seal awaits its line",
+        style = ClanWorldTheme.type.scriptItalic,
+        color = warmDim,
+        modifier = Modifier.padding(top = 2.dp),
+      )
+    }
   }
 }
 
