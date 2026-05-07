@@ -2,6 +2,10 @@ package io.easya.kickstart
 
 data class SparkPoint(
   val price: Double,
+  val open: Double?,
+  val high: Double?,
+  val low: Double?,
+  val close: Double?,
   val observedAt: Long,
 )
 

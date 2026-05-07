@@ -70,7 +70,18 @@ object KickstartClient {
       for (i in 0 until sparkline.length()) {
         val point = sparkline.optJSONObject(i) ?: continue
         val price = point.optDouble("price", Double.NaN)
-        if (price.isFinite()) add(SparkPoint(price, point.optLong("observedAt", 0L)))
+        if (price.isFinite()) {
+          add(
+            SparkPoint(
+              price = price,
+              open = point.nullableDouble("open"),
+              high = point.nullableDouble("high"),
+              low = point.nullableDouble("low"),
+              close = point.nullableDouble("close"),
+              observedAt = point.optLong("observedAt", 0L),
+            ),
+          )
+        }
       }
     }
 

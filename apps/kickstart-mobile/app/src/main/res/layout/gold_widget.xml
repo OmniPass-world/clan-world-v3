@@ -38,7 +38,7 @@
     android:layout_width="72dp"
     android:layout_height="wrap_content"
     android:layout_gravity="top|end"
-    android:layout_marginTop="5dp"
+    android:layout_marginTop="9dp"
     android:layout_marginEnd="8dp"
     android:gravity="end"
     android:orientation="vertical">
@@ -46,7 +46,7 @@
     <TextView
       android:id="@+id/change_1h"
       android:layout_width="match_parent"
-      android:layout_height="16dp"
+      android:layout_height="22dp"
       android:fontFamily="sans-serif-medium"
       android:gravity="end|center_vertical"
       android:includeFontPadding="false"
@@ -57,7 +57,7 @@
     <TextView
       android:id="@+id/change_6h"
       android:layout_width="match_parent"
-      android:layout_height="16dp"
+      android:layout_height="22dp"
       android:fontFamily="sans-serif-medium"
       android:gravity="end|center_vertical"
       android:includeFontPadding="false"
@@ -68,7 +68,7 @@
     <TextView
       android:id="@+id/change_24h"
       android:layout_width="match_parent"
-      android:layout_height="16dp"
+      android:layout_height="22dp"
       android:fontFamily="sans-serif-medium"
       android:gravity="end|center_vertical"
       android:includeFontPadding="false"
@@ -79,7 +79,7 @@
     <TextView
       android:id="@+id/change_7d"
       android:layout_width="match_parent"
-      android:layout_height="16dp"
+      android:layout_height="22dp"
       android:fontFamily="sans-serif-medium"
       android:gravity="end|center_vertical"
       android:includeFontPadding="false"
@@ -93,9 +93,9 @@
     android:layout_width="match_parent"
     android:layout_height="34dp"
     android:layout_gravity="center"
-    android:layout_marginStart="30dp"
+    android:layout_marginStart="16dp"
     android:layout_marginTop="8dp"
-    android:layout_marginEnd="82dp"
+    android:layout_marginEnd="72dp"
     android:background="@drawable/sparkline_placeholder"
     android:contentDescription="@string/app_name"
     android:scaleType="fitXY" />

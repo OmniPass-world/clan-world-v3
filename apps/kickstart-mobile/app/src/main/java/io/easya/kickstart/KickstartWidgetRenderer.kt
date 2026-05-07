@@ -15,7 +15,12 @@ object KickstartWidgetRenderer {
   private val MUTED = Color.rgb(143, 138, 123)
   private val GOLD = Color.rgb(245, 197, 66)
 
-  fun render(context: Context, token: KickstartToken?, layoutRes: Int = R.layout.gold_widget): RemoteViews {
+  fun render(
+    context: Context,
+    token: KickstartToken?,
+    layoutRes: Int = R.layout.gold_widget,
+    chartType: String = "line",
+  ): RemoteViews {
     val views = RemoteViews(context.packageName, layoutRes)
     views.setTextViewText(R.id.symbol, token?.symbol ?: "PICK")
     views.setTextViewText(R.id.price, token?.let { formatPrice(it.usdPrice) } ?: "$--")
@@ -23,7 +28,7 @@ object KickstartWidgetRenderer {
     views.setChange(R.id.change_6h, "6H", token?.priceChange6h)
     views.setChange(R.id.change_24h, "24H", token?.priceChange24h)
     views.setChange(R.id.change_7d, "7D", token?.priceChange7d)
-    views.setImageViewBitmap(R.id.sparkline, drawSparkline(token))
+    views.setImageViewBitmap(R.id.sparkline, drawChart(token, chartType))
     return views
   }
 
@@ -49,6 +54,10 @@ object KickstartWidgetRenderer {
     if (value == null) return "--"
     val sign = if (value > 0) "+" else ""
     return "$sign${"%.1f".format(value)}%"
+  }
+
+  private fun drawChart(token: KickstartToken?, chartType: String): Bitmap {
+    return if (chartType == "candles") drawCandles(token) else drawSparkline(token)
   }
 
   private fun drawSparkline(token: KickstartToken?): Bitmap {
@@ -94,4 +103,58 @@ object KickstartWidgetRenderer {
     val start = token.usdPrice / max(0.01, 1.0 + change / 100.0)
     return listOf(start, (start + token.usdPrice) / 2.0, token.usdPrice).map { max(min(it, Double.MAX_VALUE), 0.0) }
   }
+
+  private fun drawCandles(token: KickstartToken?): Bitmap {
+    val width = 360
+    val height = 120
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val candles = token?.sparkline24h
+      ?.mapNotNull { point ->
+        val open = point.open ?: point.price
+        val high = point.high ?: max(open, point.price)
+        val low = point.low ?: min(open, point.price)
+        val close = point.close ?: point.price
+        if (open.isFinite() && high.isFinite() && low.isFinite() && close.isFinite() && high > 0.0 && low > 0.0) {
+          Candle(open, high, low, close)
+        } else null
+      }
+      ?: emptyList()
+    if (candles.size < 2) return drawSparkline(token)
+    val minPrice = candles.minOf { it.low }
+    val maxPrice = candles.maxOf { it.high }
+    val span = max(maxPrice - minPrice, 0.0000000001)
+    val pad = 8f
+    val candleWidth = max(2f, ((width - pad * 2) / candles.size.toFloat()) * 0.56f)
+    val wick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      strokeWidth = 2f
+      strokeCap = Paint.Cap.ROUND
+    }
+    val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+      style = Paint.Style.FILL
+    }
+    fun x(index: Int) = pad + (width - pad * 2) * ((index + 0.5f) / candles.size.toFloat())
+    fun y(value: Double): Float {
+      val normalized = ((value - minPrice) / span).toFloat()
+      return (height - pad) - ((height - pad * 2) * normalized)
+    }
+    candles.forEachIndexed { index, candle ->
+      val color = if (candle.close >= candle.open) GREEN else RED
+      wick.color = color
+      body.color = color
+      val cx = x(index)
+      canvas.drawLine(cx, y(candle.high), cx, y(candle.low), wick)
+      val top = min(y(candle.open), y(candle.close))
+      val bottom = max(y(candle.open), y(candle.close))
+      canvas.drawRoundRect(cx - candleWidth / 2f, top, cx + candleWidth / 2f, max(bottom, top + 2f), 1.5f, 1.5f, body)
+    }
+    return bitmap
+  }
+
+  private data class Candle(
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+  )
 }

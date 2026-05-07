@@ -205,7 +205,15 @@ export default defineSchema({
     rank: v.number(),
     sourceUpdatedAt: v.optional(v.string()),
     sparkline24h: v.optional(
-      v.array(v.object({ price: v.number(), observedAt: v.number() })),
+      v.array(v.object({
+        price: v.number(),
+        open: v.optional(v.number()),
+        high: v.optional(v.number()),
+        low: v.optional(v.number()),
+        close: v.optional(v.number()),
+        volume: v.optional(v.number()),
+        observedAt: v.number(),
+      })),
     ),
     fetchedAt: v.number(),
   })

@@ -38,7 +38,7 @@ open class KickstartWidgetProvider : AppWidgetProvider() {
         clickIntent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
-      val views = KickstartWidgetRenderer.render(context, token, layoutRes)
+      val views = KickstartWidgetRenderer.render(context, token, layoutRes, WidgetStore.getWidgetChartType(context, appWidgetId))
       views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
       manager.updateAppWidget(appWidgetId, views)
     }
@@ -63,6 +63,20 @@ object WidgetStore {
       .apply()
   }
 
+  fun setWidgetChartType(context: Context, appWidgetId: Int, chartType: String) {
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putString("widget_${appWidgetId}_chart_type", if (chartType == "candles") "candles" else "line")
+      .apply()
+  }
+
+  fun getWidgetChartType(context: Context, appWidgetId: Int): String {
+    return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      .getString("widget_${appWidgetId}_chart_type", "line")
+      ?.takeIf { it == "candles" }
+      ?: "line"
+  }
+
   fun getWidgetTokenMint(context: Context, appWidgetId: Int): String? {
     return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
       .getString("widget_${appWidgetId}_mint", null)
@@ -70,7 +84,15 @@ object WidgetStore {
 
   fun saveCachedToken(context: Context, appWidgetId: Int, token: KickstartToken) {
     val sparkline = token.sparkline24h.fold(org.json.JSONArray()) { arr, point ->
-      arr.put(JSONObject().put("price", point.price).put("observedAt", point.observedAt))
+      arr.put(
+        JSONObject()
+          .put("price", point.price)
+          .put("open", point.open)
+          .put("high", point.high)
+          .put("low", point.low)
+          .put("close", point.close)
+          .put("observedAt", point.observedAt),
+      )
     }
     val payload = JSONObject()
       .put("tokenMint", token.tokenMint)
