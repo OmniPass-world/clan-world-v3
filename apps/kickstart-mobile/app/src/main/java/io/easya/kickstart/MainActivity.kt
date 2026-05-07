@@ -1,19 +1,18 @@
 package io.easya.kickstart
 
 import android.app.Activity
+import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.browser.customtabs.CustomTabsIntent
 
 class MainActivity : Activity() {
-  private lateinit var webView: WebView
   private lateinit var content: FrameLayout
   private lateinit var homeTab: TextView
   private lateinit var listTab: TextView
@@ -57,14 +56,7 @@ class MainActivity : Activity() {
   private fun showHome(url: String) {
     selectedUrl = url
     selectTab(homeTab)
-    content.removeAllViews()
-    webView = WebView(this)
-    webView.webViewClient = WebViewClient()
-    webView.settings.javaScriptEnabled = true
-    webView.settings.domStorageEnabled = true
-    webView.setBackgroundColor(getColor(R.color.widget_bg))
-    content.addView(webView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-    webView.loadUrl(url)
+    openKickstartUrl(url)
   }
 
   private fun showLeaderboard() {
@@ -88,7 +80,9 @@ class MainActivity : Activity() {
           tokens.forEach { token ->
             list.addView(tokenRow(token) {
               KickstartClient.watchToken(token.tokenMint)
-              showHome("${BuildConfig.HOME_URL.trimEnd('/')}/token/${token.tokenMint}")
+              selectedUrl = "${BuildConfig.HOME_URL.trimEnd('/')}/token/${token.tokenMint}"
+              selectTab(homeTab)
+              openKickstartUrl(selectedUrl)
             })
           }
         }
@@ -147,9 +141,12 @@ class MainActivity : Activity() {
 
   private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-  override fun onBackPressed() {
-    if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
-    else super.onBackPressed()
+  private fun openKickstartUrl(url: String) {
+    CustomTabsIntent.Builder()
+      .setShowTitle(true)
+      .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+      .build()
+      .launchUrl(this, Uri.parse(url))
   }
 
   companion object {
