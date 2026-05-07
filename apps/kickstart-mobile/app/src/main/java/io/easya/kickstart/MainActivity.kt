@@ -26,7 +26,7 @@ class MainActivity : Activity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    selectedUrl = intent.getStringExtra(EXTRA_URL) ?: BuildConfig.HOME_URL
+    selectedUrl = sanitizeIncomingUrl(intent.getStringExtra(EXTRA_URL))
     window.statusBarColor = getColor(R.color.widget_bg)
     window.navigationBarColor = getColor(R.color.widget_bg)
 
@@ -61,10 +61,11 @@ class MainActivity : Activity() {
 
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
-    val nextUrl = intent.getStringExtra(EXTRA_URL) ?: intent.dataString
-    if (nextUrl != null && ::webView.isInitialized) {
-      selectedUrl = nextUrl
-      showHome(nextUrl)
+    val rawNextUrl = intent.getStringExtra(EXTRA_URL) ?: intent.dataString
+    if (rawNextUrl != null && ::webView.isInitialized) {
+      val safeUrl = sanitizeIncomingUrl(rawNextUrl)
+      selectedUrl = safeUrl
+      showHome(safeUrl)
     }
   }
 
@@ -206,8 +207,44 @@ class MainActivity : Activity() {
     else super.onBackPressed()
   }
 
+  /**
+   * Allow only HTTPS URLs whose host matches the configured kickstart home or
+   * an explicit allowlist of trusted subdomains. Any other input falls back to
+   * the configured `BuildConfig.HOME_URL` so an external app or deep link
+   * can't redirect this exported, JS-enabled WebView at an arbitrary origin.
+   */
+  private fun sanitizeIncomingUrl(rawUrl: String?): String {
+    if (rawUrl.isNullOrBlank()) return BuildConfig.HOME_URL
+    return if (isUrlAllowed(rawUrl)) rawUrl else BuildConfig.HOME_URL
+  }
+
+  private fun isUrlAllowed(url: String): Boolean {
+    return runCatching {
+      val uri = Uri.parse(url)
+      val scheme = uri.scheme?.lowercase()
+      if (scheme != "https") return@runCatching false
+      val host = uri.host?.lowercase() ?: return@runCatching false
+      val homeHost = Uri.parse(BuildConfig.HOME_URL).host?.lowercase()
+      val allowedHosts = buildSet {
+        if (!homeHost.isNullOrBlank()) add(homeHost)
+        addAll(EXTRA_ALLOWED_HOSTS)
+      }
+      allowedHosts.any { allowed -> host == allowed || host.endsWith(".$allowed") }
+    }.getOrDefault(false)
+  }
+
   companion object {
     const val EXTRA_URL = "io.easya.kickstart.EXTRA_URL"
+
+    /**
+     * Hosts allowed for WebView loads in addition to the configured
+     * `BuildConfig.HOME_URL` host. Keep this list narrow; every entry
+     * widens the trust surface of an exported JS-enabled WebView.
+     */
+    private val EXTRA_ALLOWED_HOSTS = setOf(
+      "kickstart.easya.io",
+      "easya.io",
+    )
   }
 }
 
