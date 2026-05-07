@@ -156,3 +156,18 @@ export const setSgtCheck = (pubkey: string, hasToken: boolean): void => {
 export const clearAll = (): void => {
   mmkv.clearAll();
 };
+
+/**
+ * Demo helper — clear all forge state without affecting wallet auth.
+ *
+ * Clears: forged INFTs, free-forge-used flag, loaded-INFT pointer.
+ * Preserves: wallet pubkey, MWA auth token, SGT cache.
+ *
+ * Lets the demo loop ("connect → forge → see in hall") repeat without
+ * requiring a wallet reconnect between runs.
+ */
+export const resetForgeState = (): void => {
+  mmkv.delete(KEYS.forgedInfts);
+  mmkv.delete(KEYS.freeForgeUsedByPubkey);
+  mmkv.delete(KEYS.loadedInftId);
+};

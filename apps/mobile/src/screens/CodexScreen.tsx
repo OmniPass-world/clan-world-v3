@@ -9,6 +9,7 @@ type Props = {
   onBack: () => void;
   pubkey: string | null;
   onDisconnect: () => void;
+  onResetForgeState: () => void;
 };
 
 const truncPub = (pk: string | null) => {
@@ -17,7 +18,12 @@ const truncPub = (pk: string | null) => {
   return `${pk.slice(0, 4)}…${pk.slice(-4)}`;
 };
 
-export const CodexScreen = ({ onBack, pubkey, onDisconnect }: Props) => {
+export const CodexScreen = ({
+  onBack,
+  pubkey,
+  onDisconnect,
+  onResetForgeState,
+}: Props) => {
   const [haptics, setHaptics] = useState(true);
   const [game, setGame] = useState(true);
   const [market, setMarket] = useState(true);
@@ -74,6 +80,36 @@ export const CodexScreen = ({ onBack, pubkey, onDisconnect }: Props) => {
         <SettingGroup label="WIDGET">
           <SettingRow label="Mirror game" value="STORM RIDERS" mono />
           <SettingRow label="Refresh" value="60s" mono />
+        </SettingGroup>
+
+        <SettingGroup label="DEMO TOOLS">
+          <SettingRow
+            label="Reset forge state"
+            right={
+              <Btn
+                variant="secondary"
+                paddingHorizontal={10}
+                paddingVertical={6}
+                fontSize={10}
+                onPress={onResetForgeState}
+              >
+                RESET
+              </Btn>
+            }
+          />
+          <Text
+            style={{
+              fontFamily: fonts.bodyItalic,
+              fontStyle: 'italic',
+              fontSize: 11,
+              color: colors.inkDarkMuted,
+              paddingVertical: 6,
+              lineHeight: 16,
+            }}
+          >
+            Clears forged Elders and the free-forge claim so the demo can
+            run again. Wallet stays connected.
+          </Text>
         </SettingGroup>
 
         <SettingGroup label="ABOUT">

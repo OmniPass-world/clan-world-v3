@@ -41,6 +41,7 @@ import {
   getLoadedInftId,
   setLoadedInftId,
   getWalletPubkey,
+  resetForgeState,
 } from './src/storage';
 import { disconnectWallet } from './src/wallet/mwa';
 import { hasSeekerGenesisToken, isSeekerDevice } from './src/seeker';
@@ -156,6 +157,14 @@ export default function App() {
     setLoadedInftIdState(inftId);
   };
 
+  /** Demo helper — clear forged INFTs + free-forge flag without dropping
+   *  wallet auth. Lets the demo loop run again. */
+  const handleResetForgeState = () => {
+    resetForgeState();
+    setLoadedInftIdState(null);
+    showToast('Forge state reset. Ready for another run.');
+  };
+
   /** Sign out — clear MMKV auth + reset routing state back to Splash. */
   const handleDisconnect = () => {
     disconnectWallet();
@@ -231,6 +240,7 @@ export default function App() {
         onBack={pop}
         pubkey={pubkey}
         onDisconnect={handleDisconnect}
+        onResetForgeState={handleResetForgeState}
       />
     );
   } else if (top?.kind === 'steering') {
