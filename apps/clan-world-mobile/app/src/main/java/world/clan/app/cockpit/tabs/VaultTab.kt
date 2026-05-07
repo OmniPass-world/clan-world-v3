@@ -29,6 +29,12 @@ import androidx.compose.ui.unit.sp
 import world.clan.app.cockpit.tabs.shared.SectionHeader
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
+import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.findClan
+import world.clan.app.data.convex.toDomain
+import world.clan.app.data.convex.toResources
+import world.clan.app.data.convex.useSnapshot
+import world.clan.app.data.convex.useVaultMovements
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
@@ -44,8 +50,19 @@ private val GAIN_GREEN = Color(0xFF3A7A3A)
  */
 @Composable
 fun VaultTab(elder: Elder, modifier: Modifier = Modifier) {
-  val resources = StubData.vaultResources(elder.clanId)
-  val movements = StubData.vaultMovements
+  val snapshotState = useSnapshot()
+  val movementsState = useVaultMovements(elder.clanId)
+
+  val resources = when (snapshotState) {
+    is QueryState.Live -> snapshotState.data.findClan(elder.clanId)?.toResources()
+      ?: StubData.vaultResources(elder.clanId)
+    else -> StubData.vaultResources(elder.clanId)
+  }
+  val movements = when (movementsState) {
+    is QueryState.Live -> movementsState.data.map { it.toDomain() }
+    else -> StubData.vaultMovements
+  }
+  val tickLabel = (snapshotState as? QueryState.Live)?.data?.tick?.toInt() ?: StubData.CURRENT_TICK
 
   Column(
     modifier = modifier
@@ -55,7 +72,7 @@ fun VaultTab(elder: Elder, modifier: Modifier = Modifier) {
       .padding(CockpitTokens.Space.md),
     verticalArrangement = Arrangement.spacedBy(CockpitTokens.Space.md),
   ) {
-    SectionHeader("RESOURCES", trailing = "T${StubData.CURRENT_TICK}")
+    SectionHeader("RESOURCES", trailing = "T$tickLabel")
 
     // 2-column grid
     val rowsOfTwo = resources.chunked(2)

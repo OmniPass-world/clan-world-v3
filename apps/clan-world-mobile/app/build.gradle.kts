@@ -2,6 +2,7 @@ plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.android")
   id("org.jetbrains.kotlin.plugin.compose")
+  id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 val homeUrl = providers.environmentVariable("CLAN_WORLD_HOME_URL")
@@ -9,6 +10,9 @@ val homeUrl = providers.environmentVariable("CLAN_WORLD_HOME_URL")
 
 val terminalBaseUrl = providers.environmentVariable("CLAN_WORLD_TERMINAL_BASE_URL")
   .orElse("https://cockpit.clan-world.com")
+
+val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
+  .orElse("https://valuable-kudu-985.convex.cloud")
 
 android {
   namespace = "world.clan.app"
@@ -22,6 +26,7 @@ android {
     versionName = "0.1.0"
     buildConfigField("String", "MAP_URL", "\"${homeUrl.get()}\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"${terminalBaseUrl.get()}\"")
+    buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
   }
 
   buildFeatures {
@@ -73,4 +78,8 @@ dependencies {
 
   // Solana Mobile Wallet Adapter — real signing
   implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.7")
+
+  // Live Convex data wiring
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+  implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

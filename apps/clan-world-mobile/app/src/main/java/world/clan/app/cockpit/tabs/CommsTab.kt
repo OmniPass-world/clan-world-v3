@@ -39,6 +39,11 @@ import androidx.compose.ui.unit.sp
 import world.clan.app.cockpit.tabs.shared.SectionHeader
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
+import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.toDomain
+import world.clan.app.data.convex.toPublicPost
+import world.clan.app.data.convex.useBulletins
+import world.clan.app.data.convex.useCombinedComms
 import world.clan.app.data.elderById
 import world.clan.app.data.fadeOpacityForTick
 import world.clan.app.ui.theme.CockpitFonts
@@ -154,7 +159,11 @@ private fun ToggleButton(label: String, sub: String, active: Boolean, onClick: (
 
 @Composable
 private fun AxlList(elder: Elder) {
-  val lines = StubData.commsLines(elder.clanId)
+  val live = useCombinedComms(elder.clanId)
+  val lines = when (live) {
+    is QueryState.Live -> live.data.map { it.toDomain() }
+    else -> StubData.commsLines(elder.clanId)
+  }
   lines.forEach { line ->
     CommsBubble(line, myClanId = elder.clanId)
   }
@@ -327,9 +336,14 @@ private fun labelLine(line: StubData.CommsLine, label: String): String =
 
 @Composable
 private fun BulletinView(elder: Elder) {
-  val posts = StubData.publicBulletins(elder.clanId)
-  val visible = posts.filter { (StubData.CURRENT_TICK - it.tick) <= StubData.VISIBLE_TICKS }
-  val old     = posts.filter { (StubData.CURRENT_TICK - it.tick)  > StubData.VISIBLE_TICKS }
+  val live = useBulletins(elder.clanId)
+  val posts = when (live) {
+    is QueryState.Live -> live.data.map { it.toPublicPost() }
+    else -> StubData.publicBulletins(elder.clanId)
+  }
+  val currentTick = posts.maxOfOrNull { it.tick } ?: StubData.CURRENT_TICK
+  val visible = posts.filter { (currentTick - it.tick) <= StubData.VISIBLE_TICKS }
+  val old     = posts.filter { (currentTick - it.tick)  > StubData.VISIBLE_TICKS }
 
   visible.forEach { p -> BulletinPostRow(p, elder.accent, hidden = false) }
   if (old.isNotEmpty()) {
