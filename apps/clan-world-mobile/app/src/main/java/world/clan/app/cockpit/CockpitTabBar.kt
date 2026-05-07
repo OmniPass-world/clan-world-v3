@@ -37,11 +37,12 @@ private val TABS = listOf(
 )
 
 /**
- * Per-panel tab bar. Mirrors apps/web/src/components/cockpit/shared/CockpitTabBar.tsx:
- *  - 46dp tall, 5 buttons × 44dp wide on the left (icon stacked over label)
- *  - active tab → bg.ink + accent text + 2dp accent underline
- *  - right side → clan glyph + name (Cinzel uppercase, ellipsis-truncated)
- *  - separator: 1dp Border.Iron between tabs
+ * Per-panel tab bar. Mirrors apps/web/src/components/cockpit/shared/CockpitTabBar.tsx
+ * but with the layout flipped:
+ *  - clan badge (glyph + name) on the LEFT, takes weight(1f)
+ *  - 5 tabs (44dp each, icon over label) on the RIGHT
+ *  - active tab → bg.ink + accent text + 2dp accent underline + glow
+ *  - 1dp Border.Iron separators between tabs (and between badge + tabs)
  */
 @Composable
 fun CockpitTabBar(
@@ -57,33 +58,7 @@ fun CockpitTabBar(
       .background(CockpitTokens.Bg.IronDeep),
     verticalAlignment = Alignment.CenterVertically,
   ) {
-    // Left: 5 tabs
-    TABS.forEachIndexed { idx, spec ->
-      val isActive = spec.id == active
-      TabButton(
-        spec = spec,
-        isActive = isActive,
-        onClick = { onSelect(spec.id) },
-      )
-      if (idx != TABS.lastIndex) {
-        Box(
-          modifier = Modifier
-            .width(1.dp)
-            .fillMaxHeight()
-            .background(CockpitTokens.Border.Iron)
-        )
-      }
-    }
-
-    // Separator before clan badge
-    Box(
-      modifier = Modifier
-        .width(1.dp)
-        .fillMaxHeight()
-        .background(CockpitTokens.Border.Iron)
-    )
-
-    // Right: clan badge
+    // Left: clan badge
     Row(
       modifier = Modifier
         .weight(1f)
@@ -106,12 +81,38 @@ fun CockpitTabBar(
           fontFamily = CockpitFonts.Cinzel,
           fontSize = 12.sp,
           color = CockpitTokens.TextC.OnIron,
-          letterSpacing = 1.92.sp, // 0.16em ≈ 12 * 0.16
+          letterSpacing = 1.92.sp, // 0.16em
           fontWeight = FontWeight.SemiBold,
         ),
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
       )
+    }
+
+    // Separator before tabs
+    Box(
+      modifier = Modifier
+        .width(1.dp)
+        .fillMaxHeight()
+        .background(CockpitTokens.Border.Iron)
+    )
+
+    // Right: 5 tabs
+    TABS.forEachIndexed { idx, spec ->
+      val isActive = spec.id == active
+      TabButton(
+        spec = spec,
+        isActive = isActive,
+        onClick = { onSelect(spec.id) },
+      )
+      if (idx != TABS.lastIndex) {
+        Box(
+          modifier = Modifier
+            .width(1.dp)
+            .fillMaxHeight()
+            .background(CockpitTokens.Border.Iron)
+        )
+      }
     }
   }
 }
@@ -152,13 +153,12 @@ private fun TabButton(
           fontSize = 8.sp,
           fontWeight = FontWeight.SemiBold,
           color = fg,
-          letterSpacing = 0.96.sp, // 0.12em ≈ 8 * 0.12
+          letterSpacing = 0.96.sp, // 0.12em
         ),
         textAlign = TextAlign.Center,
       )
     }
     if (isActive) {
-      // 2dp accent underline at the bottom edge
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -169,4 +169,3 @@ private fun TabButton(
     }
   }
 }
-

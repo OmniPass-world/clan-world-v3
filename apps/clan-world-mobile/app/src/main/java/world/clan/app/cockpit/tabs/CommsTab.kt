@@ -113,8 +113,8 @@ private fun ViewToggle(view: CommsView, onChange: (CommsView) -> Unit) {
       .clip(RoundedCornerShape(CockpitTokens.Radius.sm))
       .border(1.dp, CockpitTokens.Border.ParchmentEdge, RoundedCornerShape(CockpitTokens.Radius.sm)),
   ) {
-    ToggleButton(label = "AXL",     sub = "private",   active = view == CommsView.Axl,      onClick = { onChange(CommsView.Axl) })
-    ToggleButton(label = "0G",      sub = "bulletin",  active = view == CommsView.Bulletin, onClick = { onChange(CommsView.Bulletin) })
+    ToggleButton(label = "PRIVATE", sub = "encrypted", active = view == CommsView.Axl,      onClick = { onChange(CommsView.Axl) })
+    ToggleButton(label = "PUBLIC",  sub = "bulletin",  active = view == CommsView.Bulletin, onClick = { onChange(CommsView.Bulletin) })
   }
 }
 

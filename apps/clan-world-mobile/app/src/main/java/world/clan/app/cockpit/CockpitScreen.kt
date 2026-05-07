@@ -5,9 +5,13 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -23,18 +27,17 @@ import world.clan.app.ui.theme.CockpitTokens
 
 /**
  * Top-level cockpit page. Edge-to-edge — content fills the entire screen
- * including the unsafe area at the top (where CLAN | WORLD straddles the
- * camera cutout) and bottom.
+ * including the unsafe area at the top.
  *
- * Layout:
- *  - Two-row header (CLAN/WORLD up top in unsafe space; tick + connection
- *    + bulletin button in the second row).
- *  - Map area (weighted) — WebView fills it; page-indicator dots and the
- *    collapse toggle overlay the bottom of the map. Map's bottom corners
- *    are rounded to match the device's natural top-corner curvature so the
- *    map and panel meet flush.
- *  - Panel area (weighted) — full-width HorizontalPager, no padding.
- *  - Bulletin flyout slides down from the header when toggled.
+ * Z-order is deliberate:
+ *   1. Cockpit body (map + panel) — drawn first.
+ *   2. Bulletin flyout — drawn ON TOP of the body when open.
+ *   3. CockpitHeader — drawn LAST, covering any flyout shadow that bleeds
+ *      into the header area, so the flyout reads as "attached to / falling
+ *      out of" the header rather than passing under it.
+ *
+ * The body uses spacers in place of the header's height so layout still
+ * computes correctly even though the header isn't a child of the column.
  */
 @Composable
 fun CockpitScreen(
@@ -50,7 +53,7 @@ fun CockpitScreen(
     label = "mapWeight",
   )
   val pagerWeight by animateFloatAsState(
-    targetValue = if (collapsed) 0.0001f else 0.5f, // 0 not allowed in weight
+    targetValue = if (collapsed) 0.0001f else 0.5f,
     animationSpec = tween(durationMillis = 250),
     label = "pagerWeight",
   )
@@ -65,15 +68,17 @@ fun CockpitScreen(
       .fillMaxSize()
       .background(CockpitTokens.Bg.Void),
   ) {
+    // (1) Cockpit body — header height reserved by spacers so the map's
+    //     weighted height matches the post-header layout.
     Column(modifier = Modifier.fillMaxSize()) {
-      CockpitHeader(
-        modifier = Modifier.fillMaxWidth(),
-        bulletinOpen = bulletinOpen,
-        onBulletinToggle = { bulletinOpen = !bulletinOpen },
-      )
+      // Spacer for row 1 (status-bar inset, where CLAN/WORLD render)
+      Box(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+      // Spacer for row 2 (controls strip)
+      Box(modifier = Modifier.fillMaxWidth().height(HeaderRow2Height))
 
-      // Map region — fills its weighted height; dots + toggle overlay
-      // the bottom edge so there's no gap before the panel.
+      // Map region — fills its weighted height; dots + toggle overlay the
+      // bottom edge so there's no gap before the panel. Map's bottom
+      // corners are rounded (mirrors the device's natural top-corner curve).
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -87,14 +92,13 @@ fun CockpitScreen(
       ) {
         MapWebView(modifier = Modifier.fillMaxSize())
 
-        // Page-indicator dots overlay (anchored above the toggle)
         PageIndicatorOverlay(
           pageCount = ELDERS.size,
           currentPage = (activeClanId - 1).coerceIn(0, ELDERS.size - 1),
           onDotClick = { activeClanId = it + 1 },
           modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(bottom = 44.dp),
+            .padding(bottom = 56.dp),
         )
 
         CollapseToggle(
@@ -103,11 +107,10 @@ fun CockpitScreen(
           onToggle = { collapsed = !collapsed },
           modifier = Modifier
             .align(Alignment.BottomCenter)
-            .padding(bottom = 8.dp),
+            .padding(bottom = 12.dp),
         )
       }
 
-      // Pager region — full width, no padding around the panels.
       ClanPanelPager(
         modifier = Modifier
           .fillMaxWidth()
@@ -119,10 +122,19 @@ fun CockpitScreen(
       )
     }
 
-    // Bulletin flyout slides down from beneath the header.
+    // (2) Bulletin flyout — drawn over the body. Its top shadow extends
+    //     UPWARD into the area the header occupies, where (3) hides it.
     BulletinFlyout(
       visible = bulletinOpen,
       onClose = { bulletinOpen = false },
+    )
+
+    // (3) Header drawn last — covers the flyout's top shadow so the flyout
+    //     reads as if it falls out of the bottom of the header.
+    CockpitHeader(
+      modifier = Modifier.fillMaxWidth(),
+      bulletinOpen = bulletinOpen,
+      onBulletinToggle = { bulletinOpen = !bulletinOpen },
     )
   }
 }

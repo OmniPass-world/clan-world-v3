@@ -11,11 +11,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -34,78 +36,70 @@ import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
+ * Title typography reused across the header (CLAN | WORLD) and the
+ * bulletin-flyout heading. Mirrors the original "ÆLDER · COCKPIT" style
+ * we removed: Cinzel SemiBold 12sp, 0.24em letter-spacing, OnIron.
+ */
+val CockpitTitleStyle: TextStyle = TextStyle(
+  fontFamily = CockpitFonts.Cinzel,
+  fontSize = 12.sp,
+  fontWeight = FontWeight.SemiBold,
+  letterSpacing = 2.88.sp, // 0.24em
+  color = CockpitTokens.TextC.OnIron,
+)
+
+/** Width of the gap between CLAN and WORLD — sized to clear the camera cutout. */
+private val CutoutGapWidth = 32.dp
+
+/** Height of the second row (chrome strip carrying the controls). */
+val HeaderRow2Height = 40.dp
+
+/**
  * Two-row cockpit header.
  *
- * Row 1 — "CLAN" left + camera cutout (centred) + "WORLD" right. Sits in
- *   the unsafe space at the top of the screen so the entire app feels
- *   edge-to-edge. Height = the system status-bar inset, so words clear
- *   the cutout naturally on the target device.
+ * Row 1 — CLAN | (cutout) | WORLD, centred as a pair around the camera
+ *   cutout. Height = system status-bar inset.
  *
- * Row 2 — 40dp ironDeep strip carrying the public-bulletin toggle on the
- *   left, and the tick counter + connection pill on the right. The web's
- *   "ÆLDER · COCKPIT" title is intentionally dropped to free up vertical
- *   space for the rest of the cockpit.
+ * Row 2 — LIVE indicator (left) · BULLETINS button (centre) · MEMORY WIPE
+ *   pill (right). 40dp tall, ironDeep bg.
  */
 @Composable
 fun CockpitHeader(
   modifier: Modifier = Modifier,
   bulletinOpen: Boolean = false,
   onBulletinToggle: () -> Unit = {},
-  currentTick: Int = 142,
   ticksUntilWipe: Int = 8,
   connection: ConnectionStatus = ConnectionStatus.Connected,
 ) {
   Column(modifier = modifier) {
-    // Row 1 — CLAN | (cutout) | WORLD, in the status-bar/cutout area.
+    // Row 1 — CLAN [cutout] WORLD, centred on the cutout
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .windowInsetsTopHeight(WindowInsets.statusBars)
-        .padding(horizontal = 24.dp),
-      horizontalArrangement = Arrangement.SpaceBetween,
+        .windowInsetsTopHeight(WindowInsets.statusBars),
+      horizontalArrangement = Arrangement.Center,
       verticalAlignment = Alignment.CenterVertically,
     ) {
-      Text(
-        text = "CLAN",
-        style = TextStyle(
-          fontFamily = CockpitFonts.Cinzel,
-          fontSize = 11.sp,
-          fontWeight = FontWeight.SemiBold,
-          letterSpacing = 2.2.sp, // 0.2em ≈ 11 * 0.2
-          color = CockpitTokens.TextC.OnIron,
-        ),
-      )
-      Text(
-        text = "WORLD",
-        style = TextStyle(
-          fontFamily = CockpitFonts.Cinzel,
-          fontSize = 11.sp,
-          fontWeight = FontWeight.SemiBold,
-          letterSpacing = 2.2.sp,
-          color = CockpitTokens.TextC.OnIron,
-        ),
-      )
+      Text(text = "CLAN", style = CockpitTitleStyle)
+      Spacer(modifier = Modifier.width(CutoutGapWidth))
+      Text(text = "WORLD", style = CockpitTitleStyle)
     }
 
-    // Row 2 — bulletin button + tick + connection pill.
+    // Row 2 — LIVE (left) · BULLETINS (centre) · MEMORY WIPE (right)
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .height(40.dp)
+        .height(HeaderRow2Height)
         .background(CockpitTokens.Bg.IronDeep)
         .border(width = 1.dp, color = CockpitTokens.Border.Iron)
         .padding(horizontal = CockpitTokens.Space.md),
       verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+      ConnectionPill(status = connection)
+      Spacer(modifier = Modifier.weight(1f))
       BulletinButton(open = bulletinOpen, onClick = onBulletinToggle)
-      Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
-      ) {
-        TickCounterPill(currentTick = currentTick, ticksUntilWipe = ticksUntilWipe)
-        ConnectionPill(status = connection)
-      }
+      Spacer(modifier = Modifier.weight(1f))
+      TickCounterPill(ticksUntilWipe = ticksUntilWipe)
     }
   }
 }
@@ -136,7 +130,7 @@ private fun BulletinButton(open: Boolean, onClick: () -> Unit) {
       ),
     )
     Text(
-      text = "PUBLIC BULLETIN",
+      text = "BULLETINS",
       style = TextStyle(
         fontFamily = CockpitFonts.JetBrainsMono,
         fontSize = 11.sp,
@@ -150,12 +144,11 @@ private fun BulletinButton(open: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TickCounterPill(currentTick: Int, ticksUntilWipe: Int) {
+private fun TickCounterPill(ticksUntilWipe: Int) {
   val accent = CockpitTokens.TextC.Accent
 
-  // Until live tick events arrive, simulate the periodic "tick advanced"
-  // pulse the web header has on every snapshot change: short ~250ms flash
-  // of the border into accent, then back to neutral, on an 8-second loop.
+  // Periodic 250ms accent flash on an 8s loop — proxy for "snapshot
+  // advanced" in the absence of live tick events.
   val transition = rememberInfiniteTransition(label = "tickPulse")
   val borderColor by transition.animateColor(
     initialValue = CockpitTokens.Border.Iron,
@@ -180,7 +173,6 @@ private fun TickCounterPill(currentTick: Int, ticksUntilWipe: Int) {
       .border(1.dp, borderColor, RoundedCornerShape(CockpitTokens.Radius.sm))
       .padding(horizontal = 10.dp, vertical = 4.dp),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
   ) {
     Text(
       text = "MEMORY WIPE in ${ticksUntilWipe}t",
@@ -189,24 +181,6 @@ private fun TickCounterPill(currentTick: Int, ticksUntilWipe: Int) {
         fontSize = 11.sp,
         color = accent,
         letterSpacing = 1.0.sp,
-      ),
-    )
-    Text(
-      text = "│",
-      style = TextStyle(
-        fontFamily = CockpitFonts.JetBrainsMono,
-        fontSize = 11.sp,
-        color = CockpitTokens.Border.Iron,
-      ),
-    )
-    Text(
-      text = "tick $currentTick",
-      style = TextStyle(
-        fontFamily = CockpitFonts.JetBrainsMono,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Bold,
-        color = accent,
-        letterSpacing = 0.6.sp,
       ),
     )
   }
@@ -251,4 +225,3 @@ private fun ConnectionPill(status: ConnectionStatus) {
     )
   }
 }
-

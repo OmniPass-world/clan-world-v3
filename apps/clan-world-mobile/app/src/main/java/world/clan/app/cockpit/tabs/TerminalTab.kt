@@ -91,13 +91,19 @@ fun TerminalTab(
   Box(
     modifier = modifier
       .fillMaxSize()
-      .background(CockpitTokens.Bg.Ink)
+      // Backdrop matches the panel chrome (not Bg.Ink) so the brief
+      // "first-frame" flash while the WebView measures itself is invisible
+      // — the panel just looks like an empty panel for a split second.
+      .background(CockpitTokens.Bg.Iron)
       // Consume every pointer event before it reaches the WebView so taps
       // can't focus an input element and pop the soft keyboard.
       .pointerInteropFilter { true },
   ) {
     AndroidView(
-      modifier = Modifier.fillMaxSize(),
+      // matchParentSize keeps the AndroidView strictly within its parent
+      // Box's bounds, so the WebView's native wrap_content measure can't
+      // briefly push the panel taller than the layout allows.
+      modifier = Modifier.matchParentSize(),
       factory = { ctx ->
         // Per-instance flag set during onReceivedError(mainFrame) and read
         // at onPageFinished — lets us distinguish "page loaded successfully"
@@ -111,7 +117,7 @@ fun TerminalTab(
           )
           isFocusable = false
           isFocusableInTouchMode = false
-          setBackgroundColor(CockpitTokens.Bg.Ink.toArgb())
+          setBackgroundColor(CockpitTokens.Bg.Iron.toArgb())
           webViewClient = object : WebViewClient() {
             override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
               mainFrameFailedThisLoad = false

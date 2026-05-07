@@ -1,10 +1,11 @@
 package world.clan.app.cockpit
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandIn
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.shrinkOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,22 +15,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,69 +46,160 @@ import world.clan.app.data.fadeOpacityForTick
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
+// Shared constants
+private val PanelCorner = 8.dp
+private val PanelElevation = 16.dp
+private val CardBg = CockpitTokens.Bg.ParchmentDim
+private val CardCorner = 4.dp
+
 /**
- * Public bulletin board flyout — slides down from beneath the header
- * when the bulletin button is toggled. Stacked list of all four clans'
- * recent + old bulletins, with corner-bracket cards mirroring the web's
- * `BulletinFlyout.tsx` aesthetic, but laid out vertically (mobile) rather
- * than the web's 2×2 grid (which would be cramped on a phone).
+ * Public bulletin board — floats below the header, attached visually to
+ * the centred BULLETINS button. The shadow extends on all four sides,
+ * but the top shadow falls behind the header (which is drawn AFTER this
+ * composable in CockpitScreen's z-order), so visually only the left,
+ * right, and bottom shadows show — like a clipped page hung from the
+ * bottom of the header.
  *
- * Tapping outside the panel (the dim scrim) closes it.
+ * Sizing — driven by orientation:
+ *  - portrait : 85% screen width, ~90% screen height, centred (margins
+ *    on both sides + bottom). Cards stack 1 column.
+ *  - landscape: 60% screen width, full height below the header. Cards
+ *    laid out as a 2×2 grid.
+ *
+ * Each card is identical-sized (weight=1f within its row/column) and
+ * scrolls internally; the panel itself never grows.
  */
 @Composable
 fun BulletinFlyout(
   visible: Boolean,
   onClose: () -> Unit,
 ) {
-  AnimatedVisibility(
-    visible = visible,
-    enter = fadeIn() + slideInVertically(initialOffsetY = { -it / 4 }),
-    exit  = fadeOut() + slideOutVertically(targetOffsetY = { -it / 4 }),
-  ) {
-    Box(modifier = Modifier.fillMaxSize()) {
-      // Scrim: tap-anywhere-to-close, dims the cockpit beneath.
+  val config = LocalConfiguration.current
+  val screenW = config.screenWidthDp.dp
+  val screenH = config.screenHeightDp.dp
+  val isLandscape = screenW > screenH
+
+  val widthFraction = if (isLandscape) 0.60f else 0.85f
+  val heightFraction = if (isLandscape) 1.00f else 0.90f
+  val panelW = screenW * widthFraction
+  val statusBarH = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+  val headerH = statusBarH + HeaderRow2Height
+  val panelH = (screenH * heightFraction) - headerH
+
+  Box(modifier = Modifier.fillMaxSize()) {
+    // Dim scrim (separate fade from the panel's expand animation)
+    AnimatedVisibility(
+      visible = visible,
+      enter = fadeIn(animationSpec = tween(220)),
+      exit  = fadeOut(animationSpec = tween(180)),
+    ) {
       Box(
         modifier = Modifier
           .fillMaxSize()
           .background(Color.Black.copy(alpha = 0.55f))
           .clickable(onClick = onClose),
       )
+    }
 
-      // Spacer for the unsafe space (CLAN/WORLD row) so the panel slides
-      // in from below it, not from the very top of the screen.
-      Column {
-        Box(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
-        // Spacer for row 2 (40dp) — panel sits beneath the second header row.
-        Box(modifier = Modifier.fillMaxWidth().height(40.dp))
-
-        BulletinPanel(onClose = onClose)
+    // Floating panel — expands from a TopCentre origin (the position of
+    // the BULLETINS button), so it reads as "unscrolling out of" the
+    // header rather than sliding in from off-screen.
+    AnimatedVisibility(
+      visible = visible,
+      enter = fadeIn(animationSpec = tween(220)) +
+        expandIn(
+          expandFrom = Alignment.TopCenter,
+          animationSpec = tween(280),
+        ),
+      exit = fadeOut(animationSpec = tween(160)) +
+        shrinkOut(
+          shrinkTowards = Alignment.TopCenter,
+          animationSpec = tween(200),
+        ),
+      modifier = Modifier
+        .align(Alignment.TopCenter)
+        .padding(top = headerH),
+    ) {
+      Box(
+        modifier = Modifier
+          .width(panelW)
+          .height(panelH)
+          .shadow(
+            elevation = PanelElevation,
+            shape = RoundedCornerShape(PanelCorner),
+            clip = false,
+          )
+          .clip(RoundedCornerShape(PanelCorner))
+          .background(CockpitTokens.Bg.Parchment)
+          .border(1.dp, CockpitTokens.Bg.Ink, RoundedCornerShape(PanelCorner)),
+      ) {
+        BulletinPanel(isLandscape = isLandscape, onClose = onClose)
       }
     }
   }
 }
 
 @Composable
-private fun BulletinPanel(onClose: () -> Unit) {
+private fun BulletinPanel(isLandscape: Boolean, onClose: () -> Unit) {
   Column(
     modifier = Modifier
-      .fillMaxWidth()
-      .background(CockpitTokens.Bg.Parchment)
-      .border(
-        width = 1.5.dp,
-        color = CockpitTokens.Bg.Ink,
-      ),
+      .fillMaxSize()
+      .background(CockpitTokens.Bg.Parchment),
   ) {
     PanelHeader(onClose = onClose)
-    Column(
+    Box(
       modifier = Modifier
         .fillMaxWidth()
-        .verticalScroll(rememberScrollState())
+        .weight(1f)
         .padding(CockpitTokens.Space.md),
-      verticalArrangement = Arrangement.spacedBy(CockpitTokens.Space.md),
     ) {
-      ELDERS.forEach { elder ->
-        ClanBulletinCard(elder = elder)
+      if (isLandscape) {
+        BulletinGrid()
+      } else {
+        BulletinStack()
       }
+    }
+  }
+}
+
+/** Portrait: 4 cards stacked, each fills equal weighted height. */
+@Composable
+private fun BulletinStack() {
+  Column(
+    modifier = Modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+  ) {
+    ELDERS.forEach { elder ->
+      ClanBulletinCard(
+        elder = elder,
+        modifier = Modifier
+          .fillMaxWidth()
+          .weight(1f),
+      )
+    }
+  }
+}
+
+/** Landscape: 2×2 grid, all cards equal-sized. */
+@Composable
+private fun BulletinGrid() {
+  Column(
+    modifier = Modifier.fillMaxSize(),
+    verticalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+  ) {
+    Row(
+      modifier = Modifier.fillMaxWidth().weight(1f),
+      horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+    ) {
+      ClanBulletinCard(elder = ELDERS[0], modifier = Modifier.weight(1f).fillMaxHeight())
+      ClanBulletinCard(elder = ELDERS[1], modifier = Modifier.weight(1f).fillMaxHeight())
+    }
+    Row(
+      modifier = Modifier.fillMaxWidth().weight(1f),
+      horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+    ) {
+      ClanBulletinCard(elder = ELDERS[2], modifier = Modifier.weight(1f).fillMaxHeight())
+      ClanBulletinCard(elder = ELDERS[3], modifier = Modifier.weight(1f).fillMaxHeight())
     }
   }
 }
@@ -115,36 +211,25 @@ private fun PanelHeader(onClose: () -> Unit) {
       .fillMaxWidth()
       .background(CockpitTokens.Bg.ParchmentDim)
       .padding(horizontal = CockpitTokens.Space.lg, vertical = CockpitTokens.Space.md),
-    verticalAlignment = Alignment.Top,
+    verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.SpaceBetween,
   ) {
-    Column(modifier = Modifier.weight(1f)) {
-      Text(
-        text = "PUBLIC BULLETIN BOARD",
-        style = TextStyle(
-          fontFamily = CockpitFonts.Cinzel,
-          fontSize = 15.sp,
-          fontWeight = FontWeight.SemiBold,
-          color = CockpitTokens.TextC.OnParchment,
-          letterSpacing = 2.7.sp, // 0.18em
-        ),
-      )
-      Text(
-        text = "POWERED BY 0G KV STORAGE",
-        modifier = Modifier.padding(top = 3.dp),
-        style = TextStyle(
-          fontFamily = CockpitFonts.JetBrainsMono,
-          fontSize = 9.sp,
-          color = CockpitTokens.TextC.OnParchmentDim,
-          letterSpacing = 1.62.sp, // 0.18em
-        ),
-      )
-    }
+    Text(
+      modifier = Modifier.weight(1f),
+      text = "PUBLIC BULLETIN BOARD",
+      // Uses the same Cinzel typography as the cockpit's CLAN/WORLD title.
+      style = TextStyle(
+        fontFamily = CockpitFonts.Cinzel,
+        fontSize = 14.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 3.36.sp, // 0.24em
+        color = CockpitTokens.TextC.OnParchment,
+      ),
+    )
     Box(
       modifier = Modifier
-        .padding(start = 6.dp)
         .clickable(onClick = onClose)
-        .padding(horizontal = 6.dp, vertical = 2.dp),
+        .padding(horizontal = 8.dp, vertical = 2.dp),
     ) {
       Text(
         text = "✕",
@@ -159,65 +244,72 @@ private fun PanelHeader(onClose: () -> Unit) {
 }
 
 @Composable
-private fun ClanBulletinCard(elder: Elder) {
+private fun ClanBulletinCard(elder: Elder, modifier: Modifier = Modifier) {
   val accent = elder.accent
   val posts = StubData.publicBulletins(elder.clanId)
   val visible = posts.filter { (StubData.CURRENT_TICK - it.tick) <= StubData.VISIBLE_TICKS }
   val old     = posts.filter { (StubData.CURRENT_TICK - it.tick)  > StubData.VISIBLE_TICKS }
 
-  Box(modifier = Modifier.fillMaxWidth()) {
+  Column(
+    modifier = modifier
+      .clip(RoundedCornerShape(CardCorner))
+      .background(CardBg)
+      .border(1.dp, CockpitTokens.Border.ParchmentEdge, RoundedCornerShape(CardCorner))
+      .padding(horizontal = CockpitTokens.Space.md, vertical = CockpitTokens.Space.sm),
+    verticalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+  ) {
+    // Card header: clan glyph + name, accent underline (fixed at top)
+    Column(modifier = Modifier.fillMaxWidth()) {
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(bottom = 4.dp),
+      ) {
+        Text(
+          text = elder.glyph,
+          style = TextStyle(
+            fontFamily = CockpitFonts.Cinzel,
+            fontSize = 14.sp,
+            color = accent,
+          ),
+        )
+        Text(
+          text = elder.name.uppercase(),
+          style = TextStyle(
+            fontFamily = CockpitFonts.Cinzel,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = accent,
+            letterSpacing = 1.98.sp, // 0.18em
+          ),
+        )
+      }
+      Box(
+        modifier = Modifier
+          .fillMaxWidth()
+          .height(1.dp)
+          .background(accent),
+      )
+    }
+
+    // Scrollable post list — fills remaining card height
     Column(
       modifier = Modifier
         .fillMaxWidth()
-        .background(CockpitTokens.Bg.Parchment)
-        .border(1.5.dp, CockpitTokens.Bg.Ink)
-        .padding(horizontal = CockpitTokens.Space.md, vertical = CockpitTokens.Space.md),
-      verticalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+        .weight(1f)
+        .verticalScroll(rememberScrollState()),
+      verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-      // Card header: clan glyph + name, accent underline
-      Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-          verticalAlignment = Alignment.CenterVertically,
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          modifier = Modifier.padding(bottom = 4.dp),
-        ) {
-          Text(
-            text = elder.glyph,
-            style = TextStyle(
-              fontFamily = CockpitFonts.Cinzel,
-              fontSize = 14.sp,
-              color = accent,
-            ),
-          )
-          Text(
-            text = elder.name.uppercase(),
-            style = TextStyle(
-              fontFamily = CockpitFonts.Cinzel,
-              fontSize = 11.sp,
-              fontWeight = FontWeight.Bold,
-              color = accent,
-              letterSpacing = 1.98.sp, // 0.18em
-            ),
-          )
-        }
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(accent),
-        )
+      visible.forEach { post ->
+        BulletinCardRow(post = post, accent = accent, hidden = false)
       }
-
-      visible.forEach { post -> BulletinCardRow(post = post, accent = accent, hidden = false) }
-
       if (old.isNotEmpty()) {
         OldSeparator()
-        old.forEach { post -> BulletinCardRow(post = post, accent = accent, hidden = true) }
+        old.forEach { post ->
+          BulletinCardRow(post = post, accent = accent, hidden = true)
+        }
       }
     }
-    // Corner brackets — top-left and bottom-right
-    CornerBracket(modifier = Modifier.align(Alignment.TopStart), corner = Corner.TL)
-    CornerBracket(modifier = Modifier.align(Alignment.BottomEnd), corner = Corner.BR)
   }
 }
 
@@ -331,7 +423,7 @@ private fun OldSeparator() {
         fontFamily = CockpitFonts.JetBrainsMono,
         fontSize = 8.sp,
         color = CockpitTokens.TextC.Muted,
-        letterSpacing = 1.44.sp, // 0.18em
+        letterSpacing = 1.44.sp,
       ),
     )
     Box(
@@ -340,45 +432,5 @@ private fun OldSeparator() {
         .height(1.dp)
         .background(CockpitTokens.Border.ParchmentEdge),
     )
-  }
-}
-
-private enum class Corner { TL, BR }
-
-@Composable
-private fun CornerBracket(modifier: Modifier = Modifier, corner: Corner) {
-  val accent = CockpitTokens.TextC.Accent
-  val side = 14.dp
-  Box(modifier = modifier) {
-    when (corner) {
-      Corner.TL -> Box(
-        modifier = Modifier
-          .width(side)
-          .height(1.5.dp)
-          .background(accent),
-      )
-      Corner.BR -> Box(
-        modifier = Modifier
-          .width(side)
-          .height(1.5.dp)
-          .background(accent)
-          .align(Alignment.BottomEnd),
-      )
-    }
-    when (corner) {
-      Corner.TL -> Box(
-        modifier = Modifier
-          .width(1.5.dp)
-          .height(side)
-          .background(accent),
-      )
-      Corner.BR -> Box(
-        modifier = Modifier
-          .width(1.5.dp)
-          .height(side)
-          .background(accent)
-          .align(Alignment.BottomEnd),
-      )
-    }
   }
 }

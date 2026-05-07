@@ -46,13 +46,13 @@ fun CollapseToggle(
 
   Row(
     modifier = modifier
-      .height(28.dp)
-      .widthIn(min = 96.dp)
-      .clip(RoundedCornerShape(14.dp))
+      .height(36.dp)
+      .widthIn(min = 112.dp)
+      .clip(RoundedCornerShape(18.dp))
       .background(pillBg)
-      .border(1.dp, pillBorder, RoundedCornerShape(14.dp))
+      .border(1.dp, pillBorder, RoundedCornerShape(18.dp))
       .clickable(onClick = onToggle)
-      .padding(horizontal = 14.dp),
+      .padding(horizontal = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
   ) {

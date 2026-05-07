@@ -40,11 +40,11 @@ fun PageIndicatorOverlay(
   ) {
     repeat(pageCount) { idx ->
       val isActive = idx == currentPage
-      val color = if (isActive) elderById(idx + 1).accent else CockpitTokens.TextC.OnIronDim
-      val alpha = if (isActive) 1f else 0.4f
+      val color = if (isActive) elderById(idx + 1).accent else CockpitTokens.TextC.OnIron
+      val alpha = if (isActive) 1f else 0.65f
       Box(
         modifier = Modifier
-          .size(8.dp)
+          .size(10.dp)
           .clip(CircleShape)
           .background(color.copy(alpha = alpha))
           .clickableNoIndication { onDotClick(idx) },
