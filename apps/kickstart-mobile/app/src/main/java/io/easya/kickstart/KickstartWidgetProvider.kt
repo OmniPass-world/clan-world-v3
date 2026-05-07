@@ -47,7 +47,7 @@ open class KickstartWidgetProvider : AppWidgetProvider() {
       )
       views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
       manager.updateAppWidget(appWidgetId, views)
-      if (TokenImageLoader.shouldFetchWidgetImage(token)) {
+      if (TokenImageLoader.shouldFetchWidgetImage(context, token)) {
         Thread {
           val refreshedViews = KickstartWidgetRenderer.render(
             context,

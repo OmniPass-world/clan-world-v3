@@ -36,8 +36,8 @@ android {
     applicationId = "io.easya.kickstart"
     minSdk = 26
     targetSdk = 35
-    versionCode = 8
-    versionName = "0.1.8"
+    versionCode = 9
+    versionName = "0.1.9"
     buildConfigField("String", "CONVEX_URL", "\"$convexUrl\"")
     buildConfigField("String", "HOME_URL", "\"$homeUrl\"")
   }

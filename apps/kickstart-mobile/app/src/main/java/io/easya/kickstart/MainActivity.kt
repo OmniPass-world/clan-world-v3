@@ -28,18 +28,19 @@ class MainActivity : Activity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    selectedUrl = sanitizeIncomingUrl(intent.getStringExtra(EXTRA_URL))
-    window.statusBarColor = getColor(R.color.widget_bg)
-    window.navigationBarColor = getColor(R.color.widget_bg)
+    val rawIncomingUrl = intent.getStringExtra(EXTRA_URL)
+    selectedUrl = sanitizeIncomingUrl(rawIncomingUrl)
+    window.statusBarColor = getColor(R.color.kickstart_bg)
+    window.navigationBarColor = getColor(R.color.kickstart_bg)
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
-      setBackgroundColor(getColor(R.color.widget_bg))
+      setBackgroundColor(getColor(R.color.kickstart_bg))
     }
     val tabs = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       setPadding(dp(10), dp(8), dp(10), dp(8))
-      setBackgroundColor(getColor(R.color.widget_bg))
+      setBackgroundColor(getColor(R.color.kickstart_bg))
     }
     homeTab = tab("Home")
     listTab = tab("Top 100")
@@ -58,7 +59,11 @@ class MainActivity : Activity() {
 
     homeTab.setOnClickListener { showHome(selectedUrl) }
     listTab.setOnClickListener { showLeaderboard() }
-    showHome(selectedUrl)
+    if (rawIncomingUrl != null) {
+      showHome(selectedUrl)
+    } else {
+      showLeaderboard()
+    }
   }
 
   override fun onNewIntent(intent: Intent) {
@@ -88,7 +93,7 @@ class MainActivity : Activity() {
       }
       settings.javaScriptEnabled = true
       settings.domStorageEnabled = true
-      setBackgroundColor(getColor(R.color.widget_bg))
+      setBackgroundColor(getColor(R.color.kickstart_bg))
     }
     content.addView(webView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     webView.loadUrl(url)
@@ -97,7 +102,7 @@ class MainActivity : Activity() {
   private fun showLeaderboard() {
     selectTab(listTab)
     content.removeAllViews()
-    val scroll = ScrollView(this).apply { setBackgroundColor(getColor(R.color.widget_bg)) }
+    val scroll = ScrollView(this).apply { setBackgroundColor(getColor(R.color.kickstart_bg)) }
     val list = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(12), dp(8), dp(12), dp(24))
@@ -160,12 +165,14 @@ class MainActivity : Activity() {
     text = label
     gravity = Gravity.CENTER
     textSize = 15f
-    setTextColor(getColor(R.color.widget_text))
+    setTextColor(getColor(R.color.kickstart_text))
   }
 
   private fun selectTab(selected: TextView) {
-    homeTab.setBackgroundColor(if (selected === homeTab) Colorish.card else getColor(R.color.widget_bg))
-    listTab.setBackgroundColor(if (selected === listTab) Colorish.card else getColor(R.color.widget_bg))
+    val bg = getColor(R.color.kickstart_bg)
+    val bgSelected = getColor(R.color.kickstart_bg_selected)
+    homeTab.setBackgroundColor(if (selected === homeTab) bgSelected else bg)
+    listTab.setBackgroundColor(if (selected === listTab) bgSelected else bg)
   }
 
   private fun rowText(text: String, size: Int, color: Int) = TextView(this).apply {

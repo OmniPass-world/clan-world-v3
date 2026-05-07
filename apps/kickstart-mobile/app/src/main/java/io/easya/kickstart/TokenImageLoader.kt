@@ -10,13 +10,17 @@ import android.graphics.Shader
 import android.graphics.BitmapShader
 import android.util.LruCache
 import android.widget.ImageView
+import java.io.File
+import java.io.FileOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.concurrent.Executors
 import kotlin.math.min
 
 object TokenImageLoader {
   private const val GOLD_MINT = "4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL"
+  private const val DISK_CACHE_DIR = "token-icons"
 
   // Cap total bitmap memory at ~6MB. Each cached icon is small (~16-64KB after
   // BitmapFactory decode, larger if the source is uncompressed PNG), so this
@@ -42,9 +46,15 @@ object TokenImageLoader {
       imageView.setImageBitmap(it)
       return
     }
+    val context = imageView.context.applicationContext
+    decodeFromDisk(context, url)?.let { bitmap ->
+      cache.put(url, bitmap)
+      imageView.setImageBitmap(bitmap)
+      return
+    }
     imageView.setImageResource(fallbackRes)
     executor.execute {
-      val bitmap = loadBitmap(url) ?: return@execute
+      val bitmap = loadBitmap(context, url) ?: return@execute
       cache.put(url, bitmap)
       imageView.post {
         imageView.setImageBitmap(bitmap)
@@ -61,28 +71,60 @@ object TokenImageLoader {
     val source = when {
       url == null -> BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
       cache.get(url) != null -> cache.get(url)
-      allowNetwork -> loadBitmap(url)?.also { cache.put(url, it) }
-        ?: BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
-      else -> BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
+      else -> {
+        val disk = decodeFromDisk(context, url)
+        if (disk != null) {
+          cache.put(url, disk)
+          disk
+        } else if (allowNetwork) {
+          loadBitmap(context, url)?.also { cache.put(url, it) }
+            ?: BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
+        } else {
+          BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
+        }
+      }
     }
     return source?.let { circleCrop(it) }
   }
 
-  fun shouldFetchWidgetImage(token: KickstartToken?): Boolean {
+  fun shouldFetchWidgetImage(context: Context, token: KickstartToken?): Boolean {
     val selected = token ?: return false
     val url = normalizeUrl(selected.iconUrl) ?: return false
-    return selected.tokenMint != GOLD_MINT && cache.get(url) == null
+    if (selected.tokenMint == GOLD_MINT) return false
+    if (cache.get(url) != null) return false
+    return !cacheFile(context, url).exists()
   }
 
-  private fun loadBitmap(url: String): Bitmap? {
-    return runCatching {
+  private fun loadBitmap(context: Context, url: String): Bitmap? {
+    val bitmap = runCatching {
       val connection = (URL(url).openConnection() as HttpURLConnection).apply {
         connectTimeout = 7_000
         readTimeout = 7_000
         instanceFollowRedirects = true
       }
       connection.inputStream.use { BitmapFactory.decodeStream(it) }
-    }.getOrNull()
+    }.getOrNull() ?: return null
+    runCatching {
+      val target = cacheFile(context, url)
+      target.parentFile?.mkdirs()
+      FileOutputStream(target).use { out ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+      }
+    }
+    return bitmap
+  }
+
+  private fun decodeFromDisk(context: Context, url: String): Bitmap? {
+    val file = cacheFile(context, url)
+    if (!file.exists() || file.length() == 0L) return null
+    return runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+  }
+
+  private fun cacheFile(context: Context, url: String): File {
+    val digest = MessageDigest.getInstance("SHA-256")
+      .digest(url.toByteArray(Charsets.UTF_8))
+    val name = digest.joinToString("") { "%02x".format(it) }
+    return File(File(context.applicationContext.cacheDir, DISK_CACHE_DIR), "$name.png")
   }
 
   private fun normalizeUrl(iconUrl: String?): String? {
