@@ -9,6 +9,7 @@
     "ios": "expo run:ios",
     "build:dev": "eas build --profile development --platform android",
     "build:dev:local": "eas build --profile development --platform android --local",
+    "build:preview": "eas build --profile preview --platform android",
     "prebuild": "expo prebuild --platform android --clean",
     "typecheck": "tsc --noEmit"
   },
