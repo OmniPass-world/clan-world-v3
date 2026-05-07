@@ -1,12 +1,18 @@
 import { action, internalAction, internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 const KICKSTART_HOME_URL = "https://kickstart.easya.io/api/home-launches";
 const PAGE_SIZE = 48;
 const PAGE_COUNT = 3;
 const TOP_LIMIT = 100;
 const WATCHED_TOKEN_LIMIT = 20;
+
+// Solana token mint = base58 (Bitcoin alphabet, no 0/O/I/l), 32-44 chars.
+// ed25519-derived addresses are typically 43-44 chars. This regex gates the
+// public watchAndRefreshToken action against unauthenticated cheap-write
+// amplification spam (M-3, codex 5.5 pre-demo audit).
+const SOLANA_MINT_REGEX = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 type KickstartPool = {
   id?: string;
@@ -193,15 +199,24 @@ export const getKickstartTokenQuote = query({
 export const watchAndRefreshToken = action({
   args: { tokenMint: v.string() },
   handler: async (ctx, { tokenMint }) => {
-    await ctx.runMutation(internal.kickstart.markWatchedToken, { tokenMint });
+    // M-3: Validate base58 / length BEFORE any DB write. The watchedTokens
+    // table is otherwise an unauthenticated public spam vector — anyone could
+    // seed it with garbage strings to amplify cheap writes.
+    if (!SOLANA_MINT_REGEX.test(tokenMint)) {
+      throw new ConvexError("Invalid tokenMint format");
+    }
+    // Existence check: query the indexed kickstartTokens table first; if the
+    // mint isn't present, refresh leaderboard from upstream. Only AFTER we
+    // confirm the token is real do we record it as watched.
     const token = await ctx.runQuery(internal.kickstart.getTokenByMint, { tokenMint });
     let hasToken = token !== null;
-    if (!token) {
+    if (!hasToken) {
       const tokens = await fetchKickstartTopTokens();
       await ctx.runMutation(internal.kickstart.replaceKickstartTokens, { tokens });
       hasToken = tokens.some((entry) => entry.tokenMint === tokenMint);
     }
     if (!hasToken) return { ok: false, reason: "token-not-found" };
+    await ctx.runMutation(internal.kickstart.markWatchedToken, { tokenMint });
     const samples = await fetchJupiterChartSamples(tokenMint);
     await ctx.runMutation(internal.kickstart.updateTokenSparkline, { tokenMint, samples });
     return { ok: true, samples: samples.length };
