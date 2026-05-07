@@ -3,6 +3,8 @@ package world.clan.app.ui.screens
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -409,40 +411,61 @@ private fun DetailTabs(active: DetailTab, onSelect: (DetailTab) -> Unit) {
   val ember = ClanWorldTheme.colors.ember
   val warmFaint = ClanWorldTheme.colors.warmFaint
   val hairline = ClanWorldTheme.colors.hairline
-  Row(
+  val activeIdx = DetailTab.values().indexOf(active)
+  val tabCount = DetailTab.values().size
+
+  androidx.compose.foundation.layout.BoxWithConstraints(
     modifier = Modifier
       .fillMaxWidth()
       .padding(horizontal = 22.dp)
       .drawBehind {
-        // Bottom hairline (inactive tabs underline)
+        // Bottom hairline that the inactive tabs share
         drawLine(hairline, Offset(0f, size.height), Offset(size.width, size.height), 1f)
       },
   ) {
-    DetailTab.values().forEach { tab ->
-      Box(
-        modifier = Modifier
-          .weight(1f)
-          .clickable { onSelect(tab) }
-          .padding(vertical = 10.dp)
-          .drawBehind {
-            if (tab == active) {
-              drawLine(
-                color = ember,
-                start = Offset(0f, size.height),
-                end = Offset(size.width, size.height),
-                strokeWidth = 1.5.dp.toPx(),
-              )
-            }
-          },
-        contentAlignment = Alignment.Center,
-      ) {
-        Text(
-          text = tab.label.uppercase(),
-          style = ClanWorldTheme.type.ctaLabel.copy(fontSize = 10.sp),
-          color = if (tab == active) ember else warmFaint,
-        )
+    val tabWidth = maxWidth / tabCount
+    val targetX = tabWidth * activeIdx
+    val sliderX by androidx.compose.animation.core.animateDpAsState(
+      targetValue = targetX,
+      animationSpec = androidx.compose.animation.core.tween(
+        320,
+        easing = androidx.compose.animation.core.FastOutSlowInEasing,
+      ),
+      label = "detail-tab-x",
+    )
+
+    Row(modifier = Modifier.fillMaxWidth()) {
+      DetailTab.values().forEach { tab ->
+        Box(
+          modifier = Modifier
+            .weight(1f)
+            .clickable { onSelect(tab) }
+            .padding(vertical = 10.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          val tint by androidx.compose.animation.animateColorAsState(
+            targetValue = if (tab == active) ember else warmFaint,
+            animationSpec = androidx.compose.animation.core.tween(220),
+            label = "detail-tab-tint",
+          )
+          Text(
+            text = tab.label.uppercase(),
+            style = ClanWorldTheme.type.ctaLabel.copy(fontSize = 10.sp),
+            color = tint,
+          )
+        }
       }
     }
+
+    // Single sliding underline at the bottom of the strip.
+    Box(
+      modifier = Modifier
+        .align(Alignment.BottomStart)
+        .offset(x = sliderX)
+        .width(tabWidth)
+        .height(1.5.dp)
+        .background(ember),
+    )
   }
 }
 
