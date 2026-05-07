@@ -14,8 +14,11 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -23,6 +26,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import world.clan.app.data.ELDERS
+import world.clan.app.data.convex.CockpitDataSource
+import world.clan.app.data.convex.LocalCockpitData
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
@@ -47,6 +52,12 @@ fun CockpitScreen(
   var activeClanId by rememberSaveable { mutableStateOf(1) }
   var bulletinOpen by rememberSaveable { mutableStateOf(false) }
 
+  // Singleton-per-screen data source. Survives recompositions, dies with
+  // the screen — its scope is tied to composition lifecycle so all polling
+  // flows stop when CockpitScreen leaves the tree.
+  val coroutineScope = rememberCoroutineScope()
+  val dataSource = remember(coroutineScope) { CockpitDataSource(scope = coroutineScope) }
+
   val mapWeight by animateFloatAsState(
     targetValue = if (collapsed) 1f else 0.5f,
     animationSpec = tween(durationMillis = 250),
@@ -63,6 +74,7 @@ fun CockpitScreen(
     label = "pagerAlpha",
   )
 
+  CompositionLocalProvider(LocalCockpitData provides dataSource) {
   Box(
     modifier = Modifier
       .fillMaxSize()
@@ -136,5 +148,6 @@ fun CockpitScreen(
       bulletinOpen = bulletinOpen,
       onBulletinToggle = { bulletinOpen = !bulletinOpen },
     )
+  }
   }
 }

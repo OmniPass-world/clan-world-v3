@@ -30,6 +30,9 @@ import androidx.compose.ui.unit.sp
 import world.clan.app.cockpit.tabs.shared.SectionHeader
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
+import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.toDomain
+import world.clan.app.data.convex.useClansmen
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
@@ -43,7 +46,11 @@ private val READY_GREEN = Color(0xFF3A7A3A)
  */
 @Composable
 fun ClansmanTab(elder: Elder, modifier: Modifier = Modifier) {
-  val rows = StubData.clansmen(elder.clanId)
+  val live = useClansmen(elder.clanId)
+  val rows = when (live) {
+    is QueryState.Live -> live.data.map { it.toDomain() }
+    else -> StubData.clansmen(elder.clanId)
+  }
 
   Column(
     modifier = modifier
