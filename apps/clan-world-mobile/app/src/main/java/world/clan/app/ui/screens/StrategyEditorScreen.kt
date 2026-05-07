@@ -1,6 +1,6 @@
 package world.clan.app.ui.screens
 
-import androidx.activity.ComponentActivity
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -59,7 +59,7 @@ import world.clan.app.wallet.MwaResult
 @Composable
 fun StrategyEditorScreenRoute(
   app: App,
-  hostActivity: ComponentActivity,
+  mwaSender: ActivityResultSender,
   clanId: Int,
   onBack: () -> Unit,
   onSaved: () -> Unit,
@@ -85,7 +85,7 @@ fun StrategyEditorScreenRoute(
         }
         val msg = ("ClanWorld Strategy — clan ${state.clanId} | ${state.posture.name} | " +
           "${state.pinnedKey} = ${state.doctrine}").toByteArray()
-        when (val r = app.mwaClient.signMessage(hostActivity, token, msg)) {
+        when (val r = app.mwaClient.signMessage(mwaSender, token, msg)) {
           is MwaResult.Ok -> vm.setSavePhase(SendPhase.Queued)
           is MwaResult.UserDeclined -> vm.setSavePhase(SendPhase.Idle)
           is MwaResult.WalletNotFound ->

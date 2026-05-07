@@ -1,6 +1,6 @@
 package world.clan.app.ui.screens
 
-import androidx.activity.ComponentActivity
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,7 +62,7 @@ import world.clan.app.wallet.MwaResult
 @Composable
 fun SteeringConsoleScreenRoute(
   app: App,
-  hostActivity: ComponentActivity,
+  mwaSender: ActivityResultSender,
   initialClanId: Int,
   onBack: () -> Unit,
   onSent: () -> Unit,
@@ -86,7 +86,7 @@ fun SteeringConsoleScreenRoute(
           return@launch
         }
         val msg = "ClanWorld Steer — clan ${state.targetClanId}: ${state.draft}".toByteArray()
-        val result = app.mwaClient.signMessage(hostActivity, token, msg)
+        val result = app.mwaClient.signMessage(mwaSender, token, msg)
         when (result) {
           is MwaResult.Ok -> vm.setPhase(SendPhase.Queued)
           is MwaResult.UserDeclined -> vm.setPhase(SendPhase.Idle)
