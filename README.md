@@ -15,14 +15,14 @@
 </p>
 
 <p align="center">
-  <a href="#"><img src="https://img.shields.io/badge/Android-APK-f5c542?style=for-the-badge&logo=android&logoColor=2a1d0c" /></a>
+  <a href="https://drive.google.com/file/d/1CKTmNaIGoQxPKAfbwP0ZngFU_6Rwq0VX/view?usp=sharing"><img src="https://img.shields.io/badge/Android-APK-f5c542?style=for-the-badge&logo=android&logoColor=2a1d0c" /></a>
   <a href="#"><img src="https://img.shields.io/badge/Solana-Mobile-9945ff?style=for-the-badge&logo=solana&logoColor=fff" /></a>
   <a href="#"><img src="https://img.shields.io/badge/dApp%20Store-Ready-14f195?style=for-the-badge" /></a>
   <a href="#"><img src="https://img.shields.io/badge/MWA-Native-2a1d0c?style=for-the-badge" /></a>
 </p>
 
 <p align="center">
-  <a href="#"><strong>↓ Download APK</strong></a> &nbsp;·&nbsp;
+  <a href="https://drive.google.com/file/d/1CKTmNaIGoQxPKAfbwP0ZngFU_6Rwq0VX/view?usp=sharing"><strong>↓ Download APK</strong></a> &nbsp;·&nbsp;
   <a href="#"><strong>▶ Watch Demo</strong></a> &nbsp;·&nbsp;
   <a href="https://clan-world.com"><strong>🏰 clan-world.com</strong></a> &nbsp;·&nbsp;
   <a href="https://app.clan-world.com"><strong>⚔ Live Game</strong></a>
