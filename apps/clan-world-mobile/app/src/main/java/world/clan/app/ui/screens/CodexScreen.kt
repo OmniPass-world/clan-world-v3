@@ -264,15 +264,27 @@ private fun DemoResetRow(onConfirm: () -> Unit) {
   val armed = armedState.value
   val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
-  // Auto-disarm after 4s of inactivity. If the user taps once by accident
-  // and walks away, the row should not stay armed indefinitely — a stray
-  // second tap on return would wipe their hired/forged state without
-  // confirmation. Resetting `armedState.value` to false also undoes the
-  // danger-color border so they can see at a glance that they're safe.
+  // Drives both the auto-disarm and the visible countdown bar. Animates
+  // 1f → 0f over 4s while armed; snaps back to 1f on disarm. Disarm
+  // fires either by user-confirm-tap (sets armed=false) or when the
+  // animation lands (we observe progress hitting 0f below).
+  val progress = androidx.compose.runtime.remember {
+    androidx.compose.animation.core.Animatable(1f)
+  }
   androidx.compose.runtime.LaunchedEffect(armed) {
     if (armed) {
-      kotlinx.coroutines.delay(4000L)
+      progress.snapTo(1f)
+      progress.animateTo(
+        targetValue = 0f,
+        animationSpec = androidx.compose.animation.core.tween(
+          durationMillis = 4000,
+          easing = androidx.compose.animation.core.LinearEasing,
+        ),
+      )
+      // animateTo finished → 4s elapsed without confirm → disarm.
       armedState.value = false
+    } else {
+      progress.snapTo(1f)
     }
   }
   Column(
@@ -318,6 +330,17 @@ private fun DemoResetRow(onConfirm: () -> Unit) {
           text = "wipes hired + forged clans, drafts, and lineage. wallet stays connected.",
           style = ClanWorldTheme.type.scriptItalicSmall,
           color = ClanWorldTheme.colors.warmFaint,
+        )
+      }
+      // Draining progress bar at the bottom — visible countdown so the
+      // user can see how much of the 4s arming window remains.
+      if (armed) {
+        Box(
+          modifier = Modifier
+            .align(Alignment.BottomStart)
+            .fillMaxWidth(fraction = progress.value)
+            .height(1.5.dp)
+            .background(ClanWorldTheme.colors.danger),
         )
       }
     }
