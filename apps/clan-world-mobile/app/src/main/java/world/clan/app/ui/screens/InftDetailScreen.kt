@@ -514,7 +514,14 @@ private fun MemoryPanel(
     PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
       memory.take(10).forEach { entry ->
         val stamp = buildString {
-          append("written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}")
+          append("written tick ${entry.updatedAt ?: 0L} · ")
+          // source · dataHash hint when present, plain source otherwise
+          val source = entry.source ?: "local"
+          val dataHashHint = entry.dataHash
+            ?.takeIf { it.length > 6 }
+            ?.let { "·a${it.takeLast(6)}" }
+            ?: ""
+          append("$source$dataHashHint")
           entry.txHash?.takeIf { it.length > 6 }?.let {
             append(" · tx ${it.takeLast(6)}")
           }
