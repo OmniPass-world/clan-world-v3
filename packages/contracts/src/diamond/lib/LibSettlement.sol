@@ -59,6 +59,12 @@ library LibSettlement {
         uint256 fishDelta,
         uint64 atTick
     );
+    event ClanEliminated(uint32 indexed clanId, uint64 indexed tick);
+    event ClanDied(uint32 indexed clanId, uint64 tick, string reason);
+    event ClanStarvationChanged(uint32 indexed clanId, bool isStarving, uint64 atTick);
+    event ClanColdShortage(uint32 indexed clanId, uint64 tick, uint256 woodShort);
+    event WallDegradedByCold(uint32 indexed clanId, uint8 newWallLevel, uint64 tick);
+    event ClansmanColdDeath(uint32 indexed clanId, uint32 csId, uint64 tick);
     // BanditEscaped + BanditTargetDied moved to LibBanditCombat (canonical
     // emitter post-dedup). Same event signatures; ABI consumers unaffected.
 
@@ -67,6 +73,22 @@ library LibSettlement {
         ResourcesGathered,
         ResourcesDeposited,
         ResourcesWithdrawn
+    }
+
+    enum UpkeepLogKind {
+        None,
+        ClanStarvationChanged,
+        ClanColdShortage,
+        WallDegradedByCold,
+        ClansmanColdDeath,
+        ClanEliminated,
+        ClanDied
+    }
+
+    enum ClanDeathReason {
+        None,
+        Starvation,
+        Cold
     }
 
     struct SettlementLog {
@@ -81,13 +103,25 @@ library LibSettlement {
         uint64 tick;
     }
 
+    struct UpkeepLog {
+        UpkeepLogKind kind;
+        uint32 clansmanId;
+        uint64 tick;
+        uint256 amount;
+        uint8 level;
+        bool flag;
+        ClanDeathReason reason;
+    }
+
     struct SettlementSimulation {
         Clan clan;
         Clansman[] clansmen;
         Mission[] missions;
         WheatPlot[2] wheatPlots;
         SettlementLog[] logs;
+        UpkeepLog[] upkeepLogs;
         uint256 logCount;
+        uint256 upkeepLogCount;
         uint64[11] simMonumentReachedAt;
         bool[] simWallReservationCleared;
         bool[] simBaseReservationCleared;
@@ -147,7 +181,9 @@ library LibSettlement {
         if (toTick > fromTick + LibGameRules.MAX_LAZY_SETTLE_BACKLOG) {
             toTick = fromTick + LibGameRules.MAX_LAZY_SETTLE_BACKLOG;
         }
-        sim.logs = new SettlementLog[](sim.clansmen.length * (toTick - fromTick));
+        uint256 tickCount = toTick - fromTick;
+        sim.logs = new SettlementLog[](sim.clansmen.length * tickCount);
+        sim.upkeepLogs = new UpkeepLog[]((sim.clansmen.length + 6) * tickCount);
 
         for (uint64 tick = fromTick; tick < toTick; tick++) {
             applyUpkeep(s, sim, tick);
@@ -172,6 +208,8 @@ library LibSettlement {
         s.clans[clanId] = sim.clan;
         s.wheatPlots[clanId][0] = sim.wheatPlots[0];
         s.wheatPlots[clanId][1] = sim.wheatPlots[1];
+
+        emitUpkeepLogs(sim);
 
         for (uint256 i = 0; i < sim.clansmen.length; i++) {
             uint32 clansmanId = sim.clansmen[i].clansmanId;
@@ -215,6 +253,25 @@ library LibSettlement {
         for (uint8 level = 1; level < sim.simMonumentReachedAt.length; level++) {
             if (sim.simMonumentReachedAt[level] != 0 && s.monumentLevelReachedAt[clanId][level] == 0) {
                 s.monumentLevelReachedAt[clanId][level] = sim.simMonumentReachedAt[level];
+            }
+        }
+    }
+
+    function emitUpkeepLogs(SettlementSimulation memory sim) internal {
+        for (uint256 i = 0; i < sim.upkeepLogCount; i++) {
+            UpkeepLog memory entry = sim.upkeepLogs[i];
+            if (entry.kind == UpkeepLogKind.ClanStarvationChanged) {
+                emit ClanStarvationChanged(sim.clan.clanId, entry.flag, entry.tick);
+            } else if (entry.kind == UpkeepLogKind.ClanColdShortage) {
+                emit ClanColdShortage(sim.clan.clanId, entry.tick, entry.amount);
+            } else if (entry.kind == UpkeepLogKind.WallDegradedByCold) {
+                emit WallDegradedByCold(sim.clan.clanId, entry.level, entry.tick);
+            } else if (entry.kind == UpkeepLogKind.ClansmanColdDeath) {
+                emit ClansmanColdDeath(sim.clan.clanId, entry.clansmanId, entry.tick);
+            } else if (entry.kind == UpkeepLogKind.ClanEliminated) {
+                emit ClanEliminated(sim.clan.clanId, entry.tick);
+            } else if (entry.kind == UpkeepLogKind.ClanDied) {
+                emit ClanDied(sim.clan.clanId, entry.tick, deathReasonString(entry.reason));
             }
         }
     }
@@ -273,6 +330,34 @@ library LibSettlement {
         });
     }
 
+    function recordUpkeepLog(
+        SettlementSimulation memory sim,
+        UpkeepLogKind kind,
+        uint32 clansmanId,
+        uint64 tick,
+        uint256 amount,
+        uint8 level,
+        bool flag,
+        ClanDeathReason reason
+    ) internal pure {
+        if (sim.upkeepLogCount >= sim.upkeepLogs.length) return;
+        sim.upkeepLogs[sim.upkeepLogCount++] = UpkeepLog({
+            kind: kind,
+            clansmanId: clansmanId,
+            tick: tick,
+            amount: amount,
+            level: level,
+            flag: flag,
+            reason: reason
+        });
+    }
+
+    function deathReasonString(ClanDeathReason reason) internal pure returns (string memory) {
+        if (reason == ClanDeathReason.Starvation) return "starvation";
+        if (reason == ClanDeathReason.Cold) return "cold";
+        return "unknown";
+    }
+
     function applyUpkeep(LibStorage.AppStorage storage s, SettlementSimulation memory sim, uint64 tick) internal view {
         bool winter = LibSeason.isWinterActiveAt(tick);
         if (!winter && tick > 0 && LibSeason.isWinterActiveAt(tick - 1)) {
@@ -302,8 +387,28 @@ library LibSettlement {
         bool starving = !hadEnoughWheat || !hadEnoughFish;
         if (starving && sim.clan.starvationStartsAtTick == 0) {
             sim.clan.starvationStartsAtTick = tick + 1;
+            recordUpkeepLog(
+                sim,
+                UpkeepLogKind.ClanStarvationChanged,
+                0,
+                tick + 1,
+                0,
+                0,
+                true,
+                ClanDeathReason.None
+            );
         } else if (!starving && sim.clan.starvationStartsAtTick != 0) {
             sim.clan.starvationStartsAtTick = 0;
+            recordUpkeepLog(
+                sim,
+                UpkeepLogKind.ClanStarvationChanged,
+                0,
+                tick,
+                0,
+                0,
+                false,
+                ClanDeathReason.None
+            );
         }
 
         uint8 livingBeforeStarvation = sim.clan.livingClansmen;
@@ -313,7 +418,7 @@ library LibSettlement {
                 ? sim.clan.starvationStartsAtTick
                 : winterStartsAtTick;
             if (effectiveStarvationStartsAtTick < tick) {
-                killNextClansmanFromStarvation(s, sim);
+                killNextClansmanFromStarvation(s, sim, tick);
             }
         }
         if (sim.clan.clanState == ClanState.DEAD) return;
@@ -326,11 +431,22 @@ library LibSettlement {
             if (spendableWood >= woodNeeded) {
                 sim.clan.vaultWood -= woodNeeded;
             } else {
+                uint256 woodShort = woodNeeded - spendableWood;
                 sim.clan.vaultWood -= spendableWood;
                 uint16 oldColdDamage = sim.clan.coldDamage;
                 if (sim.clan.coldDamage < type(uint16).max) {
                     sim.clan.coldDamage += 1;
                 }
+                recordUpkeepLog(
+                    sim,
+                    UpkeepLogKind.ClanColdShortage,
+                    0,
+                    tick,
+                    woodShort,
+                    0,
+                    false,
+                    ClanDeathReason.None
+                );
                 applyColdDamageConsequence(s, sim, tick, oldColdDamage);
             }
         }
@@ -352,6 +468,16 @@ library LibSettlement {
             ) return;
 
             sim.clan.wallLevel--;
+            recordUpkeepLog(
+                sim,
+                UpkeepLogKind.WallDegradedByCold,
+                0,
+                tick,
+                0,
+                sim.clan.wallLevel,
+                false,
+                ClanDeathReason.None
+            );
             return;
         }
 
@@ -395,14 +521,24 @@ library LibSettlement {
             }
 
             markClansmanDead(s, sim, i);
+            recordUpkeepLog(
+                sim,
+                UpkeepLogKind.ClansmanColdDeath,
+                sim.clansmen[i].clansmanId,
+                tick,
+                0,
+                0,
+                false,
+                ClanDeathReason.None
+            );
             if (sim.clan.livingClansmen == 0) {
-                markClanDead(s, sim);
+                markClanDead(s, sim, ClanDeathReason.Cold, tick);
             }
             return;
         }
     }
 
-    function killNextClansmanFromStarvation(LibStorage.AppStorage storage s, SettlementSimulation memory sim)
+    function killNextClansmanFromStarvation(LibStorage.AppStorage storage s, SettlementSimulation memory sim, uint64 tick)
         internal
         view
     {
@@ -413,7 +549,7 @@ library LibSettlement {
 
             markClansmanDead(s, sim, i);
             if (sim.clan.livingClansmen == 0) {
-                markClanDead(s, sim);
+                markClanDead(s, sim, ClanDeathReason.Starvation, tick);
             }
             return;
         }
@@ -439,7 +575,12 @@ library LibSettlement {
         }
     }
 
-    function markClanDead(LibStorage.AppStorage storage s, SettlementSimulation memory sim) internal view {
+    function markClanDead(
+        LibStorage.AppStorage storage s,
+        SettlementSimulation memory sim,
+        ClanDeathReason reason,
+        uint64 tick
+    ) internal view {
         if (sim.clan.clanId == ClanWorldConstants.CLAN_ID_NULL || sim.clan.clanState == ClanState.DEAD) return;
 
         sim.clan.clanState = ClanState.DEAD;
@@ -462,6 +603,26 @@ library LibSettlement {
             }
         }
         sim.simClanDied = true;
+        recordUpkeepLog(
+            sim,
+            UpkeepLogKind.ClanEliminated,
+            0,
+            tick,
+            0,
+            0,
+            false,
+            ClanDeathReason.None
+        );
+        recordUpkeepLog(
+            sim,
+            UpkeepLogKind.ClanDied,
+            0,
+            tick,
+            0,
+            0,
+            false,
+            reason
+        );
     }
 
     function regrowWheatPlots(SettlementSimulation memory sim, uint64 tick) internal pure {
@@ -825,12 +986,10 @@ library LibSettlement {
             return true;
         }
         if (held.fromLevel != sim.clan.wallLevel) {
-            if (held.fromLevel < sim.clan.wallLevel) {
-                clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
-                sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
-                sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
-            }
-            return false;
+            clearUpgradeReservation(sim, clansmanId, ActionType.UpgradeWall);
+            sim.reservedWood = LibSettlementMath.subtractHeld(sim.reservedWood, held.woodCost);
+            sim.reservedIron = LibSettlementMath.subtractHeld(sim.reservedIron, held.ironCost);
+            return true;
         }
 
         (uint256 woodCost, uint256 ironCost) = LibGameRules.wallUpgradeCost(sim.clan.wallLevel);
