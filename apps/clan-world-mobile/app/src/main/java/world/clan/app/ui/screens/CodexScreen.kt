@@ -642,6 +642,15 @@ private fun DeviceChip(state: CodexUiState) {
         style = ClanWorldTheme.type.scriptItalicSmall,
         color = warmDim,
       )
+      val buildLine = state.deviceClass.buildLine
+      if (buildLine.isNotEmpty()) {
+        Text(
+          text = buildLine,
+          style = ClanWorldTheme.type.monoNano,
+          color = ClanWorldTheme.colors.warmFaint,
+          modifier = Modifier.padding(top = 2.dp),
+        )
+      }
     }
   }
 }
