@@ -1,5 +1,6 @@
 package world.clan.app.ui.screens
 
+import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -46,6 +47,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -88,10 +90,15 @@ fun StrategyEditorScreenRoute(
   )
   val state by vm.state.collectAsState()
   val scope = rememberCoroutineScope()
+  val view = LocalView.current
 
-  // Auto-pop ~1.3s after Queued.
+  // Auto-pop ~1.3s after Queued — fire a confirm haptic on the transition.
   LaunchedEffect(state.savePhase) {
     if (state.savePhase == SendPhase.Queued) {
+      view.performHapticFeedback(
+        if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
+        else HapticFeedbackConstants.VIRTUAL_KEY,
+      )
       delay(1_300L)
       onSaved()
     }

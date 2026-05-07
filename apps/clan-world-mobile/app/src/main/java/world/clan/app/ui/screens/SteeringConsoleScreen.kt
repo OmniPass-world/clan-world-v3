@@ -1,5 +1,6 @@
 package world.clan.app.ui.screens
 
+import android.view.HapticFeedbackConstants
 import androidx.activity.ComponentActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -37,8 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -48,10 +51,10 @@ import world.clan.app.ui.components.BalanceRow
 import world.clan.app.ui.components.BurnFlash
 import world.clan.app.ui.components.ChatInput
 import world.clan.app.ui.theme.ClanWorldTheme
+import world.clan.app.viewmodel.FeedItem
 import world.clan.app.viewmodel.SteeringConsoleUiState
 import world.clan.app.viewmodel.SteeringConsoleViewModel
 import world.clan.app.viewmodel.SteeringConsoleViewModelFactory
-import world.clan.app.viewmodel.Whisper
 import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.wallet.MwaResult
 
@@ -86,6 +89,7 @@ fun SteeringConsoleScreenRoute(
   )
   val state by vm.state.collectAsState()
   val scope = rememberCoroutineScope()
+  val view = LocalView.current
 
   SteeringConsole(
     state = state,
@@ -113,11 +117,18 @@ fun SteeringConsoleScreenRoute(
           msg,
         )
         when (result) {
-          is MwaResult.Ok -> vm.confirmSend(
-            burnAmount = WHISPER_BURN,
-            skipTax = skipTax,
-            sentAt = System.currentTimeMillis(),
-          )
+          is MwaResult.Ok -> {
+            vm.confirmSend(
+              burnAmount = WHISPER_BURN,
+              skipTax = skipTax,
+              sentAt = System.currentTimeMillis(),
+            )
+            // Native polish: confirm haptic on successful seal.
+            view.performHapticFeedback(
+              if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
+              else HapticFeedbackConstants.VIRTUAL_KEY,
+            )
+          }
           is MwaResult.UserDeclined -> vm.setSending(false)
           is MwaResult.WalletNotFound -> vm.setError("no wallet found on device.")
           is MwaResult.Error -> vm.setError(
@@ -284,7 +295,7 @@ private fun androidx.compose.foundation.layout.RowScope.SideRule(
 
 @Composable
 private fun WhisperFeed(
-  feed: List<Whisper>,
+  feed: List<FeedItem>,
   modifier: Modifier = Modifier,
 ) {
   if (feed.isEmpty()) {
@@ -311,15 +322,18 @@ private fun WhisperFeed(
     verticalArrangement = Arrangement.spacedBy(8.dp),
     contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp),
   ) {
-    items(feed) { whisper ->
-      WhisperRow(whisper = whisper)
+    items(items = feed, key = { it.key }) { item ->
+      when (item) {
+        is FeedItem.OwnerSent -> OwnerWhisperRow(item)
+        is FeedItem.FromComms -> CommsRow(item)
+      }
     }
   }
 }
 
+/** Right-aligned, ember-accent — your locally-sent whispers. */
 @Composable
-private fun WhisperRow(whisper: Whisper) {
-  // Right-aligned card so user-sent whispers feel like outgoing chat.
+private fun OwnerWhisperRow(item: FeedItem.OwnerSent) {
   Row(
     modifier = Modifier.fillMaxWidth(),
     horizontalArrangement = Arrangement.End,
@@ -330,7 +344,6 @@ private fun WhisperRow(whisper: Whisper) {
         .clip(RoundedCornerShape(14.dp))
         .background(ClanWorldTheme.colors.iron2)
         .drawBehind {
-          // Ember accent on the right edge — subtly marks "from you".
           drawLine(
             color = androidx.compose.ui.graphics.Color(0xFFFF6B35).copy(alpha = 0.55f),
             start = Offset(size.width - 1f, 8f),
@@ -342,14 +355,62 @@ private fun WhisperRow(whisper: Whisper) {
       verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
       Text(
-        text = whisper.body,
+        text = item.body,
         style = ClanWorldTheme.type.scriptItalic.copy(color = ClanWorldTheme.colors.warm),
       )
       Text(
-        text = "whispered " + relativeTime(whisper.sentAt),
+        text = "whispered " + relativeTime(item.sentAt),
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.warmFaint,
       )
+    }
+  }
+}
+
+/** Left-aligned — past whispers pulled from comms:getCombinedComms. */
+@Composable
+private fun CommsRow(item: FeedItem.FromComms) {
+  val (label, accent) = when (item.kind) {
+    "human"   -> "OWNER"        to ClanWorldTheme.colors.gold
+    "orch"    -> "ORCHESTRATOR" to ClanWorldTheme.colors.goldBright
+    else      -> (item.speaker ?: "WHISPER").uppercase() to ClanWorldTheme.colors.rune
+  }
+  Row(
+    modifier = Modifier.fillMaxWidth(),
+    horizontalArrangement = Arrangement.Start,
+  ) {
+    Column(
+      modifier = Modifier
+        .widthIn(max = 320.dp)
+        .clip(RoundedCornerShape(14.dp))
+        .background(ClanWorldTheme.colors.iron)
+        .drawBehind {
+          drawLine(
+            color = accent.copy(alpha = 0.55f),
+            start = Offset(1f, 8f),
+            end = Offset(1f, size.height - 8f),
+            strokeWidth = 2f,
+          )
+        }
+        .padding(horizontal = 12.dp, vertical = 8.dp),
+      verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+      Text(
+        text = label,
+        style = ClanWorldTheme.type.eyebrow.copy(fontSize = 9.sp),
+        color = accent,
+      )
+      Text(
+        text = item.body,
+        style = ClanWorldTheme.type.scriptItalic.copy(color = ClanWorldTheme.colors.warm),
+      )
+      if (item.tick != null) {
+        Text(
+          text = "tick %04d".format(item.tick),
+          style = ClanWorldTheme.type.monoNano,
+          color = ClanWorldTheme.colors.warmFaint,
+        )
+      }
     }
   }
 }

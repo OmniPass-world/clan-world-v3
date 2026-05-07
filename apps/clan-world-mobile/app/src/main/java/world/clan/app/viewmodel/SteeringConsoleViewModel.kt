@@ -15,12 +15,32 @@ import world.clan.app.data.ClanWorldConvexClient
  */
 enum class SendPhase { Idle, Signing, Queued, Failed }
 
-/** A single whisper in the local feed. Sent through the wallet, not yet to chain. */
-data class Whisper(
-  val id: Long,
-  val body: String,
-  val sentAt: Long,
-)
+/**
+ * A single item in the steering console feed. Two flavours:
+ *  - [OwnerSent]   — a whisper this user just sent (locally, optimistic)
+ *  - [FromComms]   — a row from `comms:getCombinedComms` (past whispers
+ *                    by this owner, orch broadcasts, replies from other
+ *                    clans). Hydrated on screen mount.
+ */
+sealed interface FeedItem {
+  val key: String
+  data class OwnerSent(val id: Long, val body: String, val sentAt: Long) : FeedItem {
+    override val key: String get() = "own-$id"
+  }
+  data class FromComms(
+    val kind: String,
+    val tick: Long?,
+    val speaker: String?,
+    val body: String,
+    val timestamp: Long?,
+    val seq: Int,
+  ) : FeedItem {
+    override val key: String get() = "cm-${tick ?: 0}-${speaker ?: "?"}-$seq"
+  }
+}
+
+/** Back-compat alias — older code may import `Whisper`. */
+typealias Whisper = FeedItem.OwnerSent
 
 data class SteeringConsoleUiState(
   val clanId: Int,
@@ -28,7 +48,7 @@ data class SteeringConsoleUiState(
   val sending: Boolean = false,
   val errorMessage: String? = null,
   val statusBody: String? = null,
-  val feed: List<Whisper> = emptyList(),
+  val feed: List<FeedItem> = emptyList(),
   /** Wall-clock ms when the last whisper was sent. -1 if no sends yet. */
   val lastSentAt: Long = -1L,
   /** User's GOLD balance (mocked for slice 4d — real chain integration later). */
@@ -62,12 +82,36 @@ data class SteeringConsoleUiState(
  * it in just before the local update.
  */
 class SteeringConsoleViewModel(
-  @Suppress("unused") private val convex: ClanWorldConvexClient,
+  private val convex: ClanWorldConvexClient,
   initialClanId: Int,
 ) : ViewModel() {
 
   private val _state = MutableStateFlow(SteeringConsoleUiState(clanId = initialClanId))
   val state: StateFlow<SteeringConsoleUiState> = _state.asStateFlow()
+
+  init { hydrateFeed(initialClanId) }
+
+  /** Pull past comms for this iNFT into the feed. Best-effort. */
+  private fun hydrateFeed(clanId: Int) {
+    viewModelScope.launch {
+      runCatching { convex.getCombinedComms(clanId, limit = 30) }
+        .onSuccess { comms ->
+          val items = comms
+            .sortedBy { it.tick ?: 0L }                  // oldest → newest
+            .mapIndexed { i, c ->
+              FeedItem.FromComms(
+                kind = c.kind,
+                tick = c.tick,
+                speaker = c.speaker,
+                body = c.body,
+                timestamp = c.timestamp,
+                seq = i,
+              )
+            }
+          _state.update { it.copy(feed = items + it.feed) }
+        }
+    }
+  }
 
   fun setDraft(text: String) {
     _state.update { it.copy(draft = text.take(1000), errorMessage = null) }
@@ -86,7 +130,7 @@ class SteeringConsoleViewModel(
     val body = _state.value.draft.trim()
     if (body.isEmpty()) return
     val total = burnAmount + skipTax
-    val whisper = Whisper(id = sentAt, body = body, sentAt = sentAt)
+    val whisper = FeedItem.OwnerSent(id = sentAt, body = body, sentAt = sentAt)
     _state.update {
       it.copy(
         draft = "",
