@@ -261,7 +261,14 @@ private fun HeroLetter(
     ) {
       Column(Modifier.weight(1f)) {
         Text(
-          text = "TKN 0x${"%04x".format(state.state?.token?.tokenId ?: clanId)}  ·  0G",
+          text = run {
+            val tknId = state.state?.token?.tokenId ?: clanId
+            val dataHashHint = state.state?.token?.dataHash
+              ?.takeIf { it.length > 6 }
+              ?.let { "·a${it.takeLast(6)}" }
+              ?: ""
+            "TKN 0x${"%04x".format(tknId)}  ·  0G$dataHashHint"
+          },
           style = ClanWorldTheme.type.monoMicro,
           color = Ink3,
         )
