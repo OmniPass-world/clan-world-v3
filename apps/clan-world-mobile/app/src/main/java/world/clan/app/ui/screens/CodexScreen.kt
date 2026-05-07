@@ -178,8 +178,16 @@ private fun CodexScreen(
 
     Spacer(Modifier.height(28.dp))
 
-    // ── Demo reset (bottom of Codex) ─────────────────────────────────
+    // ── Disconnect (above Demo Reset) ────────────────────────────────
+    val onDisconnect = world.clan.app.ui.components.LocalOnDisconnect.current
     StaggeredEntry(index = 11) {
+      DisconnectRow(onClick = onDisconnect)
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // ── Demo reset (bottom of Codex) ─────────────────────────────────
+    StaggeredEntry(index = 12) {
       DemoResetRow(onConfirm = onResetDemo)
     }
 
@@ -252,6 +260,43 @@ private fun ShareApkRow(url: String) {
           text = "SHARE",
           style = ClanWorldTheme.type.monoNano,
           color = ClanWorldTheme.colors.gold,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun DisconnectRow(onClick: () -> Unit) {
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Text(
+      text = "Wallet".uppercase(),
+      style = ClanWorldTheme.type.crownLabel,
+      color = ClanWorldTheme.colors.warmFaint,
+    )
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(6.dp))
+        .background(ClanWorldTheme.colors.iron)
+        .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+        .clickable {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+          onClick()
+        }
+        .padding(horizontal = 14.dp, vertical = 14.dp),
+    ) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          text = "DISCONNECT WALLET",
+          style = ClanWorldTheme.type.monoMicro,
+          color = ClanWorldTheme.colors.warm,
+        )
+        Text(
+          text = "clears auth + lineage. you'll re-authorize on next launch.",
+          style = ClanWorldTheme.type.scriptItalicSmall,
+          color = ClanWorldTheme.colors.warmFaint,
         )
       }
     }
