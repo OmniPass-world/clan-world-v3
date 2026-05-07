@@ -1,6 +1,7 @@
 package io.easya.kickstart
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
@@ -23,6 +24,7 @@ class MainActivity : Activity() {
   private lateinit var homeTab: TextView
   private lateinit var listTab: TextView
   private var selectedUrl: String = BuildConfig.HOME_URL
+  private var walletDialog: AlertDialog? = null
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -185,21 +187,57 @@ class MainActivity : Activity() {
   private fun handleExternalUrl(uri: Uri): Boolean {
     val scheme = uri.scheme?.lowercase() ?: return false
     if (scheme == "http" || scheme == "https") return false
-    val intent = if (scheme == "intent") {
-      runCatching { Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME) }.getOrNull()
-    } else {
-      Intent(Intent.ACTION_VIEW, uri)
-    } ?: return true
-    runCatching {
-      intent.addCategory(Intent.CATEGORY_BROWSABLE)
-      intent.component = null
-      startActivity(intent)
-    }.recoverCatching { error ->
-      if (error is ActivityNotFoundException && intent.getStringExtra("browser_fallback_url") != null) {
-        webView.loadUrl(intent.getStringExtra("browser_fallback_url")!!)
-      }
-    }
+    if (isWalletUrl(uri)) showOpenInChromeDialog()
     return true
+  }
+
+  private fun isWalletUrl(uri: Uri): Boolean {
+    val value = uri.toString().lowercase()
+    val scheme = uri.scheme?.lowercase()
+    if (scheme == "solana-wallet" || scheme == "phantom" || scheme == "solflare") return true
+    if (scheme != "intent") return value.contains("solana-wallet") || value.contains("phantom") || value.contains("solflare")
+    val intent = runCatching { Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME) }.getOrNull()
+    val parsedScheme = intent?.scheme?.lowercase()
+    val fallback = intent?.getStringExtra("browser_fallback_url")?.lowercase()
+    return parsedScheme == "solana-wallet" ||
+      parsedScheme == "phantom" ||
+      parsedScheme == "solflare" ||
+      fallback?.contains("solana-wallet") == true ||
+      fallback?.contains("phantom") == true ||
+      fallback?.contains("solflare") == true ||
+      value.contains("solana-wallet") ||
+      value.contains("phantom") ||
+      value.contains("solflare")
+  }
+
+  private fun showOpenInChromeDialog() {
+    if (isFinishing || isDestroyed) return
+    if (walletDialog?.isShowing == true) return
+    walletDialog = AlertDialog.Builder(this)
+      .setTitle("Open in Chrome")
+      .setMessage("Wallet connection is not supported inside this app. Open this token page in Chrome to connect a wallet.")
+      .setPositiveButton("Open") { _, _ -> openSelectedPageInBrowser() }
+      .setNegativeButton("Cancel", null)
+      .create()
+      .also { dialog ->
+        dialog.setOnDismissListener { walletDialog = null }
+        dialog.show()
+      }
+  }
+
+  private fun openSelectedPageInBrowser() {
+    val pageUrl = selectedUrl.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: BuildConfig.HOME_URL
+    val uri = Uri.parse(pageUrl)
+    val chromeIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+      addCategory(Intent.CATEGORY_BROWSABLE)
+      setPackage("com.android.chrome")
+    }
+    runCatching { startActivity(chromeIntent) }
+      .recoverCatching { error ->
+        if (error is ActivityNotFoundException) {
+          startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+        }
+      }
   }
 
   override fun onBackPressed() {

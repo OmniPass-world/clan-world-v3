@@ -39,7 +39,6 @@ object KickstartWidgetRenderer {
     val views = RemoteViews(context.packageName, layoutRes)
     val symbol = token?.symbol ?: "PICK"
     val projectName = token?.name ?: "Choose a token"
-    views.setTextViewText(R.id.symbol_glow, symbol)
     views.setTextViewText(R.id.symbol, symbol)
     views.setTextViewText(R.id.price, token?.let { formatPrice(it.usdPrice) } ?: "$--")
     views.setTextViewText(R.id.project_name, projectName)
