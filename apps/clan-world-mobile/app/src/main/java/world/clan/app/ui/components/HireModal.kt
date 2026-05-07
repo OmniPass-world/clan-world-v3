@@ -78,6 +78,17 @@ fun HireModal(
     }
   }
 
+  // System back press dismisses the modal first, before it pops the
+  // BazaarInftDetail route. Disabled while the wallet is mid-sign so the
+  // user can't back out into a half-signed state — Phantom is in front
+  // anyway during Signing, so this only matters for the brief moments
+  // before / after.
+  androidx.activity.compose.BackHandler(
+    enabled = state.value == HireState.Idle || state.value == HireState.Failed,
+  ) {
+    onDismiss()
+  }
+
   Box(
     modifier = Modifier
       .fillMaxSize()
