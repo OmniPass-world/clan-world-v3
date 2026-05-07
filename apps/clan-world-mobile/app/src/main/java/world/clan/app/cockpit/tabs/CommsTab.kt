@@ -182,30 +182,45 @@ private fun CommsBubble(line: StubData.CommsLine, myClanId: Int) {
         .fillMaxWidth(),
       verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-      // Header row: label / centered accent / tick
+      // Header row — three equal columns so the label can sit either on
+      // the left (whisper) or centred (orch/human) without affecting the
+      // tick's right alignment. Mirrors the web's 3-col `1fr auto 1fr`.
+      val labelStyle = TextStyle(
+        fontFamily = CockpitFonts.JetBrainsMono,
+        fontSize = 9.sp,
+        fontWeight = FontWeight.Bold,
+        color = fg,
+        letterSpacing = 1.08.sp, // 0.12em
+      )
+      val tickStyle = TextStyle(
+        fontFamily = CockpitFonts.JetBrainsMono,
+        fontSize = 9.sp,
+        color = CockpitTokens.TextC.Muted,
+      )
+      val tickText = "T${line.tick.toString().padStart(2, '0')}"
+      val isWhisper = line.kind == StubData.CommsKind.Whisper
       Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
       ) {
-        Text(
+        Box(
           modifier = Modifier.weight(1f),
-          text = labelLine(line, label),
-          style = TextStyle(
-            fontFamily = CockpitFonts.JetBrainsMono,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            color = fg,
-            letterSpacing = 1.08.sp, // 0.12em
-          ),
-        )
-        Text(
-          text = "T${line.tick.toString().padStart(2, '0')}",
-          style = TextStyle(
-            fontFamily = CockpitFonts.JetBrainsMono,
-            fontSize = 9.sp,
-            color = CockpitTokens.TextC.Muted,
-          ),
-        )
+          contentAlignment = Alignment.CenterStart,
+        ) {
+          if (isWhisper) Text(text = labelLine(line, label), style = labelStyle)
+        }
+        Box(
+          modifier = Modifier.weight(1f),
+          contentAlignment = Alignment.Center,
+        ) {
+          if (!isWhisper) Text(text = labelLine(line, label), style = labelStyle)
+        }
+        Box(
+          modifier = Modifier.weight(1f),
+          contentAlignment = Alignment.CenterEnd,
+        ) {
+          Text(text = tickText, style = tickStyle)
+        }
       }
 
       // Recipients chips (only for self-whispers w/ recipients)

@@ -5,11 +5,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,33 +16,33 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.dp
+import world.clan.app.data.ELDERS
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
- * Top-level cockpit page. Mirrors the mobile branch of
- * apps/web/src/pages/Cockpit.tsx (specifically MobileCockpitLayout):
+ * Top-level cockpit page. Edge-to-edge — content fills the entire screen
+ * including the unsafe area at the top (where CLAN | WORLD straddles the
+ * camera cutout) and bottom.
  *
- *   ┌──────────────────────────────────┐
- *   │ CockpitHeader  (40dp)            │
- *   ├──────────────────────────────────┤
- *   │ Map WebView  (flex weight)       │
- *   │   ┌────────┐  CollapseToggle ↕   │
- *   ├──┘────────└──────────────────────┤
- *   │ ClanPanelPager  (flex weight)    │
- *   └──────────────────────────────────┘
- *
- * When `collapsed` is true the bottom (pager) area animates to weight 0
- * and the map fills the entire body. The 250ms ease transition matches
- * the web's `flex-basis 250ms ease`.
+ * Layout:
+ *  - Two-row header (CLAN/WORLD up top in unsafe space; tick + connection
+ *    + bulletin button in the second row).
+ *  - Map area (weighted) — WebView fills it; page-indicator dots and the
+ *    collapse toggle overlay the bottom of the map. Map's bottom corners
+ *    are rounded to match the device's natural top-corner curvature so the
+ *    map and panel meet flush.
+ *  - Panel area (weighted) — full-width HorizontalPager, no padding.
+ *  - Bulletin flyout slides down from the header when toggled.
  */
 @Composable
 fun CockpitScreen(
   onOwnerControl: (Int) -> Unit,
 ) {
-  // Persist active page + collapsed across config changes (rotation, theme)
-  // — Compose equivalent of the web's localStorage keys.
   var collapsed by rememberSaveable { mutableStateOf(false) }
   var activeClanId by rememberSaveable { mutableStateOf(1) }
+  var bulletinOpen by rememberSaveable { mutableStateOf(false) }
 
   val mapWeight by animateFloatAsState(
     targetValue = if (collapsed) 1f else 0.5f,
@@ -64,29 +63,51 @@ fun CockpitScreen(
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(CockpitTokens.Bg.Void)
-      .windowInsetsPadding(WindowInsets.systemBars),
+      .background(CockpitTokens.Bg.Void),
   ) {
     Column(modifier = Modifier.fillMaxSize()) {
-      CockpitHeader(modifier = Modifier.fillMaxWidth())
+      CockpitHeader(
+        modifier = Modifier.fillMaxWidth(),
+        bulletinOpen = bulletinOpen,
+        onBulletinToggle = { bulletinOpen = !bulletinOpen },
+      )
 
-      // Map region
+      // Map region — fills its weighted height; dots + toggle overlay
+      // the bottom edge so there's no gap before the panel.
       Box(
         modifier = Modifier
           .fillMaxWidth()
-          .weight(mapWeight),
-        contentAlignment = Alignment.BottomCenter,
+          .weight(mapWeight)
+          .clip(
+            RoundedCornerShape(
+              bottomStart = 16.dp,
+              bottomEnd = 16.dp,
+            )
+          ),
       ) {
         MapWebView(modifier = Modifier.fillMaxSize())
+
+        // Page-indicator dots overlay (anchored above the toggle)
+        PageIndicatorOverlay(
+          pageCount = ELDERS.size,
+          currentPage = (activeClanId - 1).coerceIn(0, ELDERS.size - 1),
+          onDotClick = { activeClanId = it + 1 },
+          modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 44.dp),
+        )
 
         CollapseToggle(
           collapsed = collapsed,
           activeClanId = activeClanId,
           onToggle = { collapsed = !collapsed },
+          modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .padding(bottom = 8.dp),
         )
       }
 
-      // Pager region (4 clan panels)
+      // Pager region — full width, no padding around the panels.
       ClanPanelPager(
         modifier = Modifier
           .fillMaxWidth()
@@ -97,5 +118,11 @@ fun CockpitScreen(
         onOwnerControl = onOwnerControl,
       )
     }
+
+    // Bulletin flyout slides down from beneath the header.
+    BulletinFlyout(
+      visible = bulletinOpen,
+      onClose = { bulletinOpen = false },
+    )
   }
 }

@@ -46,7 +46,6 @@ fun CollapseToggle(
 
   Row(
     modifier = modifier
-      .padding(bottom = 8.dp)
       .height(28.dp)
       .widthIn(min = 96.dp)
       .clip(RoundedCornerShape(14.dp))

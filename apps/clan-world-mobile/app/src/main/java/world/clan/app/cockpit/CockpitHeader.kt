@@ -2,16 +2,21 @@ package world.clan.app.cockpit
 
 import androidx.compose.animation.animateColor
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,48 +34,118 @@ import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
- * Page-level cockpit header. Mirrors apps/web/src/components/cockpit/CockpitHeader.tsx:
- * 40dp tall, ironDeep bg, 1px iron bottom border, title (Cinzel uppercase tracked)
- * on the left, tick-counter pill + connection pill on the right.
+ * Two-row cockpit header.
  *
- * Tick + connection are stubbed for the first cut — the visual is faithful but
- * data wiring (Convex) is deferred per the plan.
+ * Row 1 — "CLAN" left + camera cutout (centred) + "WORLD" right. Sits in
+ *   the unsafe space at the top of the screen so the entire app feels
+ *   edge-to-edge. Height = the system status-bar inset, so words clear
+ *   the cutout naturally on the target device.
+ *
+ * Row 2 — 40dp ironDeep strip carrying the public-bulletin toggle on the
+ *   left, and the tick counter + connection pill on the right. The web's
+ *   "ÆLDER · COCKPIT" title is intentionally dropped to free up vertical
+ *   space for the rest of the cockpit.
  */
 @Composable
 fun CockpitHeader(
   modifier: Modifier = Modifier,
+  bulletinOpen: Boolean = false,
+  onBulletinToggle: () -> Unit = {},
   currentTick: Int = 142,
   ticksUntilWipe: Int = 8,
   connection: ConnectionStatus = ConnectionStatus.Connected,
 ) {
+  Column(modifier = modifier) {
+    // Row 1 — CLAN | (cutout) | WORLD, in the status-bar/cutout area.
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .windowInsetsTopHeight(WindowInsets.statusBars)
+        .padding(horizontal = 24.dp),
+      horizontalArrangement = Arrangement.SpaceBetween,
+      verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+        text = "CLAN",
+        style = TextStyle(
+          fontFamily = CockpitFonts.Cinzel,
+          fontSize = 11.sp,
+          fontWeight = FontWeight.SemiBold,
+          letterSpacing = 2.2.sp, // 0.2em ≈ 11 * 0.2
+          color = CockpitTokens.TextC.OnIron,
+        ),
+      )
+      Text(
+        text = "WORLD",
+        style = TextStyle(
+          fontFamily = CockpitFonts.Cinzel,
+          fontSize = 11.sp,
+          fontWeight = FontWeight.SemiBold,
+          letterSpacing = 2.2.sp,
+          color = CockpitTokens.TextC.OnIron,
+        ),
+      )
+    }
+
+    // Row 2 — bulletin button + tick + connection pill.
+    Row(
+      modifier = Modifier
+        .fillMaxWidth()
+        .height(40.dp)
+        .background(CockpitTokens.Bg.IronDeep)
+        .border(width = 1.dp, color = CockpitTokens.Border.Iron)
+        .padding(horizontal = CockpitTokens.Space.md),
+      verticalAlignment = Alignment.CenterVertically,
+      horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+      BulletinButton(open = bulletinOpen, onClick = onBulletinToggle)
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
+      ) {
+        TickCounterPill(currentTick = currentTick, ticksUntilWipe = ticksUntilWipe)
+        ConnectionPill(status = connection)
+      }
+    }
+  }
+}
+
+@Composable
+private fun BulletinButton(open: Boolean, onClick: () -> Unit) {
+  val accent = CockpitTokens.TextC.Accent
+  val borderColor = if (open) accent else CockpitTokens.Border.Iron
+  val labelColor  = if (open) accent else CockpitTokens.TextC.OnIron
+  val bg = if (open) accent.copy(alpha = 0.10f) else CockpitTokens.Bg.Ink
+
   Row(
-    modifier = modifier
-      .fillMaxWidth()
-      .height(40.dp)
-      .background(CockpitTokens.Bg.IronDeep)
-      .border(width = 1.dp, color = CockpitTokens.Border.Iron)
-      .padding(horizontal = CockpitTokens.Space.md),
+    modifier = Modifier
+      .clip(RoundedCornerShape(CockpitTokens.Radius.sm))
+      .background(bg)
+      .border(1.dp, borderColor, RoundedCornerShape(CockpitTokens.Radius.sm))
+      .clickable(onClick = onClick)
+      .padding(horizontal = 10.dp, vertical = 4.dp),
     verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.SpaceBetween,
+    horizontalArrangement = Arrangement.spacedBy(6.dp),
   ) {
     Text(
-      text = "ÆLDER · COCKPIT",
+      text = "▤",
       style = TextStyle(
-        fontFamily = CockpitFonts.Cinzel,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.SemiBold,
-        letterSpacing = 2.88.sp,
-        color = CockpitTokens.TextC.OnIron,
+        fontFamily = CockpitFonts.JetBrainsMono,
+        fontSize = 13.sp,
+        color = labelColor,
       ),
     )
-
-    Row(
-      verticalAlignment = Alignment.CenterVertically,
-      horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
-    ) {
-      TickCounterPill(currentTick = currentTick, ticksUntilWipe = ticksUntilWipe)
-      ConnectionPill(status = connection)
-    }
+    Text(
+      text = "PUBLIC BULLETIN",
+      style = TextStyle(
+        fontFamily = CockpitFonts.JetBrainsMono,
+        fontSize = 11.sp,
+        color = labelColor,
+        letterSpacing = 0.66.sp, // 0.06em
+      ),
+      maxLines = 1,
+      overflow = TextOverflow.Clip,
+    )
   }
 }
 
@@ -176,3 +251,4 @@ private fun ConnectionPill(status: ConnectionStatus) {
     )
   }
 }
+
