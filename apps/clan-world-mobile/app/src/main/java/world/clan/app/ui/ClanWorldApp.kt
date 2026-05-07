@@ -519,6 +519,10 @@ fun ClanWorldApp(
                     subtitle = world.clan.app.viewmodel.clanDisplayName(clanId),
                   ),
                 )
+                // Persist that this clan is now in the user's hall — same
+                // mechanism as Bazaar Hire. Hall + Hearth + Codex unions
+                // pick this up on next refresh.
+                app.sessionStore.addForgedClanId(clanId)
                 nav.navigate(Routes.forged(clanId, name, "FORGED")) {
                   popUpTo(Routes.Forge) { inclusive = true }
                 }

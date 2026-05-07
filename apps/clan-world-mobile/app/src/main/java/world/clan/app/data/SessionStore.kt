@@ -104,22 +104,36 @@ class SessionStore(context: Context) {
     ed.apply()
   }
 
-  // ── Hired clan IDs ────────────────────────────────────────────────────
-  // After a successful Bazaar hire, the clan is added to this set. Hall +
-  // Hearth + Codex union LINKED_CLAN_IDS with this set when displaying
-  // "your" sigils, so a freshly-hired card appears in the user's hall
-  // without a relaunch.
+  // ── Hired / Forged clan IDs ───────────────────────────────────────────
+  // After a successful Bazaar hire OR a Forge wizard mint, the clan is
+  // added to the matching set. Hall + Hearth + Codex union LINKED_CLAN_IDS
+  // with both sets when displaying "your" sigils — a freshly-hired or
+  // freshly-forged card appears in the user's hall without a relaunch.
+  //
+  // Sets are kept separate so Lineage / future analytics can tell forged
+  // from hired; ownership unions read both via getOwnedClanIdsExtra().
 
-  fun getHiredClanIds(): Set<Int> =
-    prefs.getStringSet("hired:clanIds", emptySet())
+  fun getHiredClanIds(): Set<Int> = readClanIdSet("hired:clanIds")
+
+  fun addHiredClanId(clanId: Int) = writeClanIdSet("hired:clanIds", clanId)
+
+  fun getForgedClanIds(): Set<Int> = readClanIdSet("forged:clanIds")
+
+  fun addForgedClanId(clanId: Int) = writeClanIdSet("forged:clanIds", clanId)
+
+  /** Union of hired + forged. LINKED_CLAN_IDS is added by ViewModels. */
+  fun getOwnedClanIdsExtra(): Set<Int> = getHiredClanIds() + getForgedClanIds()
+
+  private fun readClanIdSet(prefKey: String): Set<Int> =
+    prefs.getStringSet(prefKey, emptySet())
       ?.mapNotNullTo(mutableSetOf()) { it.toIntOrNull() }
       ?: emptySet()
 
-  fun addHiredClanId(clanId: Int) {
-    val current = getHiredClanIds()
+  private fun writeClanIdSet(prefKey: String, clanId: Int) {
+    val current = readClanIdSet(prefKey)
     if (clanId in current) return
     val next = (current + clanId).map { it.toString() }.toSet()
-    prefs.edit().putStringSet("hired:clanIds", next).apply()
+    prefs.edit().putStringSet(prefKey, next).apply()
   }
 
   // ── One-shot UI flags ─────────────────────────────────────────────────
