@@ -81,6 +81,7 @@ fun InftDetailScreenRoute(
   onEnterCockpit: () -> Unit = {},
   onOpenInbox: () -> Unit = {},
   onEditStrategy: () -> Unit = {},
+  onOpenTreasury: () -> Unit = {},
   isBazaar: Boolean = false,
   mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
   onHireConfirmed: (() -> Unit)? = null,
@@ -95,6 +96,7 @@ fun InftDetailScreenRoute(
     onEnterCockpit = onEnterCockpit,
     onOpenInbox = onOpenInbox,
     onEditStrategy = onEditStrategy,
+    onOpenTreasury = onOpenTreasury,
     isBazaar = isBazaar,
     app = app,
     mwaSender = mwaSender,
@@ -111,6 +113,7 @@ private fun InftDetailScreen(
   onEnterCockpit: () -> Unit,
   onOpenInbox: () -> Unit = {},
   onEditStrategy: () -> Unit = {},
+  onOpenTreasury: () -> Unit = {},
   isBazaar: Boolean = false,
   app: App? = null,
   mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
@@ -160,7 +163,7 @@ private fun InftDetailScreen(
           state.state?.memory.orEmpty(),
           onEditStrategy = if (!isBazaar) onEditStrategy else null,
         )
-        DetailTab.Vault -> VaultPanel(state.vault)
+        DetailTab.Vault -> VaultPanel(state.vault, onOpenTreasury = onOpenTreasury)
         DetailTab.Whispers -> WhispersPanel(state.comms, onOpenInbox = onOpenInbox)
         DetailTab.Bulletin -> BulletinPanel(state.state?.bulletins?.map { it.body } ?: emptyList())
       }
@@ -470,7 +473,11 @@ private fun MemoryPanel(
 }
 
 @Composable
-private fun VaultPanel(vault: List<VaultMovement>) {
+private fun VaultPanel(
+  vault: List<VaultMovement>,
+  onOpenTreasury: () -> Unit = {},
+) {
+  Column {
   PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
     if (vault.isEmpty()) {
       ComingNextSlice("the vault keeps its silence")
@@ -505,6 +512,17 @@ private fun VaultPanel(vault: List<VaultMovement>) {
       }
     }
   }
+  Text(
+    text = "FULL TREASURY →",
+    style = ClanWorldTheme.type.monoMicro,
+    color = ClanWorldTheme.colors.gold,
+    textAlign = TextAlign.Center,
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable { onOpenTreasury() }
+      .padding(horizontal = 22.dp, vertical = 14.dp),
+  )
+  } // close outer Column
 }
 
 @Composable

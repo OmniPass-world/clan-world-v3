@@ -58,3 +58,13 @@ class StrategyEditorViewModelFactory(
   override fun <T : ViewModel> create(modelClass: Class<T>): T =
     StrategyEditorViewModel(app.convexClient, clanId) as T
 }
+
+/** Per-route factory for Treasury, parameterized by clanId. */
+class TreasuryViewModelFactory(
+  private val app: App,
+  private val clanId: Int,
+) : ViewModelProvider.Factory {
+  @Suppress("UNCHECKED_CAST")
+  override fun <T : ViewModel> create(modelClass: Class<T>): T =
+    TreasuryViewModel(app.convexClient, clanId) as T
+}
