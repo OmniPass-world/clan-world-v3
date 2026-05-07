@@ -72,6 +72,7 @@ class TreasuryViewModel(
           val moves = async {
             runCatching { convex.getVaultMovements(clanId, limit = 24) }
               .getOrDefault(emptyList())
+              .sortedByDescending { it.tick }
           }
           snap.await() to moves.await()
         }
