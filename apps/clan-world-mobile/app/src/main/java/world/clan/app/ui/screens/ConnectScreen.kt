@@ -1,6 +1,5 @@
 package world.clan.app.ui.screens
 
-import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import world.clan.app.ui.components.ConnectSigilSpec
 import world.clan.app.ui.components.EmberCta
 import world.clan.app.ui.components.ObsidianBackground
@@ -42,13 +42,13 @@ import world.clan.app.viewmodel.ConnectUiState
 import world.clan.app.viewmodel.ConnectViewModel
 
 /**
- * Route wrapper. Wires the ComponentActivity into the ViewModel so MWA's
- * ActivityResultSender has the host it needs.
+ * Route wrapper. Receives the [ActivityResultSender] (constructed in
+ * MainActivity.onCreate before super) and forwards it into the ViewModel.
  */
 @Composable
 fun ConnectScreenRoute(
   vm: ConnectViewModel,
-  hostActivity: ComponentActivity,
+  mwaSender: ActivityResultSender,
   onConnected: () -> Unit,
 ) {
   val state by vm.state.collectAsState()
@@ -68,13 +68,13 @@ fun ConnectScreenRoute(
   // user notices broken auth on a signing operation. Fires once.
   LaunchedEffect(Unit) {
     if (state.pendingVerification && state.phase != ConnectUiState.Phase.Connecting) {
-      vm.connect(hostActivity)
+      vm.connect(mwaSender)
     }
   }
 
   ConnectScreen(
     state = state,
-    onConnect = { vm.connect(hostActivity) },
+    onConnect = { vm.connect(mwaSender) },
   )
 }
 
