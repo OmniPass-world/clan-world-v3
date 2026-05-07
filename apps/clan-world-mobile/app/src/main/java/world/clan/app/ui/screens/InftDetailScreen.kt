@@ -263,11 +263,16 @@ private fun HeroLetter(
         Text(
           text = run {
             val tknId = state.state?.token?.tokenId ?: clanId
-            val dataHashHint = state.state?.token?.dataHash
+            val token = state.state?.token
+            val dataHashHint = token?.dataHash
               ?.takeIf { it.length > 6 }
               ?.let { "·a${it.takeLast(6)}" }
               ?: ""
-            "TKN 0x${"%04x".format(tknId)}  ·  0G$dataHashHint"
+            val keyHint = token?.encryptedKeyHash
+              ?.takeIf { it.length > 6 }
+              ?.let { "  ·  KEY·${it.takeLast(6)}" }
+              ?: ""
+            "TKN 0x${"%04x".format(tknId)}  ·  0G$dataHashHint$keyHint"
           },
           style = ClanWorldTheme.type.monoMicro,
           color = Ink3,
