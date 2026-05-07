@@ -372,6 +372,7 @@ fun ClanWorldApp(
             CodexScreenRoute(
               app = app,
               factory = factory,
+              onOpenInft = { clanId -> nav.navigate(Routes.inftDetail(clanId)) },
             )
           }
 

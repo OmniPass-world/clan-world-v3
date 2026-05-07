@@ -55,19 +55,25 @@ import world.clan.app.viewmodel.shortenPubkey
 fun CodexScreenRoute(
   app: App,
   factory: ClanWorldViewModelFactory,
+  onOpenInft: (Int) -> Unit = {},
 ) {
   val vm: CodexViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
   // Re-read lineage on each Codex visit so newly-signed actions appear
   // without a kill/relaunch.
   androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshLineage() }
-  CodexScreen(state = state, onResetDemo = vm::resetDemoState)
+  CodexScreen(
+    state = state,
+    onResetDemo = vm::resetDemoState,
+    onOpenInft = onOpenInft,
+  )
 }
 
 @Composable
 private fun CodexScreen(
   state: CodexUiState,
   onResetDemo: () -> Unit = {},
+  onOpenInft: (Int) -> Unit = {},
 ) {
   // Background and tab bar are app-level. Disconnect now lives in the
   // wallet-pill dropdown in CrownHeader — no big "FORGET THIS SIGIL"
@@ -136,7 +142,9 @@ private fun CodexScreen(
       }
       StaggeredEntry(index = 10) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          state.lineage.take(12).forEach { entry -> LineageRow(entry) }
+          state.lineage.take(12).forEach { entry ->
+            LineageRow(entry, onClick = { onOpenInft(entry.clanId) })
+          }
         }
       }
       Spacer(Modifier.height(20.dp))
@@ -347,7 +355,10 @@ private fun RowCard(
 }
 
 @Composable
-private fun LineageRow(entry: world.clan.app.data.LineageEntry) {
+private fun LineageRow(
+  entry: world.clan.app.data.LineageEntry,
+  onClick: () -> Unit = {},
+) {
   val parchment = ClanWorldTheme.colors.parchment
   val warm = ClanWorldTheme.colors.warm
   val warmDim = ClanWorldTheme.colors.warmDim
@@ -366,6 +377,7 @@ private fun LineageRow(entry: world.clan.app.data.LineageEntry) {
       .clip(RoundedCornerShape(6.dp))
       .background(ClanWorldTheme.colors.iron)
       .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+      .clickable { onClick() }
       .padding(horizontal = 14.dp, vertical = 10.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
