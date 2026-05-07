@@ -145,14 +145,21 @@ describe('TmuxRunnerInbox.waitForAckAndClear', () => {
     });
     const result = await inbox.waitForAckAndClear(500);
     expect(result).toBe('timeout');
-    // /clear + Enter + retry Enter + bootstrap + Enter + retry Enter = 6 calls.
-    expect(tmux.calls).toHaveLength(6);
+    // /clear, per-elder display reset, and bootstrap are each submitted with
+    // Enter twice because Claude Code can drop the first Enter after paste/send.
+    expect(tmux.calls).toHaveLength(12);
     expect(tmux.calls[0]).toEqual({ target: 'elder-1', keys: ['/clear'], literal: false });
     expect(tmux.calls[1]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
     expect(tmux.calls[2]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
-    expect(tmux.calls[3]).toEqual({ target: 'elder-1', keys: ['BOOT'], literal: true });
+    expect(tmux.calls[3]).toEqual({ target: 'elder-1', keys: ['/rename Clan World: Storm Riders'], literal: false });
     expect(tmux.calls[4]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
     expect(tmux.calls[5]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
+    expect(tmux.calls[6]).toEqual({ target: 'elder-1', keys: ['/color blue'], literal: false });
+    expect(tmux.calls[7]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
+    expect(tmux.calls[8]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
+    expect(tmux.calls[9]).toEqual({ target: 'elder-1', keys: ['BOOT'], literal: true });
+    expect(tmux.calls[10]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
+    expect(tmux.calls[11]).toEqual({ target: 'elder-1', keys: ['Enter'], literal: false });
   });
 
   it('returns ack and consumes the flag file when it exists', async () => {
