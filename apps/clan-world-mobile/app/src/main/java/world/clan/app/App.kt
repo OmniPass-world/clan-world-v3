@@ -2,6 +2,7 @@ package world.clan.app
 
 import android.app.Application
 import world.clan.app.data.ClanWorldConvexClient
+import world.clan.app.data.LineageStore
 import world.clan.app.data.SessionStore
 import world.clan.app.wallet.DeviceCapabilities
 import world.clan.app.wallet.DeviceClass
@@ -20,5 +21,6 @@ class App : Application() {
   }
   val mwaClient: MwaClient by lazy { MwaClient() }
   val sessionStore: SessionStore by lazy { SessionStore(this) }
+  val lineageStore: LineageStore by lazy { LineageStore(this) }
   val deviceClass: DeviceClass by lazy { DeviceCapabilities.inspect(this) }
 }

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
@@ -57,6 +58,9 @@ fun CodexScreenRoute(
 ) {
   val vm: CodexViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
+  // Re-read lineage on each Codex visit so newly-signed actions appear
+  // without a kill/relaunch.
+  androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshLineage() }
   CodexScreen(state = state)
 }
 
@@ -98,9 +102,15 @@ private fun CodexScreen(
           copyable = state.solanaPubkey != null,
           copyText = state.solanaPubkey,
         )
+        if (state.walletLabel != null) {
+          RowCard(
+            label = "Wallet account",
+            value = state.walletLabel,
+          )
+        }
         RowCard(
-          label = "Linked clan",
-          value = "Caldris of the Strait — sealed at tick demo.",
+          label = "Linked clans · ${state.linkedClansCount} of viii",
+          value = linkedClansLine(state.linkedClanIds),
           isScript = true,
         )
       }
@@ -118,15 +128,71 @@ private fun CodexScreen(
 
     Spacer(Modifier.height(20.dp))
 
-    // ── About ────────────────────────────────────────────────────────
+    // ── Lineage ──────────────────────────────────────────────────────
+    if (state.lineage.isNotEmpty()) {
+      StaggeredEntry(index = 9) {
+        SectionHeader(title = "Lineage", showLozenge = false)
+      }
+      StaggeredEntry(index = 10) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          state.lineage.take(12).forEach { entry -> LineageRow(entry) }
+        }
+      }
+      Spacer(Modifier.height(20.dp))
+    }
+
+    // ── Share ────────────────────────────────────────────────────────
     StaggeredEntry(index = 5) {
-      SectionHeader(title = "About", showLozenge = false)
+      SectionHeader(title = "Share", showLozenge = false)
     }
     StaggeredEntry(index = 6) {
-      RowCard(label = "Build", value = state.build)
+      RowCard(
+        label = "APK download · for friends",
+        value = state.apkShareUrl,
+        copyable = true,
+        copyText = state.apkShareUrl,
+      )
+    }
+
+    Spacer(Modifier.height(20.dp))
+
+    // ── About ────────────────────────────────────────────────────────
+    StaggeredEntry(index = 7) {
+      SectionHeader(title = "About", showLozenge = false)
+    }
+    StaggeredEntry(index = 8) {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        RowCard(label = "Build", value = state.build)
+        RowCard(
+          label = "Convex deployment",
+          value = state.convexUrl,
+          copyable = true,
+          copyText = state.convexUrl,
+        )
+      }
     }
 
     Spacer(Modifier.height(40.dp))
+  }
+}
+
+private fun linkedClansLine(ids: List<Int>): String {
+  if (ids.isEmpty()) return "no clans linked yet"
+  val names = ids.map { id ->
+    when (id) {
+      1 -> "Storm-Edge"; 2 -> "Tideborne"; 3 -> "Sunhold"; 4 -> "Vale-Ward"
+      5 -> "Twilight"; 6 -> "Ember"; 7 -> "Forge"; 8 -> "Star"
+      else -> "Clan $id"
+    }
+  }
+  return when (names.size) {
+    1 -> "${names[0]} stands under your hand."
+    2 -> "${names[0]} and ${names[1]} stand under your hand."
+    else -> {
+      val head = names.dropLast(1).joinToString(", ")
+      val tail = names.last()
+      "$head, and $tail stand under your hand."
+    }
   }
 }
 
@@ -221,6 +287,79 @@ private fun RowCard(
         )
       }
     }
+  }
+}
+
+@Composable
+private fun LineageRow(entry: world.clan.app.data.LineageEntry) {
+  val parchment = ClanWorldTheme.colors.parchment
+  val warm = ClanWorldTheme.colors.warm
+  val warmDim = ClanWorldTheme.colors.warmDim
+  val warmFaint = ClanWorldTheme.colors.warmFaint
+  val accent = world.clan.app.ui.theme.clanColor(entry.clanId)
+  val kindGlyph = when (entry.kind) {
+    "forged" -> "✦"
+    "hired" -> "◈"
+    "whispered" -> "≈"
+    "sealed" -> "✕"
+    else -> "·"
+  }
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(6.dp))
+      .background(ClanWorldTheme.colors.iron)
+      .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+      .padding(horizontal = 14.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    Box(
+      modifier = Modifier
+        .size(28.dp)
+        .clip(CircleShape)
+        .background(accent.copy(alpha = 0.18f))
+        .border(1.dp, accent.copy(alpha = 0.55f), CircleShape),
+      contentAlignment = Alignment.Center,
+    ) {
+      Text(
+        text = kindGlyph,
+        style = ClanWorldTheme.type.body,
+        color = accent,
+      )
+    }
+    Column(
+      modifier = Modifier.weight(1f),
+      verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+      Text(
+        text = entry.title,
+        style = ClanWorldTheme.type.body,
+        color = parchment,
+      )
+      if (!entry.subtitle.isNullOrBlank()) {
+        Text(
+          text = entry.subtitle,
+          style = ClanWorldTheme.type.scriptItalicSmall,
+          color = warmDim,
+        )
+      }
+    }
+    Text(
+      text = formatRelativeTime(entry.tsEpochMs),
+      style = ClanWorldTheme.type.monoNano,
+      color = warmFaint,
+    )
+  }
+}
+
+private fun formatRelativeTime(tsMs: Long): String {
+  val deltaMs = System.currentTimeMillis() - tsMs
+  return when {
+    deltaMs < 60_000 -> "just now"
+    deltaMs < 60 * 60_000 -> "${deltaMs / 60_000}m"
+    deltaMs < 24 * 60 * 60_000 -> "${deltaMs / (60 * 60_000)}h"
+    else -> "${deltaMs / (24 * 60 * 60_000)}d"
   }
 }
 

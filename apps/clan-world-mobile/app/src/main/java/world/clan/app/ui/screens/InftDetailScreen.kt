@@ -78,6 +78,13 @@ fun InftDetailScreenRoute(
   app: App,
   clanId: Int,
   onBack: () -> Unit,
+  onEnterCockpit: () -> Unit = {},
+  onOpenInbox: () -> Unit = {},
+  onEditStrategy: () -> Unit = {},
+  onOpenTreasury: () -> Unit = {},
+  isBazaar: Boolean = false,
+  mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
+  onHireConfirmed: (() -> Unit)? = null,
 ) {
   val vm: InftDetailViewModel = viewModel(factory = InftDetailViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
@@ -86,6 +93,14 @@ fun InftDetailScreenRoute(
     clanId = clanId,
     onBack = onBack,
     onSelectDetailTab = vm::selectTab,
+    onEnterCockpit = onEnterCockpit,
+    onOpenInbox = onOpenInbox,
+    onEditStrategy = onEditStrategy,
+    onOpenTreasury = onOpenTreasury,
+    isBazaar = isBazaar,
+    app = app,
+    mwaSender = mwaSender,
+    onHireConfirmed = onHireConfirmed ?: onBack,
   )
 }
 
@@ -95,8 +110,18 @@ private fun InftDetailScreen(
   clanId: Int,
   onBack: () -> Unit,
   onSelectDetailTab: (DetailTab) -> Unit,
+  onEnterCockpit: () -> Unit,
+  onOpenInbox: () -> Unit = {},
+  onEditStrategy: () -> Unit = {},
+  onOpenTreasury: () -> Unit = {},
+  isBazaar: Boolean = false,
+  app: App? = null,
+  mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
+  onHireConfirmed: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
+  val showHireModal = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  Box(modifier = Modifier.fillMaxSize()) {
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -111,6 +136,17 @@ private fun InftDetailScreen(
       modifier = Modifier.padding(horizontal = 22.dp),
     )
 
+    Spacer(Modifier.height(14.dp))
+
+    // ── Primary CTA: Hire (bazaar mode) or Enter Cockpit (linked mode) ─
+    world.clan.app.ui.components.EmberCta(
+      text = if (isBazaar) "Hire This Sigil" else "Enter Cockpit",
+      onClick = if (isBazaar) ({ showHireModal.value = true }) else onEnterCockpit,
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 22.dp),
+    )
+
     Spacer(Modifier.height(22.dp))
 
     DetailTabs(active = state.activeTab, onSelect = onSelectDetailTab)
@@ -123,15 +159,36 @@ private fun InftDetailScreen(
       label = "detail-tab",
     ) { tab ->
       when (tab) {
-        DetailTab.Memory -> MemoryPanel(state.state?.memory.orEmpty())
-        DetailTab.Vault -> VaultPanel(state.vault)
-        DetailTab.Whispers -> WhispersPanel(state.comms)
+        DetailTab.Memory -> MemoryPanel(
+          state.state?.memory.orEmpty(),
+          onEditStrategy = if (!isBazaar) onEditStrategy else null,
+        )
+        DetailTab.Vault -> VaultPanel(state.vault, onOpenTreasury = onOpenTreasury)
+        DetailTab.Whispers -> WhispersPanel(state.comms, onOpenInbox = onOpenInbox)
         DetailTab.Bulletin -> BulletinPanel(state.state?.bulletins?.map { it.body } ?: emptyList())
       }
     }
 
     Spacer(Modifier.height(40.dp))
   }
+
+  // ── HireModal overlay (bazaar mode only) ────────────────────────────────
+  if (isBazaar && showHireModal.value && app != null && mwaSender != null) {
+    val listing = world.clan.app.data.bazaarListingByClan(clanId)
+    if (listing != null) {
+      world.clan.app.ui.components.HireModal(
+        app = app,
+        mwaSender = mwaSender,
+        listing = listing,
+        onDismiss = { showHireModal.value = false },
+        onConfirmed = {
+          showHireModal.value = false
+          onHireConfirmed()
+        },
+      )
+    }
+  }
+  } // close outer Box
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -370,22 +427,21 @@ private val DetailTab.label get() = when (this) {
 // ── Panels ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun MemoryPanel(memory: List<MemoryEntry>) {
-  PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
+private fun MemoryPanel(
+  memory: List<MemoryEntry>,
+  onEditStrategy: (() -> Unit)? = null,
+) {
+  Column {
     if (memory.isEmpty()) {
-      Box(
-        Modifier
-          .fillMaxWidth()
-          .padding(20.dp),
-        contentAlignment = Alignment.Center,
-      ) {
-        Text(
-          "no memory written yet",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-        )
-      }
-    } else {
+      world.clan.app.ui.components.EmptyState(
+        title = "no doctrine written yet",
+        body = "the elder waits for your first counsel.",
+        ctaLabel = if (onEditStrategy != null) "+ Write doctrine" else null,
+        onCta = onEditStrategy,
+      )
+      return@Column
+    }
+    PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
       memory.take(10).forEach { entry ->
         MemoryRow(
           key = entry.key,
@@ -395,11 +451,27 @@ private fun MemoryPanel(memory: List<MemoryEntry>) {
         )
       }
     }
+    if (onEditStrategy != null) {
+      Text(
+        text = "EDIT STRATEGY →",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.gold,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { onEditStrategy() }
+          .padding(horizontal = 22.dp, vertical = 14.dp),
+      )
+    }
   }
 }
 
 @Composable
-private fun VaultPanel(vault: List<VaultMovement>) {
+private fun VaultPanel(
+  vault: List<VaultMovement>,
+  onOpenTreasury: () -> Unit = {},
+) {
+  Column {
   PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
     if (vault.isEmpty()) {
       ComingNextSlice("the vault keeps its silence")
@@ -434,10 +506,24 @@ private fun VaultPanel(vault: List<VaultMovement>) {
       }
     }
   }
+  Text(
+    text = "FULL TREASURY →",
+    style = ClanWorldTheme.type.monoMicro,
+    color = ClanWorldTheme.colors.gold,
+    textAlign = TextAlign.Center,
+    modifier = Modifier
+      .fillMaxWidth()
+      .clickable { onOpenTreasury() }
+      .padding(horizontal = 22.dp, vertical = 14.dp),
+  )
+  } // close outer Column
 }
 
 @Composable
-private fun WhispersPanel(comms: List<world.clan.app.data.CombinedComm>) {
+private fun WhispersPanel(
+  comms: List<world.clan.app.data.CombinedComm>,
+  onOpenInbox: () -> Unit = {},
+) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
@@ -466,6 +552,17 @@ private fun WhispersPanel(comms: List<world.clan.app.data.CombinedComm>) {
           accent = accent,
         )
       }
+      Spacer(Modifier.height(4.dp))
+      Text(
+        text = "OPEN FULL INBOX →",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.gold,
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { onOpenInbox() }
+          .padding(vertical = 10.dp),
+        textAlign = TextAlign.Center,
+      )
     }
   }
 }

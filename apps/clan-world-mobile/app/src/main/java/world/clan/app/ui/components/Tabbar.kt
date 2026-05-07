@@ -36,6 +36,7 @@ import world.clan.app.ui.theme.ClanWorldTheme
 enum class RootTab(val label: String, val drawableRes: Int) {
   Hearth("Hearth", R.drawable.ui_tab_hearth),
   Hall("Hall", R.drawable.ui_tab_hall),
+  Bazaar("Bazaar", R.drawable.ui_tab_bazaar),
   Codex("Codex", R.drawable.ui_tab_codex),
 }
 
