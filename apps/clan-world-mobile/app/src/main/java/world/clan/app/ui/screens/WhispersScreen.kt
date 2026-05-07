@@ -233,6 +233,7 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
   val bg = if (selected) ClanWorldTheme.colors.iron2 else Color.Transparent
   val border = if (selected) ClanWorldTheme.colors.hairlineStrong else ClanWorldTheme.colors.hairline
   val tint = if (selected) ClanWorldTheme.colors.parchment else ClanWorldTheme.colors.warmDim
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   Box(
     modifier = Modifier
       .clip(RoundedCornerShape(4.dp))
@@ -251,7 +252,12 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
           strokeWidth = 1f,
         )
       }
-      .clickable { onClick() }
+      .clickable {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .padding(horizontal = 12.dp, vertical = 8.dp),
   ) {
     Text(
