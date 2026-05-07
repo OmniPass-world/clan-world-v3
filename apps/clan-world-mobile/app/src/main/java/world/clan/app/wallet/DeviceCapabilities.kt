@@ -14,7 +14,17 @@ data class DeviceClass(
   val seedVaultAvailable: Boolean,
   val manufacturer: String,
   val model: String,
+  val androidRelease: String = "",
 ) {
+
+  /** Compact "Model · Android NN" line for debug surfaces (Codex). */
+  val buildLine: String
+    get() {
+      val device = model.ifBlank { manufacturer }.takeIf { it.isNotBlank() }
+      val android = androidRelease.takeIf { it.isNotBlank() }?.let { "Android $it" }
+      return listOfNotNull(device, android).joinToString(" · ")
+    }
+
   /** Display label for the Codex device chip. */
   val displayLabel: String
     get() = when {
@@ -53,6 +63,7 @@ object DeviceCapabilities {
       seedVaultAvailable = seedVaultAvailable,
       manufacturer = manufacturer,
       model = model,
+      androidRelease = Build.VERSION.RELEASE ?: "",
     )
   }
 }
