@@ -33,7 +33,7 @@ cat <<ENV
 export OG_STORAGE_ENABLED=true
 export ELDER_MNEMONIC='$MNEMONIC'
 export ELDER_INDEX=$ELDER_INDEX
-export EVM_RPC=https://evmrpc.0g.ai
+export ZERO_G_RPC_URL=https://evmrpc.0g.ai
 export INDEXER_RPC=https://indexer-storage-turbo.0g.ai
 export FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526
 ENV

@@ -41,7 +41,7 @@ cp .env.template .env.local
 | `VITE_CLAN_WORLD_USE_STUB_*=false` | hardcode | want real chain + real Convex by default |
 | `VITE_CLAN_WORLD_USE_STUB_LLM=true` | hardcode | LLM stubbed for local dev unless testing real elder loop |
 | `VITE_CLANWORLD_DEMO_MODE=false` | hardcode | demo mode is for hackathon submission only |
-| `EVM_RPC=https://evmrpc.0g.ai` | hardcode | 0G mainnet RPC |
+| `ZERO_G_RPC_URL=https://evmrpc.0g.ai` | hardcode | 0G mainnet RPC |
 | `INDEXER_RPC=https://indexer-storage-turbo.0g.ai` | hardcode | 0G indexer |
 | `FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526` | hardcode | 0G flow contract (currently broken — see "Known Issues" below) |
 | `OG_STORAGE_ENABLED` | leave commented out | 0G save reverts at gas estimate; using FileMemoryStore fallback for now |
