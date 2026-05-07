@@ -104,6 +104,24 @@ class SessionStore(context: Context) {
     ed.apply()
   }
 
+  // ── Hired clan IDs ────────────────────────────────────────────────────
+  // After a successful Bazaar hire, the clan is added to this set. Hall +
+  // Hearth + Codex union LINKED_CLAN_IDS with this set when displaying
+  // "your" sigils, so a freshly-hired card appears in the user's hall
+  // without a relaunch.
+
+  fun getHiredClanIds(): Set<Int> =
+    prefs.getStringSet("hired:clanIds", emptySet())
+      ?.mapNotNullTo(mutableSetOf()) { it.toIntOrNull() }
+      ?: emptySet()
+
+  fun addHiredClanId(clanId: Int) {
+    val current = getHiredClanIds()
+    if (clanId in current) return
+    val next = (current + clanId).map { it.toString() }.toSet()
+    prefs.edit().putStringSet("hired:clanIds", next).apply()
+  }
+
   // ── One-shot UI flags ─────────────────────────────────────────────────
   // Persisted booleans for onboarding hints / coachmarks. Once a flag is
   // marked seen, it stays seen across reinstalls (within EncryptedShared

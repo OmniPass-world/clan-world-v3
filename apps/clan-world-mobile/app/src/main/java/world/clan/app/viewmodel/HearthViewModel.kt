@@ -58,6 +58,7 @@ class HearthViewModel(
       _state.update { it.copy(isRefreshing = true, errorMessage = null) }
       val session = sessionStore.read()
       val selectedClan = session?.selectedClanId ?: DEFAULT_LINKED_CLAN
+      val ownedClanIds = (LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).toSet()
       runCatching {
         val snap = convex.getSnapshot()
         val comms = runCatching { convex.getCombinedComms(selectedClan, limit = 3) }
@@ -65,7 +66,7 @@ class HearthViewModel(
         snap to comms
       }.onSuccess { (snap, comms) ->
         _state.update { _ ->
-          project(snap, selectedClan, comms, session?.solanaPubkeyBase58.orEmpty())
+          project(snap, selectedClan, comms, session?.solanaPubkeyBase58.orEmpty(), ownedClanIds)
         }
       }.onFailure { e ->
         _state.update {
@@ -84,6 +85,7 @@ class HearthViewModel(
     selectedClanId: Int,
     comms: List<CombinedComm>,
     solanaPubkey: String,
+    ownedClanIds: Set<Int>,
   ): HearthUiState {
     // Sort clans by goldBalance (wei → whole), descending. Empty / null
     // gold goes last.
@@ -103,7 +105,7 @@ class HearthViewModel(
         tagline = clanTagline(p.clanId),
         gold = p.gold,
         delta = 0L, // no delta data in snapshot — keep at 0 for v0; UI shows "—"
-        isMine = LINKED_CLAN_IDS.contains(p.clanId),
+        isMine = ownedClanIds.contains(p.clanId),
       )
     }
 
