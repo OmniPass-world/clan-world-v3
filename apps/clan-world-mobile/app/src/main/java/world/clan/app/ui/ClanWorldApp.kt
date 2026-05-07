@@ -423,6 +423,10 @@ fun ClanWorldApp(
                     subtitle = listing?.let { "${it.pricePerSeason}g · 1 season · $name" } ?: name,
                   ),
                 )
+                // Persist that this clan is now in the user's hall — so
+                // it shows up next time HallScreen refreshes (also affects
+                // Hearth leaderboard `isMine` and Codex linked-clans line).
+                app.sessionStore.addHiredClanId(clanId)
                 nav.navigate(Routes.forged(clanId, name, "HIRED")) {
                   popUpTo(Routes.Bazaar) { saveState = true }
                 }
