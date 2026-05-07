@@ -1,7 +1,6 @@
 package world.clan.app.wallet
 
 import android.net.Uri
-import androidx.activity.ComponentActivity
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
@@ -34,12 +33,13 @@ sealed class MwaResult<out T> {
  * V3 doesn't transact on Solana, so [Solana.Devnet] is cosmetic — a
  * wallet may surface "Connect to Devnet" but we never broadcast anything.
  *
- * Activity must be a [ComponentActivity] (required by [ActivityResultSender]).
+ * Callers pass an [ActivityResultSender] constructed in MainActivity.onCreate;
+ * registering activity-results post-RESUMED throws.
  */
 class MwaClient(
   private val identityName: String = "Clan World",
   private val identityUri: Uri = Uri.parse("https://clan-world.com"),
-  private val iconUri: Uri = Uri.parse("/favicon.png"),
+  private val iconUri: Uri = Uri.parse("https://clan-world.com/favicon.png"),
 ) {
 
   private fun adapter(): MobileWalletAdapter = MobileWalletAdapter(
@@ -54,8 +54,7 @@ class MwaClient(
 
   // ── Connect (first time) ───────────────────────────────────────────────
 
-  suspend fun connect(activity: ComponentActivity): MwaResult<MwaSession> {
-    val sender = ActivityResultSender(activity)
+  suspend fun connect(sender: ActivityResultSender): MwaResult<MwaSession> {
     val a = adapter()
     val result = a.connect(sender)
     return mapAuthResult(result)
@@ -69,10 +68,9 @@ class MwaClient(
    * instead of authorize internally.
    */
   suspend fun reauthorize(
-    activity: ComponentActivity,
+    sender: ActivityResultSender,
     authToken: String,
   ): MwaResult<MwaSession> {
-    val sender = ActivityResultSender(activity)
     val a = adapter().apply { this.authToken = authToken }
     val result = a.connect(sender)
     return mapAuthResult(result)
@@ -86,9 +84,8 @@ class MwaClient(
    * session has already been cleared by the caller and the user has been
    * routed back to Connect — there's nothing useful to do with a failure.
    */
-  suspend fun disconnect(activity: ComponentActivity, authToken: String) {
+  suspend fun disconnect(sender: ActivityResultSender, authToken: String) {
     runCatching {
-      val sender = ActivityResultSender(activity)
       val a = adapter().apply { this.authToken = authToken }
       a.disconnect(sender)
     }
@@ -97,11 +94,10 @@ class MwaClient(
   // ── Sign message (slice 2 full uses this for SIWS) ─────────────────────
 
   suspend fun signMessage(
-    activity: ComponentActivity,
+    sender: ActivityResultSender,
     authToken: String,
     message: ByteArray,
   ): MwaResult<ByteArray> {
-    val sender = ActivityResultSender(activity)
     val a = adapter().apply { this.authToken = authToken }
     val result: TransactionResult<ByteArray> = a.transact(sender) { authResult ->
       val pubkey = authResult.accounts.first().publicKey

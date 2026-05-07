@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -138,7 +139,11 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.detailPopExit(): E
 // ─────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
+fun ClanWorldApp(
+  app: App,
+  hostActivity: ComponentActivity,
+  mwaSender: ActivityResultSender,
+) {
   val nav = rememberNavController()
   val factory = ClanWorldViewModelFactory(app)
 
@@ -177,7 +182,7 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     // gone and the user is on Connect.
     if (authToken != null) {
       coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-        app.mwaClient.disconnect(hostActivity, authToken)
+        app.mwaClient.disconnect(mwaSender, authToken)
       }
     }
   }
@@ -233,7 +238,7 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
           ) {
             ConnectScreenRoute(
               vm = connectVm,
-              hostActivity = hostActivity,
+              mwaSender = mwaSender,
               onConnected = {
                 nav.navigate(Routes.Hearth) {
                   popUpTo(Routes.Connect) { inclusive = true }
