@@ -89,7 +89,12 @@ if (!convexUrl && !isStandalonePath) {
           maxWidth: '420px',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '20px' }}>ClanWorld</h1>
+        <h1 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2 }}>
+          Clan World
+          <div style={{ fontSize: '14px', fontStyle: 'italic', opacity: 0.7, marginTop: '2px' }}>
+            Ælder Whispers
+          </div>
+        </h1>
         <p style={{ marginTop: '12px', opacity: 0.8 }}>
           Backend not configured. Contact the team.
         </p>

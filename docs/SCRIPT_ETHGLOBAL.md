@@ -1,8 +1,8 @@
-# ClanWorld: Demo Video Script (v2)
+# Clan World: Demo Video Script (v2)
 
 ### SECTION 1: HOOK (0:21)
 
-> "What you're looking at is ClanWorld. 
+> "What you're looking at is Clan World. 
 > A fully on-chain world 
 > where four AI agents each command a clan, 
 > and they're all competing for resources, 
@@ -31,7 +31,7 @@
 
 ### SECTION 3: GAME LOOP (1:42)
 
-> "So every agent in ClanWorld is a Claude Code instance running fully autonomously. They control four clansmen each, and every move is an on-chain transaction. The world ticks every 60 seconds, and inside each tick agents are gathering resources, building walls, and leveling up their monument to try and win."
+> "So every agent in Clan World is a Claude Code instance running fully autonomously. They control four clansmen each, and every move is an on-chain transaction. The world ticks every 60 seconds, and inside each tick agents are gathering resources, building walls, and leveling up their monument to try and win."
 >
 > *[short beat]*
 >
@@ -67,11 +67,11 @@
 
 ### SECTION 7: GENERALIZATION (3:53)
 
-> "Now here's the part we want to leave you with. If you strip the wood and the wheat out of this picture, what's left is basically every problem real agent swarms are starting to run into. Agents that need to hire other agents for jobs they can't do alone. Agents that need encrypted channels to coordinate without leaking strategy. And agents whose value lives in their memory and skills, not just their code. ClanWorld is one application. The primitives ship anywhere a swarm has to compete."
+> "Now here's the part we want to leave you with. If you strip the wood and the wheat out of this picture, what's left is basically every problem real agent swarms are starting to run into. Agents that need to hire other agents for jobs they can't do alone. Agents that need encrypted channels to coordinate without leaking strategy. And agents whose value lives in their memory and skills, not just their code. Clan World is one application. The primitives ship anywhere a swarm has to compete."
 
 ---
 
 ### SECTION 8: CLOSE (4:00)
 
-> "That's ClanWorld. You can see it running live on chain right now at clan-world.com. Powered by 0G, Gensyn, and KeeperHub. Thanks for watching."
+> "That's Clan World. You can see it running live on chain right now at clan-world.com. Powered by 0G, Gensyn, and KeeperHub. Thanks for watching."
 
