@@ -119,6 +119,7 @@ private fun HearthScreen(
               seasonEndTick = state.seasonEndTick,
               winterActive = state.winterActive,
               winterApproachingInTicks = state.winterApproachingInTicks,
+              nextTickAtEpochMs = state.nextTickAtEpochMs,
             )
           }
 
@@ -200,6 +201,7 @@ private fun HearthBanner(
   seasonEndTick: Long,
   winterActive: Boolean = false,
   winterApproachingInTicks: Long? = null,
+  nextTickAtEpochMs: Long? = null,
 ) {
   val iron = ClanWorldTheme.colors.iron
   val gold = ClanWorldTheme.colors.gold
@@ -283,7 +285,26 @@ private fun HearthBanner(
       ) {
         // Tick block
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-          Text("TICK", style = ClanWorldTheme.type.monoMicro, color = gold)
+          Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("TICK", style = ClanWorldTheme.type.monoMicro, color = gold)
+            if (nextTickAtEpochMs != null) {
+              val countdownMs by androidx.compose.runtime.produceState(
+                initialValue = (nextTickAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L),
+                key1 = nextTickAtEpochMs,
+              ) {
+                while (true) {
+                  value = (nextTickAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L)
+                  kotlinx.coroutines.delay(1000L)
+                }
+              }
+              val seconds = (countdownMs / 1000L).toInt()
+              Text(
+                text = if (seconds > 0) "next in ${seconds}s" else "next imminent…",
+                style = ClanWorldTheme.type.monoMicro,
+                color = warmFaint,
+              )
+            }
+          }
           Row(verticalAlignment = Alignment.Bottom) {
             Text(
               text = "%04d".format(tick),

@@ -23,6 +23,8 @@ data class HearthUiState(
   val winterActive: Boolean = false,
   /** Ticks remaining until winter, when winter is forecast but not yet active. */
   val winterApproachingInTicks: Long? = null,
+  /** Wall-clock millis when the next tick is expected, derived from snap.tickEpoch. */
+  val nextTickAtEpochMs: Long? = null,
   val leaderboard: List<LeaderboardRow> = emptyList(),
   val recentComms: List<CombinedComm> = emptyList(),
   val banditAlert: BanditAlert? = null,
@@ -157,6 +159,16 @@ class HearthViewModel(
       }
     } else null
 
+    // Project the wall-clock time when the next tick should fire. Convex
+    // returns startedAt (epoch ms of tick 0) + durationMs (cadence). The
+    // banner subtracts System.currentTimeMillis() in a 1Hz LaunchedEffect
+    // so the countdown ticks live, even between snapshot refreshes.
+    val nextTickAtMs = snap.tickEpoch?.let { ep ->
+      val started = ep.startedAt ?: return@let null
+      val dur = ep.durationMs ?: return@let null
+      if (dur <= 0L) null else started + (snap.tick + 1L) * dur
+    }
+
     return HearthUiState(
       isLoading = false,
       isRefreshing = false,
@@ -166,6 +178,7 @@ class HearthViewModel(
       seasonEndTick = seasonEnd,
       winterActive = snap.winterActive,
       winterApproachingInTicks = winterApproaching,
+      nextTickAtEpochMs = nextTickAtMs,
       leaderboard = leaderboard,
       recentComms = comms,
       banditAlert = banditAlert,
