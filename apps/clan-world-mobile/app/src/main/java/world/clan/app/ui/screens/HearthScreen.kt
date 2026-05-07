@@ -118,6 +118,7 @@ private fun HearthScreen(
               seasonStartTick = state.seasonStartTick,
               seasonEndTick = state.seasonEndTick,
               winterActive = state.winterActive,
+              winterApproachingInTicks = state.winterApproachingInTicks,
             )
           }
 
@@ -198,6 +199,7 @@ private fun HearthBanner(
   seasonStartTick: Long,
   seasonEndTick: Long,
   winterActive: Boolean = false,
+  winterApproachingInTicks: Long? = null,
 ) {
   val iron = ClanWorldTheme.colors.iron
   val gold = ClanWorldTheme.colors.gold
@@ -302,18 +304,34 @@ private fun HearthBanner(
           verticalArrangement = Arrangement.spacedBy(6.dp),
           modifier = Modifier.widthIn(min = 120.dp),
         ) {
-          if (winterActive) {
-            Box(
-              modifier = Modifier
-                .clip(RoundedCornerShape(2.dp))
-                .background(rune.copy(alpha = 0.18f))
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-            ) {
-              Text(
-                text = "WINTER",
-                style = ClanWorldTheme.type.monoNano,
-                color = rune,
-              )
+          when {
+            winterActive -> {
+              Box(
+                modifier = Modifier
+                  .clip(RoundedCornerShape(2.dp))
+                  .background(rune.copy(alpha = 0.18f))
+                  .padding(horizontal = 6.dp, vertical = 2.dp),
+              ) {
+                Text(
+                  text = "WINTER",
+                  style = ClanWorldTheme.type.monoNano,
+                  color = rune,
+                )
+              }
+            }
+            winterApproachingInTicks != null -> {
+              Box(
+                modifier = Modifier
+                  .clip(RoundedCornerShape(2.dp))
+                  .background(rune.copy(alpha = 0.10f))
+                  .padding(horizontal = 6.dp, vertical = 2.dp),
+              ) {
+                Text(
+                  text = "WINTER · ${winterApproachingInTicks}T",
+                  style = ClanWorldTheme.type.monoNano,
+                  color = rune.copy(alpha = 0.85f),
+                )
+              }
             }
           }
           Text(
