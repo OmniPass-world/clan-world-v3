@@ -58,6 +58,7 @@ jobs:
           sha256sum *.apk > SHA256SUMS.txt
 
       - name: Attest APK build provenance
+        continue-on-error: true
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: "release-assets/*.apk"
