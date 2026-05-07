@@ -64,11 +64,6 @@ class CodexViewModel(
     )
   }
 
-  fun disconnect() {
-    sessionStore.clear()
-    _state.value = _state.value.copy(solanaPubkey = null, walletLabel = null)
-  }
-
   /**
    * Wipe demo-only state and reload the screen. Useful for repeat demos
    * on the same device — restores Hall to LINKED_CLAN_IDS, empties
