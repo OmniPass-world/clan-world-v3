@@ -141,6 +141,12 @@ dist
 # turborepo
 .turbo/
 
+# Android
+**/.gradle/
+**/local.properties
+**/build/
+*.apk
+
 # yarn v3
 .pnp.*
 .yarn/*
