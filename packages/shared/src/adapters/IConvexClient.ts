@@ -134,33 +134,62 @@ class RealConvexClient implements IConvexClient {
   // Cockpit Comms write-side — best-effort, swallow + warn on failure so the
   // domain operation that triggered the post (chain whisper, orchestrator
   // tick, etc.) is never blocked by a Convex outage.
+  //
+  // Each call attaches `secret: INDEXER_SECRET` (read from env) so the
+  // server-side mutation passes its `requireIndexerSecret` gate. If the env
+  // var is missing the call is short-circuited with a single warn — same
+  // shape the user sees when the deployment URL is not configured.
+  private indexerSecret(): string | undefined {
+    return readEnv('INDEXER_SECRET');
+  }
+
   async postWhisper(args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; txHash?: string }): Promise<void> {
+    const secret = this.indexerSecret();
+    if (!secret) {
+      console.warn('[ConvexClient] postWhisper skipped: INDEXER_SECRET not set');
+      return;
+    }
     try {
-      await this.http.mutation(seedWhisperRef, args);
+      await this.http.mutation(seedWhisperRef, { secret, ...args });
     } catch (err) {
       console.warn('[ConvexClient] postWhisper failed (non-fatal):', err);
     }
   }
 
   async postOrchEvent(args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {
+    const secret = this.indexerSecret();
+    if (!secret) {
+      console.warn('[ConvexClient] postOrchEvent skipped: INDEXER_SECRET not set');
+      return;
+    }
     try {
-      await this.http.mutation(seedOrchEventRef, args);
+      await this.http.mutation(seedOrchEventRef, { secret, ...args });
     } catch (err) {
       console.warn('[ConvexClient] postOrchEvent failed (non-fatal):', err);
     }
   }
 
   async postHumanSteering(args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {
+    const secret = this.indexerSecret();
+    if (!secret) {
+      console.warn('[ConvexClient] postHumanSteering skipped: INDEXER_SECRET not set');
+      return;
+    }
     try {
-      await this.http.mutation(seedHumanSteeringRef, args);
+      await this.http.mutation(seedHumanSteeringRef, { secret, ...args });
     } catch (err) {
       console.warn('[ConvexClient] postHumanSteering failed (non-fatal):', err);
     }
   }
 
   async postBulletin(args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {
+    const secret = this.indexerSecret();
+    if (!secret) {
+      console.warn('[ConvexClient] postBulletin skipped: INDEXER_SECRET not set');
+      return;
+    }
     try {
-      await this.http.mutation(seedBulletinRef, args);
+      await this.http.mutation(seedBulletinRef, { secret, ...args });
     } catch (err) {
       console.warn('[ConvexClient] postBulletin failed (non-fatal):', err);
     }

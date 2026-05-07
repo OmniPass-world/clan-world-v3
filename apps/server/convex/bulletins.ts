@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireIndexerSecret } from "./authShared";
 
 /**
  * Bulletins query layer. The bulletins table itself was added in an earlier
@@ -36,15 +37,22 @@ export const getAll = query({
   },
 });
 
+// Public seed mutation — gated by INDEXER_SECRET (fail-closed if unset on the
+// Convex deployment). The orchestrator process supplies the secret via
+// IConvexClient.postBulletin → set INDEXER_SECRET in the orchestrator env to
+// match Convex's INDEXER_SECRET.
 export const seedBulletin = mutation({
   args: {
+    secret: v.string(),
     clanId: v.number(),
     slot: v.number(),
     body: v.string(),
   },
   handler: async (ctx, args) => {
+    requireIndexerSecret(args.secret);
+    const { secret: _omit, ...row } = args;
     await ctx.db.insert("bulletins", {
-      ...args,
+      ...row,
       updatedAt: Date.now(),
     });
   },
