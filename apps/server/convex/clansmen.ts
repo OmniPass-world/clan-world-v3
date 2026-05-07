@@ -225,6 +225,12 @@ export const seedClansmen = internalMutation({
     clanId: v.number(),
     isStarving: v.optional(v.boolean()),
     starvationStartsAtTick: v.optional(v.number()),
+    // TODO(post-demo): tighten validator (M-5 audit). Each clansman entry is
+    // a deeply nested clanFullView projection with 10+ solidity-struct fields
+    // (clansman.clansman.{clansmanId,clanId,state,currentRegion,...} +
+    // activeMission.{active,action,startRegion,...}); enumerating them here
+    // doubles file size and drifts as the contract evolves. Persists into
+    // `clanView.clansmen` which is itself v.array(v.any()) by design.
     clansmen: v.optional(v.array(v.any())),
     currentTick: v.optional(v.number()),
   },
