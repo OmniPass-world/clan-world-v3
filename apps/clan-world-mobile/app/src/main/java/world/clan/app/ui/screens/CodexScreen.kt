@@ -98,9 +98,15 @@ private fun CodexScreen(
           copyable = state.solanaPubkey != null,
           copyText = state.solanaPubkey,
         )
+        if (state.walletLabel != null) {
+          RowCard(
+            label = "Wallet account",
+            value = state.walletLabel,
+          )
+        }
         RowCard(
-          label = "Linked clan",
-          value = "Caldris of the Strait — sealed at tick demo.",
+          label = "Linked clans · ${state.linkedClansCount} of viii",
+          value = linkedClansLine(state.linkedClanIds),
           isScript = true,
         )
       }
@@ -118,15 +124,58 @@ private fun CodexScreen(
 
     Spacer(Modifier.height(20.dp))
 
-    // ── About ────────────────────────────────────────────────────────
+    // ── Share ────────────────────────────────────────────────────────
     StaggeredEntry(index = 5) {
-      SectionHeader(title = "About", showLozenge = false)
+      SectionHeader(title = "Share", showLozenge = false)
     }
     StaggeredEntry(index = 6) {
-      RowCard(label = "Build", value = state.build)
+      RowCard(
+        label = "APK download · for friends",
+        value = state.apkShareUrl,
+        copyable = true,
+        copyText = state.apkShareUrl,
+      )
+    }
+
+    Spacer(Modifier.height(20.dp))
+
+    // ── About ────────────────────────────────────────────────────────
+    StaggeredEntry(index = 7) {
+      SectionHeader(title = "About", showLozenge = false)
+    }
+    StaggeredEntry(index = 8) {
+      Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        RowCard(label = "Build", value = state.build)
+        RowCard(
+          label = "Convex deployment",
+          value = state.convexUrl,
+          copyable = true,
+          copyText = state.convexUrl,
+        )
+      }
     }
 
     Spacer(Modifier.height(40.dp))
+  }
+}
+
+private fun linkedClansLine(ids: List<Int>): String {
+  if (ids.isEmpty()) return "no clans linked yet"
+  val names = ids.map { id ->
+    when (id) {
+      1 -> "Storm-Edge"; 2 -> "Tideborne"; 3 -> "Sunhold"; 4 -> "Vale-Ward"
+      5 -> "Twilight"; 6 -> "Ember"; 7 -> "Forge"; 8 -> "Star"
+      else -> "Clan $id"
+    }
+  }
+  return when (names.size) {
+    1 -> "${names[0]} stands under your hand."
+    2 -> "${names[0]} and ${names[1]} stand under your hand."
+    else -> {
+      val head = names.dropLast(1).joinToString(", ")
+      val tail = names.last()
+      "$head, and $tail stand under your hand."
+    }
   }
 }
 
