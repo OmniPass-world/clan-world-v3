@@ -263,6 +263,18 @@ private fun DemoResetRow(onConfirm: () -> Unit) {
   val armedState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val armed = armedState.value
   val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+  // Auto-disarm after 4s of inactivity. If the user taps once by accident
+  // and walks away, the row should not stay armed indefinitely — a stray
+  // second tap on return would wipe their hired/forged state without
+  // confirmation. Resetting `armedState.value` to false also undoes the
+  // danger-color border so they can see at a glance that they're safe.
+  androidx.compose.runtime.LaunchedEffect(armed) {
+    if (armed) {
+      kotlinx.coroutines.delay(4000L)
+      armedState.value = false
+    }
+  }
   Column(
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
