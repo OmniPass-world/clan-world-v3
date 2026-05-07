@@ -1,6 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
 
+  <!-- Mobile Wallet Adapter package visibility (Android 11+).
+       Without this, MobileWalletAdapter cannot enumerate / launch wallet apps. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <category android:name="android.intent.category.BROWSABLE" />
+      <data android:scheme="solana-wallet" />
+    </intent>
+  </queries>
+
   <application
     android:allowBackup="true"
     android:icon="@mipmap/ic_launcher"
