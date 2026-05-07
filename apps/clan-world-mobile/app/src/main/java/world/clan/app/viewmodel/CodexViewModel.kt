@@ -35,7 +35,7 @@ class CodexViewModel(
   private val _state = MutableStateFlow(
     run {
       val s = sessionStore.read()
-      val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).distinct()
+      val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getOwnedClanIdsExtra()).distinct()
       CodexUiState(
         deviceClass = deviceClass,
         solanaPubkey = s?.solanaPubkeyBase58,
@@ -56,7 +56,7 @@ class CodexViewModel(
    * and freshly-hired sigils appear in Codex without an app kill.
    */
   fun refreshLineage() {
-    val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).distinct()
+    val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getOwnedClanIdsExtra()).distinct()
     _state.value = _state.value.copy(
       lineage = lineageStore.read(),
       linkedClansCount = owned.size,
