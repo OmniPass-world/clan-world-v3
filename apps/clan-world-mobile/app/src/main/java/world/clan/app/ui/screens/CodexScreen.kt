@@ -103,6 +103,18 @@ private fun CodexScreen(
     }
     StaggeredEntry(index = 2) {
       Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // Resolved on-chain name — .skr / .sol — when available. Otherwise
+        // skip the row; wallet label below carries the same role.
+        val identity = world.clan.app.ui.components.LocalWalletIdentity.current
+        val resolved = identity?.skrName ?: identity?.solName
+        if (resolved != null) {
+          RowCard(
+            label = if (identity?.skrName != null) "Seeker · .skr" else "SNS · .sol",
+            value = resolved,
+            copyable = true,
+            copyText = resolved,
+          )
+        }
         RowCard(
           label = "Solana pubkey · MWA",
           value = state.solanaPubkey?.shortenPubkey() ?: "not connected",
