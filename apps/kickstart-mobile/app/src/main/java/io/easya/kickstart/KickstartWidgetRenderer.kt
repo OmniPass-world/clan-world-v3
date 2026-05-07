@@ -1,6 +1,7 @@
 package io.easya.kickstart
 
 import android.content.Context
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -14,6 +15,19 @@ object KickstartWidgetRenderer {
   private val RED = Color.rgb(255, 104, 119)
   private val MUTED = Color.rgb(143, 138, 123)
   private val GOLD = Color.rgb(245, 197, 66)
+
+  // Logical sizes in dp. The chart bitmaps were previously created at hardcoded
+  // pixel dimensions (360 x 120), which renders crisp on mdpi (~1.0x) but
+  // produces a tiny chart on a typical xxhdpi phone (~3.0x → effective 120dp
+  // wide). Convert to actual pixels at draw time using display density.
+  private const val CHART_WIDTH_DP = 360
+  private const val CHART_HEIGHT_DP = 120
+
+  private fun dpToPx(dp: Int): Int =
+    (dp * Resources.getSystem().displayMetrics.density).toInt()
+
+  private fun dpToPxF(dp: Float): Float =
+    dp * Resources.getSystem().displayMetrics.density
 
   fun render(
     context: Context,
@@ -39,7 +53,9 @@ object KickstartWidgetRenderer {
   }
 
   private fun RemoteViews.setChange(id: Int, label: String, value: Double?) {
-    setTextViewText(id, "${formatChange(value)} $label")
+    // Label-first to match the placeholder copy ("1H --"), which is what
+    // the static layout shows before data binds.
+    setTextViewText(id, "$label ${formatChange(value)}")
     setTextColor(id, when {
       value == null -> MUTED
       value > 0.0 -> GREEN
@@ -67,8 +83,8 @@ object KickstartWidgetRenderer {
   }
 
   private fun drawSparkline(token: KickstartToken?): Bitmap {
-    val width = 360
-    val height = 120
+    val width = dpToPx(CHART_WIDTH_DP)
+    val height = dpToPx(CHART_HEIGHT_DP)
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val points = sparklinePrices(token)
@@ -76,10 +92,10 @@ object KickstartWidgetRenderer {
     val minPrice = points.minOrNull() ?: return bitmap
     val maxPrice = points.maxOrNull() ?: return bitmap
     val span = max(maxPrice - minPrice, 0.0000000001)
-    val pad = 10f
+    val pad = dpToPxF(10f)
     val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
       color = if ((token?.priceChange24h ?: 0.0) < 0.0) RED else GREEN
-      strokeWidth = 5f
+      strokeWidth = dpToPxF(5f)
       style = Paint.Style.STROKE
       strokeCap = Paint.Cap.ROUND
       strokeJoin = Paint.Join.ROUND
@@ -87,7 +103,7 @@ object KickstartWidgetRenderer {
     val glow = Paint(line).apply {
       color = GOLD
       alpha = 42
-      strokeWidth = 12f
+      strokeWidth = dpToPxF(12f)
     }
     fun x(index: Int) = pad + (width - pad * 2) * (index.toFloat() / (points.size - 1).toFloat())
     fun y(value: Double): Float {
@@ -111,8 +127,8 @@ object KickstartWidgetRenderer {
   }
 
   private fun drawCandles(token: KickstartToken?): Bitmap {
-    val width = 360
-    val height = 120
+    val width = dpToPx(CHART_WIDTH_DP)
+    val height = dpToPx(CHART_HEIGHT_DP)
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val candles = token?.sparkline24h
@@ -130,10 +146,10 @@ object KickstartWidgetRenderer {
     val minPrice = candles.minOf { it.low }
     val maxPrice = candles.maxOf { it.high }
     val span = max(maxPrice - minPrice, 0.0000000001)
-    val pad = 8f
-    val candleWidth = max(2f, ((width - pad * 2) / candles.size.toFloat()) * 0.56f)
+    val pad = dpToPxF(8f)
+    val candleWidth = max(dpToPxF(2f), ((width - pad * 2) / candles.size.toFloat()) * 0.56f)
     val wick = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-      strokeWidth = 2f
+      strokeWidth = dpToPxF(2f)
       strokeCap = Paint.Cap.ROUND
     }
     val body = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -152,7 +168,17 @@ object KickstartWidgetRenderer {
       canvas.drawLine(cx, y(candle.high), cx, y(candle.low), wick)
       val top = min(y(candle.open), y(candle.close))
       val bottom = max(y(candle.open), y(candle.close))
-      canvas.drawRoundRect(cx - candleWidth / 2f, top, cx + candleWidth / 2f, max(bottom, top + 2f), 1.5f, 1.5f, body)
+      val minBodyHeight = dpToPxF(2f)
+      val cornerRadius = dpToPxF(1.5f)
+      canvas.drawRoundRect(
+        cx - candleWidth / 2f,
+        top,
+        cx + candleWidth / 2f,
+        max(bottom, top + minBodyHeight),
+        cornerRadius,
+        cornerRadius,
+        body,
+      )
     }
     return bitmap
   }
