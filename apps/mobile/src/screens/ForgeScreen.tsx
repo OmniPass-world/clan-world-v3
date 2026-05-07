@@ -16,7 +16,7 @@ import { Parchment, Stone } from '../components/Surfaces';
 import { Slider } from '../components/Slider';
 import { TopBar } from '../components/TopBar';
 import { colors, fonts } from '../theme';
-import { signAndSendMemoTx } from '../wallet/mwa';
+import { signForgeReceipt } from '../wallet/mwa';
 import { addForgedInft, getFreeForgeUsed, setFreeForgeUsed } from '../storage';
 
 const ZERO_STRAT: Strategy = {
@@ -67,16 +67,19 @@ export const ForgeScreen = ({ pubkey, isFreeForgeEligible, connection, onClose, 
     try {
       // Memo payload — recorded on Solana mainnet so the forge has a real on-chain artifact.
       const memo = `cw:forge:v1:name=${name}:archetype=${arch}:strategy=${JSON.stringify(strat)}:t=${Math.floor(Date.now() / 1000)}`;
-      const sig = await signAndSendMemoTx(connection, memo);
+      // signForgeReceipt tries an on-chain memo tx; falls back to
+      // signMessage if the wallet has 0 SOL or simulation fails. Either way,
+      // the forge UX completes.
+      const receipt = await signForgeReceipt(connection, memo);
 
       // Record locally — Hall picks this up reactively via MMKV-backed read.
       addForgedInft({
-        id: `forged-${sig.slice(0, 12)}`,
+        id: `forged-${receipt.sig.slice(0, 12)}`,
         pubkey,
         name,
         archetype: arch,
         strategy: strat,
-        mintTxSig: sig,
+        mintTxSig: receipt.sig,
         isFreeForge: willBeFree,
         createdAt: Date.now(),
       });
@@ -91,7 +94,7 @@ export const ForgeScreen = ({ pubkey, isFreeForgeEligible, connection, onClose, 
       // Trigger the seal animation, then complete.
       setForging(false);
       setDone(true);
-      setTimeout(() => onComplete({ name, archetype: arch, strategy: strat, sig }), 1200);
+      setTimeout(() => onComplete({ name, archetype: arch, strategy: strat, sig: receipt.sig }), 1200);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'Forge failed';
       setError(msg);
@@ -202,9 +205,16 @@ export const ForgeScreen = ({ pubkey, isFreeForgeEligible, connection, onClose, 
                     onPress={() => setArch(a)}
                     style={{ width: '48%', flexGrow: 1 }}
                   >
+                    {/* Fixed-height card so the 2-col grid is uniform
+                        regardless of description length. */}
                     <Parchment
                       deep
-                      style={{ padding: 12, alignItems: 'center' }}
+                      style={{
+                        padding: 12,
+                        alignItems: 'center',
+                        height: 168,
+                        justifyContent: 'flex-start',
+                      }}
                       borderColor={active ? colors.goldBright : colors.goldDeep}
                       borderWidth={active ? 2 : 1}
                     >
@@ -218,6 +228,7 @@ export const ForgeScreen = ({ pubkey, isFreeForgeEligible, connection, onClose, 
                           letterSpacing: 1.4,
                           color: colors.inkParchment,
                           textTransform: 'uppercase',
+                          textAlign: 'center',
                         }}
                       >
                         {ARCHETYPE_GLYPHS[a].name}
@@ -231,6 +242,7 @@ export const ForgeScreen = ({ pubkey, isFreeForgeEligible, connection, onClose, 
                           marginTop: 4,
                           lineHeight: 13,
                           textAlign: 'center',
+                          flex: 1,
                         }}
                       >
                         {ARCHETYPE_GLYPHS[a].short}

@@ -457,13 +457,22 @@ const MemoryTab = ({ inft }: { inft: Inft }) => {
     realClanId !== null ? { clanId: realClanId } : 'skip',
   );
 
+  // Prefer real data when Convex has rows for this clan, but fall back to
+  // the mock fallback baked into the Inft if Convex is empty (which is
+  // common between active seasons or for clans the indexer hasn't logged
+  // memory for yet).
+  const realKv =
+    realClanId !== null && Array.isArray(liveKv) && liveKv.length > 0
+      ? (liveKv as Array<{ key: string; value: string }>).map((row): [string, string] => [
+          row.key,
+          row.value,
+        ])
+      : null;
   const kvEntries: [string, string][] =
-    realClanId !== null && liveKv
-      ? (liveKv as Array<{ key: string; value: string }>).map((row) => [row.key, row.value])
-      : Object.entries(inft.kvState ?? {});
+    realKv ?? Object.entries(inft.kvState ?? {});
 
-  const mem: { t: string; op: 'WRITE' | 'READ'; text: string }[] =
-    realClanId !== null && liveEvents
+  const realMem =
+    realClanId !== null && Array.isArray(liveEvents) && liveEvents.length > 0
       ? (liveEvents as Array<{
           tick: number;
           op: 'read' | 'write';
@@ -471,10 +480,12 @@ const MemoryTab = ({ inft }: { inft: Inft }) => {
           note?: string;
         }>).map((row) => ({
           t: `T${row.tick}`,
-          op: row.op === 'write' ? 'WRITE' : 'READ',
+          op: (row.op === 'write' ? 'WRITE' : 'READ') as 'WRITE' | 'READ',
           text: row.note ?? row.key,
         }))
-      : inft.memory ?? [];
+      : null;
+  const mem: { t: string; op: 'WRITE' | 'READ'; text: string }[] =
+    realMem ?? inft.memory ?? [];
 
   return (
     <View style={{ gap: 14 }}>

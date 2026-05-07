@@ -10,7 +10,11 @@ import {
   REAL_CLAN_DISPLAY,
   type SnapshotForHero,
 } from '../clanData';
-import { getForgedInfts, realClanIdFromInftId } from '../storage';
+import {
+  getForgedInfts,
+  getFreeForgeUsed,
+  realClanIdFromInftId,
+} from '../storage';
 import { ArchetypeGlyph } from '../components/ArchetypeGlyph';
 import { Btn } from '../components/Buttons';
 import { Pill } from '../components/Pill';
@@ -25,6 +29,8 @@ import { colors, fonts } from '../theme';
 type Props = {
   loadedInftId: string | null;
   pubkey: string | null;
+  /** True when the user is a Seeker bearer (M1 instant or M2 verified). */
+  isSeekerBearer: boolean;
   onEnterCockpit: (inft: Inft) => void;
   onWhispers: () => void;
   onSettings: () => void;
@@ -34,11 +40,14 @@ type Props = {
 export const HearthScreen = ({
   loadedInftId,
   pubkey,
+  isSeekerBearer,
   onEnterCockpit,
   onWhispers,
   onSettings,
   navigate,
 }: Props) => {
+  const freeForgeUsed = pubkey ? getFreeForgeUsed(pubkey) : false;
+  const showSeekerNudge = isSeekerBearer && !freeForgeUsed;
   const realClanId = realClanIdFromInftId(loadedInftId);
   const isForged = !!loadedInftId && loadedInftId.startsWith('forged-');
 
@@ -99,6 +108,84 @@ export const HearthScreen = ({
         contentContainerStyle={{ padding: 14, paddingBottom: 20, gap: 18 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Seeker free-forge nudge — sits above the hero, only when the
+            connected wallet is a Seeker bearer who hasn't yet claimed their
+            free Elder. Tapping routes straight into the Forge flow. */}
+        {showSeekerNudge && (
+          <Pressable onPress={() => navigate('forge')}>
+            <Parchment
+              deep
+              style={{ padding: 14 }}
+              borderColor={colors.goldBright}
+              borderWidth={2}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <View style={{ flex: 1, gap: 4 }}>
+                  <Text
+                    style={{
+                      fontFamily: fonts.display,
+                      fontSize: 11,
+                      letterSpacing: 1.6,
+                      color: colors.goldDeep,
+                    }}
+                  >
+                    ◇ SEEKER BEARER · WELCOMED
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: fonts.script,
+                      fontStyle: 'italic',
+                      fontSize: 16,
+                      color: colors.scriptBlueDark,
+                      lineHeight: 20,
+                    }}
+                  >
+                    Your first Elder is forged in our hearth, not yours.
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: fonts.bodyItalic,
+                      fontStyle: 'italic',
+                      fontSize: 11,
+                      color: colors.inkParchmentMuted,
+                      marginTop: 2,
+                    }}
+                  >
+                    Mint fee waived. One free forge per bearer.
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    backgroundColor: '#1A1410',
+                    borderColor: colors.goldPrimary,
+                    borderWidth: 1,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontFamily: fonts.display,
+                      fontSize: 11,
+                      letterSpacing: 1.4,
+                      color: colors.goldBright,
+                    }}
+                  >
+                    FORGE · FREE →
+                  </Text>
+                </View>
+              </View>
+            </Parchment>
+          </Pressable>
+        )}
+
         {/* Hero card */}
         {loadedInft && !isForged ? (
           // Loaded a live clan — render Hero with real Convex data
@@ -174,7 +261,67 @@ export const HearthScreen = ({
               </View>
             )}
             <ParchmentRule />
-            <View style={{ padding: 12 }}>
+            {loadedInft.movements && loadedInft.movements.length > 0 && (
+              <View style={{ paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12 }}>
+                <Text
+                  style={{
+                    fontFamily: fonts.display,
+                    fontSize: 9,
+                    color: colors.inkParchmentMuted,
+                    letterSpacing: 1.4,
+                    marginBottom: 6,
+                  }}
+                >
+                  ASSET MOVEMENTS
+                </Text>
+                <View style={{ gap: 6 }}>
+                  {loadedInft.movements.slice(0, 3).map((m, i) => (
+                    <View
+                      key={i}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontFamily: fonts.body,
+                          fontSize: 12,
+                          color:
+                            m.kind === 'danger'
+                              ? colors.statusDanger
+                              : m.kind === 'live'
+                              ? colors.statusLiveDeep
+                              : colors.inkParchment,
+                          flex: 1,
+                          marginRight: 8,
+                        }}
+                      >
+                        {m.text}
+                      </Text>
+                      <Text
+                        style={{
+                          fontFamily: fonts.mono,
+                          fontSize: 10,
+                          color: colors.inkParchmentMuted,
+                        }}
+                      >
+                        {m.t}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+            <View
+              style={{
+                padding: 12,
+                backgroundColor: 'rgba(26,20,16,0.06)',
+                borderTopWidth: 1,
+                borderTopColor: 'rgba(26,20,16,0.15)',
+              }}
+            >
               <Btn variant="primary" block onPress={() => onEnterCockpit(loadedInft)}>
                 ENTER COCKPIT →
               </Btn>

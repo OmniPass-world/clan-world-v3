@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { View, PanResponder, LayoutChangeEvent } from 'react-native';
 import { colors } from '../theme';
 
@@ -17,17 +17,40 @@ export const Slider = ({
   max = 3,
   variant = 'parchment',
 }: Props) => {
-  const [width, setWidth] = useState(1);
+  // We measure track origin + width on layout. Touch position is reported
+  // as pageX (absolute screen coords); subtract the track's pageX origin to
+  // get the relative position.
+  //
+  // The previous implementation used PanResponder's `locationX`, which on
+  // some Android devices reports 0 on touch-start (bug surfaces as the
+  // thumb snapping to the far right because we'd then divide by a stale
+  // width=1 fallback).
+  const trackRef = useRef<View>(null);
+  const layoutRef = useRef<{ x: number; width: number } | null>(null);
   const valueRef = useRef(value);
   valueRef.current = value;
 
   const ticks = max - min + 1;
   const pct = ((value - min) / (max - min)) * 100;
 
-  const setFromX = (x: number) => {
-    const p = Math.max(0, Math.min(1, x / Math.max(width, 1)));
+  const setFromPageX = (pageX: number) => {
+    const layout = layoutRef.current;
+    if (!layout || layout.width <= 0) return;
+    const relativeX = pageX - layout.x;
+    const p = Math.max(0, Math.min(1, relativeX / layout.width));
     const v = Math.round(min + p * (max - min));
     if (v !== valueRef.current) onChange?.(v);
+  };
+
+  const measure = () => {
+    trackRef.current?.measure((_x, _y, width, _height, pageX) => {
+      layoutRef.current = { x: pageX, width };
+    });
+  };
+
+  const onLayout = (_e: LayoutChangeEvent) => {
+    // Defer to next tick so pageX is accurate after layout settles
+    setTimeout(measure, 0);
   };
 
   const responder = useRef(
@@ -35,12 +58,12 @@ export const Slider = ({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
-        const { locationX } = evt.nativeEvent;
-        setFromX(locationX);
+        measure();
+        const pageX = evt.nativeEvent.pageX;
+        setTimeout(() => setFromPageX(pageX), 0);
       },
       onPanResponderMove: (evt) => {
-        const { locationX } = evt.nativeEvent;
-        setFromX(locationX);
+        setFromPageX(evt.nativeEvent.pageX);
       },
     })
   ).current;
@@ -49,15 +72,15 @@ export const Slider = ({
   const thumbBg = variant === 'parchment' ? colors.inkParchment : colors.goldBright;
   const thumbHalo = variant === 'parchment' ? colors.bgParchmentDim : colors.bgCanvas;
 
-  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
-
   return (
     <View
+      ref={trackRef}
       style={{ height: 26, justifyContent: 'center' }}
       {...responder.panHandlers}
       onLayout={onLayout}
     >
       <View
+        pointerEvents="none"
         style={{
           position: 'absolute',
           left: 0,
@@ -72,6 +95,7 @@ export const Slider = ({
         Array.from({ length: ticks }).map((_, i) => (
           <View
             key={i}
+            pointerEvents="none"
             style={{
               position: 'absolute',
               left: `${(i / (ticks - 1)) * 100}%`,
@@ -85,6 +109,7 @@ export const Slider = ({
           />
         ))}
       <View
+        pointerEvents="none"
         style={{
           position: 'absolute',
           left: `${pct}%`,

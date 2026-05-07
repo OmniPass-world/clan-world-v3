@@ -144,6 +144,44 @@ export const signAndSendMemoTx = async (
   });
 };
 
+export type ForgeReceipt = {
+  /** Solana base58 signature. For 'tx' kind this is a real on-chain tx;
+   *  for 'message' kind it's a signed-message digest hex used as a
+   *  pseudo-signature for the local record. */
+  sig: string;
+  /** 'tx' = real on-chain memo tx submitted, 'message' = off-chain
+   *  signMessage fallback (used when wallet has insufficient SOL or the
+   *  send-tx flow rejects). */
+  kind: 'tx' | 'message';
+};
+
+/**
+ * Forge receipt — tries to submit a real on-chain memo tx first. On any
+ * failure (insufficient SOL, simulation rejection, RPC hiccup, user
+ * dismissal), falls back to an off-chain signMessage so the forge UX still
+ * completes. The returned `kind` lets callers decide whether to surface a
+ * Solscan link.
+ */
+export const signForgeReceipt = async (
+  connection: Connection,
+  memo: string,
+): Promise<ForgeReceipt> => {
+  try {
+    const sig = await signAndSendMemoTx(connection, memo);
+    return { sig, kind: 'tx' };
+  } catch (txErr) {
+    if (__DEV__) {
+      const m = txErr instanceof Error ? txErr.message : String(txErr);
+      console.warn('[forge] tx send failed, falling back to signMessage:', m);
+    }
+    // Off-chain fallback. Doesn't cost SOL, doesn't appear on Solscan, but
+    // still produces a wallet-signed payload we can store as the receipt.
+    const { signature } = await signMessage(memo);
+    const sigB58 = Buffer.from(signature).toString('base64').slice(0, 64);
+    return { sig: sigB58, kind: 'message' };
+  }
+};
+
 /** Read-only — does the user have a cached connection? */
 export const getCachedAuth = (): { pubkey: string | null; authToken: string | null } => ({
   pubkey: getWalletPubkey(),

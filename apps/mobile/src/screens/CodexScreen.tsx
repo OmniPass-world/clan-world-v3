@@ -5,9 +5,19 @@ import { GoldRuleSoft } from '../components/Diamond';
 import { TopBar } from '../components/TopBar';
 import { colors, fonts } from '../theme';
 
-type Props = { onBack: () => void };
+type Props = {
+  onBack: () => void;
+  pubkey: string | null;
+  onDisconnect: () => void;
+};
 
-export const CodexScreen = ({ onBack }: Props) => {
+const truncPub = (pk: string | null) => {
+  if (!pk) return '—';
+  if (pk.length <= 10) return pk;
+  return `${pk.slice(0, 4)}…${pk.slice(-4)}`;
+};
+
+export const CodexScreen = ({ onBack, pubkey, onDisconnect }: Props) => {
   const [haptics, setHaptics] = useState(true);
   const [game, setGame] = useState(true);
   const [market, setMarket] = useState(true);
@@ -20,7 +30,7 @@ export const CodexScreen = ({ onBack }: Props) => {
         contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 20, paddingTop: 12, gap: 18 }}
       >
         <SettingGroup label="WALLET">
-          <SettingRow label="Connected address" value="0x4f2a…81d3" mono />
+          <SettingRow label="Connected address" value={truncPub(pubkey)} mono />
           <SettingRow
             label=""
             right={
@@ -29,6 +39,7 @@ export const CodexScreen = ({ onBack }: Props) => {
                 paddingHorizontal={10}
                 paddingVertical={6}
                 fontSize={10}
+                onPress={onDisconnect}
               >
                 DISCONNECT
               </Btn>

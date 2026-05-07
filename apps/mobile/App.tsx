@@ -42,6 +42,7 @@ import {
   setLoadedInftId,
   getWalletPubkey,
 } from './src/storage';
+import { disconnectWallet } from './src/wallet/mwa';
 import { hasSeekerGenesisToken, isSeekerDevice } from './src/seeker';
 import { PublicKey } from '@solana/web3.js';
 
@@ -155,6 +156,21 @@ export default function App() {
     setLoadedInftIdState(inftId);
   };
 
+  /** Sign out — clear MMKV auth + reset routing state back to Splash. */
+  const handleDisconnect = () => {
+    disconnectWallet();
+    setLoadedInftId(null);
+    setLoadedInftIdState(null);
+    setStack([]);
+    setTab('hearth');
+    setForge(false);
+    setCockpit(null);
+    setBridge(false);
+    setHire(null);
+    setSeekerM2(null);
+    setPubkey(null); // flips splashSeen back to false
+  };
+
   if (!fontsLoaded) {
     return (
       <SafeAreaProvider>
@@ -210,7 +226,13 @@ export default function App() {
   } else if (top?.kind === 'whispers') {
     body = <WhispersScreen onBack={pop} />;
   } else if (top?.kind === 'codex') {
-    body = <CodexScreen onBack={pop} />;
+    body = (
+      <CodexScreen
+        onBack={pop}
+        pubkey={pubkey}
+        onDisconnect={handleDisconnect}
+      />
+    );
   } else if (top?.kind === 'steering') {
     body = (
       <SteeringConsoleScreen
@@ -266,6 +288,7 @@ export default function App() {
         <HearthScreen
           loadedInftId={loadedInftIdState}
           pubkey={pubkey}
+          isSeekerBearer={isSeekerBearer}
           onEnterCockpit={(inft) => enterCockpit(inft)}
           onWhispers={() => push({ kind: 'whispers' })}
           onSettings={() => push({ kind: 'codex' })}

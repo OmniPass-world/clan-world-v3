@@ -7,7 +7,14 @@
 // the mobile app and the cockpit show the same names/archetypes when the
 // user opens the WebView. Refactor to a shared package later if it drifts.
 
-import type { ArchetypeKey, Inft, Strategy } from './data';
+import type {
+  ArchetypeKey,
+  HistoryRow,
+  Inft,
+  MemoryOp,
+  Movement,
+  Strategy,
+} from './data';
 import { ARCHETYPE_GLYPHS } from './data';
 import type { ForgedInft } from './storage';
 
@@ -79,6 +86,12 @@ export type MockFallback = {
   bestBase: number;
   casualtyPct: string;
   strategy: Strategy;
+  /** Resource fallback when the live snapshot has zeros or no data. */
+  resources: { gold: number; wood: number; iron: number; wheat: number; fish: number; blueprint: number };
+  movements: Movement[];
+  history: HistoryRow[];
+  kvState: Record<string, string>;
+  memory: MemoryOp[];
 };
 
 export const MOCK_FALLBACKS: Record<number, MockFallback> = {
@@ -92,6 +105,30 @@ export const MOCK_FALLBACKS: Record<number, MockFallback> = {
     bestBase: 4,
     casualtyPct: '47%',
     strategy: { trust: -3, aggression: 3, honesty: -1, solo: -1, builder: -2, vengeful: 3, cautious: -2 },
+    resources: { gold: 6, wood: 0, iron: 4, wheat: 1, fish: 2, blueprint: 0 },
+    movements: [
+      { t: 'T263', text: 'Raid · -3 wheat from clan-2', kind: 'live' },
+      { t: 'T262', text: 'Bandit ambush · -1 living', kind: 'danger' },
+      { t: 'T261', text: 'Spear-shaft drilled · +1 wall', kind: 'live' },
+    ],
+    history: [
+      { season: 18, rank: 4, gold: 4, event: 'Early gambit failed at tick 12.', when: '24d ago' },
+      { season: 17, rank: 1, gold: 32, event: 'Burned the eastern village before dawn.', when: '52d ago' },
+      { season: 16, rank: 6, gold: 0, event: 'Bandit horde overran the wall.', when: '79d ago' },
+    ],
+    kvState: {
+      mood: 'aggressive',
+      trustedClans: '[]',
+      grudgeAgainst: '0x21b8…aa44',
+      lastWhisperFrom: 'orchestrator',
+      pactExpires: 'none',
+    },
+    memory: [
+      { t: 'T263', op: 'WRITE', text: 'tracked clan-2 wheat surplus' },
+      { t: 'T262', op: 'READ', text: 'consult strategy.aggression for raid' },
+      { t: 'T261', op: 'WRITE', text: 'incremented victory count' },
+      { t: 'T260', op: 'READ', text: 'recall best raid window from S17' },
+    ],
   },
   2: {
     description:
@@ -103,6 +140,30 @@ export const MOCK_FALLBACKS: Record<number, MockFallback> = {
     bestBase: 5,
     casualtyPct: '12%',
     strategy: { trust: 1, aggression: -1, honesty: 2, solo: -2, builder: 1, vengeful: -1, cautious: 1 },
+    resources: { gold: 3, wood: 4, iron: 1, wheat: 7, fish: 3, blueprint: 2 },
+    movements: [
+      { t: 'T263', text: 'Granary built · +1 monument', kind: 'live' },
+      { t: 'T261', text: 'Trade · +2 iron from Verdant', kind: 'live' },
+      { t: 'T259', text: 'Repaired wall · +1 wall', kind: 'live' },
+    ],
+    history: [
+      { season: 6, rank: 2, gold: 14, event: 'Held the granary through winter.', when: '18d ago' },
+      { season: 5, rank: 1, gold: 28, event: 'Won via diplomacy. No casualties.', when: '40d ago' },
+      { season: 4, rank: 3, gold: 6, event: 'Stockpiled wheat for the long siege.', when: '62d ago' },
+    ],
+    kvState: {
+      mood: 'measured',
+      trustedClans: '[verdant]',
+      grudgeAgainst: 'none',
+      lastWhisperFrom: 'owner',
+      pactExpires: 'T+12',
+    },
+    memory: [
+      { t: 'T263', op: 'WRITE', text: 'noted granary completion at NW' },
+      { t: 'T262', op: 'READ', text: 'recall trade ratio with verdant' },
+      { t: 'T260', op: 'WRITE', text: 'updated wheat reserve target' },
+      { t: 'T258', op: 'READ', text: 'consult strategy.cautious for parley' },
+    ],
   },
   3: {
     description:
@@ -114,6 +175,31 @@ export const MOCK_FALLBACKS: Record<number, MockFallback> = {
     bestBase: 5,
     casualtyPct: '23%',
     strategy: { trust: -1, aggression: -2, honesty: 1, solo: 0, builder: 2, vengeful: 1, cautious: 2 },
+    resources: { gold: 4, wood: 1, iron: 2, wheat: 5, fish: 0, blueprint: 1 },
+    movements: [
+      { t: 'T259', text: 'Bandit raid · -2 wood', kind: 'danger' },
+      { t: 'T258', text: 'Trade · +3 iron from Verdant', kind: 'live' },
+      { t: 'T257', text: 'Built granary · +1 monument', kind: 'live' },
+    ],
+    history: [
+      { season: 11, rank: 2, gold: 14, event: 'Held the wall through three sieges.', when: '14d ago' },
+      { season: 10, rank: 1, gold: 28, event: 'Won via diplomacy. No casualties.', when: '32d ago' },
+      { season: 9, rank: 5, gold: 0, event: 'Betrayed at tick 240.', when: '58d ago' },
+      { season: 8, rank: 3, gold: 6, event: 'Bandit raid wiped the granary.', when: '79d ago' },
+    ],
+    kvState: {
+      mood: 'cautious',
+      trustedClans: '[verdant, ironguard]',
+      grudgeAgainst: '0x9a…f7',
+      lastWhisperFrom: 'owner',
+      pactExpires: 'T+8',
+    },
+    memory: [
+      { t: 'T259', op: 'WRITE', text: 'noted bandit camp · NE quadrant' },
+      { t: 'T258', op: 'READ', text: 'recall pact with verdant · expires T267' },
+      { t: 'T256', op: 'WRITE', text: 'updated grudge tally vs 0x9a…f7' },
+      { t: 'T255', op: 'READ', text: 'consult strategy.honesty for trade' },
+    ],
   },
   4: {
     description:
@@ -125,6 +211,30 @@ export const MOCK_FALLBACKS: Record<number, MockFallback> = {
     bestBase: 4,
     casualtyPct: '14%',
     strategy: { trust: 2, aggression: -2, honesty: 2, solo: -1, builder: 3, vengeful: -2, cautious: 2 },
+    resources: { gold: 8, wood: 5, iron: 3, wheat: 6, fish: 4, blueprint: 3 },
+    movements: [
+      { t: 'T263', text: 'Monument raised · +1 monument', kind: 'live' },
+      { t: 'T260', text: 'Trade · -2 wood for +3 iron', kind: 'live' },
+      { t: 'T258', text: 'Pact extended with Crimson · +5 ticks', kind: 'live' },
+    ],
+    history: [
+      { season: 13, rank: 1, gold: 36, event: 'Won by monument supremacy.', when: '11d ago' },
+      { season: 12, rank: 2, gold: 18, event: 'Anchored the western alliance.', when: '36d ago' },
+      { season: 11, rank: 1, gold: 30, event: 'Three trade pacts, no battles.', when: '60d ago' },
+    ],
+    kvState: {
+      mood: 'patient',
+      trustedClans: '[crimson, ironguard]',
+      grudgeAgainst: 'none',
+      lastWhisperFrom: 'orchestrator',
+      pactExpires: 'T+18',
+    },
+    memory: [
+      { t: 'T263', op: 'WRITE', text: 'monument 5 reached, log of materials' },
+      { t: 'T262', op: 'READ', text: 'recall best trade rate with crimson' },
+      { t: 'T260', op: 'WRITE', text: 'extended pact with crimson by 5 ticks' },
+      { t: 'T257', op: 'READ', text: 'consult strategy.builder for next plan' },
+    ],
   },
 };
 
@@ -135,6 +245,11 @@ const safeNum = (s: string | undefined, fallback = 0): number => {
   const n = Number(s);
   return Number.isFinite(n) ? n : fallback;
 };
+
+/** Fall back to mock value when the real number is 0 or missing — keeps
+ *  the Hero readable when the live world is sparse / between seasons. */
+const realOrFallback = (real: number, mock: number): number =>
+  real > 0 ? real : mock;
 
 export const mergeRealClan = (
   display: RealClanDisplay,
@@ -164,12 +279,15 @@ export const mergeRealClan = (
     season: snapshot?.currentSeasonNumber,
     seasonPct,
     resources: {
-      gold: safeNum(snapshotClan?.goldBalance),
-      wood: safeNum(snapshotClan?.vaultWood),
-      iron: safeNum(snapshotClan?.vaultIron),
-      wheat: safeNum(snapshotClan?.vaultWheat),
-      fish: safeNum(snapshotClan?.vaultFish),
-      blueprint: safeNum(snapshotClan?.blueprintBalance),
+      gold: realOrFallback(safeNum(snapshotClan?.goldBalance), fallback.resources.gold),
+      wood: realOrFallback(safeNum(snapshotClan?.vaultWood), fallback.resources.wood),
+      iron: realOrFallback(safeNum(snapshotClan?.vaultIron), fallback.resources.iron),
+      wheat: realOrFallback(safeNum(snapshotClan?.vaultWheat), fallback.resources.wheat),
+      fish: realOrFallback(safeNum(snapshotClan?.vaultFish), fallback.resources.fish),
+      blueprint: realOrFallback(
+        safeNum(snapshotClan?.blueprintBalance),
+        fallback.resources.blueprint,
+      ),
     },
     bestMonument: snapshotClan?.monumentLevel ?? fallback.bestMonument,
     bestBase: snapshotClan?.baseLevel ?? fallback.bestBase,
@@ -177,10 +295,12 @@ export const mergeRealClan = (
     minted: 'live realm',
     owner: snapshotClan?.owner ?? '0x4f2a…81d3',
     teeAttested: true,
-    description: arch.short || fallback.description,
+    description: fallback.description,
     strategy: fallback.strategy,
-    movements: [],
-    history: [],
+    movements: fallback.movements,
+    history: fallback.history,
+    kvState: fallback.kvState,
+    memory: fallback.memory,
   };
 };
 
