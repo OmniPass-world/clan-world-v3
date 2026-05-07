@@ -37,8 +37,15 @@ const decodeBase64 = (s: string): Uint8Array =>
   Uint8Array.from(globalThis.atob(s), (c) => c.charCodeAt(0));
 
 /**
- * Connect — opens the user's MWA wallet, authorizes the app, returns the
- * primary account public key and the auth token (cached in MMKV).
+ * Connect — opens the user's MWA wallet, authorizes the app via SIWS
+ * (Sign-In-With-Solana), returns the primary account public key and the
+ * auth token (both cached in MMKV).
+ *
+ * Uses MWA 2.0's `sign_in_payload` so the user sees ONE wallet prompt that
+ * combines authorize + signature in a single round-trip. Without SIWS, we'd
+ * have to call `signMessages` after authorize, which opens the wallet a
+ * second time and confuses users (the second prompt is what causes "Local
+ * association cancelled by user" errors when the user dismisses it).
  *
  * On Seeker, this opens the built-in Seed Vault wallet. On other Android
  * devices it routes to whichever Solana wallet the user has installed
@@ -48,15 +55,25 @@ export const connectWallet = async (): Promise<Authorized> => {
   const cachedToken = getWalletAuthToken();
 
   return transact(async (wallet) => {
-    const result = cachedToken
-      ? await wallet.reauthorize({
-          auth_token: cachedToken,
-          identity: APP_IDENTITY,
-        })
-      : await wallet.authorize({
-          chain: CHAIN,
-          identity: APP_IDENTITY,
-        });
+    let result;
+    if (cachedToken) {
+      // Already-authorized session — reauthorize is silent (no prompt).
+      result = await wallet.reauthorize({
+        auth_token: cachedToken,
+        identity: APP_IDENTITY,
+      });
+    } else {
+      // Fresh connect — request authorize + SIWS in one prompt.
+      result = await wallet.authorize({
+        chain: CHAIN,
+        identity: APP_IDENTITY,
+        sign_in_payload: {
+          domain: 'demo.clan-world.com',
+          statement: 'Sign in to Clan World — your hall awaits.',
+          uri: 'https://demo.clan-world.com',
+        },
+      });
+    }
 
     const account = result.accounts[0];
     if (!account) throw new Error('No account returned from MWA authorize');

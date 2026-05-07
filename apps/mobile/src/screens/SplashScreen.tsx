@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { Btn } from '../components/Buttons';
 import { DiamondRow } from '../components/Diamond';
 import { colors, fonts } from '../theme';
-import { connectWallet, signMessage } from '../wallet/mwa';
+import { connectWallet, disconnectWallet } from '../wallet/mwa';
 
 type Props = {
   /** True if Platform.constants.Model === 'Seeker' (M1 instant check). */
@@ -22,12 +22,9 @@ export const SplashScreen = ({ seekerDetected, onAuthed }: Props) => {
     setBusy(true);
     setError(null);
     try {
+      // Single MWA prompt: authorize + SIWS sign-in in one round-trip
+      // (see connectWallet for why this is one call, not two).
       const { pubkey } = await connectWallet();
-      // Sign-in challenge (J1). Off-chain, free. Proves the user controls
-      // the pubkey before we let them into the realm.
-      const nonce = Math.random().toString(36).slice(2, 10);
-      const challenge = `Sign in to Clan World — nonce: ${nonce}`;
-      await signMessage(challenge);
       try {
         await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch {
@@ -35,6 +32,10 @@ export const SplashScreen = ({ seekerDetected, onAuthed }: Props) => {
       }
       onAuthed(pubkey.toBase58());
     } catch (e: unknown) {
+      // Connection failed or user dismissed wallet — clear any partial state
+      // so the user lands cleanly back on the splash screen and a reload
+      // doesn't silently auto-login from a half-completed session.
+      disconnectWallet();
       const msg = e instanceof Error ? e.message : 'Connection failed';
       setError(msg);
       setBusy(false);
