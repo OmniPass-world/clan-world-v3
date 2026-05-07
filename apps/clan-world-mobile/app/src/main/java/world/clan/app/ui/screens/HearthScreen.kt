@@ -126,7 +126,7 @@ private fun HearthScreen(
             )
           }
           StaggeredEntry(index = 2) {
-            LeaderboardSurface(state.leaderboard)
+            LeaderboardSurface(state.leaderboard, isLoading = state.isLoading)
           }
 
           StaggeredEntry(index = 3) {
@@ -136,7 +136,7 @@ private fun HearthScreen(
             )
           }
       StaggeredEntry(index = 4) {
-        WhispersList(state.recentComms)
+        WhispersList(state.recentComms, isLoading = state.isLoading)
       }
     }
     } // close RefreshableContent
@@ -355,7 +355,10 @@ private fun Int.spelledOut(): String {
 // ─────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun LeaderboardSurface(rows: List<HearthUiState.LeaderboardRow>) {
+private fun LeaderboardSurface(
+  rows: List<HearthUiState.LeaderboardRow>,
+  isLoading: Boolean = false,
+) {
   val hairline = ClanWorldTheme.colors.hairline
   Column(
     modifier = Modifier
@@ -365,7 +368,17 @@ private fun LeaderboardSurface(rows: List<HearthUiState.LeaderboardRow>) {
       .border(1.dp, hairline, RoundedCornerShape(6.dp)),
     verticalArrangement = Arrangement.spacedBy(1.dp),
   ) {
-    if (rows.isEmpty()) {
+    if (rows.isEmpty() && isLoading) {
+      Column(
+        modifier = Modifier
+          .fillMaxWidth()
+          .background(ClanWorldTheme.colors.iron)
+          .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+      ) {
+        repeat(4) { world.clan.app.ui.components.SkeletonLeaderboardRow() }
+      }
+    } else if (rows.isEmpty()) {
       Box(
         Modifier
           .fillMaxWidth()
@@ -401,7 +414,16 @@ private fun LeaderboardSurface(rows: List<HearthUiState.LeaderboardRow>) {
 // ─────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun WhispersList(comms: List<CombinedComm>) {
+private fun WhispersList(
+  comms: List<CombinedComm>,
+  isLoading: Boolean = false,
+) {
+  if (comms.isEmpty() && isLoading) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+      repeat(2) { world.clan.app.ui.components.SkeletonWhisperRow() }
+    }
+    return
+  }
   if (comms.isEmpty()) {
     Text(
       text = "no whispers in the wind…",

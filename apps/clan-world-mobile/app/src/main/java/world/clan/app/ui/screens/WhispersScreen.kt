@@ -95,12 +95,12 @@ private fun WhispersScreen(
     val items = state.filtered()
     when {
       state.isLoading -> {
-        Text(
-          text = "the whispers gather…",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-          modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
-        )
+        Column(
+          modifier = Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+          verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          repeat(5) { world.clan.app.ui.components.SkeletonWhisperRow() }
+        }
       }
       state.errorMessage != null && items.isEmpty() -> {
         world.clan.app.ui.components.RetryNotice(
