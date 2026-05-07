@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
-import { Application, Assets, ColorMatrixFilter, Container, Graphics, Sprite, Text } from 'pixi.js';
+import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
@@ -513,6 +513,7 @@ type TravelRoute = {
 // Worker travel animation (PR #44) — small clan-colored dots crossing between regions.
 interface WorkerTravel {
   id: string;
+  clanId?: string;
   fromRegionKey: string;
   toRegionKey: string;
   startedAt: number;
@@ -961,6 +962,7 @@ export function WorldMap() {
     ring: Graphics;
     color: number;
   } | null>(null);
+  const selectedClanIdRef = useRef<string | null>(null);
   const tickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
   // Snapshot ref populated below in a useEffect — declared up here so the
   // day/night ticker (registered once at Pixi mount) reads current
@@ -1099,21 +1101,25 @@ export function WorldMap() {
 
   function clearSelection() {
     const selected = selectedRef.current;
-    if (!selected) return;
-    selected.target.removeChild(selected.ring);
-    selected.ring.destroy();
+    if (!selected && !selectedClanIdRef.current) return;
+    if (selected) {
+      selected.target.removeChild(selected.ring);
+      selected.ring.destroy();
+    }
     selectedRef.current = null;
+    selectedClanIdRef.current = null;
     setSelectedClanId(null);
+    applyClanFocus(null);
     fitWorldAnimated();
   }
 
-  function selectTarget(target: SelectableTarget, color: number) {
+  function selectTarget(target: SelectableTarget, color: number): boolean {
     const viewport = viewportRef.current;
-    if (!viewport) return;
+    if (!viewport) return false;
     // No-op during active combat vignette — a fresh selection ring would
     // appear inside the dimmed combat scene, undercutting the focus and
     // potentially persisting after the dim layer fades (codex 5.4 LOW).
-    if (combatVignetteRef.current) return;
+    if (combatVignetteRef.current) return false;
     let ring = selectedRef.current?.ring;
     if (!ring) {
       ring = new Graphics();
@@ -1136,6 +1142,35 @@ export function WorldMap() {
       scale: 2.0,
       time: 400,
       ease: 'easeInOutQuad',
+    });
+    return true;
+  }
+
+  function applyClanFocus(clanId: string | null) {
+    const drawn = drawnRef.current;
+    const layers = layersRef.current;
+    if (layers) {
+      layers.terrainBackground.alpha = clanId ? 0.35 : 1;
+      layers.inWorldEffects.alpha = clanId ? 0.45 : 1;
+      layers.bubbleLayer.alpha = clanId ? 0.45 : 1;
+    }
+
+    drawn.clanZones.forEach(({ gfx, clan }) => {
+      gfx.alpha = clanId && clan.id !== clanId ? 0.16 : 1;
+    });
+    drawn.bases.forEach(({ container, clan }) => {
+      container.alpha = clanId && clan.id !== clanId ? 0.18 : 1;
+    });
+    drawn.liveClansmen.forEach((marker) => {
+      marker.node.alpha = clanId && marker.clanId !== clanId ? 0.18 : 1;
+      if (marker.route) marker.route.line.alpha = clanId && marker.clanId !== clanId ? 0.12 : 1;
+    });
+    travelsRef.current.forEach((travel) => {
+      const dim = clanId && travel.clanId !== clanId;
+      if (dim) {
+        travel.gfx.alpha = Math.min(travel.gfx.alpha, 0.18);
+        travel.route.line.alpha = 0.12;
+      }
     });
   }
 
@@ -1168,6 +1203,8 @@ export function WorldMap() {
   useEffect(() => {
     isMountedRef.current = true;
     let mounted = true;
+    let canvasClickHandler: ((event: MouseEvent) => void) | null = null;
+    let pixiCanvas: HTMLCanvasElement | null = null;
     const app = new Application();
     appRef.current = app;
 
@@ -1189,6 +1226,7 @@ export function WorldMap() {
       .then(async () => {
         if (!mounted || !isMountedRef.current || !canvasWrapRef.current) return;
         canvasWrapRef.current.appendChild(app.canvas);
+        pixiCanvas = app.canvas;
         // CSS: stretch to wrapper
         app.canvas.style.display = 'block';
         app.canvas.style.width = '100%';
@@ -1210,6 +1248,27 @@ export function WorldMap() {
           e.preventDefault();
           if (isMountedRef.current) setWebglLost(true);
         }, false);
+        canvasClickHandler = (event: MouseEvent) => {
+          const viewportNow = viewportRef.current;
+          if (!viewportNow || combatVignetteRef.current) return;
+          const rect = app.canvas.getBoundingClientRect();
+          const world = viewportNow.toWorld(event.clientX - rect.left, event.clientY - rect.top);
+          const hitBase = drawnRef.current.bases.find(({ container }) => {
+            const hitArea = container.hitArea;
+            if (!(hitArea instanceof Rectangle)) return false;
+            const lx = world.x - container.x;
+            const ly = world.y - container.y;
+            return hitArea.contains(lx, ly);
+          });
+          if (hitBase) {
+            if (selectTarget(hitBase.container as SelectableTarget, hitBase.clan.color)) {
+              setSelectedClanId(hitBase.clan.id);
+            }
+            return;
+          }
+          clearSelection();
+        };
+        app.canvas.addEventListener('click', canvasClickHandler);
 
         // pixi-viewport: wraps all map layers (bg, regions, sigils, bases,
         // bubbles, travel dots) so .pinch() / .drag() / .wheel() handle
@@ -1243,6 +1302,13 @@ export function WorldMap() {
         viewportRef.current = viewport;
 
         const layers = createWorldLayers();
+        const backgroundHitArea = new Graphics();
+        backgroundHitArea.eventMode = 'static';
+        backgroundHitArea.hitArea = new Rectangle(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
+        backgroundHitArea.on('pointertap', () => {
+          clearSelection();
+        });
+        layers.terrainBackground.addChild(backgroundHitArea);
         viewport.addChild(
           layers.worldContainer,
           layers.inWorldEffects,
@@ -1400,6 +1466,10 @@ export function WorldMap() {
               // Subtle fade-in over first 150ms so dots don't pop in
               t.gfx.alpha = Math.min(1, elapsed / 150);
             }
+            if (selectedClanIdRef.current && t.clanId !== selectedClanIdRef.current) {
+              t.gfx.alpha = Math.min(t.gfx.alpha, 0.18);
+              t.route.line.alpha = 0.12;
+            }
             const lerpFactor = t.carry.targetFill >= t.carry.displayedFill ? 0.15 : 0.28;
             t.carry.displayedFill += (t.carry.targetFill - t.carry.displayedFill) * lerpFactor;
             redrawCarryIndicator(t.carry);
@@ -1413,11 +1483,12 @@ export function WorldMap() {
         const zonePulseCb = () => {
           const drawn = drawnRef.current;
           const t = performance.now() / 1000;
-          drawn.clanZones.forEach(({ gfx }, i) => {
+          drawn.clanZones.forEach(({ gfx, clan }, i) => {
             // Each zone breathes on a slightly different phase
             const phase = (t + i * 0.7) * 1.1;
             const a = 0.78 + 0.22 * Math.sin(phase);
-            gfx.alpha = a;
+            const selectedClanId = selectedClanIdRef.current;
+            gfx.alpha = selectedClanId && clan.id !== selectedClanId ? 0.16 : a;
           });
           const now = performance.now();
           drawn.bases.forEach((base) => {
@@ -1523,6 +1594,7 @@ export function WorldMap() {
       if (a && dayNightTickerCbRef.current) a.ticker.remove(dayNightTickerCbRef.current);
       if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
       if (a && burstTickerCbRef.current) a.ticker.remove(burstTickerCbRef.current);
+      if (pixiCanvas && canvasClickHandler) pixiCanvas.removeEventListener('click', canvasClickHandler);
       finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
       selectedRef.current = null;
@@ -1629,6 +1701,12 @@ export function WorldMap() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pixiReady]);
 
+  useEffect(() => {
+    selectedClanIdRef.current = selectedClanId;
+    if (pixiReady) applyClanFocus(selectedClanId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixiReady, selectedClanId]);
+
   // ---- One-time: create Pixi display objects (refs hold them for relayout) -
   // All layers attach to `viewport` (not app.stage) so pixi-viewport's pinch /
   // drag transforms apply to the whole map atomically.
@@ -1679,8 +1757,9 @@ export function WorldMap() {
       container.cursor = 'pointer';
       container.on('pointertap', (event) => {
         event.stopPropagation();
-        selectTarget(container as SelectableTarget, clan.color);
-        setSelectedClanId(clan.id);
+        if (selectTarget(container as SelectableTarget, clan.color)) {
+          setSelectedClanId(clan.id);
+        }
       });
       const entry: {
         container: Container;
@@ -1875,8 +1954,9 @@ export function WorldMap() {
     container.cursor = 'pointer';
     container.on('pointertap', (event) => {
       event.stopPropagation();
-      selectTarget(container as SelectableTarget, color);
-      setSelectedClanId(null);
+      if (selectTarget(container as SelectableTarget, color)) {
+        setSelectedClanId(null);
+      }
     });
     return { container, carry, statusBg, statusText };
   }
@@ -2472,6 +2552,7 @@ export function WorldMap() {
         container.x = cx;
         container.y = entry.baseY;
         container.zIndex = Math.round(entry.baseY);
+        container.hitArea = new Rectangle(-baseSize / 2, -baseSize, baseSize, baseSize);
         fallback.clear();
         if (!sprite) {
           // Simple colored fallback rect with clan-color border
@@ -2515,6 +2596,7 @@ export function WorldMap() {
       });
 
       updateLiveClansmanPositions();
+      applyClanFocus(selectedClanIdRef.current);
 
       // Bandit redraw uses live tick — recompute alongside layout.
       // Skip during active vignette so a snapshot.clans-driven relayout
@@ -3198,8 +3280,9 @@ export function WorldMap() {
     gfx.cursor = 'pointer';
     gfx.on('pointertap', (event) => {
       event.stopPropagation();
-      selectTarget(gfx as SelectableTarget, color);
-      setSelectedClanId(null);
+      if (selectTarget(gfx as SelectableTarget, color)) {
+        setSelectedClanId(null);
+      }
     });
     gfx.addChild(carry.container);
 
@@ -3210,6 +3293,7 @@ export function WorldMap() {
     layer.addChild(gfx);
     travelsRef.current.push({
       id,
+      clanId,
       fromRegionKey,
       toRegionKey,
       startedAt: performance.now(),
