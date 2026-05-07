@@ -21,6 +21,8 @@ data class HearthUiState(
   val seasonStartTick: Long = 0,
   val seasonEndTick: Long = 60,
   val winterActive: Boolean = false,
+  /** Ticks remaining until winter, when winter is forecast but not yet active. */
+  val winterApproachingInTicks: Long? = null,
   val leaderboard: List<LeaderboardRow> = emptyList(),
   val recentComms: List<CombinedComm> = emptyList(),
   val banditAlert: BanditAlert? = null,
@@ -149,6 +151,12 @@ class HearthViewModel(
       HearthUiState.BanditAlert(banditId = id, regionName = null, tier = null)
     }
 
+    val winterApproaching = if (!snap.winterActive) {
+      snap.winterStartsAtTick?.let { startsAt ->
+        (startsAt - snap.tick).takeIf { it in 1..10 }
+      }
+    } else null
+
     return HearthUiState(
       isLoading = false,
       isRefreshing = false,
@@ -157,6 +165,7 @@ class HearthViewModel(
       seasonStartTick = seasonStart,
       seasonEndTick = seasonEnd,
       winterActive = snap.winterActive,
+      winterApproachingInTicks = winterApproaching,
       leaderboard = leaderboard,
       recentComms = comms,
       banditAlert = banditAlert,
