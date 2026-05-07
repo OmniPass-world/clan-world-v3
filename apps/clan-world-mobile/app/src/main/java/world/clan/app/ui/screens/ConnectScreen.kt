@@ -62,15 +62,13 @@ fun ConnectScreenRoute(
     }
   }
 
-  // Cold-launch verification: if the ViewModel has flagged the stored
-  // session as stale (older than the freshness threshold), auto-trigger
-  // reauthorize on mount so we discover wallet-side revocation before the
-  // user notices broken auth on a signing operation. Fires once.
-  LaunchedEffect(Unit) {
-    if (state.pendingVerification && state.phase != ConnectUiState.Phase.Connecting) {
-      vm.connect(mwaSender)
-    }
-  }
+  // v0.2.0 demo regression fix — the cold-launch auto-reauthorize was
+  // racing with manual taps + producing a "tap → toast → bounce back to
+  // Connect" loop on devices with a stale stored session. Demo expects
+  // that "Open Seed Vault" is the SOLE trigger for any wallet activity.
+  // Stale sessions are recovered manually: tap → reauthorize → if it
+  // fails the VM clears the session and the next tap is a clean connect.
+  // Re-enable for v0.2.x once the silent-flash UX is reproducible.
 
   ConnectScreen(
     state = state,
