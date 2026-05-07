@@ -53,7 +53,9 @@ import world.clan.app.App
 import world.clan.app.R
 import world.clan.app.ui.components.EmberCta
 import world.clan.app.ui.components.ParchmentCard
+import world.clan.app.ui.components.Sigil
 import world.clan.app.ui.components.WaxSeal
+import world.clan.app.ui.components.bigSigilSpec
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.ui.theme.Ink
 import world.clan.app.ui.theme.Ink2
@@ -401,7 +403,23 @@ private fun StepNameSigil(state: ForgeUiState, onChange: (String) -> Unit) {
       style = ClanWorldTheme.type.scriptItalic,
       color = ClanWorldTheme.colors.warmDim,
     )
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(20.dp))
+
+    // Picked-clan sigil preview — gives the user something to look at
+    // while they decide on a name. Animates so it doesn't feel static.
+    val pickedClan = state.clanId
+    if (pickedClan != null) {
+      Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+      ) {
+        Sigil(
+          spec = bigSigilSpec(clanColor(pickedClan)),
+          modifier = Modifier.size(110.dp),
+        )
+      }
+      Spacer(Modifier.height(20.dp))
+    }
 
     ParchmentCard(modifier = Modifier.fillMaxWidth()) {
       Text(
