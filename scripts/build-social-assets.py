@@ -26,6 +26,11 @@ from pathlib import Path
 
 from PIL import Image
 
+# Pillow 9.1+ moved resampling enums to Image.Resampling.
+# Provide alias for older versions in case CI uses an old wheel.
+if not hasattr(Image, 'Resampling'):
+    Image.Resampling = Image  # type: ignore[attr-defined]
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 IMAGES_DIR = REPO_ROOT / "images"
 APPS = ["apps/landing/public", "apps/web/public"]
@@ -46,7 +51,7 @@ def derive_favicons(square_src: Path, out_dir: Path) -> None:
         "icon-512.png": (512, 512),
     }
     for name, size in sizes.items():
-        img = src.resize(size, Image.LANCZOS)
+        img = src.resize(size, Image.Resampling.LANCZOS)
         img.save(out_dir / name, format="PNG", optimize=True)
         print(f"  wrote {out_dir / name}: {size}")
 
@@ -65,7 +70,7 @@ def derive_og_image(banner_src: Path, out_dir: Path) -> None:
     scale = min(target_w / src_w, target_h / src_h)
     new_w = int(round(src_w * scale))
     new_h = int(round(src_h * scale))
-    resized = src.resize((new_w, new_h), Image.LANCZOS)
+    resized = src.resize((new_w, new_h), Image.Resampling.LANCZOS)
 
     canvas = Image.new("RGB", (target_w, target_h), BG_COLOR)
     paste_x = (target_w - new_w) // 2
