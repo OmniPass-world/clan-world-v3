@@ -38,15 +38,13 @@ import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {BanditViewsFacet} from "../../src/diamond/facets/BanditViewsFacet.sol";
-import {BlueprintTransferFacet} from "../../src/diamond/facets/BlueprintTransferFacet.sol";
-import {BundleTransferFacet} from "../../src/diamond/facets/BundleTransferFacet.sol";
 import {ClanFullViewFacet} from "../../src/diamond/facets/ClanFullViewFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
 import {DerivedViewsFacet} from "../../src/diamond/facets/DerivedViewsFacet.sol";
 import {DiamondLoupeFacet} from "../../src/diamond/facets/DiamondLoupeFacet.sol";
 import {FinalizeSeasonFacet} from "../../src/diamond/facets/FinalizeSeasonFacet.sol";
-import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
+import {DirectTransfersFacet} from "../../src/diamond/facets/DirectTransfersFacet.sol";
 import {HeartbeatConfigFacet} from "../../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {MarketViewsFacet} from "../../src/diamond/facets/MarketViewsFacet.sol";
@@ -64,7 +62,6 @@ import {SnapshotViewsFacet} from "../../src/diamond/facets/SnapshotViewsFacet.so
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
 import {StubPool} from "../../src/StubPool.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
-import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
 import {WorldPauseFacet} from "../../src/diamond/facets/WorldPauseFacet.sol";
 import {LibBanditCombat} from "../../src/diamond/lib/LibBanditCombat.sol";
 import {LibDiamond} from "../../src/diamond/lib/LibDiamond.sol";
@@ -1186,14 +1183,14 @@ contract DiamondSkeletonTest is Test {
     function testDiamondTransferGoldMatchesCoreAfterSettlement() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
-        GoldTransferFacet goldTransferFacet = new GoldTransferFacet();
+        DirectTransfersFacet directTransfersFacet = new DirectTransfersFacet();
         SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
             .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
-        IDiamondCut(address(diamond)).diamondCut(_goldTransferCut(address(goldTransferFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_directTransfersCut(address(directTransfersFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
 
         address elder = address(0xA11CE);
@@ -1232,15 +1229,14 @@ contract DiamondSkeletonTest is Test {
     function testDiamondTransferVaultResourceMatchesCoreAfterSettlement() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
-        VaultResourceTransferFacet vaultResourceTransferFacet = new VaultResourceTransferFacet();
+        DirectTransfersFacet directTransfersFacet = new DirectTransfersFacet();
         SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
             .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
-        IDiamondCut(address(diamond))
-            .diamondCut(_vaultResourceTransferCut(address(vaultResourceTransferFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_directTransfersCut(address(directTransfersFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
 
         address elder = address(0xA11CE);
@@ -1279,14 +1275,14 @@ contract DiamondSkeletonTest is Test {
     function testDiamondTransferBlueprintRejectsLikeCoreWithoutBalance() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
-        BlueprintTransferFacet blueprintTransferFacet = new BlueprintTransferFacet();
+        DirectTransfersFacet directTransfersFacet = new DirectTransfersFacet();
         SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
             .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
-        IDiamondCut(address(diamond)).diamondCut(_blueprintTransferCut(address(blueprintTransferFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_directTransfersCut(address(directTransfersFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
 
         address elder = address(0xA11CE);
@@ -1325,14 +1321,14 @@ contract DiamondSkeletonTest is Test {
     function testDiamondTransferBundleMatchesCoreAfterSettlement() public {
         ClanWorld core = new ClanWorld();
         ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
-        BundleTransferFacet bundleTransferFacet = new BundleTransferFacet();
+        DirectTransfersFacet directTransfersFacet = new DirectTransfersFacet();
         SetWorldClockFacet setWorldClockFacet = new SetWorldClockFacet();
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
         IDiamondCut(address(diamond))
             .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
-        IDiamondCut(address(diamond)).diamondCut(_bundleTransferCut(address(bundleTransferFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_directTransfersCut(address(directTransfersFacet)), address(0), "");
         IDiamondCut(address(diamond)).diamondCut(_setWorldClockCut(address(setWorldClockFacet)), address(0), "");
 
         address elder = address(0xA11CE);
@@ -1454,7 +1450,7 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _productionCut(address loupeFacet) internal returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](27);
+        cut = new IDiamondCut.FacetCut[](24);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -1531,61 +1527,46 @@ contract DiamondSkeletonTest is Test {
             functionSelectors: DiamondSelectors.settlementSelectors()
         });
         cut[15] = IDiamondCut.FacetCut({
-            facetAddress: address(new GoldTransferFacet()),
+            facetAddress: address(new DirectTransfersFacet()),
             action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.goldTransferSelectors()
+            functionSelectors: DiamondSelectors.directTransferSelectors()
         });
         cut[16] = IDiamondCut.FacetCut({
-            facetAddress: address(new VaultResourceTransferFacet()),
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.vaultResourceTransferSelectors()
-        });
-        cut[17] = IDiamondCut.FacetCut({
-            facetAddress: address(new BlueprintTransferFacet()),
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.blueprintTransferSelectors()
-        });
-        cut[18] = IDiamondCut.FacetCut({
-            facetAddress: address(new BundleTransferFacet()),
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.bundleTransferSelectors()
-        });
-        cut[19] = IDiamondCut.FacetCut({
             facetAddress: address(new DerivedViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.derivedViewsSelectors()
         });
-        cut[20] = IDiamondCut.FacetCut({
+        cut[17] = IDiamondCut.FacetCut({
             facetAddress: address(new MarketViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.marketViewsSelectors()
         });
-        cut[21] = IDiamondCut.FacetCut({
+        cut[18] = IDiamondCut.FacetCut({
             facetAddress: address(new BanditViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.banditViewsSelectors()
         });
-        cut[22] = IDiamondCut.FacetCut({
+        cut[19] = IDiamondCut.FacetCut({
             facetAddress: address(new RegionViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.regionViewsSelectors()
         });
-        cut[23] = IDiamondCut.FacetCut({
+        cut[20] = IDiamondCut.FacetCut({
             facetAddress: address(new SnapshotViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.snapshotViewsSelectors()
         });
-        cut[24] = IDiamondCut.FacetCut({
+        cut[21] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanFullViewFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.clanFullViewSelectors()
         });
-        cut[25] = IDiamondCut.FacetCut({
+        cut[22] = IDiamondCut.FacetCut({
             facetAddress: address(new QuoteViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.quoteViewsSelectors()
         });
-        cut[26] = IDiamondCut.FacetCut({
+        cut[23] = IDiamondCut.FacetCut({
             facetAddress: address(new ScoringViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.scoringViewsSelectors()
@@ -1611,10 +1592,7 @@ contract DiamondSkeletonTest is Test {
         offset = _copySelectors(selectors, offset, DiamondSelectors.ownershipSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.treasurySelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.settlementSelectors());
-        offset = _copySelectors(selectors, offset, DiamondSelectors.goldTransferSelectors());
-        offset = _copySelectors(selectors, offset, DiamondSelectors.vaultResourceTransferSelectors());
-        offset = _copySelectors(selectors, offset, DiamondSelectors.blueprintTransferSelectors());
-        offset = _copySelectors(selectors, offset, DiamondSelectors.bundleTransferSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.directTransferSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.derivedViewsSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.marketViewsSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.banditViewsSelectors());
@@ -1740,39 +1718,12 @@ contract DiamondSkeletonTest is Test {
         });
     }
 
-    function _goldTransferCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
+    function _directTransfersCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
         cut = new IDiamondCut.FacetCut[](1);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: facet,
             action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.goldTransferSelectors()
-        });
-    }
-
-    function _vaultResourceTransferCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](1);
-        cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet,
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.vaultResourceTransferSelectors()
-        });
-    }
-
-    function _blueprintTransferCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](1);
-        cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet,
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.blueprintTransferSelectors()
-        });
-    }
-
-    function _bundleTransferCut(address facet) internal pure returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](1);
-        cut[0] = IDiamondCut.FacetCut({
-            facetAddress: facet,
-            action: IDiamondCut.FacetCutAction.Add,
-            functionSelectors: DiamondSelectors.bundleTransferSelectors()
+            functionSelectors: DiamondSelectors.directTransferSelectors()
         });
     }
 

@@ -6,7 +6,7 @@ const LIMIT = data.limit
 
 export default function EngineCard() {
   const [expanded, setExpanded] = useState(false)
-  const totalBytes = data.facets.reduce((acc, f) => acc + f.size, 0)
+  const totalBytes = data.stats.totalDeployedEngineBytes
   const closest = data.stats.closestToLimit // { name, size, distance }
 
   return (
@@ -27,7 +27,7 @@ export default function EngineCard() {
             <p className="engine-card-pitch">
               An EIP-2535 Diamond — {data.facets.length} facets sharing a single storage slot. The whole game engine had to fit
               under EIP-170's 24KB-per-contract ceiling, set in 2016 by the Spurious Dragon hard fork. We carved
-              the logic into facets and libraries, optimized every byte, and one facet —
+              the logic into facets and libraries, optimized every byte, and one deployed unit —
               <strong> {closest.name}</strong> — clears the line by just <strong>{closest.distance} bytes</strong>.
             </p>
             <div className="engine-card-cta pixel">
@@ -78,7 +78,8 @@ export default function EngineCard() {
                 EIP-170 capped contract bytecode at 24,576 bytes when Spurious Dragon shipped on Nov 22, 2016.
                 Nine years later we're still living inside it. Every byte in the table above was negotiated:
                 inlined math, packed structs, stripped revert strings, function selectors moved from facet to
-                library and back. {totalBytes.toLocaleString()} bytes of facet logic across {data.facets.length} contracts —
+                library and back. {totalBytes.toLocaleString()} bytes of deployed engine logic across {data.facets.length} facets
+                and {data.libraries.filter((lib) => !('internal' in lib && lib.internal === true)).length} linked libraries —
                 each one a separate cliff-edge against the ceiling.
               </p>
             </div>
