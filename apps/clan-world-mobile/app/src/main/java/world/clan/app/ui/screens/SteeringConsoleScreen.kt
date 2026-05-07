@@ -68,7 +68,7 @@ fun SteeringConsoleScreenRoute(
   onSent: () -> Unit,
 ) {
   val vm: SteeringConsoleViewModel =
-    viewModel(factory = SteeringConsoleViewModelFactory(initialClanId))
+    viewModel(factory = SteeringConsoleViewModelFactory(app, initialClanId))
   val state by vm.state.collectAsState()
   val scope = rememberCoroutineScope()
 

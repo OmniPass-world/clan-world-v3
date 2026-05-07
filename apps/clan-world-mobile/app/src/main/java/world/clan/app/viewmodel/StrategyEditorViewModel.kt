@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import world.clan.app.data.ClanWorldConvexClient
+import world.clan.app.data.SessionStore
 
 enum class Posture { Defensive, Balanced, Aggressive }
 
@@ -33,7 +34,10 @@ data class StrategyEditorUiState(
 class StrategyEditorViewModel(
   private val convex: ClanWorldConvexClient,
   clanId: Int,
+  private val sessionStore: SessionStore? = null,
 ) : ViewModel() {
+
+  private val draftScope = "strategy:$clanId"
 
   private val _state = MutableStateFlow(StrategyEditorUiState(clanId = clanId))
   val state: StateFlow<StrategyEditorUiState> = _state.asStateFlow()
@@ -42,14 +46,20 @@ class StrategyEditorViewModel(
 
   private fun hydrate(clanId: Int) {
     viewModelScope.launch {
+      val draftDoctrine = sessionStore?.getDraft(draftScope, "doctrine")
+      val draftPinned = sessionStore?.getDraft(draftScope, "pinnedKey")
+      val draftPosture = sessionStore?.getDraft(draftScope, "posture")
+        ?.let { runCatching { Posture.valueOf(it) }.getOrNull() }
+
       runCatching { convex.getInftDemoState(clanId) }
         .onSuccess { demo ->
           val firstMem = demo.memory.firstOrNull()
           _state.update {
             it.copy(
               isLoading = false,
-              doctrine = firstMem?.value?.take(180) ?: defaultDoctrine(clanId),
-              pinnedKey = firstMem?.key ?: "policy:default",
+              doctrine = draftDoctrine ?: firstMem?.value?.take(180) ?: defaultDoctrine(clanId),
+              pinnedKey = draftPinned ?: firstMem?.key ?: "policy:default",
+              posture = draftPosture ?: it.posture,
             )
           }
         }
@@ -57,19 +67,33 @@ class StrategyEditorViewModel(
           _state.update {
             it.copy(
               isLoading = false,
-              doctrine = defaultDoctrine(clanId),
-              pinnedKey = "policy:default",
+              doctrine = draftDoctrine ?: defaultDoctrine(clanId),
+              pinnedKey = draftPinned ?: "policy:default",
+              posture = draftPosture ?: it.posture,
             )
           }
         }
     }
   }
 
-  fun setPosture(p: Posture) = _state.update { it.copy(posture = p) }
-  fun setDoctrine(text: String) = _state.update { it.copy(doctrine = text.take(280)) }
-  fun setPinnedKey(text: String) = _state.update { it.copy(pinnedKey = text.take(64)) }
-  fun setSavePhase(phase: SendPhase, error: String? = null) =
+  fun setPosture(p: Posture) {
+    _state.update { it.copy(posture = p) }
+    sessionStore?.setDraft(draftScope, "posture", p.name)
+  }
+  fun setDoctrine(text: String) {
+    val capped = text.take(280)
+    _state.update { it.copy(doctrine = capped) }
+    sessionStore?.setDraft(draftScope, "doctrine", capped)
+  }
+  fun setPinnedKey(text: String) {
+    val capped = text.take(64)
+    _state.update { it.copy(pinnedKey = capped) }
+    sessionStore?.setDraft(draftScope, "pinnedKey", capped)
+  }
+  fun setSavePhase(phase: SendPhase, error: String? = null) {
     _state.update { it.copy(savePhase = phase, errorMessage = error) }
+    if (phase == SendPhase.Queued) sessionStore?.clearDrafts(draftScope)
+  }
 
   private fun defaultDoctrine(clanId: Int): String = when (clanId) {
     1 -> "Hold the high pass. Trade no ground without iron."
