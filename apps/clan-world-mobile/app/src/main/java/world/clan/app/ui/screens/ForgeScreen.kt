@@ -53,7 +53,9 @@ import world.clan.app.App
 import world.clan.app.R
 import world.clan.app.ui.components.EmberCta
 import world.clan.app.ui.components.ParchmentCard
+import world.clan.app.ui.components.Sigil
 import world.clan.app.ui.components.WaxSeal
+import world.clan.app.ui.components.bigSigilSpec
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.ui.theme.Ink
 import world.clan.app.ui.theme.Ink2
@@ -81,6 +83,13 @@ fun ForgeScreenRoute(
   val vm: ForgeViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
   val scope = rememberCoroutineScope()
+
+  // System back inside the wizard walks back through steps rather than
+  // popping the whole route. Only on step 1 (PickClan) does back actually
+  // exit the wizard back to Hall.
+  androidx.activity.compose.BackHandler(enabled = state.step != ForgeStep.PickClan) {
+    vm.back()
+  }
 
   ForgeScreen(
     state = state,
@@ -136,7 +145,7 @@ private fun ForgeScreen(
     BackBar(text = "back to hall", onBack = onBack)
 
     Column(modifier = Modifier.padding(horizontal = 22.dp)) {
-      ForgeHead()
+      ForgeHead(state.clanId, showClanContext = state.step != ForgeStep.PickClan)
       Spacer(Modifier.height(10.dp))
       ProgressDots(step = state.step)
       Spacer(Modifier.height(18.dp))
@@ -206,7 +215,7 @@ private fun BackBar(text: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun ForgeHead() {
+private fun ForgeHead(clanId: Int?, showClanContext: Boolean) {
   val parchment = ClanWorldTheme.colors.parchment
   val warmDim = ClanWorldTheme.colors.warmDim
   val hairline = ClanWorldTheme.colors.hairline
@@ -224,12 +233,33 @@ private fun ForgeHead() {
       },
   ) {
     Text(text = "FORGE", style = ClanWorldTheme.type.displayHero, color = parchment)
-    Text(
-      text = "the unmade seal awaits its line",
-      style = ClanWorldTheme.type.scriptItalic,
-      color = warmDim,
-      modifier = Modifier.padding(top = 2.dp),
-    )
+    if (showClanContext && clanId != null) {
+      val accent = clanColor(clanId)
+      Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(top = 4.dp),
+      ) {
+        Box(
+          modifier = Modifier
+            .size(8.dp)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+            .background(accent),
+        )
+        Text(
+          text = "FORGING IN ${clanDisplayName(clanId).uppercase()}",
+          style = ClanWorldTheme.type.monoMicro,
+          color = accent,
+        )
+      }
+    } else {
+      Text(
+        text = "the unmade seal awaits its line",
+        style = ClanWorldTheme.type.scriptItalic,
+        color = warmDim,
+        modifier = Modifier.padding(top = 2.dp),
+      )
+    }
   }
 }
 
@@ -265,6 +295,16 @@ private fun ProgressDots(step: ForgeStep) {
 
 @Composable
 private fun StepPickClan(state: ForgeUiState, onSelect: (Int) -> Unit) {
+  // If every clan is already owned, the wizard has nothing to offer —
+  // render an EmptyState pointing to Codex's reset rather than 8
+  // greyed cards.
+  if (state.ownedClanIds.size >= 8) {
+    world.clan.app.ui.components.EmptyState(
+      title = "every clan is yours",
+      body = "all eight sigils stand under your hand. to forge again, reset demo state in Codex.",
+    )
+    return
+  }
   Column(modifier = Modifier.fillMaxSize()) {
     Text(
       text = "CHOOSE YOUR CLAN",
@@ -315,12 +355,18 @@ private fun ClanCard(
   }
   val borderStroke = if (selected && !owned) 2.dp else 1.dp
   val cardAlpha = if (owned) 0.45f else 1f
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   Box(
     modifier = Modifier
       .fillMaxWidth()
       .alpha(cardAlpha)
-      .clickable(enabled = !owned) { onClick() }
+      .clickable(enabled = !owned) {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .drawBehind {
         drawRoundRect(
           color = borderColor,
@@ -380,7 +426,23 @@ private fun StepNameSigil(state: ForgeUiState, onChange: (String) -> Unit) {
       style = ClanWorldTheme.type.scriptItalic,
       color = ClanWorldTheme.colors.warmDim,
     )
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(20.dp))
+
+    // Picked-clan sigil preview — gives the user something to look at
+    // while they decide on a name. Animates so it doesn't feel static.
+    val pickedClan = state.clanId
+    if (pickedClan != null) {
+      Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+      ) {
+        Sigil(
+          spec = bigSigilSpec(clanColor(pickedClan)),
+          modifier = Modifier.size(110.dp),
+        )
+      }
+      Spacer(Modifier.height(20.dp))
+    }
 
     ParchmentCard(modifier = Modifier.fillMaxWidth()) {
       Text(
@@ -414,10 +476,15 @@ private fun StepNameSigil(state: ForgeUiState, onChange: (String) -> Unit) {
         )
       }
       Spacer(Modifier.height(8.dp))
+      val nameCounterColor = when {
+        state.sigilName.length >= 32 -> ClanWorldTheme.colors.danger
+        state.sigilName.length >= 27 -> ClanWorldTheme.colors.warn  // 85% of 32
+        else -> Ink3
+      }
       Text(
         text = "${state.sigilName.length}/32",
         style = ClanWorldTheme.type.monoNano,
-        color = Ink3,
+        color = nameCounterColor,
         textAlign = TextAlign.End,
         modifier = Modifier.fillMaxWidth(),
       )
@@ -449,7 +516,24 @@ private fun StepPickHarness(state: ForgeUiState, onSelect: (Harness) -> Unit) {
       style = ClanWorldTheme.type.scriptItalic,
       color = ClanWorldTheme.colors.warmDim,
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
+
+    // Picked-clan sigil preview (smaller than step 2; the harness cards
+    // are the focus here). Mirrors step 2's "see what you're naming"
+    // pattern.
+    val pickedClan = state.clanId
+    if (pickedClan != null) {
+      Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+      ) {
+        Sigil(
+          spec = bigSigilSpec(clanColor(pickedClan)),
+          modifier = Modifier.size(80.dp),
+        )
+      }
+      Spacer(Modifier.height(4.dp))
+    }
 
     Harness.values().forEach { h ->
       HarnessCard(
@@ -470,11 +554,17 @@ private fun HarnessCard(harness: Harness, selected: Boolean, onClick: () -> Unit
   }
   val border = if (selected) accent else ClanWorldTheme.colors.hairline
   val stroke = if (selected) 2.dp else 1.dp
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .clickable { onClick() }
+      .clickable {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .drawBehind {
         drawRoundRect(
           color = border,
@@ -605,20 +695,7 @@ private fun StepConfirm(state: ForgeUiState, onForge: () -> Unit) {
         )
       }
       SendPhase.Queued -> {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ClanWorldTheme.colors.success.copy(alpha = 0.18f))
-            .padding(vertical = 16.dp),
-          contentAlignment = Alignment.Center,
-        ) {
-          Text(
-            text = "FORGED ✓",
-            style = ClanWorldTheme.type.ctaLabel,
-            color = ClanWorldTheme.colors.success,
-          )
-        }
+        world.clan.app.ui.components.SealedNotice(label = "Forged ✓")
       }
     }
   }

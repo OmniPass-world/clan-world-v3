@@ -50,7 +50,18 @@ class TreasuryViewModel(
   private val _state = MutableStateFlow(TreasuryUiState(clanId = clanId))
   val state: StateFlow<TreasuryUiState> = _state.asStateFlow()
 
-  init { refresh() }
+  init {
+    refresh()
+    // Gold movements / balance should refresh while screen is open.
+    // 30s cadence matches Hearth/Hall/Whispers.
+    viewModelScope.launch {
+      while (true) {
+        kotlinx.coroutines.delay(HearthViewModel.REFRESH_INTERVAL_MS)
+        if (_state.value.isLoading) continue
+        refresh()
+      }
+    }
+  }
 
   fun refresh() {
     viewModelScope.launch {

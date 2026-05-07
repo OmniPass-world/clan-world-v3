@@ -55,18 +55,25 @@ import world.clan.app.viewmodel.shortenPubkey
 fun CodexScreenRoute(
   app: App,
   factory: ClanWorldViewModelFactory,
+  onOpenInft: (Int) -> Unit = {},
 ) {
   val vm: CodexViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
   // Re-read lineage on each Codex visit so newly-signed actions appear
   // without a kill/relaunch.
   androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshLineage() }
-  CodexScreen(state = state)
+  CodexScreen(
+    state = state,
+    onResetDemo = vm::resetDemoState,
+    onOpenInft = onOpenInft,
+  )
 }
 
 @Composable
 private fun CodexScreen(
   state: CodexUiState,
+  onResetDemo: () -> Unit = {},
+  onOpenInft: (Int) -> Unit = {},
 ) {
   // Background and tab bar are app-level. Disconnect now lives in the
   // wallet-pill dropdown in CrownHeader — no big "FORGET THIS SIGIL"
@@ -135,7 +142,9 @@ private fun CodexScreen(
       }
       StaggeredEntry(index = 10) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          state.lineage.take(12).forEach { entry -> LineageRow(entry) }
+          state.lineage.take(12).forEach { entry ->
+            LineageRow(entry, onClick = { onOpenInft(entry.clanId) })
+          }
         }
       }
       Spacer(Modifier.height(20.dp))
@@ -146,12 +155,7 @@ private fun CodexScreen(
       SectionHeader(title = "Share", showLozenge = false)
     }
     StaggeredEntry(index = 6) {
-      RowCard(
-        label = "APK download · for friends",
-        value = state.apkShareUrl,
-        copyable = true,
-        copyText = state.apkShareUrl,
-      )
+      ShareApkRow(url = state.apkShareUrl)
     }
 
     Spacer(Modifier.height(20.dp))
@@ -172,7 +176,219 @@ private fun CodexScreen(
       }
     }
 
+    Spacer(Modifier.height(28.dp))
+
+    // ── Disconnect (above Demo Reset) ────────────────────────────────
+    val onDisconnect = world.clan.app.ui.components.LocalOnDisconnect.current
+    StaggeredEntry(index = 11) {
+      DisconnectRow(onClick = onDisconnect)
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // ── Demo reset (bottom of Codex) ─────────────────────────────────
+    StaggeredEntry(index = 12) {
+      DemoResetRow(onConfirm = onResetDemo)
+    }
+
     Spacer(Modifier.height(40.dp))
+  }
+}
+
+@Composable
+private fun ShareApkRow(url: String) {
+  val context = androidx.compose.ui.platform.LocalContext.current
+  val clipboard = LocalClipboardManager.current
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(6.dp))
+      .background(ClanWorldTheme.colors.iron)
+      .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+      .padding(horizontal = 14.dp, vertical = 12.dp),
+  ) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Text(
+        text = "APK DOWNLOAD · FOR FRIENDS",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.warmFaint,
+      )
+      Text(
+        text = url,
+        style = ClanWorldTheme.type.monoData,
+        color = ClanWorldTheme.colors.parchment,
+      )
+    }
+    Row(
+      modifier = Modifier.align(Alignment.TopEnd),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      // Copy
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(4.dp))
+          .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(4.dp))
+          .clickable { clipboard.setText(AnnotatedString(url)) }
+          .padding(horizontal = 8.dp, vertical = 4.dp),
+      ) {
+        Icon(
+          painter = painterResource(R.drawable.ui_copy),
+          contentDescription = "Copy",
+          tint = ClanWorldTheme.colors.warmDim,
+          modifier = Modifier.size(10.dp),
+        )
+      }
+      // Share via Android intent
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(4.dp))
+          .border(1.dp, ClanWorldTheme.colors.hairlineMid, RoundedCornerShape(4.dp))
+          .clickable {
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+              type = "text/plain"
+              putExtra(android.content.Intent.EXTRA_TEXT, url)
+              putExtra(android.content.Intent.EXTRA_SUBJECT, "Try the ClanWorld Android demo")
+            }
+            val chooser = android.content.Intent.createChooser(intent, "Share APK link").apply {
+              addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+          }
+          .padding(horizontal = 8.dp, vertical = 4.dp),
+      ) {
+        Text(
+          text = "SHARE",
+          style = ClanWorldTheme.type.monoNano,
+          color = ClanWorldTheme.colors.gold,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun DisconnectRow(onClick: () -> Unit) {
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+  Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Text(
+      text = "Wallet".uppercase(),
+      style = ClanWorldTheme.type.crownLabel,
+      color = ClanWorldTheme.colors.warmFaint,
+    )
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(6.dp))
+        .background(ClanWorldTheme.colors.iron)
+        .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+        .clickable {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+          onClick()
+        }
+        .padding(horizontal = 14.dp, vertical = 14.dp),
+    ) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          text = "DISCONNECT WALLET",
+          style = ClanWorldTheme.type.monoMicro,
+          color = ClanWorldTheme.colors.warm,
+        )
+        Text(
+          text = "clears auth + lineage. you'll re-authorize on next launch.",
+          style = ClanWorldTheme.type.scriptItalicSmall,
+          color = ClanWorldTheme.colors.warmFaint,
+        )
+      }
+    }
+  }
+}
+
+@Composable
+private fun DemoResetRow(onConfirm: () -> Unit) {
+  val armedState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  val armed = armedState.value
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+
+  // Drives both the auto-disarm and the visible countdown bar. Animates
+  // 1f → 0f over 4s while armed; snaps back to 1f on disarm. Disarm
+  // fires either by user-confirm-tap (sets armed=false) or when the
+  // animation lands (we observe progress hitting 0f below).
+  val progress = androidx.compose.runtime.remember {
+    androidx.compose.animation.core.Animatable(1f)
+  }
+  androidx.compose.runtime.LaunchedEffect(armed) {
+    if (armed) {
+      progress.snapTo(1f)
+      progress.animateTo(
+        targetValue = 0f,
+        animationSpec = androidx.compose.animation.core.tween(
+          durationMillis = 4000,
+          easing = androidx.compose.animation.core.LinearEasing,
+        ),
+      )
+      // animateTo finished → 4s elapsed without confirm → disarm.
+      armedState.value = false
+    } else {
+      progress.snapTo(1f)
+    }
+  }
+  Column(
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Text(
+      text = "Demo".uppercase(),
+      style = ClanWorldTheme.type.crownLabel,
+      color = ClanWorldTheme.colors.warmFaint,
+    )
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(6.dp))
+        .background(ClanWorldTheme.colors.iron)
+        .border(
+          1.dp,
+          if (armed) ClanWorldTheme.colors.danger else ClanWorldTheme.colors.hairline,
+          RoundedCornerShape(6.dp),
+        )
+        .clickable {
+          if (armed) {
+            // Heavy bump to mark the destructive confirm.
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+            onConfirm()
+            armedState.value = false
+          } else {
+            // Light tick to acknowledge the arm — the user is now one
+            // tap away from a destructive action.
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+            armedState.value = true
+          }
+        }
+        .padding(horizontal = 14.dp, vertical = 14.dp),
+    ) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          text = if (armed) "TAP AGAIN TO CONFIRM RESET" else "RESET DEMO STATE",
+          style = ClanWorldTheme.type.monoMicro,
+          color = if (armed) ClanWorldTheme.colors.danger else ClanWorldTheme.colors.warmDim,
+        )
+        Text(
+          text = "wipes hired + forged clans, drafts, and lineage. wallet stays connected.",
+          style = ClanWorldTheme.type.scriptItalicSmall,
+          color = ClanWorldTheme.colors.warmFaint,
+        )
+      }
+      // Draining progress bar at the bottom — visible countdown so the
+      // user can see how much of the 4s arming window remains.
+      if (armed) {
+        Box(
+          modifier = Modifier
+            .align(Alignment.BottomStart)
+            .fillMaxWidth(fraction = progress.value)
+            .height(1.5.dp)
+            .background(ClanWorldTheme.colors.danger),
+        )
+      }
+    }
   }
 }
 
@@ -291,7 +507,10 @@ private fun RowCard(
 }
 
 @Composable
-private fun LineageRow(entry: world.clan.app.data.LineageEntry) {
+private fun LineageRow(
+  entry: world.clan.app.data.LineageEntry,
+  onClick: () -> Unit = {},
+) {
   val parchment = ClanWorldTheme.colors.parchment
   val warm = ClanWorldTheme.colors.warm
   val warmDim = ClanWorldTheme.colors.warmDim
@@ -310,6 +529,7 @@ private fun LineageRow(entry: world.clan.app.data.LineageEntry) {
       .clip(RoundedCornerShape(6.dp))
       .background(ClanWorldTheme.colors.iron)
       .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+      .clickable { onClick() }
       .padding(horizontal = 14.dp, vertical = 10.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),

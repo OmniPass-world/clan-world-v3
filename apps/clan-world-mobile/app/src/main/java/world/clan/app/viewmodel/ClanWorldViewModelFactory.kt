@@ -14,9 +14,8 @@ class ClanWorldViewModelFactory(private val app: App) : ViewModelProvider.Factor
     ConnectViewModel::class.java -> ConnectViewModel(app.mwaClient, app.sessionStore)
     HearthViewModel::class.java -> HearthViewModel(app.convexClient, app.sessionStore)
     HallViewModel::class.java -> HallViewModel(app.convexClient, app.sessionStore)
-    BazaarViewModel::class.java -> BazaarViewModel(app.sessionStore)
-    ForgeViewModel::class.java -> ForgeViewModel(app.sessionStore)
-    CodexViewModel::class.java -> CodexViewModel(app.sessionStore, app.lineageStore, app.deviceClass)
+    BazaarViewModel::class.java -> BazaarViewModel()
+    CodexViewModel::class.java -> CodexViewModel(app.sessionStore, app.deviceClass)
     else -> error("Unknown ViewModel: ${modelClass.simpleName}")
   } as T
 }
@@ -48,7 +47,7 @@ class SteeringConsoleViewModelFactory(
 ) : ViewModelProvider.Factory {
   @Suppress("UNCHECKED_CAST")
   override fun <T : ViewModel> create(modelClass: Class<T>): T =
-    SteeringConsoleViewModel(initialClanId, app.sessionStore) as T
+    SteeringConsoleViewModel(app.convexClient, initialClanId) as T
 }
 
 /** Per-route factory for StrategyEditor, parameterized by clanId. */
@@ -58,15 +57,5 @@ class StrategyEditorViewModelFactory(
 ) : ViewModelProvider.Factory {
   @Suppress("UNCHECKED_CAST")
   override fun <T : ViewModel> create(modelClass: Class<T>): T =
-    StrategyEditorViewModel(app.convexClient, clanId, app.sessionStore) as T
-}
-
-/** Per-route factory for Treasury, parameterized by clanId. */
-class TreasuryViewModelFactory(
-  private val app: App,
-  private val clanId: Int,
-) : ViewModelProvider.Factory {
-  @Suppress("UNCHECKED_CAST")
-  override fun <T : ViewModel> create(modelClass: Class<T>): T =
-    TreasuryViewModel(app.convexClient, clanId) as T
+    StrategyEditorViewModel(app.convexClient, clanId) as T
 }

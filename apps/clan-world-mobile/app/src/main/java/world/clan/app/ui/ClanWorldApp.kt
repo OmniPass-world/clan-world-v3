@@ -362,6 +362,7 @@ fun ClanWorldApp(
               app = app,
               factory = factory,
               onOpenListing = { clanId -> nav.navigate(Routes.bazaarInftDetail(clanId)) },
+              onForge = { nav.navigate(Routes.Forge) },
             )
           }
 
@@ -373,6 +374,7 @@ fun ClanWorldApp(
             CodexScreenRoute(
               app = app,
               factory = factory,
+              onOpenInft = { clanId -> nav.navigate(Routes.inftDetail(clanId)) },
             )
           }
 

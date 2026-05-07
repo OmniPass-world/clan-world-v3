@@ -28,6 +28,8 @@ data class HallUiState(
 /**
  * Aggregated card data for one iNFT in the Hall list.
  */
+enum class HallProvenance { Linked, Hired, Forged }
+
 data class HallCard(
   val tokenId: Int,
   val clanId: Int,
@@ -35,6 +37,7 @@ data class HallCard(
   val memoryCount: Int,
   val sealedAtTick: Long?,
   val mostRecentTransferTick: Long?,
+  val provenance: HallProvenance = HallProvenance.Linked,
 )
 
 /**
@@ -52,7 +55,19 @@ class HallViewModel(
   private val _state = MutableStateFlow(initial())
   val state: StateFlow<HallUiState> = _state.asStateFlow()
 
-  init { refresh() }
+  init {
+    refresh()
+    // Auto-refresh every 30s while VM is alive — new memory writes,
+    // transfers, etc should land in Hall without pull-to-refresh.
+    // Cleaned up by viewModelScope cancellation on disconnect.
+    viewModelScope.launch {
+      while (true) {
+        kotlinx.coroutines.delay(HearthViewModel.REFRESH_INTERVAL_MS)
+        if (_state.value.isLoading || _state.value.isRefreshing) continue
+        refresh()
+      }
+    }
+  }
 
   private fun initial(): HallUiState {
     val s = sessionStore.read()
@@ -62,7 +77,9 @@ class HallViewModel(
   fun refresh() {
     viewModelScope.launch {
       _state.update { it.copy(isRefreshing = true, errorMessage = null) }
-      val ownedClanIds = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getOwnedClanIdsExtra()).distinct()
+      val hired = sessionStore.getHiredClanIds()
+      val forged = sessionStore.getForgedClanIds()
+      val ownedClanIds = (HearthViewModel.LINKED_CLAN_IDS + hired + forged).distinct()
       runCatching {
         coroutineScope {
           ownedClanIds
@@ -70,7 +87,16 @@ class HallViewModel(
             .awaitAll()
         }
       }.onSuccess { results ->
-        val cards = results.mapNotNull { (demo, clanId) -> demo?.let { toCard(clanId, it) } }
+        val cards = results.mapNotNull { (demo, clanId) ->
+          demo?.let {
+            val provenance = when {
+              clanId in forged -> HallProvenance.Forged
+              clanId in hired -> HallProvenance.Hired
+              else -> HallProvenance.Linked
+            }
+            toCard(clanId, it, provenance)
+          }
+        }
         _state.update {
           it.copy(
             isLoading = false,
@@ -91,7 +117,11 @@ class HallViewModel(
     }
   }
 
-  private fun toCard(clanId: Int, demo: InftDemoState): HallCard {
+  private fun toCard(
+    clanId: Int,
+    demo: InftDemoState,
+    provenance: HallProvenance = HallProvenance.Linked,
+  ): HallCard {
     return HallCard(
       tokenId = demo.token?.tokenId ?: clanId,
       clanId = clanId,
@@ -99,6 +129,7 @@ class HallViewModel(
       memoryCount = demo.memory.size,
       sealedAtTick = demo.transfers.minOfOrNull { it.transferredAt ?: 0L }?.takeIf { it > 0 },
       mostRecentTransferTick = demo.transfers.maxOfOrNull { it.transferredAt ?: 0L }?.takeIf { it > 0 },
+      provenance = provenance,
     )
   }
 }
