@@ -34,6 +34,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import world.clan.app.App
+import world.clan.app.cockpit.CockpitScreen
+import world.clan.app.owner.OwnerComingSoonScreen
+import world.clan.app.owner.OwnerSignInScreen
 import world.clan.app.ui.components.ClanWorldTabBar
 import world.clan.app.ui.components.LocalOnDisconnect
 import world.clan.app.ui.components.LocalWalletIdentity
@@ -56,7 +59,12 @@ object Routes {
   const val Hall = "hall"
   const val Codex = "codex"
   const val InftDetail = "inft/{clanId}"
+  const val Cockpit = "cockpit"
+  const val OwnerSignIn = "ownerSignIn/{clanId}"
+  const val OwnerComingSoon = "ownerComingSoon/{clanId}"
   fun inftDetail(clanId: Int) = "inft/$clanId"
+  fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
+  fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -182,11 +190,15 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     currentRoute == Routes.Hall ||
     currentRoute == Routes.Codex ||
     currentRoute?.startsWith("inft/") == true
+  // Cockpit + Owner sign-in / coming-soon are full-screen flows: tabbar hidden.
   val selectedTab = when {
     currentRoute == Routes.Hearth -> RootTab.Hearth
     currentRoute == Routes.Hall -> RootTab.Hall
     currentRoute == Routes.Codex -> RootTab.Codex
     currentRoute?.startsWith("inft/") == true -> RootTab.Hall // detail derived from Hall
+    currentRoute == Routes.Cockpit ||
+      currentRoute?.startsWith("ownerSignIn/") == true ||
+      currentRoute?.startsWith("ownerComingSoon/") == true -> RootTab.Hall
     else -> RootTab.Hearth
   }
 
@@ -298,6 +310,58 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
             val clanId = entry.arguments?.getInt("clanId") ?: 1
             InftDetailScreenRoute(
               app = app,
+              clanId = clanId,
+              onBack = { nav.popBackStack() },
+              onEnterCockpit = { nav.navigate(Routes.Cockpit) },
+            )
+          }
+
+          // ── Cockpit (deep route from InftDetail "Enter Cockpit" CTA) ────
+          composable(
+            route = Routes.Cockpit,
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) {
+            CockpitScreen(
+              onOwnerControl = { clanId ->
+                nav.navigate(Routes.ownerSignIn(clanId))
+              },
+            )
+          }
+
+          // ── Owner sign-in (drill-in from CockpitScreen) ─────────────────
+          composable(
+            route = Routes.OwnerSignIn,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            OwnerSignInScreen(
+              clanId = clanId,
+              onSignedIn = {
+                nav.navigate(Routes.ownerComingSoon(clanId)) {
+                  // Replace the sign-in screen so back goes to Cockpit,
+                  // not back through SIWS again.
+                  popUpTo(Routes.OwnerSignIn) { inclusive = true }
+                }
+              },
+              onBack = { nav.popBackStack() },
+            )
+          }
+
+          // ── Owner coming-soon (placeholder after successful SIWS) ───────
+          composable(
+            route = Routes.OwnerComingSoon,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            OwnerComingSoonScreen(
               clanId = clanId,
               onBack = { nav.popBackStack() },
             )

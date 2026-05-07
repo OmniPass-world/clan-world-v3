@@ -78,6 +78,7 @@ fun InftDetailScreenRoute(
   app: App,
   clanId: Int,
   onBack: () -> Unit,
+  onEnterCockpit: () -> Unit = {},
 ) {
   val vm: InftDetailViewModel = viewModel(factory = InftDetailViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
@@ -86,6 +87,7 @@ fun InftDetailScreenRoute(
     clanId = clanId,
     onBack = onBack,
     onSelectDetailTab = vm::selectTab,
+    onEnterCockpit = onEnterCockpit,
   )
 }
 
@@ -95,6 +97,7 @@ private fun InftDetailScreen(
   clanId: Int,
   onBack: () -> Unit,
   onSelectDetailTab: (DetailTab) -> Unit,
+  onEnterCockpit: () -> Unit,
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
   Column(
@@ -109,6 +112,17 @@ private fun InftDetailScreen(
       clanId = clanId,
       state = state,
       modifier = Modifier.padding(horizontal = 22.dp),
+    )
+
+    Spacer(Modifier.height(14.dp))
+
+    // ── Enter Cockpit CTA — drill into the live game cockpit ───────────
+    world.clan.app.ui.components.EmberCta(
+      text = "Enter Cockpit",
+      onClick = onEnterCockpit,
+      modifier = Modifier
+        .fillMaxWidth()
+        .padding(horizontal = 22.dp),
     )
 
     Spacer(Modifier.height(22.dp))
