@@ -19,15 +19,20 @@ object KickstartWidgetRenderer {
     context: Context,
     token: KickstartToken?,
     layoutRes: Int = R.layout.gold_widget,
-    chartType: String = "line",
+    chartType: String = "candles",
+    coinBitmap: Bitmap? = null,
   ): RemoteViews {
     val views = RemoteViews(context.packageName, layoutRes)
     views.setTextViewText(R.id.symbol, token?.symbol ?: "PICK")
     views.setTextViewText(R.id.price, token?.let { formatPrice(it.usdPrice) } ?: "$--")
+    if (layoutRes == R.layout.gold_widget_tall) {
+      views.setTextViewText(R.id.project_name, token?.name ?: "Choose a token")
+    }
     views.setChange(R.id.change_1h, "1H", token?.priceChange1h)
     views.setChange(R.id.change_6h, "6H", token?.priceChange6h)
     views.setChange(R.id.change_24h, "24H", token?.priceChange24h)
     views.setChange(R.id.change_7d, "7D", token?.priceChange7d)
+    coinBitmap?.let { views.setImageViewBitmap(R.id.coin, it) }
     views.setImageViewBitmap(R.id.sparkline, drawChart(token, chartType))
     return views
   }

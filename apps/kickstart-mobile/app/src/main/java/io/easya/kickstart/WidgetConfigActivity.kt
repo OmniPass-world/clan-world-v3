@@ -9,13 +9,14 @@ import android.view.ViewGroup
 import android.text.Editable
 import android.text.TextWatcher
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 
 class WidgetConfigActivity : Activity() {
   private var appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
-  private var selectedChartType = "line"
+  private var selectedChartType = "candles"
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -109,8 +110,15 @@ class WidgetConfigActivity : Activity() {
     gravity = Gravity.CENTER_VERTICAL
     setPadding(dp(10), dp(12), dp(10), dp(12))
     setOnClickListener { onClick() }
+    val icon = ImageView(context).apply {
+      scaleType = ImageView.ScaleType.CENTER_CROP
+    }
+    TokenImageLoader.loadInto(icon, token.iconUrl)
     val left = text("#${token.rank}  ${token.symbol}\n${token.name}", 14, getColor(R.color.widget_text))
     val right = text("$" + "%,.0f".format(token.mcap), 13, getColor(R.color.widget_gold)).apply { gravity = Gravity.END }
+    addView(icon, LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+      marginEnd = dp(10)
+    })
     addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     addView(right)
   }
