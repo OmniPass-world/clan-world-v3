@@ -1,5 +1,6 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { requireIndexerSecret } from "./authShared";
 
 /**
  * Combined Comms feed for one clan's AXL view.
@@ -73,41 +74,53 @@ export const getCombinedComms = query({
   },
 });
 
-// Seed mutations — used by mock.ts for local-Convex testing without a chain
-// indexer. Idempotent: callers re-invoke at will. Safe to ship to prod since
-// schema validation prevents bad data.
+// Public seed mutations — gated by INDEXER_SECRET (fail-closed if unset on the
+// Convex deployment). Used by mock.ts for local-Convex testing AND by the
+// orchestrator process for live cockpit Comms feed writes via IConvexClient.
+// Idempotent: callers re-invoke at will. Schema validation prevents bad data
+// but ALONE is not sufficient — without the secret gate, anyone with the
+// deployment URL could deface the cockpit-visible feed.
 
 export const seedWhisper = mutation({
   args: {
+    secret: v.string(),
     tick: v.number(),
     fromClanId: v.number(),
     toClanIds: v.array(v.number()),
     body: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("whispers", { ...args, timestamp: Date.now() });
+    requireIndexerSecret(args.secret);
+    const { secret: _omit, ...row } = args;
+    await ctx.db.insert("whispers", { ...row, timestamp: Date.now() });
   },
 });
 
 export const seedOrchEvent = mutation({
   args: {
+    secret: v.string(),
     tick: v.number(),
     kind: v.union(v.literal("world_event"), v.literal("directive"), v.literal("narration")),
     body: v.string(),
     targetClanId: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("orchEvents", { ...args, timestamp: Date.now() });
+    requireIndexerSecret(args.secret);
+    const { secret: _omit, ...row } = args;
+    await ctx.db.insert("orchEvents", { ...row, timestamp: Date.now() });
   },
 });
 
 export const seedHumanSteering = mutation({
   args: {
+    secret: v.string(),
     tick: v.number(),
     targetClanId: v.number(),
     body: v.string(),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("humanSteeringMessages", { ...args, timestamp: Date.now() });
+    requireIndexerSecret(args.secret);
+    const { secret: _omit, ...row } = args;
+    await ctx.db.insert("humanSteeringMessages", { ...row, timestamp: Date.now() });
   },
 });

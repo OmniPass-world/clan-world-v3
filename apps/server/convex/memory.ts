@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 /**
@@ -36,7 +36,7 @@ export const getByClan = query({
   },
 });
 
-export const seedEntry = mutation({
+export const seedEntry = internalMutation({
   args: {
     clanId: v.number(),
     key: v.string(),
@@ -83,7 +83,7 @@ export const getEventsByClan = query({
   },
 });
 
-export const seedEvent = mutation({
+export const seedEvent = internalMutation({
   args: {
     tick: v.number(),
     clanId: v.number(),

@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
 
@@ -220,7 +220,7 @@ export const getClanClansmen = query({
  * Match the schema field-by-field; consumers (mock.ts, tests) may pass an
  * override `clansmen` array. Hunger isn't seeded — it's derived in the query.
  */
-export const seedClansmen = mutation({
+export const seedClansmen = internalMutation({
   args: {
     clanId: v.number(),
     isStarving: v.optional(v.boolean()),
