@@ -170,6 +170,51 @@ export default defineSchema({
   })
     .index("by_tick", ["tick"])
     .index("by_resource_tick", ["resourceType", "tick"]),
+  goldQuote: defineTable({
+    tokenMint: v.string(),
+    symbol: v.string(),
+    name: v.string(),
+    usdPrice: v.number(),
+    priceChange1h: v.optional(v.number()),
+    priceChange6h: v.optional(v.number()),
+    priceChange24h: v.optional(v.number()),
+    priceChange7d: v.optional(v.number()),
+    iconUrl: v.optional(v.string()),
+    sourceUpdatedAt: v.optional(v.string()),
+    fetchedAt: v.number(),
+  }).index("by_token", ["tokenMint"]),
+  goldQuoteSample: defineTable({
+    tokenMint: v.string(),
+    usdPrice: v.number(),
+    observedAt: v.number(),
+  }).index("by_token_observed", ["tokenMint", "observedAt"]),
+  kickstartTokens: defineTable({
+    tokenMint: v.string(),
+    poolAddress: v.string(),
+    name: v.string(),
+    symbol: v.string(),
+    iconUrl: v.optional(v.string()),
+    usdPrice: v.number(),
+    mcap: v.number(),
+    liquidity: v.optional(v.number()),
+    volume24h: v.optional(v.number()),
+    priceChange1h: v.optional(v.number()),
+    priceChange6h: v.optional(v.number()),
+    priceChange24h: v.optional(v.number()),
+    priceChange7d: v.optional(v.number()),
+    rank: v.number(),
+    sourceUpdatedAt: v.optional(v.string()),
+    sparkline24h: v.optional(
+      v.array(v.object({ price: v.number(), observedAt: v.number() })),
+    ),
+    fetchedAt: v.number(),
+  })
+    .index("by_token", ["tokenMint"])
+    .index("by_rank", ["rank"]),
+  kickstartWatchedTokens: defineTable({
+    tokenMint: v.string(),
+    watchedAt: v.number(),
+  }).index("by_token", ["tokenMint"]),
   agentLogs: defineTable({
     level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
     message: v.string(),
