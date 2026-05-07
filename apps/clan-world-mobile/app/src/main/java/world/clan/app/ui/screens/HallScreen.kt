@@ -340,7 +340,11 @@ private fun LetterCard(
     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
       LetterStat(label = "Hunger", value = "tended", color = ClanWorldTheme.colors.success)
       LetterStat(label = "Memory", value = "${card.memoryCount} keys", color = Ink)
-      LetterStat(label = "Vault", value = "—", color = Ink)
+      LetterStat(
+        label = "Last Move",
+        value = card.mostRecentTransferTick?.let { "T %04d".format(it) } ?: "—",
+        color = Ink,
+      )
     }
   }
 }
