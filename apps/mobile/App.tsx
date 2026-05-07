@@ -42,7 +42,33 @@ import {
   setLoadedInftId,
   getWalletPubkey,
   resetForgeState,
+  setActiveRaid,
 } from './src/storage';
+import { HeroWidget } from './src/widget/HeroWidget';
+import { computeWidgetState } from './src/widget/widgetState';
+
+// Defensive load — old dev client APKs that predate
+// react-native-android-widget will silently no-op widget pushes.
+let requestWidgetUpdateSafe: (
+  args: {
+    widgetName: string;
+    renderWidget: () => React.ReactElement;
+    widgetNotFound?: () => void;
+  },
+) => Promise<void> = async () => {};
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const widgetLib = require('react-native-android-widget');
+  if (widgetLib?.requestWidgetUpdate) {
+    requestWidgetUpdateSafe = widgetLib.requestWidgetUpdate;
+  }
+} catch {
+  if (__DEV__) {
+    console.warn(
+      '[widget] react-native-android-widget native module not available — widgets disabled until next dev client build.',
+    );
+  }
+}
 import { disconnectWallet } from './src/wallet/mwa';
 import { hasSeekerGenesisToken, isSeekerDevice } from './src/seeker';
 import { PublicKey } from '@solana/web3.js';
@@ -171,6 +197,23 @@ export default function App() {
   const [raid, setRaid] = useState<{ victim: string; tick: number } | null>(null);
   const [showRaidOverlay, setShowRaidOverlay] = useState(false);
   const raidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Persist raid + loadedInftId to MMKV and push an immediate update to
+  // any installed home-screen widgets. The widget itself reads MMKV in
+  // its task handler for background updates, but a foreground push is
+  // instant — the widget reflects raid state the moment it fires.
+  useEffect(() => {
+    setActiveRaid(raid);
+    const state = computeWidgetState();
+    requestWidgetUpdateSafe({
+      widgetName: 'Hero',
+      renderWidget: () => <HeroWidget state={state} />,
+      widgetNotFound: () => undefined,
+    }).catch(() => {
+      // Old APK without react-native-android-widget natively linked —
+      // silent no-op until a fresh build lands.
+    });
+  }, [raid, loadedInftIdState, pubkey]);
 
   const top = stack[stack.length - 1];
   const push = (s: StackEntry) => setStack((prev) => [...prev, s]);

@@ -40,6 +40,26 @@
         }
       ],
       [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Hero",
+              "label": "Clan World",
+              "description": "Your loaded Elder's tick, vault, and raid alerts.",
+              "minWidth": "260dp",
+              "minHeight": "160dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "updatePeriodMillis": 1800000,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable",
+              "previewImage": "./assets/logo-main-square.png"
+            }
+          ]
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {

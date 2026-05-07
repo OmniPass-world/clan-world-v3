@@ -24,7 +24,7 @@ import { ResStrip } from '../components/Resources';
 import { TopBar } from '../components/TopBar';
 import { TickProgress } from '../components/TickProgress';
 import { SectionHeader } from '../components/SectionHeader';
-import { ParchmentRule } from '../components/Diamond';
+import { Diamond, ParchmentRule } from '../components/Diamond';
 import { colors, fonts } from '../theme';
 
 type Props = {
@@ -205,72 +205,157 @@ export const HearthScreen = ({
           <Pressable onPress={() => navigate('forge')}>
             <Parchment
               deep
-              style={{ padding: 14 }}
+              style={{
+                padding: 0,
+                overflow: 'hidden',
+                shadowColor: colors.goldBright,
+                shadowOpacity: 0.55,
+                shadowRadius: 28,
+                shadowOffset: { width: 0, height: 0 },
+                elevation: 14,
+              }}
               borderColor={colors.goldBright}
               borderWidth={2}
             >
+              {/* Top ribbon — Seeker recognition crest */}
               <View
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
+                  justifyContent: 'center',
+                  gap: 8,
+                  paddingVertical: 8,
+                  backgroundColor: 'rgba(212, 175, 92, 0.16)',
+                  borderBottomWidth: 1,
+                  borderBottomColor: 'rgba(212, 175, 92, 0.35)',
                 }}
               >
-                <View style={{ flex: 1, gap: 4 }}>
-                  <Text
-                    style={{
-                      fontFamily: fonts.display,
-                      fontSize: 11,
-                      letterSpacing: 1.6,
-                      color: colors.goldDeep,
-                    }}
-                  >
-                    ◇ SEEKER BEARER · WELCOMED
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: fonts.script,
-                      fontStyle: 'italic',
-                      fontSize: 16,
-                      color: colors.scriptBlueDark,
-                      lineHeight: 20,
-                    }}
-                  >
-                    Your first Elder is forged in our hearth, not yours.
-                  </Text>
-                  <Text
-                    style={{
-                      fontFamily: fonts.bodyItalic,
-                      fontStyle: 'italic',
-                      fontSize: 11,
-                      color: colors.inkParchmentMuted,
-                      marginTop: 2,
-                    }}
-                  >
-                    Mint fee waived. One free forge per bearer.
-                  </Text>
-                </View>
+                <Diamond size={5} color={colors.goldDeep} />
+                <Text
+                  style={{
+                    fontFamily: fonts.display,
+                    fontSize: 10,
+                    letterSpacing: 2.4,
+                    color: colors.goldDeep,
+                  }}
+                >
+                  SEEKER BEARER RECOGNIZED
+                </Text>
+                <Diamond size={5} color={colors.goldDeep} />
+              </View>
+
+              {/* Body — large display headline + script subtitle */}
+              <View
+                style={{
+                  paddingHorizontal: 20,
+                  paddingTop: 18,
+                  paddingBottom: 8,
+                  alignItems: 'center',
+                  gap: 6,
+                }}
+              >
+                <Text
+                  style={{
+                    fontFamily: fonts.script,
+                    fontStyle: 'italic',
+                    fontSize: 22,
+                    color: colors.scriptBlueDark,
+                    textAlign: 'center',
+                    lineHeight: 26,
+                  }}
+                >
+                  Your first Elder is forged in our hearth, not yours.
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: fonts.bodyItalic,
+                    fontStyle: 'italic',
+                    fontSize: 12,
+                    color: colors.inkParchmentMuted,
+                    textAlign: 'center',
+                    marginTop: 2,
+                  }}
+                >
+                  The Hearth honors those who carry the realm in their pocket.
+                </Text>
+              </View>
+
+              {/* Diamond divider */}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 10,
+                  paddingHorizontal: 28,
+                  paddingVertical: 10,
+                }}
+              >
                 <View
                   style={{
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
+                    flex: 1,
+                    height: 1,
+                    backgroundColor: colors.goldDeep,
+                    opacity: 0.4,
+                  }}
+                />
+                <Diamond size={5} color={colors.goldDeep} />
+                <View
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    backgroundColor: colors.goldDeep,
+                    opacity: 0.4,
+                  }}
+                />
+              </View>
+
+              {/* Strong CTA — forge button stretches the card width */}
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingTop: 4,
+                  paddingBottom: 16,
+                  gap: 6,
+                }}
+              >
+                <View
+                  style={{
                     backgroundColor: '#1A1410',
-                    borderColor: colors.goldPrimary,
-                    borderWidth: 1,
+                    borderColor: colors.goldBright,
+                    borderWidth: 1.5,
+                    paddingVertical: 14,
+                    alignItems: 'center',
+                    shadowColor: colors.goldBright,
+                    shadowOpacity: 0.4,
+                    shadowRadius: 12,
+                    shadowOffset: { width: 0, height: 0 },
+                    elevation: 6,
                   }}
                 >
                   <Text
                     style={{
                       fontFamily: fonts.display,
-                      fontSize: 11,
-                      letterSpacing: 1.4,
+                      fontSize: 14,
+                      letterSpacing: 2.4,
                       color: colors.goldBright,
                     }}
                   >
-                    FORGE · FREE →
+                    CLAIM YOUR FREE FORGE →
                   </Text>
                 </View>
+                <Text
+                  style={{
+                    fontFamily: fonts.mono,
+                    fontSize: 9,
+                    letterSpacing: 1.2,
+                    color: colors.inkParchmentMuted,
+                    textAlign: 'center',
+                    marginTop: 4,
+                  }}
+                >
+                  MINT FEE · {'̶'}5 GOLD{'̶'} · WAIVED
+                </Text>
               </View>
             </Parchment>
           </Pressable>

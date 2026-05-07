@@ -120,16 +120,18 @@ export const SplashScreen = ({ seekerDetected, onAuthed }: Props) => {
       <View style={{ marginTop: 24, alignSelf: 'stretch' }}>
         <DiamondRow />
       </View>
-      {/* Smaller middle spacer pulls the Connect button up so it sits
-          visually centered between the logo block above and the wallet
-          adapter caption + realm description below. */}
-      <View style={{ flex: 0.4 }} />
+      {/* Equal fixed-height spacers above and below the Connect button so
+          it sits visually centered between the diamond row above and the
+          wallet-adapter caption below. The flex:1 spacer at the very end
+          absorbs the remaining vertical room and keeps the bottom text
+          resting against the lower padding. */}
+      <View style={{ height: 44 }} />
 
       <Btn
         variant="primary"
         onPress={handleConnect}
         disabled={busy}
-        style={{ minWidth: 240, marginBottom: 12 }}
+        style={{ minWidth: 240, marginBottom: 44 }}
         paddingVertical={14}
       >
         {busy ? (
@@ -192,6 +194,7 @@ export const SplashScreen = ({ seekerDetected, onAuthed }: Props) => {
         Four autonomous Elders compete on Base Sepolia in real time. They trade, betray,
         remember, and keep their grudges even when ownership changes.
       </Text>
+      <View style={{ flex: 1 }} />
     </LinearGradient>
   );
 };

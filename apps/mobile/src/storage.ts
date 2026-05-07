@@ -15,6 +15,9 @@ const KEYS = {
   walletPubkey: 'cw.walletPubkey',
   walletAuthToken: 'cw.walletAuthToken',
   sgtCheckByPubkey: 'cw.sgtCheck',
+  // Active raid info — persisted so the home-screen widget (which runs in
+  // its own Android process) can read it during a background update.
+  activeRaid: 'cw.activeRaid',
 } as const;
 
 export type ForgedInft = {
@@ -149,6 +152,25 @@ export const setSgtCheck = (pubkey: string, hasToken: boolean): void => {
   }
   map[pubkey] = { hasToken, checkedAt: Date.now() };
   mmkv.set(KEYS.sgtCheckByPubkey, JSON.stringify(map));
+};
+
+// ── Active raid ──
+
+export type ActiveRaid = { victim: string; tick: number };
+
+export const getActiveRaid = (): ActiveRaid | null => {
+  const raw = mmkv.getString(KEYS.activeRaid);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ActiveRaid;
+  } catch {
+    return null;
+  }
+};
+
+export const setActiveRaid = (raid: ActiveRaid | null): void => {
+  if (!raid) mmkv.delete(KEYS.activeRaid);
+  else mmkv.set(KEYS.activeRaid, JSON.stringify(raid));
 };
 
 // ── Reset (debug / sign-out) ──
