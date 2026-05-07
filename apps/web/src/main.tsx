@@ -51,9 +51,19 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 // actual page.
 const pathname =
   typeof window !== 'undefined' ? window.location.pathname : '';
-const isStandalonePath = ['/cockpit', '/agents', '/owner'].some(
-  (p) => pathname === p || pathname.startsWith(p + '/'),
-);
+// Match the actual route shapes defined in App.tsx:
+//   /cockpit          → isCockpitRoute (startsWith '/cockpit')
+//   /owner            → isOwnerRoute   (startsWith '/owner')
+//   /agents/:digits   → parseAgentRoute (regex /^\/agents\/(\d+)\/?$/)
+// Bare `/agents` is NOT a real route in App.tsx — it falls through to
+// MainApp (the WorldMap), which DOES need Convex. So `/agents` must only
+// be treated as standalone when followed by a digit segment.
+const isStandalonePath =
+  pathname === '/cockpit' ||
+  pathname.startsWith('/cockpit/') ||
+  pathname === '/owner' ||
+  pathname.startsWith('/owner/') ||
+  /^\/agents\/\d+\/?$/.test(pathname);
 
 if (!convexUrl && !isStandalonePath) {
   // Fail soft instead of throwing — a thrown error here leaves a blank page,
