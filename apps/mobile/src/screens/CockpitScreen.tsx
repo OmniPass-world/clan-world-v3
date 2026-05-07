@@ -7,7 +7,8 @@ import { colors, fonts } from '../theme';
 import { BridgeScreen } from './BridgeScreen';
 
 const COCKPIT_URL =
-  process.env.EXPO_PUBLIC_COCKPIT_URL ?? 'https://demo.clan-world.com/cockpit';
+  process.env.EXPO_PUBLIC_COCKPIT_URL ?? 'https://app-dev.clan-world.com/cockpit';
+  // process.env.EXPO_PUBLIC_COCKPIT_URL ?? 'https://demo.clan-world.com/cockpit';
 
 type Props = {
   inft: Inft;

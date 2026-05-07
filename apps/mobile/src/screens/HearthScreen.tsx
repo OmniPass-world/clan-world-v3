@@ -506,7 +506,16 @@ export const HearthScreen = ({
                   style={{ flex: 1, borderColor: colors.inkParchmentMuted }}
                   onPress={() => navigate('hall')}
                 >
-                  HALL
+                  <Text
+                    style={{
+                      fontFamily: fonts.display,
+                      fontSize: 12,
+                      letterSpacing: 1.6,
+                      color: colors.inkParchment,
+                    }}
+                  >
+                    HALL
+                  </Text>
                 </Btn>
                 <Btn
                   variant="primary"

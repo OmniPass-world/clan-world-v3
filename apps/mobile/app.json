@@ -7,7 +7,9 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": false,
+    "icon": "./assets/logo-main-square.png",
     "splash": {
+      "image": "./assets/logo-main-square.png",
       "resizeMode": "contain",
       "backgroundColor": "#0B0A0E"
     },
@@ -22,7 +24,11 @@
       "bundleIdentifier": "army.shib.clanworld"
     },
     "android": {
-      "package": "army.shib.clanworld"
+      "package": "army.shib.clanworld",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-main-square.png",
+        "backgroundColor": "#0B0A0E"
+      }
     },
     "plugins": [
       "expo-dev-client",

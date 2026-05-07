@@ -217,7 +217,9 @@ export const InftDetailScreen = ({
       >
         {isBazaar ? (
           <Btn variant="primary" block onPress={onHire}>
-            {`HIRE · ${inft.hireFee ?? ''}`}
+            {inft.salePrice
+              ? `BUY · ${inft.salePrice}`
+              : `HIRE · ${inft.hireFee ?? ''}`}
           </Btn>
         ) : isLoaded ? (
           <>

@@ -68,6 +68,8 @@ export type Inft = {
   kvState?: Record<string, string>;
   memory?: MemoryOp[];
   hireFee?: string;
+  /** Set on FOR SALE bazaar items. CTA reads "BUY · X GOLD". */
+  salePrice?: string;
   sparkline?: number[];
 };
 

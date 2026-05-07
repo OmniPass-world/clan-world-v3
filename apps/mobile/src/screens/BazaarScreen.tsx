@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { BAZAAR_INFTS, Inft } from '../data';
+import { Inft } from '../data';
+import { BAZAAR_HIRE_INFTS, BAZAAR_SALE_INFTS } from '../bazaarInfts';
 import { Chip } from '../components/Buttons';
 import { InftCard } from '../components/InftCard';
-import { Parchment } from '../components/Surfaces';
 import { TopBar } from '../components/TopBar';
 import { colors, fonts } from '../theme';
 
@@ -13,6 +13,8 @@ type Props = { onOpenInft: (inft: Inft) => void };
 
 export const BazaarScreen = ({ onOpenInft }: Props) => {
   const [tab, setTab] = useState<Tab>('FOR HIRE');
+  const list = tab === 'FOR HIRE' ? BAZAAR_HIRE_INFTS : BAZAAR_SALE_INFTS;
+
   return (
     <>
       <TopBar title="THE BAZAAR" />
@@ -59,46 +61,21 @@ export const BazaarScreen = ({ onOpenInft }: Props) => {
           <Chip>ARCHETYPES ▾</Chip>
           <Chip>ELO 1000+ ▾</Chip>
           <Chip color={colors.goldPrimary} borderColor={colors.goldDeep}>
-            SORT: TOP RANKED ▾
+            {tab === 'FOR HIRE' ? 'SORT: TOP RANKED ▾' : 'SORT: PRICE ▾'}
           </Chip>
         </ScrollView>
       </View>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: 14, paddingBottom: 20, gap: 10 }}>
-        {tab === 'FOR HIRE' ? (
-          BAZAAR_INFTS.map((i) => (
-            <InftCard
-              key={i.id}
-              inft={i}
-              onPress={() => onOpenInft(i)}
-              hireFee={i.hireFee}
-              sparkline={i.sparkline}
-            />
-          ))
-        ) : (
-          <Parchment deep style={{ marginTop: 20, alignItems: 'center', padding: 28 }}>
-            <Text
-              style={{
-                fontFamily: fonts.script,
-                fontStyle: 'italic',
-                fontSize: 17,
-                color: colors.scriptBlueDark,
-              }}
-            >
-              The Bazaar is quiet.
-            </Text>
-            <Text
-              style={{
-                fontFamily: fonts.body,
-                fontSize: 12,
-                color: colors.inkParchment,
-                marginTop: 8,
-              }}
-            >
-              No Elders are for sale today.
-            </Text>
-          </Parchment>
-        )}
+        {list.map((i) => (
+          <InftCard
+            key={i.id}
+            inft={i}
+            onPress={() => onOpenInft(i)}
+            hireFee={i.hireFee ?? i.salePrice}
+            sparkline={i.sparkline}
+          />
+        ))}
       </ScrollView>
     </>
   );

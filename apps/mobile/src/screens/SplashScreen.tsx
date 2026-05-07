@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Btn } from '../components/Buttons';
@@ -52,42 +52,22 @@ export const SplashScreen = ({ seekerDetected, onAuthed }: Props) => {
       <View style={{ flex: 1 }} />
       <View
         style={{
-          width: 110,
-          height: 110,
-          borderRadius: 55,
-          backgroundColor: colors.goldDeep,
-          alignItems: 'center',
-          justifyContent: 'center',
           shadowColor: colors.goldPrimary,
-          shadowOpacity: 0.4,
-          shadowRadius: 30,
+          shadowOpacity: 0.5,
+          shadowRadius: 36,
           shadowOffset: { width: 0, height: 0 },
-          elevation: 14,
+          elevation: 18,
         }}
       >
-        <LinearGradient
-          colors={[colors.goldBright, colors.goldDeep, colors.goldDeeper]}
+        <Image
+          source={require('../../assets/logo-main-square.png')}
           style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            borderRadius: 55,
+            width: 140,
+            height: 140,
+            borderRadius: 16,
           }}
+          resizeMode="contain"
         />
-        <Text
-          style={{
-            fontFamily: fonts.display,
-            fontSize: 44,
-            color: '#1A1410',
-            textShadowColor: 'rgba(255,255,255,0.2)',
-            textShadowOffset: { width: 0, height: 1 },
-            textShadowRadius: 0,
-          }}
-        >
-          C
-        </Text>
       </View>
       <View style={{ alignItems: 'center', gap: 8, marginTop: 24 }}>
         <Text
@@ -140,7 +120,10 @@ export const SplashScreen = ({ seekerDetected, onAuthed }: Props) => {
       <View style={{ marginTop: 24, alignSelf: 'stretch' }}>
         <DiamondRow />
       </View>
-      <View style={{ flex: 1 }} />
+      {/* Smaller middle spacer pulls the Connect button up so it sits
+          visually centered between the logo block above and the wallet
+          adapter caption + realm description below. */}
+      <View style={{ flex: 0.4 }} />
 
       <Btn
         variant="primary"

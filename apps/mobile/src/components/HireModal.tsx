@@ -47,7 +47,7 @@ export const HireModal = ({ visible, inft, onCancel, onConfirm }: Props) => {
               marginVertical: 12,
             }}
           >
-            CONFIRM HIRE
+            {inft.salePrice ? 'CONFIRM PURCHASE' : 'CONFIRM HIRE'}
           </Text>
 
           <Parchment deep style={{ padding: 14 }}>
@@ -92,7 +92,7 @@ export const HireModal = ({ visible, inft, onCancel, onConfirm }: Props) => {
                   color: colors.inkParchment,
                 }}
               >
-                {inft.hireFee}
+                {inft.salePrice ?? inft.hireFee}
               </Text>
             </View>
           </Parchment>
@@ -109,8 +109,9 @@ export const HireModal = ({ visible, inft, onCancel, onConfirm }: Props) => {
               lineHeight: 18,
             }}
           >
-            The Elder serves your hall for one season. Strategy is locked. Prizes flow to you.
-            Memory is retained by the owner.
+            {inft.salePrice
+              ? 'Outright purchase. The Elder transfers to your hall with all accumulated memory and grudges intact.'
+              : 'The Elder serves your hall for one season. Strategy is locked. Prizes flow to you. Memory is retained by the owner.'}
           </Text>
 
           <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -118,7 +119,9 @@ export const HireModal = ({ visible, inft, onCancel, onConfirm }: Props) => {
               CANCEL
             </Btn>
             <Btn variant="primary" style={{ flex: 1.4 }} onPress={onConfirm}>
-              {`CONFIRM · ${inft.hireFee?.split(' ')[0] ?? ''} GOLD`}
+              {inft.salePrice
+                ? `BUY · ${inft.salePrice}`
+                : `CONFIRM · ${inft.hireFee?.split(' ')[0] ?? ''} GOLD`}
             </Btn>
           </View>
         </Pressable>
