@@ -10,6 +10,7 @@ type Props = {
   pubkey: string | null;
   onDisconnect: () => void;
   onResetForgeState: () => void;
+  onTriggerRaid: () => void;
 };
 
 const truncPub = (pk: string | null) => {
@@ -23,6 +24,7 @@ export const CodexScreen = ({
   pubkey,
   onDisconnect,
   onResetForgeState,
+  onTriggerRaid,
 }: Props) => {
   const [haptics, setHaptics] = useState(true);
   const [game, setGame] = useState(true);
@@ -83,6 +85,34 @@ export const CodexScreen = ({
         </SettingGroup>
 
         <SettingGroup label="DEMO TOOLS">
+          <SettingRow
+            label="Trigger raid (10s)"
+            right={
+              <Btn
+                variant="secondary"
+                paddingHorizontal={10}
+                paddingVertical={6}
+                fontSize={10}
+                onPress={onTriggerRaid}
+              >
+                FIRE
+              </Btn>
+            }
+          />
+          <Text
+            style={{
+              fontFamily: fonts.bodyItalic,
+              fontStyle: 'italic',
+              fontSize: 11,
+              color: colors.inkDarkMuted,
+              paddingVertical: 6,
+              lineHeight: 16,
+            }}
+          >
+            Schedules a bandit raid alert ten seconds from now. If the app
+            is open you&apos;ll see a themed overlay; if it&apos;s closed
+            you&apos;ll get an Android notification — tap to return.
+          </Text>
           <SettingRow
             label="Reset forge state"
             right={

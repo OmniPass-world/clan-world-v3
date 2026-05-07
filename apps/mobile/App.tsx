@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
@@ -60,6 +61,21 @@ import { CockpitScreen } from './src/screens/CockpitScreen';
 import { BridgeScreen } from './src/screens/BridgeScreen';
 import { WhispersScreen } from './src/screens/WhispersScreen';
 import { CodexScreen } from './src/screens/CodexScreen';
+import { RaidAlertOverlay } from './src/components/RaidAlertOverlay';
+import {
+  cancelRaidAlert,
+  installRaidNotificationHandler,
+  parseRaidResponse,
+  scheduleRaidAlert,
+} from './src/raid';
+import { findExtraInft } from './src/extraInfts';
+import { mergeRealClan, REAL_CLAN_DISPLAY } from './src/clanData';
+import { getForgedInfts } from './src/storage';
+
+// Foreground notification handler — installed once at module load so a
+// raid notification arriving while the app is open does NOT show a system
+// banner. The themed RaidAlertOverlay takes its place.
+installRaidNotificationHandler();
 
 const CONVEX_URL =
   process.env.EXPO_PUBLIC_CONVEX_URL ?? 'https://valuable-kudu-985.convex.cloud';
@@ -113,6 +129,45 @@ export default function App() {
     };
   }, [pubkey]);
 
+  // Notification-tap handler: when the user taps a raid notification while
+  // the app was backgrounded, route them to Hearth with the raid banner
+  // active. Also handles the "app launched from notification" cold-start
+  // case via getLastNotificationResponseAsync().
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const meta = parseRaidResponse(response);
+      if (!meta) return;
+      setRaid(meta);
+      // Land on Hearth so the banner is the first thing seen
+      setStack([]);
+      setTab('hearth');
+      setForge(false);
+      setCockpit(null);
+      setBridge(false);
+    };
+
+    // Cold-start: app launched by tapping the notification
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!cancelled) apply(response);
+    });
+
+    // Warm-start: app already running when notification tapped
+    const sub = Notifications.addNotificationResponseReceivedListener(apply);
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, []);
+
+  // Cleanup the raid timer if App unmounts mid-countdown
+  useEffect(() => {
+    return () => {
+      if (raidTimerRef.current) clearTimeout(raidTimerRef.current);
+    };
+  }, []);
+
   const isSeekerBearer = seekerM1 || seekerM2 === true;
 
   // Routing state
@@ -126,6 +181,12 @@ export default function App() {
   const [loadedInftIdState, setLoadedInftIdState] = useState<string | null>(
     () => getLoadedInftId(),
   );
+  // Raid demo — non-null when a raid is active (banner on hero, overlay
+  // pops over the app). Cleared when the user enters the cockpit or
+  // dismisses the overlay.
+  const [raid, setRaid] = useState<{ victim: string; tick: number } | null>(null);
+  const [showRaidOverlay, setShowRaidOverlay] = useState(false);
+  const raidTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const top = stack[stack.length - 1];
   const push = (s: StackEntry) => setStack((prev) => [...prev, s]);
@@ -158,6 +219,64 @@ export default function App() {
   const updateLoadedInft = (inftId: string | null) => {
     setLoadedInftId(inftId);
     setLoadedInftIdState(inftId);
+  };
+
+  /** Pick the victim name for a raid alert. Prefers the currently-loaded
+   *  clan name; falls back to a default real clan so the demo always has
+   *  someone to target. */
+  const resolveRaidVictim = (): string => {
+    if (loadedInftIdState) {
+      // Real clan loaded
+      const m = loadedInftIdState.match(/^clan-(\d+)$/);
+      if (m) {
+        const display = REAL_CLAN_DISPLAY.find((d) => d.clanId === Number(m[1]));
+        if (display) return display.name;
+      }
+      // Forged Elder loaded
+      if (loadedInftIdState.startsWith('forged-') && pubkey) {
+        const f = getForgedInfts(pubkey).find((x) => x.id === loadedInftIdState);
+        if (f) return f.name;
+      }
+      // Pre-populated extra Elder loaded
+      if (loadedInftIdState.startsWith('extra-')) {
+        const x = findExtraInft(loadedInftIdState);
+        if (x) return x.name;
+      }
+    }
+    return 'Crimson';
+  };
+
+  /** Demo trigger — schedules a raid alert 10s from now. */
+  const handleTriggerRaid = async () => {
+    const victim = resolveRaidVictim();
+    const tick = 263 + Math.floor(Math.random() * 7);
+
+    // Schedule the system notification (fires regardless of foreground state)
+    try {
+      await scheduleRaidAlert(10, victim, tick);
+    } catch (e) {
+      if (__DEV__) console.warn('[raid] schedule failed:', e);
+    }
+
+    // Foreground timer — fires only if the app stays open. Cancels the
+    // system notification so we don't get a double banner.
+    if (raidTimerRef.current) clearTimeout(raidTimerRef.current);
+    raidTimerRef.current = setTimeout(() => {
+      // Only fire foreground overlay when actually in the foreground
+      if (AppState.currentState === 'active') {
+        cancelRaidAlert();
+        setRaid({ victim, tick });
+        setShowRaidOverlay(true);
+        // Drop user onto Hearth so the banner is visible after dismiss
+        setStack([]);
+        setTab('hearth');
+        setForge(false);
+        setCockpit(null);
+        setBridge(false);
+      }
+    }, 10_000);
+
+    showToast('Raid scheduled. 10 seconds.');
   };
 
   /** Demo helper — clear forged INFTs + free-forge flag without dropping
@@ -244,6 +363,7 @@ export default function App() {
         pubkey={pubkey}
         onDisconnect={handleDisconnect}
         onResetForgeState={handleResetForgeState}
+        onTriggerRaid={handleTriggerRaid}
       />
     );
   } else if (top?.kind === 'steering') {
@@ -302,7 +422,12 @@ export default function App() {
           loadedInftId={loadedInftIdState}
           pubkey={pubkey}
           isSeekerBearer={isSeekerBearer}
-          onEnterCockpit={(inft) => enterCockpit(inft)}
+          raid={raid}
+          onEnterCockpit={(inft) => {
+            // Clear raid when user defends in the cockpit
+            setRaid(null);
+            enterCockpit(inft);
+          }}
           onWhispers={() => push({ kind: 'whispers' })}
           onSettings={() => push({ kind: 'codex' })}
           navigate={navigate}
@@ -357,6 +482,36 @@ export default function App() {
                 );
               }}
             />
+            {showRaidOverlay && raid && (
+              <RaidAlertOverlay
+                victim={raid.victim}
+                tick={raid.tick}
+                onDismiss={() => setShowRaidOverlay(false)}
+                onDefend={() => {
+                  setShowRaidOverlay(false);
+                  // If a real clan is loaded, dive straight into the cockpit;
+                  // otherwise nudge the user to the hall to pick one.
+                  const realId = loadedInftIdState
+                    ? loadedInftIdState.match(/^clan-(\d+)$/)
+                    : null;
+                  if (realId) {
+                    const display = REAL_CLAN_DISPLAY.find(
+                      (d) => d.clanId === Number(realId[1]),
+                    );
+                    if (display) {
+                      const inft = mergeRealClan(display, undefined, null);
+                      setRaid(null);
+                      enterCockpit(inft);
+                      return;
+                    }
+                  }
+                  // No real clan loaded — keep the raid banner up so the
+                  // user knows it's still active, and route to the Hall.
+                  setStack([]);
+                  setTab('hall');
+                }}
+              />
+            )}
           </View>
         </SafeAreaView>
       </SafeAreaProvider>

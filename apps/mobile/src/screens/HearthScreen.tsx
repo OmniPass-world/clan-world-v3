@@ -32,6 +32,9 @@ type Props = {
   pubkey: string | null;
   /** True when the user is a Seeker bearer (M1 instant or M2 verified). */
   isSeekerBearer: boolean;
+  /** Active raid info — banner appears at the top of the hero card while
+   *  this is non-null. Cleared by entering the cockpit or dismissing. */
+  raid: { victim: string; tick: number } | null;
   onEnterCockpit: (inft: Inft) => void;
   onWhispers: () => void;
   onSettings: () => void;
@@ -42,6 +45,7 @@ export const HearthScreen = ({
   loadedInftId,
   pubkey,
   isSeekerBearer,
+  raid,
   onEnterCockpit,
   onWhispers,
   onSettings,
@@ -118,6 +122,82 @@ export const HearthScreen = ({
         contentContainerStyle={{ padding: 14, paddingBottom: 20, gap: 18 }}
         showsVerticalScrollIndicator={false}
       >
+        {/* Active raid — full-width danger banner at the top of the hero
+            scroll. Renders only while `raid` is non-null. Tap → cockpit. */}
+        {raid && (
+          <Pressable
+            onPress={() => {
+              if (loadedInft && !isForged) onEnterCockpit(loadedInft);
+              else navigate('hall');
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: 'rgba(160, 74, 63, 0.18)',
+                borderColor: colors.statusDanger,
+                borderWidth: 1,
+                padding: 14,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 28,
+                  color: colors.statusDanger,
+                  textShadowColor: colors.statusDanger,
+                  textShadowOffset: { width: 0, height: 0 },
+                  textShadowRadius: 10,
+                }}
+              >
+                ⚔
+              </Text>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text
+                  style={{
+                    fontFamily: fonts.display,
+                    fontSize: 11,
+                    letterSpacing: 1.6,
+                    color: colors.statusDanger,
+                  }}
+                >
+                  BANDIT RAID · T{raid.tick}
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: fonts.body,
+                    fontSize: 13,
+                    color: colors.inkDark,
+                  }}
+                >
+                  {raid.victim} is under attack.
+                </Text>
+                <Text
+                  style={{
+                    fontFamily: fonts.bodyItalic,
+                    fontStyle: 'italic',
+                    fontSize: 11,
+                    color: colors.inkDarkMuted,
+                    marginTop: 2,
+                  }}
+                >
+                  Tap to defend in the cockpit.
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontFamily: fonts.display,
+                  fontSize: 14,
+                  color: colors.statusDanger,
+                }}
+              >
+                →
+              </Text>
+            </View>
+          </Pressable>
+        )}
+
         {/* Seeker free-forge nudge — sits above the hero, only when the
             connected wallet is a Seeker bearer who hasn't yet claimed their
             free Elder. Tapping routes straight into the Forge flow. */}

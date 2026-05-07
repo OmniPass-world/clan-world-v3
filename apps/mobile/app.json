@@ -28,6 +28,12 @@
       "expo-dev-client",
       "expo-font",
       [
+        "expo-notifications",
+        {
+          "color": "#D4AF5C"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
