@@ -111,12 +111,14 @@ private fun HallScreen(
     Spacer(Modifier.height(10.dp))
 
     if (state.isLoading) {
-      Text(
-        text = "gathering the sigils…",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.warmFaint,
-        modifier = Modifier.padding(top = 24.dp),
-      )
+      Column(
+        modifier = Modifier
+          .fillMaxSize()
+          .padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+      ) {
+        repeat(3) { world.clan.app.ui.components.SkeletonLetterCard() }
+      }
     } else if (state.errorMessage != null && state.items.isEmpty()) {
       world.clan.app.ui.components.RetryNotice(
         message = state.errorMessage,

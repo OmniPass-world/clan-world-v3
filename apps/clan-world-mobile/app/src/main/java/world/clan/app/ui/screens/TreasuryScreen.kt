@@ -81,12 +81,11 @@ private fun TreasuryScreen(
       Spacer(Modifier.height(14.dp))
 
       if (state.isLoading) {
-        Text(
-          text = "the keep is being weighed…",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-          modifier = Modifier.padding(top = 18.dp),
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+          world.clan.app.ui.components.SkeletonTreasuryHero()
+          Spacer(Modifier.height(2.dp))
+          repeat(5) { world.clan.app.ui.components.SkeletonMovementRow() }
+        }
       } else if (state.errorMessage != null) {
         world.clan.app.ui.components.RetryNotice(
           message = state.errorMessage,
