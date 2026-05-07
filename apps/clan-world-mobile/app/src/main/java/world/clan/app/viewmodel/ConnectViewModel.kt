@@ -108,17 +108,21 @@ class ConnectViewModel(
         }
       }
       MwaResult.UserDeclined -> {
-        // If the user declined a cold-launch reauthorize the stored
-        // session is no longer trustworthy — clear it so the next
-        // launch is a clean Connect.
-        if (_state.value.pendingVerification) sessionStore.clear()
+        // Any failed authorize/reauthorize invalidates the stored session.
+        // Clearing here means the next "Open Seed Vault" tap is a fresh
+        // mwa.connect() — not another doomed reauthorize against a stale
+        // auth token. v0.2.0 demo regression: previously this only cleared
+        // on cold-launch pendingVerification, so a manual tap that hit a
+        // wallet-side-revoked token would loop ("tap → bounce → tap →
+        // bounce") forever.
+        val wasVerifying = _state.value.pendingVerification
+        sessionStore.clear()
         _state.update {
           it.copy(
             phase = ConnectUiState.Phase.Idle,
-            solanaPubkeyBase58 = null.takeIf { _state.value.pendingVerification }
-              ?: it.solanaPubkeyBase58,
+            solanaPubkeyBase58 = null,
             pendingVerification = false,
-            errorMessage = if (it.pendingVerification)
+            errorMessage = if (wasVerifying)
               "Your sigil could not be verified — please reconnect."
             else
               "Authorization declined.",
@@ -134,10 +138,14 @@ class ConnectViewModel(
           )
         }
       is MwaResult.Error -> {
-        if (_state.value.pendingVerification) sessionStore.clear()
+        // Same rationale as UserDeclined: clear so we never retry a token
+        // the wallet has rejected. A real network/IPC error will simply
+        // result in a fresh authorize on the user's next tap.
+        sessionStore.clear()
         _state.update {
           it.copy(
             phase = ConnectUiState.Phase.Error,
+            solanaPubkeyBase58 = null,
             pendingVerification = false,
             errorMessage = result.cause.message ?: "MWA error.",
           )
