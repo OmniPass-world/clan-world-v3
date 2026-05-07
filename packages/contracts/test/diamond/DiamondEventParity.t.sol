@@ -19,10 +19,9 @@ import {
 } from "../../src/IClanWorld.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
-import {BundleTransferFacet} from "../../src/diamond/facets/BundleTransferFacet.sol";
 import {ClanLifecycleFacet} from "../../src/diamond/facets/ClanLifecycleFacet.sol";
 import {ClanOwnershipFacet} from "../../src/diamond/facets/ClanOwnershipFacet.sol";
-import {GoldTransferFacet} from "../../src/diamond/facets/GoldTransferFacet.sol";
+import {DirectTransfersFacet} from "../../src/diamond/facets/DirectTransfersFacet.sol";
 import {HeartbeatFacet} from "../../src/diamond/facets/HeartbeatFacet.sol";
 import {RawBanditViewsFacet} from "../../src/diamond/facets/RawBanditViewsFacet.sol";
 import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol";
@@ -30,7 +29,6 @@ import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFa
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
 import {TreasuryFacet} from "../../src/diamond/facets/TreasuryFacet.sol";
-import {VaultResourceTransferFacet} from "../../src/diamond/facets/VaultResourceTransferFacet.sol";
 import {MinimalERC20} from "../../src/MinimalERC20.sol";
 import {StubPool} from "../../src/StubPool.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
@@ -778,14 +776,16 @@ contract DiamondEventParityTest is Test {
 
     function _installRawLifecycleGoldHeartbeatFacets() internal {
         _installRawAndLifecycleFacets();
-        IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new GoldTransferFacet()), DiamondSelectors.goldTransferSelectors()), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(
+            _singleCut(address(new DirectTransfersFacet()), DiamondSelectors.directTransferSelectors()), address(0), ""
+        );
         IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
     }
 
     function _installRawLifecycleVaultTransferHeartbeatFacets() internal {
         _installRawAndLifecycleFacets();
         IDiamondCut(address(diamond)).diamondCut(
-            _singleCut(address(new VaultResourceTransferFacet()), DiamondSelectors.vaultResourceTransferSelectors()),
+            _singleCut(address(new DirectTransfersFacet()), DiamondSelectors.directTransferSelectors()),
             address(0),
             ""
         );
@@ -795,7 +795,7 @@ contract DiamondEventParityTest is Test {
     function _installRawLifecycleBundleTransferHeartbeatFacets() internal {
         _installRawAndLifecycleFacets();
         IDiamondCut(address(diamond)).diamondCut(
-            _singleCut(address(new BundleTransferFacet()), DiamondSelectors.bundleTransferSelectors()), address(0), ""
+            _singleCut(address(new DirectTransfersFacet()), DiamondSelectors.directTransferSelectors()), address(0), ""
         );
         IDiamondCut(address(diamond)).diamondCut(_singleCut(address(new HeartbeatFacet()), DiamondSelectors.heartbeatSelectors()), address(0), "");
     }

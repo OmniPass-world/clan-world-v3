@@ -119,24 +119,12 @@ library DiamondSelectors {
         selectors[1] = IClanWorld.settleClansman.selector;
     }
 
-    function goldTransferSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](1);
+    function directTransferSelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](4);
         selectors[0] = IClanWorld.transferGold.selector;
-    }
-
-    function vaultResourceTransferSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](1);
-        selectors[0] = IClanWorld.transferVaultResource.selector;
-    }
-
-    function blueprintTransferSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](1);
-        selectors[0] = IClanWorld.transferBlueprint.selector;
-    }
-
-    function bundleTransferSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](1);
-        selectors[0] = IClanWorld.transferBundle.selector;
+        selectors[1] = IClanWorld.transferVaultResource.selector;
+        selectors[2] = IClanWorld.transferBlueprint.selector;
+        selectors[3] = IClanWorld.transferBundle.selector;
     }
 
     function derivedViewsSelectors() internal pure returns (bytes4[] memory selectors) {
