@@ -661,20 +661,7 @@ private fun StepConfirm(state: ForgeUiState, onForge: () -> Unit) {
         )
       }
       SendPhase.Queued -> {
-        Box(
-          modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(ClanWorldTheme.colors.success.copy(alpha = 0.18f))
-            .padding(vertical = 16.dp),
-          contentAlignment = Alignment.Center,
-        ) {
-          Text(
-            text = "FORGED ✓",
-            style = ClanWorldTheme.type.ctaLabel,
-            color = ClanWorldTheme.colors.success,
-          )
-        }
+        world.clan.app.ui.components.SealedNotice(label = "Forged ✓")
       }
     }
   }

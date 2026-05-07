@@ -245,20 +245,7 @@ private fun HireBody(
       }
     }
     HireState.Sealed -> {
-      Box(
-        Modifier
-          .fillMaxWidth()
-          .height(54.dp)
-          .clip(RoundedCornerShape(6.dp))
-          .background(ClanWorldTheme.colors.success.copy(alpha = 0.18f)),
-        contentAlignment = Alignment.Center,
-      ) {
-        Text(
-          text = "SEALED ✓",
-          style = ClanWorldTheme.type.ctaLabel,
-          color = ClanWorldTheme.colors.success,
-        )
-      }
+      SealedNotice(label = "Sealed ✓")
     }
   }
 }
