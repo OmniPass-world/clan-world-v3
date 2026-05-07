@@ -61,7 +61,6 @@ import world.clan.app.ui.components.Sigil
 import world.clan.app.ui.components.WhisperAccent
 import world.clan.app.ui.components.WhisperRow
 import world.clan.app.ui.components.bigSigilSpec
-import world.clan.app.ui.components.boldedMeta
 import world.clan.app.ui.components.inlineCodeBody
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.ui.theme.Ink
