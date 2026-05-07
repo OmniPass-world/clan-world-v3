@@ -230,6 +230,12 @@ private fun TargetClanRow(active: Int, onSelect: (Int) -> Unit) {
         )
       }
     }
+    Spacer(Modifier.height(8.dp))
+    Text(
+      text = world.clan.app.viewmodel.clanTagline(active),
+      style = ClanWorldTheme.type.scriptItalicSmall,
+      color = ClanWorldTheme.colors.warmDim,
+    )
   }
 }
 
