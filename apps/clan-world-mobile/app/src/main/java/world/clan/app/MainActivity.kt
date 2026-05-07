@@ -37,6 +37,10 @@ class MainActivity : Activity() {
   }
 
   private fun showHome() {
+    // If a previous WebView exists (e.g. coming back from background or
+    // re-entering the home tab), tear it down before allocating a new one
+    // so we don't leak the renderer process across re-creates.
+    destroyWebViewIfPresent()
     shell.removeAllViews()
 
     val root = LinearLayout(this).apply {
@@ -106,8 +110,25 @@ class MainActivity : Activity() {
   }
 
   private fun handleUrl(uri: Uri): Boolean {
-    val scheme = uri.scheme?.lowercase() ?: return false
-    if (scheme == "http" || scheme == "https") return false
+    val scheme = uri.scheme?.lowercase() ?: return true
+    if (scheme == "http" || scheme == "https") {
+      // Allowlist enforcement: only allow http(s) navigations whose host
+      // matches the configured HOME_URL host or an explicit allowlist.
+      // Anything else (a phishing link injected via window.location, an
+      // adversarial deep link, etc.) is blocked from this JS-enabled,
+      // storage-backed WebView and instead handed to an external browser.
+      return if (isHttpUrlAllowed(uri)) {
+        false
+      } else {
+        runCatching {
+          startActivity(
+            Intent(Intent.ACTION_VIEW, uri)
+              .addCategory(Intent.CATEGORY_BROWSABLE),
+          )
+        }
+        true
+      }
+    }
     val intent = if (scheme == "intent") {
       runCatching { Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME) }.getOrNull()
     } else {
@@ -119,10 +140,33 @@ class MainActivity : Activity() {
       startActivity(intent)
     }.recoverCatching { error ->
       if (error is ActivityNotFoundException && intent.getStringExtra("browser_fallback_url") != null) {
-        webView.loadUrl(intent.getStringExtra("browser_fallback_url")!!)
+        val fallbackUrl = intent.getStringExtra("browser_fallback_url")!!
+        if (isHttpUrlAllowed(Uri.parse(fallbackUrl))) {
+          webView.loadUrl(fallbackUrl)
+        }
       }
     }
     return true
+  }
+
+  /**
+   * Allow only HTTPS URLs whose host matches the configured clan-world home
+   * or an explicit allowlist of trusted subdomains. Mirrors the kickstart
+   * pattern: every entry widens the trust surface of an exported, JS-enabled
+   * WebView, so keep the list narrow.
+   */
+  private fun isHttpUrlAllowed(uri: Uri): Boolean {
+    return runCatching {
+      val scheme = uri.scheme?.lowercase()
+      if (scheme != "https" && scheme != "http") return@runCatching false
+      val host = uri.host?.lowercase() ?: return@runCatching false
+      val homeHost = Uri.parse(BuildConfig.HOME_URL).host?.lowercase()
+      val allowedHosts = buildSet {
+        if (!homeHost.isNullOrBlank()) add(homeHost)
+        addAll(EXTRA_ALLOWED_HOSTS)
+      }
+      allowedHosts.any { allowed -> host == allowed || host.endsWith(".$allowed") }
+    }.getOrDefault(false)
   }
 
   private fun openExternal(url: String) {
@@ -136,5 +180,32 @@ class MainActivity : Activity() {
     else super.onBackPressed()
   }
 
+  override fun onDestroy() {
+    destroyWebViewIfPresent()
+    super.onDestroy()
+  }
+
+  private fun destroyWebViewIfPresent() {
+    if (::webView.isInitialized) {
+      webView.stopLoading()
+      webView.loadUrl("about:blank")
+      (webView.parent as? ViewGroup)?.removeView(webView)
+      webView.removeAllViews()
+      webView.destroy()
+    }
+  }
+
   private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+  companion object {
+    /**
+     * Hosts allowed for WebView loads in addition to the configured
+     * `BuildConfig.HOME_URL` host. Keep this list narrow; every entry
+     * widens the trust surface of an exported JS-enabled WebView.
+     */
+    private val EXTRA_ALLOWED_HOSTS = setOf(
+      "clan-world.com",
+      "app.clan-world.com",
+    )
+  }
 }
