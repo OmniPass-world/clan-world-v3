@@ -51,6 +51,9 @@ fun BazaarScreenRoute(
 ) {
   val vm: BazaarViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
+  // Re-apply the hired-clan filter on (re-)entry so a freshly-hired
+  // sigil drops out of the listings without an app kill.
+  androidx.compose.runtime.LaunchedEffect(Unit) { vm.refresh() }
   BazaarScreen(state = state, onOpenListing = onOpenListing)
 }
 

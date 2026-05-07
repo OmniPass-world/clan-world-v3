@@ -35,14 +35,15 @@ class CodexViewModel(
   private val _state = MutableStateFlow(
     run {
       val s = sessionStore.read()
+      val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).distinct()
       CodexUiState(
         deviceClass = deviceClass,
         solanaPubkey = s?.solanaPubkeyBase58,
         walletLabel = s?.walletLabel,
         build = "v ${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}",
         convexUrl = BuildConfig.CONVEX_URL,
-        linkedClansCount = HearthViewModel.LINKED_CLAN_IDS.size,
-        linkedClanIds = HearthViewModel.LINKED_CLAN_IDS,
+        linkedClansCount = owned.size,
+        linkedClanIds = owned,
         apkShareUrl = "https://shared.claude.do/public/clanworld-mobile-slice-1.apk",
         lineage = lineageStore.read(),
       )
@@ -50,9 +51,17 @@ class CodexViewModel(
   )
   val state: StateFlow<CodexUiState> = _state.asStateFlow()
 
-  /** Re-read lineage when the screen is re-entered after a successful sign. */
+  /**
+   * Re-read lineage + hired clans on (re-)entry so newly-signed actions
+   * and freshly-hired sigils appear in Codex without an app kill.
+   */
   fun refreshLineage() {
-    _state.value = _state.value.copy(lineage = lineageStore.read())
+    val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).distinct()
+    _state.value = _state.value.copy(
+      lineage = lineageStore.read(),
+      linkedClansCount = owned.size,
+      linkedClanIds = owned,
+    )
   }
 
   fun disconnect() {
