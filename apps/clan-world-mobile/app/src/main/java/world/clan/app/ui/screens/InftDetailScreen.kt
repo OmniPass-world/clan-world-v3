@@ -80,6 +80,7 @@ fun InftDetailScreenRoute(
   onBack: () -> Unit,
   onEnterCockpit: () -> Unit = {},
   onOpenInbox: () -> Unit = {},
+  onEditStrategy: () -> Unit = {},
   isBazaar: Boolean = false,
   hostActivity: androidx.activity.ComponentActivity? = null,
   onHireConfirmed: (() -> Unit)? = null,
@@ -93,6 +94,7 @@ fun InftDetailScreenRoute(
     onSelectDetailTab = vm::selectTab,
     onEnterCockpit = onEnterCockpit,
     onOpenInbox = onOpenInbox,
+    onEditStrategy = onEditStrategy,
     isBazaar = isBazaar,
     app = app,
     hostActivity = hostActivity,
@@ -108,6 +110,7 @@ private fun InftDetailScreen(
   onSelectDetailTab: (DetailTab) -> Unit,
   onEnterCockpit: () -> Unit,
   onOpenInbox: () -> Unit = {},
+  onEditStrategy: () -> Unit = {},
   isBazaar: Boolean = false,
   app: App? = null,
   hostActivity: androidx.activity.ComponentActivity? = null,
@@ -153,7 +156,10 @@ private fun InftDetailScreen(
       label = "detail-tab",
     ) { tab ->
       when (tab) {
-        DetailTab.Memory -> MemoryPanel(state.state?.memory.orEmpty())
+        DetailTab.Memory -> MemoryPanel(
+          state.state?.memory.orEmpty(),
+          onEditStrategy = if (!isBazaar) onEditStrategy else null,
+        )
         DetailTab.Vault -> VaultPanel(state.vault)
         DetailTab.Whispers -> WhispersPanel(state.comms, onOpenInbox = onOpenInbox)
         DetailTab.Bulletin -> BulletinPanel(state.state?.bulletins?.map { it.body } ?: emptyList())
@@ -418,30 +424,47 @@ private val DetailTab.label get() = when (this) {
 // ── Panels ──────────────────────────────────────────────────────────────
 
 @Composable
-private fun MemoryPanel(memory: List<MemoryEntry>) {
-  PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
-    if (memory.isEmpty()) {
-      Box(
-        Modifier
+private fun MemoryPanel(
+  memory: List<MemoryEntry>,
+  onEditStrategy: (() -> Unit)? = null,
+) {
+  Column {
+    PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
+      if (memory.isEmpty()) {
+        Box(
+          Modifier
+            .fillMaxWidth()
+            .padding(20.dp),
+          contentAlignment = Alignment.Center,
+        ) {
+          Text(
+            "no memory written yet",
+            style = ClanWorldTheme.type.scriptItalic,
+            color = ClanWorldTheme.colors.warmFaint,
+          )
+        }
+      } else {
+        memory.take(10).forEach { entry ->
+          MemoryRow(
+            key = entry.key,
+            body = inlineCodeBody(entry.value),
+            stamp = "written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}",
+            modifier = Modifier.fillMaxWidth(),
+          )
+        }
+      }
+    }
+    if (onEditStrategy != null) {
+      Text(
+        text = "EDIT STRATEGY →",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.gold,
+        textAlign = TextAlign.Center,
+        modifier = Modifier
           .fillMaxWidth()
-          .padding(20.dp),
-        contentAlignment = Alignment.Center,
-      ) {
-        Text(
-          "no memory written yet",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-        )
-      }
-    } else {
-      memory.take(10).forEach { entry ->
-        MemoryRow(
-          key = entry.key,
-          body = inlineCodeBody(entry.value),
-          stamp = "written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}",
-          modifier = Modifier.fillMaxWidth(),
-        )
-      }
+          .clickable { onEditStrategy() }
+          .padding(horizontal = 22.dp, vertical = 14.dp),
+      )
     }
   }
 }
