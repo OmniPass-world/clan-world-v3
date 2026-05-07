@@ -12,6 +12,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -128,6 +129,11 @@ class MainActivity : Activity() {
       setPadding(dp(10), dp(10), dp(10), dp(10))
       setBackgroundColor(Colorish.card)
       setOnClickListener { onClick() }
+      val icon = ImageView(context).apply {
+        scaleType = ImageView.ScaleType.CENTER_CROP
+        clipToOutline = true
+      }
+      TokenImageLoader.loadInto(icon, token.iconUrl)
       val left = TextView(context).apply {
         text = "#${token.rank}  ${token.symbol}\n${token.name}"
         setTextColor(getColor(R.color.widget_text))
@@ -139,6 +145,9 @@ class MainActivity : Activity() {
         textSize = 13f
         gravity = Gravity.END
       }
+      addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)).apply {
+        marginEnd = dp(10)
+      })
       addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
       addView(right)
     }

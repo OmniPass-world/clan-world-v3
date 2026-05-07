@@ -38,9 +38,28 @@ open class KickstartWidgetProvider : AppWidgetProvider() {
         clickIntent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
       )
-      val views = KickstartWidgetRenderer.render(context, token, layoutRes, WidgetStore.getWidgetChartType(context, appWidgetId))
+      val views = KickstartWidgetRenderer.render(
+        context,
+        token,
+        layoutRes,
+        WidgetStore.getWidgetChartType(context, appWidgetId),
+        TokenImageLoader.widgetCoinBitmap(context, token, allowNetwork = false),
+      )
       views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
       manager.updateAppWidget(appWidgetId, views)
+      if (TokenImageLoader.shouldFetchWidgetImage(token)) {
+        Thread {
+          val refreshedViews = KickstartWidgetRenderer.render(
+            context,
+            token,
+            layoutRes,
+            WidgetStore.getWidgetChartType(context, appWidgetId),
+            TokenImageLoader.widgetCoinBitmap(context, token, allowNetwork = true),
+          )
+          refreshedViews.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+          manager.updateAppWidget(appWidgetId, refreshedViews)
+        }.start()
+      }
     }
   }
 }
@@ -72,7 +91,7 @@ object WidgetStore {
 
   fun getWidgetChartType(context: Context, appWidgetId: Int): String {
     return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-      .getString("widget_${appWidgetId}_chart_type", "line")
+      .getString("widget_${appWidgetId}_chart_type", "candles")
       ?.takeIf { it == "candles" }
       ?: "line"
   }
