@@ -133,11 +133,11 @@ private fun HallScreen(
         if (state.items.isEmpty()) {
           LazyColumn(modifier = Modifier.fillMaxSize()) {
             item {
-              Text(
-                text = "your hall is quiet — no sigils linked.",
-                style = ClanWorldTheme.type.scriptItalic,
-                color = ClanWorldTheme.colors.warmFaint,
-                modifier = Modifier.padding(top = 24.dp),
+              world.clan.app.ui.components.EmptyState(
+                title = "your hall is quiet",
+                body = "no sigils stand under your hand yet — forge one to begin.",
+                ctaLabel = "+ Forge a sigil",
+                onCta = onForge,
               )
             }
           }

@@ -432,29 +432,23 @@ private fun MemoryPanel(
   onEditStrategy: (() -> Unit)? = null,
 ) {
   Column {
+    if (memory.isEmpty()) {
+      world.clan.app.ui.components.EmptyState(
+        title = "no doctrine written yet",
+        body = "the elder waits for your first counsel.",
+        ctaLabel = if (onEditStrategy != null) "+ Write doctrine" else null,
+        onCta = onEditStrategy,
+      )
+      return@Column
+    }
     PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
-      if (memory.isEmpty()) {
-        Box(
-          Modifier
-            .fillMaxWidth()
-            .padding(20.dp),
-          contentAlignment = Alignment.Center,
-        ) {
-          Text(
-            "no memory written yet",
-            style = ClanWorldTheme.type.scriptItalic,
-            color = ClanWorldTheme.colors.warmFaint,
-          )
-        }
-      } else {
-        memory.take(10).forEach { entry ->
-          MemoryRow(
-            key = entry.key,
-            body = inlineCodeBody(entry.value),
-            stamp = "written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}",
-            modifier = Modifier.fillMaxWidth(),
-          )
-        }
+      memory.take(10).forEach { entry ->
+        MemoryRow(
+          key = entry.key,
+          body = inlineCodeBody(entry.value),
+          stamp = "written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}",
+          modifier = Modifier.fillMaxWidth(),
+        )
       }
     }
     if (onEditStrategy != null) {

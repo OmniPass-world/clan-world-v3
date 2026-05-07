@@ -117,11 +117,13 @@ private fun WhispersScreen(
           if (items.isEmpty()) {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
               item {
-                Text(
-                  text = "no whispers carry this kind.",
-                  style = ClanWorldTheme.type.scriptItalic,
-                  color = ClanWorldTheme.colors.warmFaint,
-                  modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+                val isFiltered = state.filter != WhispersFilter.All
+                world.clan.app.ui.components.EmptyState(
+                  title = if (isFiltered) "no whispers carry this kind" else "the inbox is silent",
+                  body = if (isFiltered) "try another filter, or compose one yourself."
+                  else "no whispers heard yet — be the first to speak.",
+                  ctaLabel = if (isFiltered) null else "+ New whisper",
+                  onCta = if (isFiltered) null else onCompose,
                 )
               }
             }
