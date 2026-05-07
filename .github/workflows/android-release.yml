@@ -44,6 +44,13 @@ jobs:
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
+      - name: Decode signing keystore
+        id: keystore
+        run: |
+          path="$RUNNER_TEMP/release.keystore"
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > "$path"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
       - name: Build Kickstart APK
         working-directory: apps/kickstart-mobile
         env:
@@ -53,10 +60,19 @@ jobs:
           # is provisioned.
           CLANWORLD_CONVEX_URL: ${{ secrets.CLANWORLD_CONVEX_URL || 'https://valuable-kudu-985.convex.cloud' }}
           KICKSTART_HOME_URL: ${{ secrets.KICKSTART_HOME_URL || 'https://kickstart.easya.io' }}
+          RELEASE_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Build Clan World APK
         working-directory: apps/clan-world-mobile
+        env:
+          RELEASE_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Prepare release assets
