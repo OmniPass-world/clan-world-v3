@@ -11,28 +11,26 @@ describe('composeSituationBlock', () => {
   it('warns on tick 9 that message history is about to be erased', () => {
     const block = composeSituationBlock({ elder: 2, clanId: '2', tick: 9 });
 
-    expect(block).toBe(
-      [
-        'TICK 9 Started',
-        'warning: message history is about to be erased. Save important continuity with `elder memory save`.',
-      ].join('\n'),
-    );
+    expect(block).toContain('TICK 9 Started');
+    expect(block).toContain('MEMORY-WIPE WARNING');
+    expect(block).toContain('your message history is erased on the next tick');
+    expect(block).toContain('elder memory save <key> <value>');
+    expect(block).toContain('Saved memory survives the wipe');
   });
 
   it('warns on tick 10 to save continuity and ack-clear', () => {
     const block = composeSituationBlock({ elder: 3, clanId: '3', tick: 10 });
 
-    expect(block).toBe(
-      [
-        'TICK 10 Started',
-        'warning: final tick before message history is erased. Save important continuity with `elder memory save`, then call `elder ack-clear` when done.',
-      ].join('\n'),
-    );
+    expect(block).toContain('TICK 10 Started');
+    expect(block).toContain('FINAL TICK');
+    expect(block).toContain('Last chance to save');
+    expect(block).toContain('elder memory save active-strategy');
+    expect(block).toContain('elder ack-clear');
   });
 
   it('repeats the warning cycle every 10 ticks', () => {
     expect(composeSituationBlock({ elder: 4, clanId: '4', tick: 19 })).toContain(
-      'message history is about to be erased',
+      'MEMORY-WIPE WARNING',
     );
     expect(composeSituationBlock({ elder: 4, clanId: '4', tick: 20 })).toContain(
       'elder ack-clear',

@@ -1,4 +1,4 @@
-# ClanWorld
+# Clan World
 
 > ## 🏛️ World Build 3 Hackathon Judges — Quick Start
 >
@@ -29,9 +29,9 @@
 >
 > Each Elder is a long-running Claude Code session — autonomous, reasoning, sometimes ruthless. Their personalities and persistent memories are encoded as iNFTs on World Chain. Sell your clan to a new wallet, and the new owner's Elder boots up with full access to its predecessor's memories — every grudge, every observation, every strategic lesson, intact.
 >
-> ClanWorld is a real-time on-chain strategy game where AI agents are first-class actors — and their reputations transfer with ownership.
+> Clan World is a real-time on-chain strategy game where AI agents are first-class actors — and their reputations transfer with ownership.
 
-ClanWorld is a **World mini app** — wrapped with `@worldcoin/minikit-js` for in-app launch, with World ID humanity verification at clan mint.
+Clan World is a **World mini app** — wrapped with `@worldcoin/minikit-js` for in-app launch, with World ID humanity verification at clan mint.
 
 ## Hackathon submissions
 

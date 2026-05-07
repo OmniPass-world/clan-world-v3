@@ -6,6 +6,7 @@ import type {
   IElderPeerInbox,
   IRunnerInbox,
 } from '@clan-world/agents/seams';
+import { composeSituationBlock } from '../src/composeSituationBlock';
 import { tickLoop, type Logger, type PerElderDeps } from '../src/tickLoop';
 import { ELDER_IDS, type ElderId, type RunnerConfig } from '../src/types';
 
@@ -175,10 +176,7 @@ describe('tickLoop', () => {
       ELDER_IDS.map(elder => ({
         elder,
         tick: 10,
-        block: [
-          'TICK 10 Started',
-          'warning: final tick before message history is erased. Save important continuity with `elder memory save`, then call `elder ack-clear` when done.',
-        ].join('\n'),
+        block: composeSituationBlock({ elder, clanId: String(elder), tick: 10 }),
       })),
     );
     expect(resets).toEqual(ELDER_IDS.map(elder => ({ elder, timeoutMs: 100 })));

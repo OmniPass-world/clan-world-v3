@@ -43,11 +43,29 @@ const root = ReactDOM.createRoot(document.getElementById('root')!);
 // env is missing. The Phase-A panels are pure placeholders; the embedded
 // WorldMap consumes Convex via useQuery which returns undefined when no
 // data is available, so a stub client is enough to satisfy the provider.
-const isCockpitPath =
-  typeof window !== 'undefined' &&
-  window.location.pathname.startsWith('/cockpit');
+//
+// `/agents/:id` (PR #9) + `/owner` (PR #14) are also Convex-free: they
+// render without any useQuery/useMutation calls, so the stub provider is
+// sufficient. Without these exemptions, screenshot/dev environments
+// without VITE_CONVEX_URL render "Backend not configured" instead of the
+// actual page.
+const pathname =
+  typeof window !== 'undefined' ? window.location.pathname : '';
+// Match the actual route shapes defined in App.tsx:
+//   /cockpit          → isCockpitRoute (startsWith '/cockpit')
+//   /owner            → isOwnerRoute   (startsWith '/owner')
+//   /agents/:digits   → parseAgentRoute (regex /^\/agents\/(\d+)\/?$/)
+// Bare `/agents` is NOT a real route in App.tsx — it falls through to
+// MainApp (the WorldMap), which DOES need Convex. So `/agents` must only
+// be treated as standalone when followed by a digit segment.
+const isStandalonePath =
+  pathname === '/cockpit' ||
+  pathname.startsWith('/cockpit/') ||
+  pathname === '/owner' ||
+  pathname.startsWith('/owner/') ||
+  /^\/agents\/\d+\/?$/.test(pathname);
 
-if (!convexUrl && !isCockpitPath) {
+if (!convexUrl && !isStandalonePath) {
   // Fail soft instead of throwing — a thrown error here leaves a blank page,
   // which is unacceptable for the hackathon submission. Render a visible
   // message so the user sees something even if the build is misconfigured.
@@ -71,7 +89,12 @@ if (!convexUrl && !isCockpitPath) {
           maxWidth: '420px',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '20px' }}>ClanWorld</h1>
+        <h1 style={{ margin: 0, fontSize: '20px', lineHeight: 1.2 }}>
+          Clan World
+          <div style={{ fontSize: '14px', fontStyle: 'italic', opacity: 0.7, marginTop: '2px' }}>
+            Ælder Whispers
+          </div>
+        </h1>
         <p style={{ marginTop: '12px', opacity: 0.8 }}>
           Backend not configured. Contact the team.
         </p>

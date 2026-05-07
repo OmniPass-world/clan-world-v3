@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ClanWorld are documented in this file.
+All notable changes to Clan World are documented in this file.
 
 Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
@@ -17,7 +17,7 @@ Demo operations patch for the live Base Sepolia world.
 
 ### Changed
 
-- Bumped all ClanWorld workspace package versions to `2.1.1`.
+- Bumped all Clan World workspace package versions to `2.1.1`.
 
 ---
 
@@ -71,7 +71,7 @@ Pre-demo feature drop. iNFT demo wiring, AXL transport, 0G storage scaffolding, 
 
 ### Changed
 
-- Bumped the root package and ClanWorld workspace package versions to `2.0.2`.
+- Bumped the root package and Clan World workspace package versions to `2.0.2`.
 
 ---
 
@@ -94,7 +94,7 @@ The remaining v2.0.1-target items from the v2.0.0 changelog (lazy-settlement cla
 > [!IMPORTANT]
 > **Diamond proxy migration — major architecture change.** The monolithic `ClanWorld.sol` engine (~3,500 lines, hitting EIP-170 bytecode limit) is replaced by an EIP-2535 Diamond proxy with 24 facets sharing a single `LibStorage.appStorage()` slot. The 52 `IClanWorld` selectors are preserved bit-for-bit — game logic, events, and ABI are identical from a consumer's perspective. The on-chain deploy address changes; clients hardcoding the v1.x contract address must redeploy. PR #468.
 >
-> *v1.x = monolith era. v2.x = diamond era. ClanWorld is pre-prod with no on-chain mainnet state to migrate; the version bump signals the architectural cut.*
+> *v1.x = monolith era. v2.x = diamond era. Clan World is pre-prod with no on-chain mainnet state to migrate; the version bump signals the architectural cut.*
 
 ### Added
 
@@ -163,7 +163,7 @@ Plus:
 
 ### Migration notes (for ops)
 
-The deploy address changes — Diamond.sol is a different contract type than the ClanWorld monolith. Consumers hardcoding the v1.x `ClanWorld` address need to redeploy with the new Diamond address. Off-chain ABI consumers regenerate from `packages/contracts/abi/IClanWorld.json` (unchanged shape; `pnpm gen:chainclient-abi` keeps `IChainClient.ts` in sync).
+The deploy address changes — Diamond.sol is a different contract type than the Clan World monolith. Consumers hardcoding the v1.x `ClanWorld` address need to redeploy with the new Diamond address. Off-chain ABI consumers regenerate from `packages/contracts/abi/IClanWorld.json` (unchanged shape; `pnpm gen:chainclient-abi` keeps `IChainClient.ts` in sync).
 
 `OwnershipFacet.transferOwnership(address)` enables upgrade-key rotation post-deploy. Recommend transferring ownership to a multisig or DAO immediately after the initial deploy + diamond cut.
 
@@ -235,7 +235,7 @@ The deploy address changes — Diamond.sol is a different contract type than the
 > [!NOTE]
 > **GOLD Bridge workspace + GPT-5.5 Pro audit hotfix bundle.** v1.1.0 introduces the cross-chain GOLD bridge as a sibling workspace and lands 13 MUST-fix findings from external static review across 8 wave-stack fixes:
 >
-> - **GOLD Bridge workspace (#412)** — standalone `gold-bridge-monorepo/` with the 9-decimal upgradeable Base GOLD token, NTT (Wormhole Native Token Transfer) deployment helpers, recovery/timelock tooling, deployment cockpit UI, and Reown wallet integration. Wired into the root pnpm/turbo workspace. **Not yet integrated into ClanWorld game flows** — bridge ships first, integration follows in v1.2.
+> - **GOLD Bridge workspace (#412)** — standalone `gold-bridge-monorepo/` with the 9-decimal upgradeable Base GOLD token, NTT (Wormhole Native Token Transfer) deployment helpers, recovery/timelock tooling, deployment cockpit UI, and Reown wallet integration. Wired into the root pnpm/turbo workspace. **Not yet integrated into Clan World game flows** — bridge ships first, integration follows in v1.2.
 > - **`finalizeSeason()` now actually finalizes** — emits `SeasonFinalized(tick, rankedClanIds, scores)` per spec §13. Was previously dead code (`// TODO Phase 3`). Boundary-freeze guard at the top of `heartbeat()` ensures the engine cannot replay closed ticks while limbo-pending. All 9 clan-state mutators reject submissions during frozen-unfinalized limbo.
 > - **Heartbeat upkeep-before-mission ordering** — `_settleClanThroughTick` mirrors lazy-settle path. Heartbeat advances `lastSettledTick`. New `HeartbeatLazyParity.t.sol` proves both paths converge.
 > - **Cooldown is submit-side only** — stripped erroneous cooldown reset on natural mission completion. Elders chaining gather→deposit→gather no longer pay ~50% extra wall-clock per cycle.
@@ -304,7 +304,7 @@ Path A canonization of v4.6 economy semantics:
 - **Strict less-than kill check** — `effectiveStarvationStartsAtTick < tick` (kill fires only AFTER onset tick); deferred kill cadence
 - **Winter mechanics** — wheat plot lock at winter start (`_lockWheatPlotsForWinter`), restart after winter end (`_restartWheatPlotsAfterWinter`), winter doubles wheat+fish upkeep, winter wood burn per base + per living clansman, cold damage accrual that can degrade walls or kill clansmen
 - **Gather actions** — reschedule until carry cap or plot depletion (was: single 4-tick batches always terminate to WAITING)
-- **`ResourcesDeposited` event rename** — `wood/iron/wheat/fish` → `*Delta` (clarity-first, per ClanWorld no-backcompat policy; pre-prod GA)
+- **`ResourcesDeposited` event rename** — `wood/iron/wheat/fish` → `*Delta` (clarity-first, per Clan World no-backcompat policy; pre-prod GA)
 - **`WOOD_CAP = 15e18`** distinct from `CLANSMAN_CARRY_CAP = 10e18` (wood uses WOOD_CAP)
 
 ---
@@ -357,7 +357,7 @@ Path A canonization of v4.6 economy semantics:
 
 The contract evolved through ten ordered phases. Each phase is its own ratcheted-up version of the engine, with its own super-swarm review pass, its own fix-rounds, and its own integration tests. They merge sequentially: each phase's `dev-phase-N-*` integration branch lands into `dev-merge` only after the prior phase is green.
 
-### Phase 1 — Real ClanWorld engine (#79, #98)
+### Phase 1 — Real Clan World engine (#79, #98)
 
 > [!NOTE]
 > **Foundation Engine Online:**
@@ -430,7 +430,7 @@ The contract evolved through ten ordered phases. Each phase is its own ratcheted
 > 6. **Wood carry cap clamping** — clansman can't over-carry forest yield (#234)
 > 7. **v4.6 Phase 5 economy alignment addendum** — spec-vs-impl reconciliation (#356)
 >
-> Phase 5 is the moment ClanWorld stops being a planning doc and *starts working*. A clansman walks to the forest, chops wood, walks home, deposits — every step settles on-chain and emits an event a UI can render.
+> Phase 5 is the moment Clan World stops being a planning doc and *starts working*. A clansman walks to the forest, chops wood, walks home, deposits — every step settles on-chain and emits an event a UI can render.
 
 - Wood gathering, deposit action, per-tick yield, starvation next-tick, wood carry cap, `ResourcesDeposited` event ordering (#188, #190, #234, #298, #371)
 - Phase 5 R1 fixes — `ResourcesDeposited` event order + tick + four medium fixes (#234)
@@ -449,7 +449,7 @@ The contract evolved through ten ordered phases. Each phase is its own ratcheted
 > 6. **`MarketBuy` error path + `uintValue` robustness** (#295)
 > 7. **Market failure observability** — distinct status codes per failure mode for indexers (#283, #294)
 >
-> Phase 6 is when ClanWorld becomes a *trading game*. Resources can be *converted* now, not just gathered — and the carry-based mechanic means a clan can be raided mid-trade, which is the seam Phase 9 (bandits) exploits.
+> Phase 6 is when Clan World becomes a *trading game*. Resources can be *converted* now, not just gathered — and the carry-based mechanic means a clan can be raided mid-trade, which is the seam Phase 9 (bandits) exploits.
 
 - Resource boundary tokens + treasury seeder (#228)
 - Seed pools, immediate and scheduled market actions, carry-based market trades, market failure semantics, market events surface (#240, #257, #260, #263, #262, #284, #283)
@@ -471,7 +471,7 @@ The contract evolved through ten ordered phases. Each phase is its own ratcheted
 > 5. **OTC dead-clan restriction** (#256)
 > 6. **Codegen allowlist updated** for the 5 new transfer functions (#397)
 >
-> Phase 7 turns ClanWorld into a *negotiation game*. Two clans can now form alliances, fund each other's upgrades, or pay tribute — and the contract enforces the *atomic guarantees* (settle-then-debit, dead-clan checks) so the negotiation can't be exploited.
+> Phase 7 turns Clan World into a *negotiation game*. Two clans can now form alliances, fund each other's upgrades, or pay tribute — and the contract enforces the *atomic guarantees* (settle-then-debit, dead-clan checks) so the negotiation can't be exploited.
 
 - Gold, vault, blueprint, bundle transfer functions (#243, #246, #248, #252)
 - OTC dead-clan restriction (#256)
@@ -514,7 +514,7 @@ The contract evolved through ten ordered phases. Each phase is its own ratcheted
 > 7. **Cleanup on bandit target death** — defender release + state cleanup (#258)
 > 8. **5 HIGH findings** from super-swarm review fixed in one round (#266)
 >
-> Phase 9 turns boring resource collection into a *strategic shared experience of existential threat*. A bandit can spawn in any region, target the highest-loot clan there, and either steal vault resources or deal damage on attack. Plus the **Phase 9 redesign addendum (#341)** locked v4.6 mechanics. **This is the suspense mechanism** that forces Elders to communicate and cooperate — without bandits, ClanWorld is a flat optimization game; with them, it's a story.
+> Phase 9 turns boring resource collection into a *strategic shared experience of existential threat*. A bandit can spawn in any region, target the highest-loot clan there, and either steal vault resources or deal damage on attack. Plus the **Phase 9 redesign addendum (#341)** locked v4.6 mechanics. **This is the suspense mechanism** that forces Elders to communicate and cooperate — without bandits, Clan World is a flat optimization game; with them, it's a story.
 
 - Bandit troop state machine, spawn chance logic, eager-settle scope, deterministic attack resolution, defender reward split, blueprint reward on successful defense (#189, #191, #244, #247, #253, #255, #258)
 - Vault loot theft + rampage path + WAITING-at-home defense (#374)
@@ -641,7 +641,7 @@ After all 10 phases landed in `dev-merge`, an 8–11 reviewer super-swarm (codex
 > 7. **Bubble polish** — clan-colored Elder header, backdrop, tail, fade (#43, #55, #99)
 > 8. **Worker travel dot animation** along routes (#45)
 >
-> Pixi gives ClanWorld its *spectator surface*. You don't need to read JSON to know what's happening — a clansman is walking from the forest to base, the wall just leveled up, an Elder said *"I'm worried about winter."*
+> Pixi gives Clan World its *spectator surface*. You don't need to read JSON to know what's happening — a clansman is walking from the forest to base, the wall just leveled up, an Elder said *"I'm worried about winter."*
 
 - Pixi.js canvas shell — 8 regions, clan flags, speech bubbles (#19)
 - Convex `agentLogs` speech bubbles (#33)
