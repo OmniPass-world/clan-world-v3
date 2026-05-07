@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.activity.ComponentActivity
 import kotlinx.coroutines.launch
 import world.clan.app.data.elderById
+import world.clan.app.owner.shared.BackChevron
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
@@ -135,29 +136,6 @@ fun OwnerSignInScreen(
       modifier = Modifier
         .align(Alignment.BottomCenter)
         .padding(16.dp),
-    )
-  }
-}
-
-@Composable
-private fun BackChevron(onBack: () -> Unit, modifier: Modifier = Modifier) {
-  Box(
-    modifier = modifier
-      .size(36.dp)
-      .clip(CircleShape)
-      .background(Color(0x8B000000))
-      .border(1.dp, CockpitTokens.TextC.OnIronDim.copy(alpha = 0.6f), CircleShape)
-      .clickable(onClick = onBack),
-    contentAlignment = Alignment.Center,
-  ) {
-    Text(
-      text = "‹",
-      style = TextStyle(
-        fontFamily = CockpitFonts.Cinzel,
-        fontSize = 22.sp,
-        color = CockpitTokens.TextC.OnIron,
-        fontWeight = FontWeight.Bold,
-      ),
     )
   }
 }

@@ -1,5 +1,10 @@
 package world.clan.app.cockpit
 
+import androidx.compose.animation.animateColor
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -71,11 +77,32 @@ fun CockpitHeader(
 @Composable
 private fun TickCounterPill(currentTick: Int, ticksUntilWipe: Int) {
   val accent = CockpitTokens.TextC.Accent
+
+  // Until live tick events arrive, simulate the periodic "tick advanced"
+  // pulse the web header has on every snapshot change: short ~250ms flash
+  // of the border into accent, then back to neutral, on an 8-second loop.
+  val transition = rememberInfiniteTransition(label = "tickPulse")
+  val borderColor by transition.animateColor(
+    initialValue = CockpitTokens.Border.Iron,
+    targetValue = CockpitTokens.Border.Iron,
+    animationSpec = infiniteRepeatable(
+      animation = keyframes {
+        durationMillis = 8_000
+        CockpitTokens.Border.Iron at 0
+        accent                    at 250
+        CockpitTokens.Border.Iron at 600
+        CockpitTokens.Border.Iron at 8_000
+      },
+      repeatMode = RepeatMode.Restart,
+    ),
+    label = "tickPulseBorder",
+  )
+
   Row(
     modifier = Modifier
       .clip(RoundedCornerShape(CockpitTokens.Radius.sm))
       .background(CockpitTokens.Bg.Ink)
-      .border(1.dp, CockpitTokens.Border.Iron, RoundedCornerShape(CockpitTokens.Radius.sm))
+      .border(1.dp, borderColor, RoundedCornerShape(CockpitTokens.Radius.sm))
       .padding(horizontal = 10.dp, vertical = 4.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(CockpitTokens.Space.sm),
