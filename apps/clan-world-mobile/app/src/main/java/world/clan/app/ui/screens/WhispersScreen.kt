@@ -34,7 +34,6 @@ import world.clan.app.R
 import world.clan.app.data.CombinedComm
 import world.clan.app.ui.components.WhisperAccent
 import world.clan.app.ui.components.WhisperRow
-import world.clan.app.ui.components.boldedMeta
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.viewmodel.WhispersFilter
 import world.clan.app.viewmodel.WhispersUiState
@@ -276,14 +275,8 @@ private fun InboxRow(comm: CombinedComm) {
     "human" -> WhisperAccent.Ember
     else -> WhisperAccent.Default
   }
-  val from = comm.fromClan?.let { clanDisplayName(it) }
-    ?: comm.speaker
-    ?: when (comm.kind) {
-      "orch" -> "Orchestrator"; "human" -> "Owner"; else -> "—"
-    }
-  val tickStr = comm.tick?.let { "%04d".format(it) } ?: "—"
   WhisperRow(
-    meta = boldedMeta("*$from* · $tickStr".uppercase()),
+    meta = world.clan.app.ui.components.whisperMetaText(comm),
     body = comm.body,
     accent = accent,
   )

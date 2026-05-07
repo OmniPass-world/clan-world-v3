@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import world.clan.app.App
@@ -60,7 +59,6 @@ import world.clan.app.ui.theme.clanColor
 import world.clan.app.viewmodel.ClanWorldViewModelFactory
 import world.clan.app.viewmodel.HearthUiState
 import world.clan.app.viewmodel.HearthViewModel
-import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.viewmodel.clanTagline
 
 @Composable
@@ -540,7 +538,7 @@ private fun WhispersList(
         else -> WhisperAccent.Default
       }
       WhisperRow(
-        meta = whisperMetaText(c),
+        meta = world.clan.app.ui.components.whisperMetaText(c),
         body = c.body,
         accent = accent,
       )
@@ -548,23 +546,5 @@ private fun WhispersList(
   }
 }
 
-@Composable
-private fun whisperMetaText(c: CombinedComm): AnnotatedString {
-  val from = c.fromClan?.let { clanDisplayName(it) }
-    ?: c.speaker
-    ?: when (c.kind) {
-      "orch" -> "Orchestrator"
-      "human" -> "Owner"
-      else -> "—"
-    }
-  val to = c.targetClan?.let { clanDisplayName(it) }
-  val tickStr = c.tick?.let { "%04d".format(it) } ?: "—"
-  val raw = when (c.kind) {
-    "whisper" -> if (to != null) "*$from* · whispered to · *$to* · $tickStr"
-                 else "*$from* · whispered · $tickStr"
-    "orch" -> "*Orchestrator* · $tickStr"
-    "human" -> "*$from* · steered · $tickStr"
-    else -> "*$from* · $tickStr"
-  }
-  return boldedMeta(raw.uppercase())
-}
+// whisperMetaText was lifted to ui.components.WhisperMeta so Hearth +
+// WhispersScreen + InftDetail all share the same comm-meta formatting.
