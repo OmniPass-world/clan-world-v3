@@ -82,4 +82,25 @@ class SessionStore(context: Context) {
   fun clear() {
     prefs.edit().clear().apply()
   }
+
+  // ── Form-draft persistence ────────────────────────────────────────────
+  //
+  // SteeringConsole / StrategyEditor / Forge text inputs survive process
+  // death + backgrounding. Keys are namespaced "draft:<scope>:<field>".
+  // On successful submit the relevant scope is cleared.
+
+  fun getDraft(scope: String, field: String): String? =
+    prefs.getString("draft:$scope:$field", null)
+
+  fun setDraft(scope: String, field: String, value: String) {
+    prefs.edit().putString("draft:$scope:$field", value).apply()
+  }
+
+  fun clearDrafts(scope: String) {
+    val toRemove = prefs.all.keys.filter { it.startsWith("draft:$scope:") }
+    if (toRemove.isEmpty()) return
+    val ed = prefs.edit()
+    toRemove.forEach { ed.remove(it) }
+    ed.apply()
+  }
 }

@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import world.clan.app.data.SessionStore
 
 enum class ForgeStep { PickClan, NameSigil, PickHarness, Confirm }
 
@@ -35,14 +36,41 @@ data class ForgeUiState(
  * No real on-chain mint exists. The MWA sign at the end is the seam —
  * a future on-chain mint replaces only the screen-level send call.
  */
-class ForgeViewModel : ViewModel() {
+class ForgeViewModel(
+  private val sessionStore: SessionStore? = null,
+) : ViewModel() {
 
-  private val _state = MutableStateFlow(ForgeUiState())
+  private val draftScope = "forge"
+
+  private val _state = MutableStateFlow(initial())
   val state: StateFlow<ForgeUiState> = _state.asStateFlow()
 
-  fun setClanId(clanId: Int) = _state.update { it.copy(clanId = clanId) }
-  fun setSigilName(name: String) = _state.update { it.copy(sigilName = name.take(32)) }
-  fun setHarness(h: Harness) = _state.update { it.copy(harness = h) }
+  private fun initial(): ForgeUiState {
+    val draftClan = sessionStore?.getDraft(draftScope, "clanId")?.toIntOrNull()
+    val draftName = sessionStore?.getDraft(draftScope, "sigilName").orEmpty()
+    val draftHarness = sessionStore?.getDraft(draftScope, "harness")
+      ?.let { runCatching { Harness.valueOf(it) }.getOrNull() }
+      ?: Harness.Tide
+    return ForgeUiState(
+      clanId = draftClan,
+      sigilName = draftName,
+      harness = draftHarness,
+    )
+  }
+
+  fun setClanId(clanId: Int) {
+    _state.update { it.copy(clanId = clanId) }
+    sessionStore?.setDraft(draftScope, "clanId", clanId.toString())
+  }
+  fun setSigilName(name: String) {
+    val capped = name.take(32)
+    _state.update { it.copy(sigilName = capped) }
+    sessionStore?.setDraft(draftScope, "sigilName", capped)
+  }
+  fun setHarness(h: Harness) {
+    _state.update { it.copy(harness = h) }
+    sessionStore?.setDraft(draftScope, "harness", h.name)
+  }
 
   fun goTo(step: ForgeStep) = _state.update { it.copy(step = step) }
 
@@ -66,6 +94,8 @@ class ForgeViewModel : ViewModel() {
     it.copy(step = prv)
   }
 
-  fun setMintPhase(phase: SendPhase, error: String? = null) =
+  fun setMintPhase(phase: SendPhase, error: String? = null) {
     _state.update { it.copy(mintPhase = phase, errorMessage = error) }
+    if (phase == SendPhase.Queued) sessionStore?.clearDrafts(draftScope)
+  }
 }
