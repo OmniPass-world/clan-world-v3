@@ -395,7 +395,7 @@ fun ClanWorldApp(
               onBack = { nav.popBackStack() },
               onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
               isBazaar = true,
-              hostActivity = hostActivity,
+              mwaSender = mwaSender,
               onHireConfirmed = {
                 // For now: simply pop back to Bazaar. A future "Hired"
                 // confirmation screen could replace this.
@@ -451,7 +451,7 @@ fun ClanWorldApp(
             val clanId = entry.arguments?.getInt("clanId") ?: 1
             world.clan.app.ui.screens.SteeringConsoleScreenRoute(
               app = app,
-              hostActivity = hostActivity,
+              mwaSender = mwaSender,
               initialClanId = clanId,
               onBack = { nav.popBackStack() },
               onSent = { nav.popBackStack() },
@@ -469,7 +469,7 @@ fun ClanWorldApp(
             val clanId = entry.arguments?.getInt("clanId") ?: 1
             world.clan.app.ui.screens.StrategyEditorScreenRoute(
               app = app,
-              hostActivity = hostActivity,
+              mwaSender = mwaSender,
               clanId = clanId,
               onBack = { nav.popBackStack() },
               onSaved = { nav.popBackStack() },

@@ -1,6 +1,6 @@
 package world.clan.app.ui.components
 
-import androidx.activity.ComponentActivity
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,7 +61,7 @@ import world.clan.app.wallet.MwaResult
 @Composable
 fun HireModal(
   app: App,
-  hostActivity: ComponentActivity,
+  mwaSender: ActivityResultSender,
   listing: BazaarListing,
   onDismiss: () -> Unit,
   onConfirmed: () -> Unit,
@@ -111,7 +111,7 @@ fun HireModal(
                 return@launch
               }
               val message = "ClanWorld Hire — token 0x${"%04x".format(listing.tokenId)} clan ${listing.clanId}".toByteArray()
-              val result = app.mwaClient.signMessage(hostActivity, token, message)
+              val result = app.mwaClient.signMessage(mwaSender, token, message)
               when (result) {
                 is MwaResult.Ok -> state.value = HireState.Sealed
                 is MwaResult.WalletNotFound -> {

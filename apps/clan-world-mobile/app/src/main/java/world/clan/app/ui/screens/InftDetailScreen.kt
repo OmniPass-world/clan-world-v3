@@ -82,7 +82,7 @@ fun InftDetailScreenRoute(
   onOpenInbox: () -> Unit = {},
   onEditStrategy: () -> Unit = {},
   isBazaar: Boolean = false,
-  hostActivity: androidx.activity.ComponentActivity? = null,
+  mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
   onHireConfirmed: (() -> Unit)? = null,
 ) {
   val vm: InftDetailViewModel = viewModel(factory = InftDetailViewModelFactory(app, clanId))
@@ -97,7 +97,7 @@ fun InftDetailScreenRoute(
     onEditStrategy = onEditStrategy,
     isBazaar = isBazaar,
     app = app,
-    hostActivity = hostActivity,
+    mwaSender = mwaSender,
     onHireConfirmed = onHireConfirmed ?: onBack,
   )
 }
@@ -113,7 +113,7 @@ private fun InftDetailScreen(
   onEditStrategy: () -> Unit = {},
   isBazaar: Boolean = false,
   app: App? = null,
-  hostActivity: androidx.activity.ComponentActivity? = null,
+  mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender? = null,
   onHireConfirmed: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
@@ -170,12 +170,12 @@ private fun InftDetailScreen(
   }
 
   // ── HireModal overlay (bazaar mode only) ────────────────────────────────
-  if (isBazaar && showHireModal.value && app != null && hostActivity != null) {
+  if (isBazaar && showHireModal.value && app != null && mwaSender != null) {
     val listing = world.clan.app.data.bazaarListingByClan(clanId)
     if (listing != null) {
       world.clan.app.ui.components.HireModal(
         app = app,
-        hostActivity = hostActivity,
+        mwaSender = mwaSender,
         listing = listing,
         onDismiss = { showHireModal.value = false },
         onConfirmed = {
