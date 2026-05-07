@@ -172,31 +172,62 @@ export type ForgeReceipt = {
   kind: 'tx' | 'message';
 };
 
+/** Minimum lamports we expect the wallet to hold before attempting the
+ *  on-chain memo tx. Memo program tx fee is ~5000 lamports; leave headroom
+ *  for rent / future tx in the same session. Below this we skip straight to
+ *  signMessage so the user only sees one wallet prompt instead of seeing
+ *  the on-chain attempt fail simulation and then a second prompt. */
+const MIN_LAMPORTS_FOR_TX = 50_000;
+
 /**
- * Forge receipt — tries to submit a real on-chain memo tx first. On any
- * failure (insufficient SOL, simulation rejection, RPC hiccup, user
- * dismissal), falls back to an off-chain signMessage so the forge UX still
- * completes. The returned `kind` lets callers decide whether to surface a
- * Solscan link.
+ * Forge receipt — submits a real on-chain memo tx when the wallet has
+ * enough SOL to cover the fee, otherwise falls back to off-chain
+ * signMessage. Decides upfront so the user only sees one wallet prompt.
+ *
+ * The returned `kind` lets callers decide whether to surface a Solscan
+ * link or just the local sig.
  */
 export const signForgeReceipt = async (
   connection: Connection,
   memo: string,
 ): Promise<ForgeReceipt> => {
-  try {
-    const sig = await signAndSendMemoTx(connection, memo);
-    return { sig, kind: 'tx' };
-  } catch (txErr) {
-    if (__DEV__) {
-      const m = txErr instanceof Error ? txErr.message : String(txErr);
-      console.warn('[forge] tx send failed, falling back to signMessage:', m);
+  // Decide upfront: can the wallet afford the tx? If we can't tell (RPC
+  // failure), assume yes and try — the catch block below still recovers
+  // gracefully if the wallet rejects.
+  const cachedPubkey = getWalletPubkey();
+  let canAffordTx = true;
+  if (cachedPubkey) {
+    try {
+      const balance = await connection.getBalance(new PublicKey(cachedPubkey), 'confirmed');
+      canAffordTx = balance >= MIN_LAMPORTS_FOR_TX;
+      if (__DEV__ && !canAffordTx) {
+        console.log(
+          `[forge] wallet balance ${balance} lamports < ${MIN_LAMPORTS_FOR_TX}; using signMessage fallback`,
+        );
+      }
+    } catch (balErr) {
+      if (__DEV__) console.warn('[forge] balance check failed; will attempt tx anyway:', balErr);
     }
-    // Off-chain fallback. Doesn't cost SOL, doesn't appear on Solscan, but
-    // still produces a wallet-signed payload we can store as the receipt.
-    const { signature } = await signMessage(memo);
-    const sigB58 = Buffer.from(signature).toString('base64').slice(0, 64);
-    return { sig: sigB58, kind: 'message' };
   }
+
+  if (canAffordTx) {
+    try {
+      const sig = await signAndSendMemoTx(connection, memo);
+      return { sig, kind: 'tx' };
+    } catch (txErr) {
+      if (__DEV__) {
+        const m = txErr instanceof Error ? txErr.message : String(txErr);
+        console.warn('[forge] tx send failed, falling back to signMessage:', m);
+      }
+      // Fall through to signMessage path below
+    }
+  }
+
+  // Off-chain fallback. Doesn't cost SOL, doesn't appear on Solscan, but
+  // still produces a wallet-signed payload we can store as the receipt.
+  const { signature } = await signMessage(memo);
+  const sigB58 = Buffer.from(signature).toString('base64').slice(0, 64);
+  return { sig: sigB58, kind: 'message' };
 };
 
 /** Read-only — does the user have a cached connection? */
