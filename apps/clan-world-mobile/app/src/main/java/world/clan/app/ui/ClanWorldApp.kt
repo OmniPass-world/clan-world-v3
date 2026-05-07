@@ -645,6 +645,7 @@ fun ClanWorldApp(
             val clanId = entry.arguments?.getInt("clanId") ?: 1
             OwnerSignInScreen(
               clanId = clanId,
+              mwaSender = mwaSender,
               onSignedIn = {
                 nav.navigate(Routes.ownerComingSoon(clanId)) {
                   // Replace the sign-in screen so back goes to Cockpit,

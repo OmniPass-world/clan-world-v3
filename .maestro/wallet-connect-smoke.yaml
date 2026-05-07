@@ -1,0 +1,50 @@
+# Maestro smoke flow: Connect screen → wallet auth → Hearth loads
+#
+# Run:  maestro test .maestro/wallet-connect-smoke.yaml
+# Setup: install fakewallet first — `adb install fakewallet.apk`
+# Docs:  https://maestro.mobile.dev
+appId: world.clan.app
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: allow
+
+# Connect screen visible
+- assertVisible: "CLAN  WORLD"
+- assertVisible: "OPEN SEED VAULT"
+- assertVisible:
+    text: "The eight realms wait."
+
+# Tap to start wallet handoff
+- tapOn: "OPEN SEED VAULT"
+
+# Wait for wallet (fakewallet auto-approves) and return
+- extendedWaitUntil:
+    visible: "HEARTH"
+    timeout: 15000
+
+# Hearth must load without "Could not decode" error
+- assertNotVisible:
+    text: "Could not decode"
+
+# SEEKER · VERIFIED chip should appear
+- assertVisible: "VERIFIED"
+
+# Hall tab
+- tapOn: "HALL"
+- assertVisible:
+    id: "hall_screen"
+    timeout: 5000
+
+# Bazaar tab
+- tapOn: "BAZAAR"
+
+# Codex tab
+- tapOn: "CODEX"
+
+# Back to Hearth
+- tapOn: "HEARTH"
+
+# Take a screenshot for the run record
+- takeScreenshot: smoke-final
