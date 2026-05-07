@@ -71,7 +71,7 @@ if (!convexUrl && !isCockpitPath) {
           maxWidth: '420px',
         }}
       >
-        <h1 style={{ margin: 0, fontSize: '20px' }}>ClanWorld</h1>
+        <h1 style={{ margin: 0, fontSize: '20px' }}>Clan World</h1>
         <p style={{ marginTop: '12px', opacity: 0.8 }}>
           Backend not configured. Contact the team.
         </p>

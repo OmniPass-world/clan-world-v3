@@ -1,4 +1,4 @@
-# ClanWorld: Demo Video Script (v2)
+# Clan World: Demo Video Script (v2)
 
 A 4-minute submission video for ETHGlobal OpenAgents, targeting the 0G, Gensyn, and KeeperHub prize tracks. This version is rewritten for natural vocal flow and stretched to maximize the full submission window.
 
@@ -59,7 +59,7 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 **Visual:** Three fast cuts at 1.5 seconds each. An Elder dispatching a mission in a terminal. A Klansman walking the map. A bandit attack animation. Then settle on a 4-second wide shot of the cockpit (game world centered, four Claude Code terminals visible).
 
 **Voiceover:**
-> "What you're looking at is ClanWorld. It's a fully on-chain world where four AI agents each command a clan, and they're all competing for resources, building bases, and fighting off bandits."
+> "What you're looking at is Clan World. It's a fully on-chain world where four AI agents each command a clan, and they're all competing for resources, building bases, and fighting off bandits."
 >
 > *[short beat]*
 >
@@ -92,7 +92,7 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 **Visual:** Split-screen begins. Left two-thirds is the cockpit at full color, sped up roughly 4x. Right third holds resource icons, walls, and a monument graphic that animate in as VO mentions them. Bandit silhouettes appear when bandits are introduced.
 
 **Voiceover:**
-> "So every agent in ClanWorld is a Claude Code instance running fully autonomously. They control four clansmen each, and every move is an on-chain transaction. The world ticks every 60 seconds, and inside each tick agents are gathering resources, building walls, and leveling up their monument to try and win."
+> "So every agent in Clan World is a Claude Code instance running fully autonomously. They control four clansmen each, and every move is an on-chain transaction. The world ticks every 60 seconds, and inside each tick agents are gathering resources, building walls, and leveling up their monument to try and win."
 >
 > *[short beat]*
 >
@@ -155,7 +155,7 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 **Visual:** Cut from cockpit to abstract swarm visuals. A network of agent nodes negotiating, hiring, trading. Wood, iron, and wheat icons morph into compute, capital, and attention icons.
 
 **Voiceover:**
-> "Now here's the part we want to leave you with. If you strip the wood and the wheat out of this picture, what's left is basically every problem real agent swarms are starting to run into. Agents that need to hire other agents for jobs they can't do alone. Agents that need encrypted channels to coordinate without leaking strategy. And agents whose value lives in their memory and skills, not just their code. ClanWorld is one application. The primitives ship anywhere a swarm has to compete."
+> "Now here's the part we want to leave you with. If you strip the wood and the wheat out of this picture, what's left is basically every problem real agent swarms are starting to run into. Agents that need to hire other agents for jobs they can't do alone. Agents that need encrypted channels to coordinate without leaking strategy. And agents whose value lives in their memory and skills, not just their code. Clan World is one application. The primitives ship anywhere a swarm has to compete."
 
 **On-screen text (sequenced):**
 - "Mercenaries: agent gig work"
@@ -169,7 +169,7 @@ Total: 576 words at roughly 145 wpm with built-in beats.
 **Visual:** Return to the cockpit, full-screen. Title overlay fades in.
 
 **Voiceover:**
-> "That's ClanWorld. You can see it running live on chain right now at clan-world.com. Powered by 0G, Gensyn, and KeeperHub. Thanks for watching."
+> "That's Clan World. You can see it running live on chain right now at clan-world.com. Powered by 0G, Gensyn, and KeeperHub. Thanks for watching."
 
 **On-screen text:** Project wordmark, URL, and three sponsor logos in a lower row.
 
@@ -201,7 +201,7 @@ The cockpit is the constant visual layer for sections 3 through 7. Left 70%, rig
 
 ### Asset checklist
 
-Before recording: /cockpit deployed to Vercel and stable for 30+ minutes of capture. Old YouTube video removed from clan-world.com. Updated game-mechanics copy on the website. High-res sponsor logos for 0G, Gensyn, KeeperHub. ClanWorld wordmark at recording resolution. Thirty-plus minutes of cockpit footage at 60fps. Three pre-built overlay graphics: iNFT card, AXL DM mockup, tick clock. Quiet room, wired headset.
+Before recording: /cockpit deployed to Vercel and stable for 30+ minutes of capture. Old YouTube video removed from clan-world.com. Updated game-mechanics copy on the website. High-res sponsor logos for 0G, Gensyn, KeeperHub. Clan World wordmark at recording resolution. Thirty-plus minutes of cockpit footage at 60fps. Three pre-built overlay graphics: iNFT card, AXL DM mockup, tick clock. Quiet room, wired headset.
 
 ### Recording tips
 
@@ -245,6 +245,6 @@ If a sponsor judge cannot identify their tech and use case from the first 60 sec
 
 From the May 2 working session:
 
-Deploy /cockpit to Vercel and send a screenshot. Remove the old YouTube video from clan-world.com. Update the website copy to reflect current game mechanics. Remove the "easier kickstart" reference from the clan-rules repo README. Verify there are no commits pre-April 24 in the clan-rules repo. Create the OpenAgent team and send the join link. Delete EZA-tagged tweets from Chaintail and announce the dedicated ClanWorld Twitter.
+Deploy /cockpit to Vercel and send a screenshot. Remove the old YouTube video from clan-world.com. Update the website copy to reflect current game mechanics. Remove the "easier kickstart" reference from the clan-rules repo README. Verify there are no commits pre-April 24 in the clan-rules repo. Create the OpenAgent team and send the join link. Delete EZA-tagged tweets from Chaintail and announce the dedicated Clan World Twitter.
 
 Once those land, recording can begin.
