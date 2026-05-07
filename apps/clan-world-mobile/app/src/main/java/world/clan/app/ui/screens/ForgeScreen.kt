@@ -84,6 +84,13 @@ fun ForgeScreenRoute(
   val state by vm.state.collectAsState()
   val scope = rememberCoroutineScope()
 
+  // System back inside the wizard walks back through steps rather than
+  // popping the whole route. Only on step 1 (PickClan) does back actually
+  // exit the wizard back to Hall.
+  androidx.activity.compose.BackHandler(enabled = state.step != ForgeStep.PickClan) {
+    vm.back()
+  }
+
   ForgeScreen(
     state = state,
     onBack = onBack,
