@@ -39,7 +39,7 @@ sealed class MwaResult<out T> {
 class MwaClient(
   private val identityName: String = "Clan World",
   private val identityUri: Uri = Uri.parse("https://clan-world.com"),
-  private val iconUri: Uri = Uri.parse("https://clan-world.com/favicon.png"),
+  private val iconUri: Uri = Uri.parse("favicon.svg"),
 ) {
 
   private fun adapter(): MobileWalletAdapter = MobileWalletAdapter(

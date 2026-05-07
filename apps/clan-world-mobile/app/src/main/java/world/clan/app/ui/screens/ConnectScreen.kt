@@ -136,15 +136,6 @@ private fun ConnectScreen(
                 fontWeight = FontWeight.Medium,
               ),
             ) { append("CLAN  WORLD") }
-            append("  ")
-            withStyle(
-              SpanStyle(
-                color = ember,
-                fontFamily = world.clan.app.ui.theme.CormorantItalic,
-                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                fontWeight = FontWeight.Medium,
-              ),
-            ) { append("·") }
           },
           style = ClanWorldTheme.type.displayHero.copy(letterSpacing = 0.42.em),
         )
