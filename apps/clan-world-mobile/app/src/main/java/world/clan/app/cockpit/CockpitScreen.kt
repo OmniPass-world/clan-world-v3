@@ -47,9 +47,13 @@ import world.clan.app.ui.theme.CockpitTokens
 @Composable
 fun CockpitScreen(
   onOwnerControl: (Int) -> Unit,
+  initialClanId: Int = 1,
 ) {
   var collapsed by rememberSaveable { mutableStateOf(false) }
-  var activeClanId by rememberSaveable { mutableStateOf(1) }
+  // Key the saver on initialClanId so navigating into Cockpit for a
+  // different clan resets the active selection instead of stickying the
+  // previous clan's id from process restoration.
+  var activeClanId by rememberSaveable(initialClanId) { mutableStateOf(initialClanId) }
   var bulletinOpen by rememberSaveable { mutableStateOf(false) }
 
   // Singleton-per-screen data source. Survives recompositions, dies with

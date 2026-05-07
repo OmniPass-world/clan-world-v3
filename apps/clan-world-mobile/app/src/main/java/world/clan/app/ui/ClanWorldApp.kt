@@ -70,7 +70,7 @@ object Routes {
   const val Forge = "forge"
   const val Forged = "forged/{clanId}?name={name}&label={label}"
   const val Bridge = "bridge/{clanId}"
-  const val Cockpit = "cockpit"
+  const val Cockpit = "cockpit/{clanId}"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
   const val OwnerComingSoon = "ownerComingSoon/{clanId}"
   fun inftDetail(clanId: Int) = "inft/$clanId"
@@ -85,6 +85,7 @@ object Routes {
     return "forged/$clanId?name=$n&label=$l"
   }
   fun bridge(clanId: Int) = "bridge/$clanId"
+  fun cockpit(clanId: Int) = "cockpit/$clanId"
   fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
   fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
 }
@@ -243,7 +244,7 @@ fun ClanWorldApp(
     currentRoute == Routes.Forge -> RootTab.Hall // forge wizard surfaces from Hall
     currentRoute?.startsWith("steer/") == true ||
       currentRoute?.startsWith("bridge/") == true ||
-      currentRoute == Routes.Cockpit ||
+      currentRoute?.startsWith("cockpit/") == true ||
       currentRoute?.startsWith("ownerSignIn/") == true ||
       currentRoute?.startsWith("ownerComingSoon/") == true -> RootTab.Hall
     else -> RootTab.Hearth
@@ -446,7 +447,7 @@ fun ClanWorldApp(
             world.clan.app.ui.screens.BridgeScreen(
               clanId = clanId,
               onReady = {
-                nav.navigate(Routes.Cockpit) {
+                nav.navigate(Routes.cockpit(clanId)) {
                   popUpTo(Routes.Bridge) { inclusive = true }
                 }
               },
@@ -617,13 +618,16 @@ fun ClanWorldApp(
           // ── Cockpit (deep route from Bridge after the loader resolves) ──
           composable(
             route = Routes.Cockpit,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
             enterTransition = { detailEnter() },
             popExitTransition = { detailPopExit() },
             exitTransition = { tabExit() },
-          ) {
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
             CockpitScreen(
-              onOwnerControl = { clanId ->
-                nav.navigate(Routes.ownerSignIn(clanId))
+              initialClanId = clanId,
+              onOwnerControl = { c ->
+                nav.navigate(Routes.ownerSignIn(c))
               },
             )
           }

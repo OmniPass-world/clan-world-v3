@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +67,15 @@ fun HallScreenRoute(
 ) {
   val vm: HallViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
+  // Refresh on every (re)entry into the Hall route. The HallViewModel is
+  // held by the NavHost across navigations (Hall → Forge/Hire → celebration
+  // → back), so without this LaunchedEffect the user sees a stale list
+  // until pull-to-refresh. SessionStore.add{Forged,Hired}ClanId() are
+  // called before the celebration screen lands, so by the time we pop
+  // back to Hall the extras are already present.
+  LaunchedEffect(Unit) {
+    vm.refresh()
+  }
   // First-launch coachmark: read once from SessionStore, dismiss-on-tap
   // toggles the local state and writes the persistent flag.
   val hintFlagKey = "hall.hintSeen"
