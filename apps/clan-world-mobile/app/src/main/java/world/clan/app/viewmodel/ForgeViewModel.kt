@@ -1,0 +1,71 @@
+package world.clan.app.viewmodel
+
+import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+enum class ForgeStep { PickClan, NameSigil, PickHarness, Confirm }
+
+/**
+ * Themed harness choices for a freshly forged sigil.
+ *  - Iron   → defensive bias
+ *  - Tide   → balanced bias
+ *  - Ember  → aggressive bias
+ */
+enum class Harness(val display: String, val tagline: String) {
+  Iron("Iron", "hold the line; trade no ground without weight"),
+  Tide("Tide", "read the strait; move when both shores agree"),
+  Ember("Ember", "forge ahead; the season favors the bold"),
+}
+
+data class ForgeUiState(
+  val step: ForgeStep = ForgeStep.PickClan,
+  val clanId: Int? = null,
+  val sigilName: String = "",
+  val harness: Harness = Harness.Tide,
+  val mintPhase: SendPhase = SendPhase.Idle,
+  val errorMessage: String? = null,
+)
+
+/**
+ * Slice 6: Forge. Four-step mint wizard.
+ *
+ * No real on-chain mint exists. The MWA sign at the end is the seam —
+ * a future on-chain mint replaces only the screen-level send call.
+ */
+class ForgeViewModel : ViewModel() {
+
+  private val _state = MutableStateFlow(ForgeUiState())
+  val state: StateFlow<ForgeUiState> = _state.asStateFlow()
+
+  fun setClanId(clanId: Int) = _state.update { it.copy(clanId = clanId) }
+  fun setSigilName(name: String) = _state.update { it.copy(sigilName = name.take(32)) }
+  fun setHarness(h: Harness) = _state.update { it.copy(harness = h) }
+
+  fun goTo(step: ForgeStep) = _state.update { it.copy(step = step) }
+
+  fun next() = _state.update {
+    val nxt = when (it.step) {
+      ForgeStep.PickClan -> ForgeStep.NameSigil
+      ForgeStep.NameSigil -> ForgeStep.PickHarness
+      ForgeStep.PickHarness -> ForgeStep.Confirm
+      ForgeStep.Confirm -> ForgeStep.Confirm
+    }
+    it.copy(step = nxt)
+  }
+
+  fun back() = _state.update {
+    val prv = when (it.step) {
+      ForgeStep.PickClan -> ForgeStep.PickClan
+      ForgeStep.NameSigil -> ForgeStep.PickClan
+      ForgeStep.PickHarness -> ForgeStep.NameSigil
+      ForgeStep.Confirm -> ForgeStep.PickHarness
+    }
+    it.copy(step = prv)
+  }
+
+  fun setMintPhase(phase: SendPhase, error: String? = null) =
+    _state.update { it.copy(mintPhase = phase, errorMessage = error) }
+}

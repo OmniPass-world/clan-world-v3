@@ -15,6 +15,7 @@ class ClanWorldViewModelFactory(private val app: App) : ViewModelProvider.Factor
     HearthViewModel::class.java -> HearthViewModel(app.convexClient, app.sessionStore)
     HallViewModel::class.java -> HallViewModel(app.convexClient, app.sessionStore)
     BazaarViewModel::class.java -> BazaarViewModel()
+    ForgeViewModel::class.java -> ForgeViewModel()
     CodexViewModel::class.java -> CodexViewModel(app.sessionStore, app.deviceClass)
     else -> error("Unknown ViewModel: ${modelClass.simpleName}")
   } as T
