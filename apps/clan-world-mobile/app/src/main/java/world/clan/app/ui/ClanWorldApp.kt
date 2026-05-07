@@ -66,6 +66,7 @@ object Routes {
   const val Whispers = "whispers/{clanId}"
   const val SteeringConsole = "steer/{clanId}"
   const val StrategyEditor = "strategy/{clanId}"
+  const val Treasury = "treasury/{clanId}"
   const val Bridge = "bridge/{clanId}"
   const val Cockpit = "cockpit"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
@@ -75,6 +76,7 @@ object Routes {
   fun whispers(clanId: Int) = "whispers/$clanId"
   fun steer(clanId: Int) = "steer/$clanId"
   fun strategy(clanId: Int) = "strategy/$clanId"
+  fun treasury(clanId: Int) = "treasury/$clanId"
   fun bridge(clanId: Int) = "bridge/$clanId"
   fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
   fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
@@ -217,7 +219,8 @@ fun ClanWorldApp(
     currentRoute?.startsWith("inft/") == true ||
     currentRoute?.startsWith("bazaarInft/") == true ||
     currentRoute?.startsWith("whispers/") == true ||
-    currentRoute?.startsWith("strategy/") == true
+    currentRoute?.startsWith("strategy/") == true ||
+    currentRoute?.startsWith("treasury/") == true
   // Cockpit + Owner sign-in / coming-soon are full-screen flows: tabbar hidden.
   val selectedTab = when {
     currentRoute == Routes.Hearth -> RootTab.Hearth
@@ -228,6 +231,7 @@ fun ClanWorldApp(
     currentRoute?.startsWith("bazaarInft/") == true -> RootTab.Bazaar // detail derived from Bazaar
     currentRoute?.startsWith("whispers/") == true -> RootTab.Hall // inbox is a Hall drill-in
     currentRoute?.startsWith("strategy/") == true -> RootTab.Hall // editor is a Hall drill-in
+    currentRoute?.startsWith("treasury/") == true -> RootTab.Hall // treasury is a Hall drill-in
     currentRoute?.startsWith("steer/") == true ||
       currentRoute?.startsWith("bridge/") == true ||
       currentRoute == Routes.Cockpit ||
@@ -376,6 +380,7 @@ fun ClanWorldApp(
               onEnterCockpit = { nav.navigate(Routes.bridge(clanId)) },
               onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
               onEditStrategy = { nav.navigate(Routes.strategy(clanId)) },
+              onOpenTreasury = { nav.navigate(Routes.treasury(clanId)) },
             )
           }
 
@@ -394,6 +399,7 @@ fun ClanWorldApp(
               clanId = clanId,
               onBack = { nav.popBackStack() },
               onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
+              onOpenTreasury = { nav.navigate(Routes.treasury(clanId)) },
               isBazaar = true,
               mwaSender = mwaSender,
               onHireConfirmed = {
@@ -455,6 +461,22 @@ fun ClanWorldApp(
               initialClanId = clanId,
               onBack = { nav.popBackStack() },
               onSent = { nav.popBackStack() },
+            )
+          }
+
+          // ── Treasury (per-iNFT GOLD + resources + movements; from Vault tab) ─
+          composable(
+            route = Routes.Treasury,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            world.clan.app.ui.screens.TreasuryScreenRoute(
+              app = app,
+              clanId = clanId,
+              onBack = { nav.popBackStack() },
             )
           }
 
