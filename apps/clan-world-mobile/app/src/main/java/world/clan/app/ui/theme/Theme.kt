@@ -1,36 +1,59 @@
 package world.clan.app.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.Color
 
 /**
- * App-level theme wrapper. Material3 supplies scaffolding primitives;
- * surfaces are styled directly via [CockpitTokens] to match the web
- * cockpit's parchment-on-iron aesthetic 1:1. We force a dark scheme so
- * any system-driven fallbacks don't bleed through.
+ * Access the Clan World colors and typography from any composable:
+ *
+ *     val tone = ClanWorldTheme.colors.ember
+ *     val style = ClanWorldTheme.type.scriptItalic
+ *
+ * Material3's MaterialTheme is wrapped only so a few system widgets
+ * (NavigationBar ripple, etc.) read sane defaults. App code should NOT
+ * reach into MaterialTheme.colorScheme — go through ClanWorldTheme.
  *
  * Edge-to-edge + transparent system bars are configured in [world.clan.app.MainActivity]
- * via `enableEdgeToEdge()`, which is the modern replacement for the
- * deprecated `Window.statusBarColor` / `Window.navigationBarColor` setters.
+ * via `enableEdgeToEdge()`.
  */
+object ClanWorldTheme {
+  val colors: ClanWorldColors
+    @Composable @ReadOnlyComposable
+    get() = LocalClanWorldColors.current
+  val type: ClanWorldTypography
+    @Composable @ReadOnlyComposable
+    get() = LocalClanWorldTypography.current
+}
+
 @Composable
 fun ClanWorldTheme(
-  @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
   content: @Composable () -> Unit,
 ) {
-  val scheme = darkColorScheme(
-    background   = CockpitTokens.Bg.Void,
-    surface      = CockpitTokens.Bg.Iron,
-    primary      = CockpitTokens.TextC.Accent,
-    onPrimary    = CockpitTokens.Bg.Ink,
-    onBackground = CockpitTokens.TextC.OnIron,
-    onSurface    = CockpitTokens.TextC.OnIron,
+  val materialScheme = darkColorScheme(
+    primary       = Ember,
+    onPrimary     = Color(0xFF1A0C04),
+    secondary     = Rune,
+    onSecondary   = Obsidian,
+    background    = Obsidian,
+    onBackground  = Warm,
+    surface       = Iron,
+    onSurface     = Warm,
+    surfaceVariant = Iron2,
+    error         = Danger,
   )
 
-  MaterialTheme(
-    colorScheme = scheme,
-    content = content,
-  )
+  CompositionLocalProvider(
+    LocalClanWorldColors      provides ClanWorldColors(),
+    LocalClanWorldTypography  provides ClanWorldTypography(),
+  ) {
+    MaterialTheme(
+      colorScheme = materialScheme,
+      typography  = ClanWorldMaterialTypography,
+      content     = content,
+    )
+  }
 }

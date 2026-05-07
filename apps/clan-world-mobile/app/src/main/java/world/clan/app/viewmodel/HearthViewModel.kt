@@ -1,0 +1,170 @@
+package world.clan.app.viewmodel
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import world.clan.app.data.ClanWorldConvexClient
+import world.clan.app.data.CombinedComm
+import world.clan.app.data.SessionStore
+import world.clan.app.data.WorldSnapshot
+import world.clan.app.data.weiToWhole
+
+data class HearthUiState(
+  val isLoading: Boolean = true,
+  val isRefreshing: Boolean = false,
+  val tick: Long = 0,
+  val seasonNumber: Int = 0,
+  val seasonStartTick: Long = 0,
+  val seasonEndTick: Long = 60,
+  val winterActive: Boolean = false,
+  val leaderboard: List<LeaderboardRow> = emptyList(),
+  val recentComms: List<CombinedComm> = emptyList(),
+  val walletShort: String = "",
+  val errorMessage: String? = null,
+) {
+  data class LeaderboardRow(
+    val rank: Int,
+    val clanId: Int,
+    val name: String,
+    val tagline: String,
+    val gold: Long,
+    val delta: Long,
+    val isMine: Boolean,
+  )
+}
+
+class HearthViewModel(
+  private val convex: ClanWorldConvexClient,
+  private val sessionStore: SessionStore,
+) : ViewModel() {
+
+  private val _state = MutableStateFlow(initial())
+  val state: StateFlow<HearthUiState> = _state.asStateFlow()
+
+  init { refresh() }
+
+  private fun initial(): HearthUiState {
+    val s = sessionStore.read()
+    val short = s?.solanaPubkeyBase58?.shortenPubkey().orEmpty()
+    return HearthUiState(walletShort = short)
+  }
+
+  fun refresh() {
+    viewModelScope.launch {
+      _state.update { it.copy(isRefreshing = true, errorMessage = null) }
+      val session = sessionStore.read()
+      val selectedClan = session?.selectedClanId ?: DEFAULT_LINKED_CLAN
+      runCatching {
+        val snap = convex.getSnapshot()
+        val comms = runCatching { convex.getCombinedComms(selectedClan, limit = 3) }
+          .getOrDefault(emptyList())
+        snap to comms
+      }.onSuccess { (snap, comms) ->
+        _state.update { _ ->
+          project(snap, selectedClan, comms, session?.solanaPubkeyBase58.orEmpty())
+        }
+      }.onFailure { e ->
+        _state.update {
+          it.copy(
+            isLoading = false,
+            isRefreshing = false,
+            errorMessage = e.message ?: "Failed to load.",
+          )
+        }
+      }
+    }
+  }
+
+  private fun project(
+    snap: WorldSnapshot,
+    selectedClanId: Int,
+    comms: List<CombinedComm>,
+    solanaPubkey: String,
+  ): HearthUiState {
+    // Sort clans by goldBalance (wei → whole), descending. Empty / null
+    // gold goes last.
+    val sorted = snap.clans
+      .map { c ->
+        val gold = c.goldBalance.weiToWhole()
+        val clanId = c.id.toIntOrNull() ?: 0
+        ClanProjection(c, clanId, gold)
+      }
+      .sortedByDescending { it.gold }
+
+    val leaderboard = sorted.mapIndexed { i, p ->
+      HearthUiState.LeaderboardRow(
+        rank = i + 1,
+        clanId = p.clanId,
+        name = p.clanName,
+        tagline = clanTagline(p.clanId),
+        gold = p.gold,
+        delta = 0L, // no delta data in snapshot — keep at 0 for v0; UI shows "—"
+        isMine = LINKED_CLAN_IDS.contains(p.clanId),
+      )
+    }
+
+    // Season number derived from seasonStartTick / seasonEndTick window length.
+    // Defensive: if the snapshot doesn't carry season fields, fall back to a
+    // 1 / 60-tick demo window so the banner has something to render.
+    val seasonStart = snap.seasonStartTick ?: 0L
+    val seasonEnd = snap.seasonEndTick ?: (seasonStart + 60L)
+    val seasonNumber = maxOf(1, (seasonStart / 60L).toInt() + 1)
+
+    return HearthUiState(
+      isLoading = false,
+      isRefreshing = false,
+      tick = snap.tick,
+      seasonNumber = seasonNumber,
+      seasonStartTick = seasonStart,
+      seasonEndTick = seasonEnd,
+      winterActive = snap.winterActive,
+      leaderboard = leaderboard,
+      recentComms = comms,
+      walletShort = solanaPubkey.shortenPubkey(),
+    )
+  }
+
+  private data class ClanProjection(
+    val raw: world.clan.app.data.ClanSummary,
+    val clanId: Int,
+    val gold: Long,
+  ) {
+    val clanName: String get() = clanLore(clanId)?.name ?: raw.name
+  }
+
+  companion object {
+    /** Hardcoded "yours" clan set — slice 1 UI demo. Edit one constant to shift. */
+    val LINKED_CLAN_IDS = listOf(2, 6, 5)
+    const val DEFAULT_LINKED_CLAN = 2
+  }
+}
+
+/** Truncate a Base58 pubkey for header display (e.g. "9pK4 · 7vQy"). */
+fun String.shortenPubkey(): String {
+  if (length < 9) return this
+  return "${take(4)} · ${takeLast(4)}"
+}
+
+/** Static per-clan flavor lore for the leaderboard subtext. */
+private data class ClanLore(val name: String, val tagline: String)
+
+private val LORE: Map<Int, ClanLore> = mapOf(
+  1 to ClanLore("Clan Storm-Edge", "blades of the high pass"),
+  2 to ClanLore("House Tideborne", "guardians of the strait"),
+  3 to ClanLore("Court of Sunhold", "keepers of the gilded oath"),
+  4 to ClanLore("Vale-Ward", "tenders of the green"),
+  5 to ClanLore("Twilight Watch", "they read the signs"),
+  6 to ClanLore("Ember-Kin", "forge before all"),
+  7 to ClanLore("Hearth-Forge", "the iron that holds"),
+  8 to ClanLore("Star-Walkers", "the line that does not break"),
+)
+
+private fun clanLore(clanId: Int): ClanLore? = LORE[clanId]
+
+fun clanTagline(clanId: Int): String = LORE[clanId]?.tagline ?: "—"
+
+fun clanDisplayName(clanId: Int): String = LORE[clanId]?.name ?: "Clan #$clanId"
