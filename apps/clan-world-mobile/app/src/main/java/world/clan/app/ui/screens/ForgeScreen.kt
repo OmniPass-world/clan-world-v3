@@ -288,6 +288,16 @@ private fun ProgressDots(step: ForgeStep) {
 
 @Composable
 private fun StepPickClan(state: ForgeUiState, onSelect: (Int) -> Unit) {
+  // If every clan is already owned, the wizard has nothing to offer —
+  // render an EmptyState pointing to Codex's reset rather than 8
+  // greyed cards.
+  if (state.ownedClanIds.size >= 8) {
+    world.clan.app.ui.components.EmptyState(
+      title = "every clan is yours",
+      body = "all eight sigils stand under your hand. to forge again, reset demo state in Codex.",
+    )
+    return
+  }
   Column(modifier = Modifier.fillMaxSize()) {
     Text(
       text = "CHOOSE YOUR CLAN",
