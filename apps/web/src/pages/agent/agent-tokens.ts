@@ -46,17 +46,39 @@ export const agentTokens = {
     success:   '#8cd87a',         // success
     onEmber:   '#100806',         // text on bright ember button
   },
-  border: {
-    iron:      '#2e2820',
-    ironLight: '#42392c',
-    rune:      'rgba(95, 197, 212, 0.32)',
-    ember:     'rgba(255, 107, 53, 0.42)',
+  // Parchment palette — for the hero "writ of {agent}" letter card. Mirrors
+  // the slice-1 design system's parchment + ink tokens so the letter feels
+  // visually continuous with the mobile mockups.
+  parchment: {
+    base:   '#e8dec7',
+    mid:    '#d8c79f',
+    shade:  '#c8b58e',
   },
-  // Typography
+  ink: {
+    primary:   '#2a1f10',
+    secondary: '#4a3820',
+    tertiary:  '#6a532f',
+  },
+  border: {
+    iron:           '#2e2820',
+    ironLight:      '#42392c',
+    rune:           'rgba(95, 197, 212, 0.32)',
+    runeStrong:     'rgba(95, 197, 212, 0.55)',
+    ember:          'rgba(255, 107, 53, 0.42)',
+    hairline:       'rgba(212, 160, 74, 0.16)',
+    hairlineMid:    'rgba(212, 160, 74, 0.30)',
+    hairlineStrong: 'rgba(212, 160, 74, 0.55)',
+  },
+  // Typography. The slice-1 design system pairs Cinzel (display) with
+  // Cormorant Garamond (italic script — for ritual / poetic moments) and
+  // EB Garamond (body — long-form ink-on-parchment). JetBrains Mono for
+  // technical readouts, Uncial Antiqua for runes.
   font: {
     display: '"Cinzel", "Times New Roman", serif',
-    rune:    '"Uncial Antiqua", "Cinzel", serif',  // ritual one-shots
-    body:    '"Inter", system-ui, sans-serif',
+    rune:    '"Uncial Antiqua", "Cinzel", serif',
+    body:    '"EB Garamond", "Times New Roman", serif',
+    bodyUi:  '"Inter", system-ui, sans-serif',  // legacy alias for non-ritual UI
+    script:  '"Cormorant Garamond", "EB Garamond", serif',
     mono:    '"JetBrains Mono", "SF Mono", Consolas, monospace',
   },
   space: {
@@ -73,10 +95,6 @@ export const agentTokens = {
   },
 } as const;
 
-/** Mock starting burn-counter value — ~12.8M of 1B (1.28%). */
-export const INITIAL_BURN_COUNT = 12_847_392;
-export const BURN_TARGET = 1_000_000_000;
-
 /** Whisper economy. */
 export const WHISPER_BURN = 5;
 export const WHISPER_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
@@ -86,7 +104,6 @@ export const SKIP_TAX_PER_FULL_MINUTE = 1000;
 export const FAUCET_DROP = 10_000;
 
 /** Mock initial wallet. */
-export const INITIAL_SOL = 4.382;
 export const INITIAL_GOLD = 14_750;
 export const MOCK_WALLET = 'CLwS3vKy8Pp4gXNqHdF7mBaR9TtZjYwLkE2QrUuVnVwH';
 
