@@ -64,6 +64,7 @@ import { RaidAlertOverlay } from './src/components/RaidAlertOverlay';
 import {
   cancelRaidAlert,
   installRaidNotificationHandler,
+  isNotificationsAvailable,
   scheduleRaidAlert,
   subscribeToRaidResponses,
 } from './src/raid';
@@ -259,7 +260,11 @@ export default function App() {
       }
     }, 10_000);
 
-    showToast('Raid scheduled. 10 seconds.');
+    showToast(
+      isNotificationsAvailable()
+        ? 'Raid scheduled. 10 seconds.'
+        : 'Raid scheduled (in-app only). Install latest APK for system notifications.',
+    );
   };
 
   /** Demo helper — clear forged INFTs + free-forge flag without dropping

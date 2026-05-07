@@ -48,6 +48,11 @@ export const RAID_NOTIFICATION_DATA_TYPE = 'cw.raid.alert';
 
 const ANDROID_CHANNEL_ID = 'cw-raid-alerts';
 
+/** True when expo-notifications loaded successfully — i.e. the dev client
+ *  APK has the native module. False when running an older APK that
+ *  predates expo-notifications being added. */
+export const isNotificationsAvailable = (): boolean => Notifications !== null;
+
 /** Configure the foreground notification handler so a raid notification
  *  fired while the app is open does NOT show a system banner — we render
  *  the themed overlay instead. */
