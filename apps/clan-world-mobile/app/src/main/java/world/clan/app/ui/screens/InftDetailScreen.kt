@@ -501,10 +501,16 @@ private fun MemoryPanel(
     }
     PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
       memory.take(10).forEach { entry ->
+        val stamp = buildString {
+          append("written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}")
+          entry.txHash?.takeIf { it.length > 6 }?.let {
+            append(" · tx ${it.takeLast(6)}")
+          }
+        }
         MemoryRow(
           key = entry.key,
           body = inlineCodeBody(entry.value),
-          stamp = "written tick ${entry.updatedAt ?: 0L} · ${entry.source ?: "local"}",
+          stamp = stamp,
           modifier = Modifier.fillMaxWidth(),
         )
       }
