@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { IConvexClient, IChainClient } from '@clan-world/shared/adapters';
 import type { WorldSnapshot, ClanFullView, Whisper, Tick } from '@clan-world/shared';
-import { runCommand, UsageError, inboxFile, recipientInboxFile, ackFile } from '../src/cli.js';
+import { runCommand, UsageError, inboxFile, recipientInboxFile, ackFile, resolveHelp } from '../src/cli.js';
 
 // ---------------------------------------------------------------------------
 // Stub data
@@ -270,6 +270,109 @@ describe('unknown command', () => {
       expect(err).toBeInstanceOf(UsageError);
       expect((err as UsageError).message).toContain('usage:');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// rules subcommand
+// ---------------------------------------------------------------------------
+
+describe('rules subcommand', () => {
+  it('returns rules text containing canonical action codes', async () => {
+    const out = await runCommand('rules', undefined, [], deps, {}, tmpDir);
+    expect(out).toContain('ACTION CODES');
+    expect(out).toContain('1  = ChopWood');
+    expect(out).toContain('6  = DepositResources');
+    expect(out).toContain('14 = WithdrawResources');
+  });
+
+  it('rules text references the generated source file', async () => {
+    const out = await runCommand('rules', undefined, [], deps, {}, tmpDir);
+    expect(out).toContain('generated/');
+  });
+
+  it('rules text covers regions, capacities, timing, error codes', async () => {
+    const out = await runCommand('rules', undefined, [], deps, {}, tmpDir);
+    expect(out).toContain('REGION CODES');
+    expect(out).toContain('Forest');
+    expect(out).toContain('CLANSMAN_CARRY_CAP');
+    expect(out).toContain('SEASON_DURATION_TICKS');
+    expect(out).toContain('ERR_CLAN_DEAD');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveHelp — argv parsing for --help / -h before positional consumption
+// ---------------------------------------------------------------------------
+
+describe('resolveHelp', () => {
+  it('returns top-level help for empty argv', () => {
+    const out = resolveHelp([]);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder — Clan World CLI for Elder agents');
+    expect(out).toContain('clan submit-orders');
+  });
+
+  it('returns top-level help for --help', () => {
+    expect(resolveHelp(['--help'])).toContain('Clan World CLI for Elder agents');
+  });
+
+  it('returns top-level help for -h', () => {
+    expect(resolveHelp(['-h'])).toContain('Clan World CLI for Elder agents');
+  });
+
+  it('returns submit-orders help for `clan submit-orders --help` (the bug elder-1 hit)', () => {
+    const out = resolveHelp(['clan', 'submit-orders', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder clan submit-orders <ordersJsonFile>');
+    expect(out).toContain('JSON SCHEMA');
+    expect(out).toContain('"kind": "mission"');
+    expect(out).toContain('"payload":');
+    expect(out).toContain('clansmanId');
+    expect(out).toContain('COMMON ERRORS');
+  });
+
+  it('returns clan-namespace help for `clan --help`', () => {
+    const out = resolveHelp(['clan', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder clan <subcommand>');
+  });
+
+  it('returns world-snapshot help for `world snapshot --help`', () => {
+    const out = resolveHelp(['world', 'snapshot', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder world snapshot');
+    expect(out).toContain('tick');
+  });
+
+  it('returns rules help for `rules --help`', () => {
+    const out = resolveHelp(['rules', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder rules');
+  });
+
+  it('returns peer-whisper help for `peer whisper --help`', () => {
+    const out = resolveHelp(['peer', 'whisper', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder peer whisper');
+  });
+
+  it('returns memory-save help for `memory save --help`', () => {
+    const out = resolveHelp(['memory', 'save', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder memory save');
+  });
+
+  it('returns ack-clear help for `ack-clear --help`', () => {
+    const out = resolveHelp(['ack-clear', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder ack-clear');
+  });
+
+  it('returns undefined when no --help flag and args present (let runCommand take over)', () => {
+    expect(resolveHelp(['world', 'snapshot'])).toBeUndefined();
+    expect(resolveHelp(['clan', 'view', '1'])).toBeUndefined();
+    expect(resolveHelp(['clan', 'submit-orders', '/tmp/orders.json'])).toBeUndefined();
   });
 });
 
