@@ -35,7 +35,11 @@ type KickstartResponse = {
 type JupiterChartResponse = {
   candles?: Array<{
     time?: number;
+    open?: number;
+    high?: number;
+    low?: number;
     close?: number;
+    volume?: number;
   }>;
 };
 
@@ -60,6 +64,11 @@ export type KickstartTokenInput = {
 
 type TokenSampleInput = {
   price: number;
+  open?: number;
+  high?: number;
+  low?: number;
+  close?: number;
+  volume?: number;
   observedAt: number;
 };
 
@@ -107,11 +116,23 @@ export function mapKickstartPoolsToTopTokens(pools: KickstartPool[]): KickstartT
 
 function mapJupiterChartToSamples(payload: JupiterChartResponse): TokenSampleInput[] {
   return (payload.candles ?? [])
-    .map((candle) => {
+    .map((candle): TokenSampleInput | null => {
       const timestampSeconds = finiteOrUndefined(candle.time);
       const close = finiteOrUndefined(candle.close);
       if (timestampSeconds === undefined || close === undefined) return null;
-      return { observedAt: timestampSeconds * 1000, price: close };
+      const open = finiteOrUndefined(candle.open);
+      const high = finiteOrUndefined(candle.high);
+      const low = finiteOrUndefined(candle.low);
+      const volume = finiteOrUndefined(candle.volume);
+      return {
+        observedAt: timestampSeconds * 1000,
+        price: close,
+        open,
+        high,
+        low,
+        close,
+        volume,
+      };
     })
     .filter((sample): sample is TokenSampleInput => sample !== null)
     .sort((a, b) => a.observedAt - b.observedAt);
@@ -262,7 +283,15 @@ export const markWatchedToken = internalMutation({
 export const updateTokenSparkline = internalMutation({
   args: {
     tokenMint: v.string(),
-    samples: v.array(v.object({ price: v.number(), observedAt: v.number() })),
+    samples: v.array(v.object({
+      price: v.number(),
+      open: v.optional(v.number()),
+      high: v.optional(v.number()),
+      low: v.optional(v.number()),
+      close: v.optional(v.number()),
+      volume: v.optional(v.number()),
+      observedAt: v.number(),
+    })),
   },
   handler: async (ctx, { tokenMint, samples }) => {
     if (samples.length < 2) return;

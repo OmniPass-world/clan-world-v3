@@ -15,6 +15,7 @@ import android.widget.TextView
 
 class WidgetConfigActivity : Activity() {
   private var appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+  private var selectedChartType = "line"
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
@@ -53,6 +54,7 @@ class WidgetConfigActivity : Activity() {
     list.removeAllViews()
     list.addView(text("Choose token", 22, getColor(R.color.widget_text)))
     list.addView(text("Top Kickstart tokens by market cap", 13, getColor(R.color.widget_muted)))
+    list.addView(chartSelector())
     val search = EditText(this).apply {
       hint = "Search token"
       textSize = 15f
@@ -92,6 +94,7 @@ class WidgetConfigActivity : Activity() {
 
   private fun choose(token: KickstartToken) {
     WidgetStore.setWidgetTokenMint(this, appWidgetId, token.tokenMint)
+    WidgetStore.setWidgetChartType(this, appWidgetId, selectedChartType)
     WidgetStore.saveCachedToken(this, appWidgetId, token)
     Thread { KickstartClient.watchToken(token.tokenMint) }.start()
     val manager = AppWidgetManager.getInstance(this)
@@ -110,6 +113,29 @@ class WidgetConfigActivity : Activity() {
     val right = text("$" + "%,.0f".format(token.mcap), 13, getColor(R.color.widget_gold)).apply { gravity = Gravity.END }
     addView(left, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     addView(right)
+  }
+
+  private fun chartSelector() = LinearLayout(this).apply {
+    orientation = LinearLayout.HORIZONTAL
+    setPadding(0, dp(10), 0, dp(10))
+    fun refresh(container: LinearLayout) {
+      container.removeAllViews()
+      fun option(label: String, value: String) = TextView(container.context).apply {
+        text = label
+        gravity = Gravity.CENTER
+        textSize = 14f
+        setTextColor(getColor(R.color.widget_text))
+        setPadding(dp(10), dp(9), dp(10), dp(9))
+        setBackgroundColor(if (selectedChartType == value) android.graphics.Color.rgb(38, 38, 38) else android.graphics.Color.rgb(22, 22, 22))
+        setOnClickListener {
+          selectedChartType = value
+          refresh(container)
+        }
+      }
+      container.addView(option("Line", "line"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+      container.addView(option("Candles", "candles"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+    }
+    refresh(this)
   }
 
   private fun text(value: String, size: Int, color: Int) = TextView(this).apply {

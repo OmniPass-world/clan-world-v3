@@ -16,8 +16,8 @@ android {
     applicationId = "io.easya.kickstart"
     minSdk = 26
     targetSdk = 35
-    versionCode = 2
-    versionName = "0.1.1"
+    versionCode = 3
+    versionName = "0.1.2"
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
     buildConfigField("String", "HOME_URL", "\"${homeUrl.get()}\"")
   }
@@ -34,8 +34,4 @@ android {
   kotlinOptions {
     jvmTarget = "17"
   }
-}
-
-dependencies {
-  implementation("androidx.browser:browser:1.8.0")
 }

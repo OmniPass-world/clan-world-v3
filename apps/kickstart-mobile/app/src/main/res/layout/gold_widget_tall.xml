@@ -52,7 +52,7 @@
       android:includeFontPadding="false"
       android:text="1H --"
       android:textColor="@color/widget_muted"
-      android:textSize="10sp" />
+      android:textSize="11sp" />
 
     <TextView
       android:id="@+id/change_6h"
@@ -63,7 +63,7 @@
       android:includeFontPadding="false"
       android:text="6H --"
       android:textColor="@color/widget_muted"
-      android:textSize="10sp" />
+      android:textSize="11sp" />
 
     <TextView
       android:id="@+id/change_24h"
@@ -74,7 +74,7 @@
       android:includeFontPadding="false"
       android:text="24H --"
       android:textColor="@color/widget_muted"
-      android:textSize="10sp" />
+      android:textSize="11sp" />
 
     <TextView
       android:id="@+id/change_7d"
@@ -85,7 +85,7 @@
       android:includeFontPadding="false"
       android:text="7D --"
       android:textColor="@color/widget_muted"
-      android:textSize="10sp" />
+      android:textSize="11sp" />
   </LinearLayout>
 
   <ImageView
@@ -93,9 +93,9 @@
     android:layout_width="match_parent"
     android:layout_height="50dp"
     android:layout_gravity="center"
-    android:layout_marginStart="26dp"
+    android:layout_marginStart="16dp"
     android:layout_marginTop="12dp"
-    android:layout_marginEnd="82dp"
+    android:layout_marginEnd="74dp"
     android:background="@drawable/sparkline_placeholder"
     android:contentDescription="@string/app_name"
     android:scaleType="fitXY" />
