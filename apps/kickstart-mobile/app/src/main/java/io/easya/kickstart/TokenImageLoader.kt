@@ -8,15 +8,29 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.BitmapShader
+import android.util.LruCache
 import android.widget.ImageView
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
 import kotlin.math.min
 
 object TokenImageLoader {
   private const val GOLD_MINT = "4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL"
-  private val cache = ConcurrentHashMap<String, Bitmap>()
+
+  // Cap total bitmap memory at ~6MB. Each cached icon is small (~16-64KB after
+  // BitmapFactory decode, larger if the source is uncompressed PNG), so this
+  // budget admits dozens of icons while preventing widget refresh storms from
+  // blowing past the heap.
+  private const val MAX_CACHE_BYTES = 6 * 1024 * 1024
+  private val cache = object : LruCache<String, Bitmap>(MAX_CACHE_BYTES) {
+    override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+  }
+
+  // Bounded thread pool — previously each loadInto() spawned a raw Thread,
+  // so a leaderboard refresh could trigger 100+ concurrent network sockets +
+  // bitmap decodes. Cap at 4 so widget refreshes degrade gracefully under load.
+  private val executor = Executors.newFixedThreadPool(4)
 
   fun loadInto(imageView: ImageView, iconUrl: String?, fallbackRes: Int = R.drawable.kickstart_icon) {
     val url = normalizeUrl(iconUrl)
@@ -24,18 +38,18 @@ object TokenImageLoader {
       imageView.setImageResource(fallbackRes)
       return
     }
-    cache[url]?.let {
+    cache.get(url)?.let {
       imageView.setImageBitmap(it)
       return
     }
     imageView.setImageResource(fallbackRes)
-    Thread {
-      val bitmap = loadBitmap(url) ?: return@Thread
-      cache[url] = bitmap
+    executor.execute {
+      val bitmap = loadBitmap(url) ?: return@execute
+      cache.put(url, bitmap)
       imageView.post {
         imageView.setImageBitmap(bitmap)
       }
-    }.start()
+    }
   }
 
   fun widgetCoinBitmap(context: Context, token: KickstartToken?, allowNetwork: Boolean): Bitmap? {
@@ -46,8 +60,8 @@ object TokenImageLoader {
     val url = normalizeUrl(token.iconUrl)
     val source = when {
       url == null -> BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
-      cache[url] != null -> cache[url]
-      allowNetwork -> loadBitmap(url)?.also { cache[url] = it }
+      cache.get(url) != null -> cache.get(url)
+      allowNetwork -> loadBitmap(url)?.also { cache.put(url, it) }
         ?: BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
       else -> BitmapFactory.decodeResource(context.resources, R.drawable.kickstart_icon)
     }
@@ -57,7 +71,7 @@ object TokenImageLoader {
   fun shouldFetchWidgetImage(token: KickstartToken?): Boolean {
     val selected = token ?: return false
     val url = normalizeUrl(selected.iconUrl) ?: return false
-    return selected.tokenMint != GOLD_MINT && cache[url] == null
+    return selected.tokenMint != GOLD_MINT && cache.get(url) == null
   }
 
   private fun loadBitmap(url: String): Bitmap? {

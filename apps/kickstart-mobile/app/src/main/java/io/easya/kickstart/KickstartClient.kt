@@ -86,12 +86,16 @@ object KickstartClient {
     }
 
     return KickstartToken(
-      tokenMint = value.getString("tokenMint"),
+      // Safe parsing throughout: a single missing/wrongly-typed field used to
+      // throw JSONException out of getString()/getDouble() and crash the
+      // widget refresh / leaderboard load entirely. Use opt* + sane defaults;
+      // the renderer already tolerates blank symbols and zero prices.
+      tokenMint = value.optString("tokenMint", ""),
       poolAddress = value.optString("poolAddress"),
       name = value.optString("name"),
       symbol = value.optString("symbol"),
       iconUrl = value.nullableString("iconUrl"),
-      usdPrice = value.getDouble("usdPrice"),
+      usdPrice = value.optDouble("usdPrice", 0.0),
       mcap = value.optDouble("mcap", 0.0),
       liquidity = value.nullableDouble("liquidity"),
       volume24h = value.nullableDouble("volume24h"),

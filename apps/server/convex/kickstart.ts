@@ -250,20 +250,72 @@ export const listWatchedTokens = internalQuery({
   },
 });
 
+// Mirrors the on-disk `kickstartTokens` table validator in schema.ts. Defining
+// it here (and applying it as the mutation arg validator below) means we
+// reject malformed input at the boundary instead of relying on a
+// `as KickstartTokenInput[]` cast that v.any() previously waved through.
+const kickstartTokenInputValidator = v.object({
+  tokenMint: v.string(),
+  poolAddress: v.string(),
+  name: v.string(),
+  symbol: v.string(),
+  iconUrl: v.optional(v.string()),
+  usdPrice: v.number(),
+  mcap: v.number(),
+  liquidity: v.optional(v.number()),
+  volume24h: v.optional(v.number()),
+  priceChange1h: v.optional(v.number()),
+  priceChange6h: v.optional(v.number()),
+  priceChange24h: v.optional(v.number()),
+  priceChange7d: v.optional(v.number()),
+  rank: v.number(),
+  sourceUpdatedAt: v.optional(v.string()),
+  sparkline24h: v.optional(
+    v.array(
+      v.object({
+        price: v.number(),
+        open: v.optional(v.number()),
+        high: v.optional(v.number()),
+        low: v.optional(v.number()),
+        close: v.optional(v.number()),
+        volume: v.optional(v.number()),
+        observedAt: v.number(),
+      }),
+    ),
+  ),
+});
+
 export const replaceKickstartTokens = internalMutation({
-  args: { tokens: v.array(v.any()) },
+  args: { tokens: v.array(kickstartTokenInputValidator) },
   handler: async (ctx, { tokens }) => {
     const fetchedAt = Date.now();
     const existing = await ctx.db.query("kickstartTokens").take(200);
     const existingByMint = new Map(existing.map((row) => [row.tokenMint, row]));
-    await Promise.all(existing.map((row) => ctx.db.delete(row._id)));
-    for (const token of tokens as KickstartTokenInput[]) {
+    const incomingMints = new Set(tokens.map((token) => token.tokenMint));
+
+    // Upsert pattern: patch existing rows in place (preserving sparkline24h
+    // history when the new payload doesn't carry one), insert new ones, and
+    // only delete rows that are no longer in the leaderboard. The previous
+    // delete-then-insert flow churned every doc id on every refresh, which
+    // is a write storm + breaks any other index/query holding doc references.
+    for (const token of tokens) {
       const previous = existingByMint.get(token.tokenMint);
-      await ctx.db.insert("kickstartTokens", {
+      const next = {
         ...token,
         sparkline24h: previous?.sparkline24h ?? token.sparkline24h,
         fetchedAt,
-      });
+      };
+      if (previous) {
+        await ctx.db.patch(previous._id, next);
+      } else {
+        await ctx.db.insert("kickstartTokens", next);
+      }
+    }
+
+    for (const row of existing) {
+      if (!incomingMints.has(row.tokenMint)) {
+        await ctx.db.delete(row._id);
+      }
     }
   },
 });

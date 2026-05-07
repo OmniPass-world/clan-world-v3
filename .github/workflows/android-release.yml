@@ -1,4 +1,9 @@
-name: Android Release
+# NOTE: this workflow currently builds an UNSIGNED debug APK
+# (`assembleDebug`), not a signed release artifact. The job name reflects that
+# so the GitHub UI doesn't imply a signed Play-Store-ready build is being cut.
+# When release signing is provisioned, switch to `assembleRelease` + signing
+# config and rename this back to "Android Release".
+name: Android Internal Build (Debug APK)
 
 on:
   push:
@@ -17,7 +22,7 @@ permissions:
   attestations: write
 
 jobs:
-  build-release-apks:
+  build-debug-apks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +46,13 @@ jobs:
 
       - name: Build Kickstart APK
         working-directory: apps/kickstart-mobile
+        env:
+          # build.gradle.kts now refuses to fall back to a hardcoded URL.
+          # These currently point at the dev Convex deployment + production
+          # Kickstart home; promote to repo secrets when the prod Convex URL
+          # is provisioned.
+          CLANWORLD_CONVEX_URL: ${{ secrets.CLANWORLD_CONVEX_URL || 'https://valuable-kudu-985.convex.cloud' }}
+          KICKSTART_HOME_URL: ${{ secrets.KICKSTART_HOME_URL || 'https://kickstart.easya.io' }}
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Build Clan World APK
