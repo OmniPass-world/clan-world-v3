@@ -1,6 +1,8 @@
 package world.clan.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -53,6 +56,7 @@ import world.clan.app.ui.theme.clanColor
 import world.clan.app.ui.theme.clanGlyphRes
 import world.clan.app.viewmodel.ClanWorldViewModelFactory
 import world.clan.app.viewmodel.HallCard
+import world.clan.app.viewmodel.HallProvenance
 import world.clan.app.viewmodel.HallUiState
 import world.clan.app.viewmodel.HallViewModel
 import world.clan.app.viewmodel.clanDisplayName
@@ -280,11 +284,18 @@ private fun LetterCard(
       horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
       Column(Modifier.weight(1f)) {
-        Text(
-          text = letterTitle(card.clanId),
-          style = ClanWorldTheme.type.letterName,
-          color = Ink,
-        )
+        Row(
+          verticalAlignment = Alignment.CenterVertically,
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          Text(
+            text = letterTitle(card.clanId),
+            style = ClanWorldTheme.type.letterName,
+            color = Ink,
+            modifier = Modifier.weight(1f, fill = false),
+          )
+          ProvenanceBadge(card.provenance)
+        }
         Text(
           text = "tkn 0x${"%04x".format(card.tokenId)} · clan ${roman(card.clanId).lowercase()}",
           style = ClanWorldTheme.type.monoMicro,
@@ -331,6 +342,28 @@ private fun LetterCard(
       LetterStat(label = "Memory", value = "${card.memoryCount} keys", color = Ink)
       LetterStat(label = "Vault", value = "—", color = Ink)
     }
+  }
+}
+
+@Composable
+private fun ProvenanceBadge(provenance: HallProvenance) {
+  if (provenance == HallProvenance.Linked) return
+  val (label, accent) = when (provenance) {
+    HallProvenance.Hired -> "HIRED" to ClanWorldTheme.colors.rune
+    HallProvenance.Forged -> "FORGED" to ClanWorldTheme.colors.ember
+    HallProvenance.Linked -> return
+  }
+  Box(
+    modifier = Modifier
+      .clip(RoundedCornerShape(2.dp))
+      .background(accent.copy(alpha = 0.16f))
+      .padding(horizontal = 6.dp, vertical = 3.dp),
+  ) {
+    Text(
+      text = label,
+      style = ClanWorldTheme.type.monoNano,
+      color = accent,
+    )
   }
 }
 

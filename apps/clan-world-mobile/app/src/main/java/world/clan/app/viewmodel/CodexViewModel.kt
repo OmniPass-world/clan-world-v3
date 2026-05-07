@@ -68,4 +68,21 @@ class CodexViewModel(
     sessionStore.clear()
     _state.value = _state.value.copy(solanaPubkey = null, walletLabel = null)
   }
+
+  /**
+   * Wipe demo-only state and reload the screen. Useful for repeat demos
+   * on the same device — restores Hall to LINKED_CLAN_IDS, empties
+   * Lineage, re-enables disabled Forge clans, re-shows the onboarding
+   * coachmark.
+   */
+  fun resetDemoState() {
+    sessionStore.resetDemoState()
+    lineageStore.clear()
+    val owned = HearthViewModel.LINKED_CLAN_IDS.distinct()
+    _state.value = _state.value.copy(
+      lineage = emptyList(),
+      linkedClansCount = owned.size,
+      linkedClanIds = owned,
+    )
+  }
 }

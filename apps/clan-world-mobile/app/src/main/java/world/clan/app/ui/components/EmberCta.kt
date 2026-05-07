@@ -53,6 +53,7 @@ fun EmberCta(
   val ember = ClanWorldTheme.colors.ember
   val emberGlow = ClanWorldTheme.colors.emberGlow
   val shape = RoundedCornerShape(6.dp)
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   val infinite = rememberInfiniteTransition(label = "ember-cta")
   val glow by infinite.animateFloat(
@@ -123,7 +124,10 @@ fun EmberCta(
           size = Size(w, size.height),
         )
       }
-      .clickable(enabled = enabled, role = Role.Button) { onClick() },
+      .clickable(enabled = enabled, role = Role.Button) {
+        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        onClick()
+      },
     contentAlignment = Alignment.Center,
   ) {
     Text(

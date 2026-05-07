@@ -23,6 +23,7 @@ data class HearthUiState(
   val winterActive: Boolean = false,
   val leaderboard: List<LeaderboardRow> = emptyList(),
   val recentComms: List<CombinedComm> = emptyList(),
+  val banditAlert: BanditAlert? = null,
   val walletShort: String = "",
   val errorMessage: String? = null,
 ) {
@@ -35,6 +36,13 @@ data class HearthUiState(
     val delta: Long,
     val isMine: Boolean,
   )
+
+  /** A bandit visible in the snapshot — surfaced as an alert pill on Hearth. */
+  data class BanditAlert(
+    val banditId: Int,
+    val regionName: String?,
+    val tier: Int?,
+  )
 }
 
 class HearthViewModel(
@@ -45,7 +53,21 @@ class HearthViewModel(
   private val _state = MutableStateFlow(initial())
   val state: StateFlow<HearthUiState> = _state.asStateFlow()
 
-  init { refresh() }
+  init {
+    refresh()
+    // Auto-refresh every 30s while the VM is alive (i.e. while Hearth is
+    // on the back stack). Tick number + leaderboard are how the user reads
+    // the world's heartbeat — they should advance without a manual pull.
+    // Cancelled cleanly on viewModelScope teardown when the user
+    // disconnects (popUpTo(0) clears the back stack).
+    viewModelScope.launch {
+      while (true) {
+        kotlinx.coroutines.delay(REFRESH_INTERVAL_MS)
+        if (_state.value.isLoading || _state.value.isRefreshing) continue
+        refresh()
+      }
+    }
+  }
 
   private fun initial(): HearthUiState {
     val s = sessionStore.read()
@@ -116,6 +138,17 @@ class HearthViewModel(
     val seasonEnd = snap.seasonEndTick ?: (seasonStart + 60L)
     val seasonNumber = maxOf(1, (seasonStart / 60L).toInt() + 1)
 
+    val banditAlert = snap.bandit?.let { b ->
+      val regionName = snap.regions.firstOrNull { it.id.toIntOrNull() == b.region }?.name
+      HearthUiState.BanditAlert(
+        banditId = b.id,
+        regionName = regionName,
+        tier = b.tier,
+      )
+    } ?: snap.activeBanditId?.let { id ->
+      HearthUiState.BanditAlert(banditId = id, regionName = null, tier = null)
+    }
+
     return HearthUiState(
       isLoading = false,
       isRefreshing = false,
@@ -126,6 +159,7 @@ class HearthViewModel(
       winterActive = snap.winterActive,
       leaderboard = leaderboard,
       recentComms = comms,
+      banditAlert = banditAlert,
       walletShort = solanaPubkey.shortenPubkey(),
     )
   }
@@ -142,6 +176,14 @@ class HearthViewModel(
     /** Hardcoded "yours" clan set — slice 1 UI demo. Edit one constant to shift. */
     val LINKED_CLAN_IDS = listOf(2, 6, 5)
     const val DEFAULT_LINKED_CLAN = 2
+
+    /**
+     * Auto-refresh cadence for the Hearth snapshot. 30s is a balance
+     * between "feels live" and "burns the user's data" — Convex tick
+     * cadence is 20s in dev, 60s in S2 KeeperHub, so 30s catches at
+     * least one new tick most of the time.
+     */
+    const val REFRESH_INTERVAL_MS = 30_000L
   }
 }
 

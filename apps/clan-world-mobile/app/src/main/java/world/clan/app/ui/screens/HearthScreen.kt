@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
@@ -116,9 +117,15 @@ private fun HearthScreen(
               seasonNumber = state.seasonNumber,
               seasonStartTick = state.seasonStartTick,
               seasonEndTick = state.seasonEndTick,
+              winterActive = state.winterActive,
             )
           }
 
+          if (state.banditAlert != null) {
+            StaggeredEntry(index = 1) {
+              BanditAlertPill(alert = state.banditAlert)
+            }
+          }
           StaggeredEntry(index = 1) {
             SectionHeader(
               title = "Leaderboard",
@@ -148,11 +155,49 @@ private fun HearthScreen(
 // ─────────────────────────────────────────────────────────────────────────
 
 @Composable
+private fun BanditAlertPill(alert: HearthUiState.BanditAlert) {
+  val danger = ClanWorldTheme.colors.danger
+  val warm = ClanWorldTheme.colors.warm
+  val warmDim = ClanWorldTheme.colors.warmDim
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(6.dp))
+      .background(danger.copy(alpha = 0.10f))
+      .border(1.dp, danger.copy(alpha = 0.45f), RoundedCornerShape(6.dp))
+      .padding(horizontal = 14.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Box(
+      modifier = Modifier
+        .size(8.dp)
+        .clip(RoundedCornerShape(50))
+        .background(danger),
+    )
+    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      Text(
+        text = "BANDIT · ID ${alert.banditId}" + (alert.tier?.let { " · TIER $it" } ?: ""),
+        style = ClanWorldTheme.type.monoMicro,
+        color = danger,
+      )
+      Text(
+        text = alert.regionName?.let { "rumored at $it." }
+          ?: "moves through the realms.",
+        style = ClanWorldTheme.type.scriptItalicSmall,
+        color = warmDim,
+      )
+    }
+  }
+}
+
+@Composable
 private fun HearthBanner(
   tick: Long,
   seasonNumber: Int,
   seasonStartTick: Long,
   seasonEndTick: Long,
+  winterActive: Boolean = false,
 ) {
   val iron = ClanWorldTheme.colors.iron
   val gold = ClanWorldTheme.colors.gold
@@ -257,6 +302,20 @@ private fun HearthBanner(
           verticalArrangement = Arrangement.spacedBy(6.dp),
           modifier = Modifier.widthIn(min = 120.dp),
         ) {
+          if (winterActive) {
+            Box(
+              modifier = Modifier
+                .clip(RoundedCornerShape(2.dp))
+                .background(rune.copy(alpha = 0.18f))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+              Text(
+                text = "WINTER",
+                style = ClanWorldTheme.type.monoNano,
+                color = rune,
+              )
+            }
+          }
           Text(
             text = seasonName.uppercase(),
             style = ClanWorldTheme.type.crownLabel,
