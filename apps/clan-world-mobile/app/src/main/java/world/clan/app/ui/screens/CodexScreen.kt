@@ -262,6 +262,7 @@ private fun ShareApkRow(url: String) {
 private fun DemoResetRow(onConfirm: () -> Unit) {
   val armedState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
   val armed = armedState.value
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   Column(
     verticalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -282,9 +283,14 @@ private fun DemoResetRow(onConfirm: () -> Unit) {
         )
         .clickable {
           if (armed) {
+            // Heavy bump to mark the destructive confirm.
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
             onConfirm()
             armedState.value = false
           } else {
+            // Light tick to acknowledge the arm — the user is now one
+            // tap away from a destructive action.
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
             armedState.value = true
           }
         }
