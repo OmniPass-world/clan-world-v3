@@ -219,6 +219,16 @@ export const CLAN_WORLD_ABI = [
             "name": "nextCommitSequence",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "worldPaused",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "pausedAtTs",
+            "type": "uint64",
+            "internalType": "uint64"
           }
         ]
       }
@@ -1089,6 +1099,16 @@ export const CLAN_WORLD_ABI = [
           },
           {
             "name": "nextHeartbeatAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "worldPaused",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "pausedAtTs",
             "type": "uint64",
             "internalType": "uint64"
           },
