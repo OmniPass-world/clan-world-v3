@@ -411,6 +411,7 @@ private fun DetailTabs(active: DetailTab, onSelect: (DetailTab) -> Unit) {
   val ember = ClanWorldTheme.colors.ember
   val warmFaint = ClanWorldTheme.colors.warmFaint
   val hairline = ClanWorldTheme.colors.hairline
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   val activeIdx = DetailTab.values().indexOf(active)
   val tabCount = DetailTab.values().size
 
@@ -439,7 +440,12 @@ private fun DetailTabs(active: DetailTab, onSelect: (DetailTab) -> Unit) {
         Box(
           modifier = Modifier
             .weight(1f)
-            .clickable { onSelect(tab) }
+            .clickable {
+              if (tab != active) {
+                haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+              }
+              onSelect(tab)
+            }
             .padding(vertical = 10.dp),
           contentAlignment = Alignment.Center,
         ) {
