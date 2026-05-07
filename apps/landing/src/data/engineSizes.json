@@ -58,7 +58,7 @@
   "stats": {
     "facetCount": 29,
     "libraryCount": 22,
-    "totalDeployedFacetBytes": 267064,
+    "totalDeployedFacetBytes": 265239,
     "closestToLimit": {"name": "BundleTransferFacet", "size": 24514, "distance": 62},
     "secondClosest": {"name": "HeartbeatFacet", "size": 24033, "distance": 543}
   }
