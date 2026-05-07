@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Connection } from '@solana/web3.js';
+import * as Haptics from 'expo-haptics';
 import {
   ARCHETYPE_GLYPHS,
   ArchetypeKey,
@@ -14,6 +16,8 @@ import { Parchment, Stone } from '../components/Surfaces';
 import { Slider } from '../components/Slider';
 import { TopBar } from '../components/TopBar';
 import { colors, fonts } from '../theme';
+import { signAndSendMemoTx } from '../wallet/mwa';
+import { addForgedInft, getFreeForgeUsed, setFreeForgeUsed } from '../storage';
 
 const ZERO_STRAT: Strategy = {
   trust: 0,
@@ -35,27 +39,64 @@ const ARCHETYPES: ArchetypeKey[] = [
 ];
 
 type Props = {
+  pubkey: string;
+  /** True when the user is a Seeker bearer AND hasn't burned their free forge yet. */
+  isFreeForgeEligible: boolean;
+  connection: Connection;
   onClose: () => void;
-  onComplete: (data: { name: string; archetype: ArchetypeKey | null; strategy: Strategy }) => void;
+  onComplete: (data: { name: string; archetype: ArchetypeKey; strategy: Strategy; sig: string }) => void;
 };
 
-export const ForgeScreen = ({ onClose, onComplete }: Props) => {
+export const ForgeScreen = ({ pubkey, isFreeForgeEligible, connection, onClose, onComplete }: Props) => {
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [arch, setArch] = useState<ArchetypeKey | null>(null);
   const [strat, setStrat] = useState<Strategy>(ZERO_STRAT);
   const [forging, setForging] = useState(false);
   const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const startForge = () => {
+  // Eligibility resolves at the moment of forge: must be SGT bearer AND
+  // freeForgeUsed flag must not yet be set for this pubkey.
+  const willBeFree = isFreeForgeEligible && !getFreeForgeUsed(pubkey);
+
+  const startForge = async () => {
+    if (!arch) return;
     setForging(true);
-    setTimeout(() => {
+    setError(null);
+    try {
+      // Memo payload — recorded on Solana mainnet so the forge has a real on-chain artifact.
+      const memo = `cw:forge:v1:name=${name}:archetype=${arch}:strategy=${JSON.stringify(strat)}:t=${Math.floor(Date.now() / 1000)}`;
+      const sig = await signAndSendMemoTx(connection, memo);
+
+      // Record locally — Hall picks this up reactively via MMKV-backed read.
+      addForgedInft({
+        id: `forged-${sig.slice(0, 12)}`,
+        pubkey,
+        name,
+        archetype: arch,
+        strategy: strat,
+        mintTxSig: sig,
+        isFreeForge: willBeFree,
+        createdAt: Date.now(),
+      });
+      if (willBeFree) setFreeForgeUsed(pubkey, true);
+
+      try {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {
+        // haptics unavailable on emulator — non-fatal
+      }
+
+      // Trigger the seal animation, then complete.
       setForging(false);
       setDone(true);
-    }, 1700);
-    setTimeout(() => {
-      onComplete({ name, archetype: arch, strategy: strat });
-    }, 2900);
+      setTimeout(() => onComplete({ name, archetype: arch, strategy: strat, sig }), 1200);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Forge failed';
+      setError(msg);
+      setForging(false);
+    }
   };
 
   return (
@@ -520,16 +561,55 @@ export const ForgeScreen = ({ onClose, onComplete }: Props) => {
                 >
                   MINT FEE
                 </Text>
+                {willBeFree ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+                    <Text
+                      style={{
+                        fontFamily: fonts.monoBold,
+                        fontSize: 14,
+                        color: colors.inkParchmentMuted,
+                        textDecorationLine: 'line-through',
+                      }}
+                    >
+                      5 GOLD
+                    </Text>
+                    <Text
+                      style={{
+                        fontFamily: fonts.script,
+                        fontStyle: 'italic',
+                        fontSize: 14,
+                        color: colors.goldDeep,
+                      }}
+                    >
+                      WAIVED · SEEKER BEARER
+                    </Text>
+                  </View>
+                ) : (
+                  <Text
+                    style={{
+                      fontFamily: fonts.monoBold,
+                      fontSize: 14,
+                      color: colors.inkParchment,
+                    }}
+                  >
+                    5 GOLD
+                  </Text>
+                )}
+              </View>
+              {willBeFree && (
                 <Text
                   style={{
-                    fontFamily: fonts.monoBold,
-                    fontSize: 14,
-                    color: colors.inkParchment,
+                    fontFamily: fonts.bodyItalic,
+                    fontStyle: 'italic',
+                    fontSize: 11,
+                    color: colors.inkParchmentMuted,
+                    textAlign: 'center',
+                    marginTop: 8,
                   }}
                 >
-                  5 GOLD
+                  One free forge per Seeker bearer. Use it on your first Elder.
                 </Text>
-              </View>
+              )}
             </Parchment>
           </View>
         )}
@@ -637,9 +717,23 @@ export const ForgeScreen = ({ onClose, onComplete }: Props) => {
             </Btn>
           )}
           {step === 4 && (
-            <Btn variant="primary" style={{ flex: 2 }} onPress={startForge}>
-              FORGE · 5 GOLD
-            </Btn>
+            <View style={{ flex: 2, gap: 6 }}>
+              <Btn variant="primary" onPress={startForge}>
+                {willBeFree ? 'FORGE · FREE' : 'FORGE · 5 GOLD'}
+              </Btn>
+              {error && (
+                <Text
+                  style={{
+                    fontFamily: fonts.mono,
+                    fontSize: 10,
+                    color: colors.statusDanger,
+                    textAlign: 'center',
+                  }}
+                >
+                  {error}
+                </Text>
+              )}
+            </View>
           )}
         </View>
       )}

@@ -1,0 +1,34 @@
+# Exclude monorepo content unrelated to the mobile app from the EAS upload.
+# EAS Build runs `pnpm install` from the workspace root after extraction, so
+# all workspace packages this app depends on must remain. The exclusions
+# below are paths the mobile app does NOT depend on.
+
+# Old archived native Android apps (Gradle, separate from this RN app)
+../clan-world-mobile/build/
+../clan-world-mobile/.gradle/
+../kickstart-mobile/build/
+../kickstart-mobile/.gradle/
+
+# Unrelated sub-monorepo (Wormhole bridge — not used by mobile)
+../../gold-bridge-monorepo/
+
+# Foundry / Solidity build artifacts (not used by mobile)
+../../packages/contracts/cache/
+../../packages/contracts/out/
+../../packages/contracts/broadcast/
+../../packages/contracts/lib/
+
+# Logs, runtime artifacts, scratch
+../../runtime/
+../../infra/
+../../scripts/
+../../docs/
+../../images/
+
+# Sandbox / archive zips at the repo root
+../../*.zip
+
+# Standard
+node_modules/
+*.log
+.DS_Store

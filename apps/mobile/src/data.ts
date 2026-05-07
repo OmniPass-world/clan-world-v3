@@ -4,12 +4,17 @@
 export type ResourceKey = 'gold' | 'wood' | 'iron' | 'wheat' | 'fish' | 'blueprint';
 
 export type ArchetypeKey =
+  // Forge-picker archetypes (mobile UI)
   | 'patient-builder'
   | 'warlord'
   | 'diplomat'
   | 'hermit'
   | 'trickster'
-  | 'verdant-warden';
+  | 'verdant-warden'
+  // Real cockpit archetypes (mirrors apps/web/src/styles/cockpit-tokens.ts)
+  | 'aggressive-raider'
+  | 'cautious-accumulator'
+  | 'volatile-opportunist';
 
 export type StrategyAxisKey =
   | 'trust'
@@ -414,6 +419,10 @@ export const ARCHETYPE_GLYPHS: Record<
   hermit: { mark: '☖', color: '#8C6F3A', name: 'Hermit', short: 'Builds inward. Speaks rarely. Remembers all.' },
   trickster: { mark: '✦', color: '#9B6FA0', name: 'Trickster', short: 'Lies plausibly. Keeps a second ledger.' },
   'verdant-warden': { mark: '✧', color: '#6B8E5C', name: 'Verdant Warden', short: 'Husbands grain. Fights only at the wall.' },
+  // Real cockpit archetypes — glyphs/colors mirror apps/web cockpit-tokens
+  'aggressive-raider': { mark: '⚡', color: '#5a8aa8', name: 'Aggressive Raider', short: 'Strikes within ten ticks. Built to break early walls.' },
+  'cautious-accumulator': { mark: '⛨', color: '#7a8a6a', name: 'Cautious Accumulator', short: 'Husbands every grain. Fights only when forced.' },
+  'volatile-opportunist': { mark: '✦', color: '#a85a5a', name: 'Volatile Opportunist', short: 'Reads the table. Strikes where it bleeds.' },
 };
 
 export const RESOURCES: Record<ResourceKey, { glyph: string; color: string; label: string }> = {

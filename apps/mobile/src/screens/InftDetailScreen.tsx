@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useQuery } from 'convex/react';
+import { api } from '../convexApi';
 import {
   ARCHETYPE_GLYPHS,
   Inft,
@@ -7,6 +9,7 @@ import {
   StrategyAxisKey,
   truncAddr,
 } from '../data';
+import { isForgedInft, realClanIdOf } from '../clanData';
 import { ArchetypeGlyph } from '../components/ArchetypeGlyph';
 import { Btn } from '../components/Buttons';
 import { Diamond, GoldRuleSoft, ParchmentRule } from '../components/Diamond';
@@ -17,11 +20,15 @@ import { colors, fonts } from '../theme';
 
 type Props = {
   inft: Inft;
+  /** Currently-loaded INFT id from MMKV (e.g. `clan-3` or `forged-...`). */
+  loadedInftId: string | null;
   onBack: () => void;
   onEdit?: () => void;
   onWhisper?: () => void;
   onCockpit?: () => void;
   onHire?: () => void;
+  /** Slice 1: load/unload toggle. Pass null to unload, the inft.id to load. */
+  onLoad?: (inftId: string | null) => void;
   isBazaar?: boolean;
 };
 
@@ -29,13 +36,16 @@ type DetailTab = 'DOSSIER' | 'STRATEGY' | 'MEMORY' | 'HISTORY';
 
 export const InftDetailScreen = ({
   inft,
+  loadedInftId,
   onBack,
   onEdit,
   onWhisper,
   onCockpit,
   onHire,
+  onLoad,
   isBazaar = false,
 }: Props) => {
+  const isLoaded = inft.id === loadedInftId;
   const tabs: DetailTab[] = isBazaar
     ? ['DOSSIER', 'STRATEGY', 'HISTORY']
     : ['DOSSIER', 'STRATEGY', 'MEMORY', 'HISTORY'];
@@ -209,23 +219,28 @@ export const InftDetailScreen = ({
           <Btn variant="primary" block onPress={onHire}>
             {`HIRE · ${inft.hireFee ?? ''}`}
           </Btn>
-        ) : inft.state === 'in-game' ? (
-          <Btn variant="primary" block onPress={onCockpit}>
-            OPEN COCKPIT →
-          </Btn>
-        ) : inft.state === 'rented' ? (
-          <Btn variant="secondary" block>
-            WITHDRAW AT SEASON END
-          </Btn>
-        ) : (
+        ) : isLoaded ? (
           <>
-            <Btn variant="secondary" style={{ flex: 1 }}>
-              LIST FOR HIRE
+            <Btn
+              variant="secondary"
+              style={{ flex: 1 }}
+              onPress={() => onLoad?.(null)}
+            >
+              UNLOAD
             </Btn>
-            <Btn variant="primary" style={{ flex: 1 }}>
-              ENTER A SEASON
+            <Btn
+              variant="primary"
+              style={{ flex: 1 }}
+              onPress={onCockpit}
+              disabled={isForgedInft(inft)}
+            >
+              {isForgedInft(inft) ? 'AWAITS A SEASON' : 'ENTER COCKPIT →'}
             </Btn>
           </>
+        ) : (
+          <Btn variant="primary" block onPress={() => onLoad?.(inft.id)}>
+            LOAD INTO HALL
+          </Btn>
         )}
       </View>
     </View>
@@ -431,9 +446,36 @@ const StrategyReadOnly = ({
 );
 
 const MemoryTab = ({ inft }: { inft: Inft }) => {
-  const kv = inft.kvState ?? {};
-  const mem = inft.memory ?? [];
-  const kvEntries = Object.entries(kv);
+  const realClanId = realClanIdOf(inft);
+  // Real clans → live Convex queries. Forged INFTs → empty/mock fallback.
+  const liveKv = useQuery(
+    api.memory.getByClan,
+    realClanId !== null ? { clanId: realClanId } : 'skip',
+  );
+  const liveEvents = useQuery(
+    api.memory.getEventsByClan,
+    realClanId !== null ? { clanId: realClanId } : 'skip',
+  );
+
+  const kvEntries: [string, string][] =
+    realClanId !== null && liveKv
+      ? (liveKv as Array<{ key: string; value: string }>).map((row) => [row.key, row.value])
+      : Object.entries(inft.kvState ?? {});
+
+  const mem: { t: string; op: 'WRITE' | 'READ'; text: string }[] =
+    realClanId !== null && liveEvents
+      ? (liveEvents as Array<{
+          tick: number;
+          op: 'read' | 'write';
+          key: string;
+          note?: string;
+        }>).map((row) => ({
+          t: `T${row.tick}`,
+          op: row.op === 'write' ? 'WRITE' : 'READ',
+          text: row.note ?? row.key,
+        }))
+      : inft.memory ?? [];
+
   return (
     <View style={{ gap: 14 }}>
       <Stone>
