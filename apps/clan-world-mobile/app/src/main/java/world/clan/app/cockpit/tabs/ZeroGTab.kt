@@ -32,6 +32,7 @@ import world.clan.app.data.convex.toDomain
 import world.clan.app.data.convex.useBulletins
 import world.clan.app.data.convex.useMemoryEvents
 import world.clan.app.data.convex.useMemoryKv
+import world.clan.app.data.convex.useSnapshot
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
 
@@ -50,9 +51,17 @@ fun ZeroGTab(elder: Elder, modifier: Modifier = Modifier) {
   // for KV / CRUD / bulletins; falls back to per-clan stubs when empty.
   val meta = StubData.inftMeta(elder.clanId)
 
+  val snapshotState = useSnapshot()
   val kvState = useMemoryKv(elder.clanId)
   val crudState = useMemoryEvents(elder.clanId)
   val bulletinState = useBulletins(elder.clanId)
+
+  // Anchor bulletin age to the live world tick instead of max(bulletin.slot).
+  // Old formula reported "0t" when the only bulletin was 100 ticks stale,
+  // because max == itself. Falls back to the stub's CURRENT_TICK if snapshot
+  // isn't live yet — matches the precedent in VaultTab.
+  val currentTick = (snapshotState as? QueryState.Live)?.data?.tick?.toInt()
+    ?: StubData.CURRENT_TICK
 
   val kvRows = when (kvState) {
     is QueryState.Live -> kvState.data.map { it.toDomain() }
@@ -63,10 +72,7 @@ fun ZeroGTab(elder: Elder, modifier: Modifier = Modifier) {
     else -> StubData.crud(elder.clanId)
   }
   val bulletins = when (bulletinState) {
-    is QueryState.Live -> {
-      val currentSlot = bulletinState.data.maxOfOrNull { it.slot.toInt() } ?: 0
-      bulletinState.data.map { it.toDomain(currentSlot = currentSlot) }
-    }
+    is QueryState.Live -> bulletinState.data.map { it.toDomain(currentSlot = currentTick) }
     else -> StubData.bulletinsForOwner(elder.clanId)
   }
 
