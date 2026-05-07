@@ -48,6 +48,8 @@ private val ORCH_GREY     = Color(0xFF5A5A5A)
 private val HUMAN_BORDER  = Color(0xFFB8862E)
 private val HUMAN_FG      = Color(0xFF7A4E10)
 
+private val SPEAKER_CLAN_REGEX = Regex("^clan-(\\d+)$")
+
 private enum class CommsView { Axl, Bulletin }
 
 /**
@@ -314,7 +316,7 @@ private fun bubbleStyle(line: StubData.CommsLine): BubbleStyle = when (line.kind
 }
 
 private fun speakerToClanId(speaker: String): Int? {
-  val m = Regex("^clan-(\\d+)$").matchEntire(speaker) ?: return null
+  val m = SPEAKER_CLAN_REGEX.matchEntire(speaker) ?: return null
   return m.groupValues[1].toIntOrNull()
 }
 
