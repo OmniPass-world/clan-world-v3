@@ -1,0 +1,80 @@
+{
+  "expo": {
+    "name": "Clan World",
+    "slug": "clan-world-mobile",
+    "version": "0.1.0",
+    "scheme": "clanworld",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": false,
+    "icon": "./assets/logo-main-square.png",
+    "splash": {
+      "image": "./assets/logo-main-square.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0A0E"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "platforms": [
+      "android"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "army.shib.clanworld"
+    },
+    "android": {
+      "package": "army.shib.clanworld",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-main-square.png",
+        "backgroundColor": "#0B0A0E"
+      }
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#D4AF5C"
+        }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "Hero",
+              "label": "Clan World",
+              "description": "Your loaded Elder's tick, vault, and raid alerts.",
+              "minWidth": "260dp",
+              "minHeight": "160dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "updatePeriodMillis": 1800000,
+              "resizeMode": "horizontal|vertical",
+              "previewImage": "./assets/logo-main-square.png"
+            }
+          ]
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
+    ],
+    "owner": "mikail_18",
+    "extra": {
+      "eas": {
+        "projectId": "b4d5af86-ead3-4104-b47e-704d66a8d943"
+      }
+    }
+  }
+}
