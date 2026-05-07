@@ -36,28 +36,43 @@ object TokenImageLoader {
   // bitmap decodes. Cap at 4 so widget refreshes degrade gracefully under load.
   private val executor = Executors.newFixedThreadPool(4)
 
-  fun loadInto(imageView: ImageView, iconUrl: String?, fallbackRes: Int = R.drawable.kickstart_icon) {
+  fun loadInto(
+    imageView: ImageView,
+    iconUrl: String?,
+    fallbackRes: Int = R.drawable.kickstart_icon,
+    onLoaded: (() -> Unit)? = null,
+  ) {
     val url = normalizeUrl(iconUrl)
     if (url == null) {
       imageView.setImageResource(fallbackRes)
+      onLoaded?.invoke()
       return
     }
     cache.get(url)?.let {
       imageView.setImageBitmap(it)
+      onLoaded?.invoke()
       return
     }
     val context = imageView.context.applicationContext
     decodeFromDisk(context, url)?.let { bitmap ->
       cache.put(url, bitmap)
       imageView.setImageBitmap(bitmap)
+      onLoaded?.invoke()
       return
     }
     imageView.setImageResource(fallbackRes)
     executor.execute {
-      val bitmap = loadBitmap(context, url) ?: return@execute
-      cache.put(url, bitmap)
+      val bitmap = loadBitmap(context, url)
+      if (bitmap != null) {
+        cache.put(url, bitmap)
+      }
       imageView.post {
-        imageView.setImageBitmap(bitmap)
+        if (bitmap != null) {
+          imageView.setImageBitmap(bitmap)
+        }
+        // Fire even on network failure so any waiter (e.g. CCT pre-warm gate)
+        // doesn't stall when an icon URL is dead.
+        onLoaded?.invoke()
       }
     }
   }

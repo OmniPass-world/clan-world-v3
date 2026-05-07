@@ -1,6 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <uses-permission android:name="android.permission.INTERNET" />
 
+  <!--
+    Android 11+ package-visibility filter. Required for
+    CustomTabsClient.getPackageName() to discover Chrome / browsers
+    that implement the Custom Tabs Service — without this declaration
+    the lookup returns null on targetSdk >= 30 and pre-warming + CCT
+    bind silently no-op.
+  -->
+  <queries>
+    <intent>
+      <action android:name="android.support.customtabs.action.CustomTabsService" />
+    </intent>
+  </queries>
+
   <application
     android:allowBackup="true"
     android:icon="@mipmap/ic_launcher"

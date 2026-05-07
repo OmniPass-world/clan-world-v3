@@ -1,41 +1,55 @@
 package io.easya.kickstart
 
 import android.app.Activity
-import android.app.AlertDialog
-import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebResourceRequest
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.browser.customtabs.CustomTabColorSchemeParams
+import androidx.browser.customtabs.CustomTabsClient
+import androidx.browser.customtabs.CustomTabsIntent
+import androidx.browser.customtabs.CustomTabsServiceConnection
+import androidx.browser.customtabs.CustomTabsSession
+import java.util.concurrent.atomic.AtomicInteger
 
 class MainActivity : Activity() {
-  private lateinit var webView: WebView
   private lateinit var content: FrameLayout
   private lateinit var homeTab: TextView
   private lateinit var listTab: TextView
   private var selectedUrl: String = BuildConfig.HOME_URL
-  private var walletDialog: AlertDialog? = null
+
+  private var customTabsClient: CustomTabsClient? = null
+  private var customTabsSession: CustomTabsSession? = null
+  private var customTabsServiceConn: CustomTabsServiceConnection? = null
+  private var preWarmed = false
+  private var leaderboardLoaded = false
+  private val pendingImageLoads = AtomicInteger(0)
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private val preWarmFallback = Runnable {
+    leaderboardLoaded = true
+    maybePreWarmCustomTabs()
+  }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     val rawIncomingUrl = intent.getStringExtra(EXTRA_URL)
     selectedUrl = sanitizeIncomingUrl(rawIncomingUrl)
     window.statusBarColor = getColor(R.color.kickstart_bg)
-    window.navigationBarColor = getColor(R.color.kickstart_bg)
+    window.navigationBarColor = getColor(R.color.widget_bg)
 
     val root = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
-      setBackgroundColor(getColor(R.color.kickstart_bg))
+      setBackgroundColor(getColor(R.color.widget_bg))
     }
     val tabs = LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -57,10 +71,17 @@ class MainActivity : Activity() {
     setContentView(root)
     root.requestApplyInsets()
 
-    homeTab.setOnClickListener { showHome(selectedUrl) }
+    homeTab.setOnClickListener { launchHomeInCustomTab(selectedUrl) }
     listTab.setOnClickListener { showLeaderboard() }
+
+    bindCustomTabsService()
+
     if (rawIncomingUrl != null) {
-      showHome(selectedUrl)
+      // Deep-linked into a specific token page → open it in CCT immediately.
+      // Show the leaderboard underneath so the back gesture lands somewhere
+      // useful instead of an empty FrameLayout.
+      showLeaderboard()
+      launchHomeInCustomTab(selectedUrl)
     } else {
       showLeaderboard()
     }
@@ -69,44 +90,31 @@ class MainActivity : Activity() {
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     val rawNextUrl = intent.getStringExtra(EXTRA_URL) ?: intent.dataString
-    if (rawNextUrl != null && ::webView.isInitialized) {
+    if (rawNextUrl != null) {
       val safeUrl = sanitizeIncomingUrl(rawNextUrl)
       selectedUrl = safeUrl
-      showHome(safeUrl)
+      launchHomeInCustomTab(safeUrl)
     }
   }
 
-  private fun showHome(url: String) {
+  private fun launchHomeInCustomTab(url: String) {
     selectedUrl = url
     selectTab(homeTab)
-    // Tear down any prior WebView before re-allocating: showHome() can be
-    // re-invoked (tab switch, deep link, onNewIntent) and otherwise leaks
-    // the renderer process per re-entry.
-    destroyWebViewIfPresent()
-    content.removeAllViews()
-    webView = WebView(this).apply {
-      webViewClient = object : WebViewClient() {
-        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-          return handleExternalUrl(request.url)
-        }
-
-        @Deprecated("Deprecated in Android")
-        override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-          return handleExternalUrl(Uri.parse(url))
-        }
-      }
-      settings.javaScriptEnabled = true
-      settings.domStorageEnabled = true
-      setBackgroundColor(getColor(R.color.kickstart_bg))
-    }
-    content.addView(webView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-    webView.loadUrl(url)
+    val intent = CustomTabsIntent.Builder(customTabsSession)
+      .setDefaultColorSchemeParams(
+        CustomTabColorSchemeParams.Builder()
+          .setToolbarColor(getColor(R.color.kickstart_bg))
+          .build(),
+      )
+      .setShowTitle(true)
+      .build()
+    runCatching { intent.launchUrl(this, Uri.parse(url)) }
   }
 
   private fun showLeaderboard() {
     selectTab(listTab)
     content.removeAllViews()
-    val scroll = ScrollView(this).apply { setBackgroundColor(getColor(R.color.kickstart_bg)) }
+    val scroll = ScrollView(this).apply { setBackgroundColor(getColor(R.color.widget_bg)) }
     val list = LinearLayout(this).apply {
       orientation = LinearLayout.VERTICAL
       setPadding(dp(12), dp(8), dp(12), dp(24))
@@ -120,21 +128,47 @@ class MainActivity : Activity() {
         list.removeAllViews()
         if (tokens.isEmpty()) {
           list.addView(rowText("No leaderboard data yet. Try again in a moment.", 14, getColor(R.color.widget_muted)))
+          // No images to wait on — gate the CCT pre-warm now.
+          leaderboardLoaded = true
+          maybePreWarmCustomTabs()
         } else {
+          // Only count image loads on the very first leaderboard render. After
+          // pre-warming has fired (or once we've decided not to wait), let the
+          // counter stay at zero so subsequent re-renders don't reopen the gate.
+          val countImages = !preWarmed && !leaderboardLoaded
+          if (countImages) {
+            pendingImageLoads.set(tokens.size)
+            // Belt + suspenders: if some image load silently never reports
+            // completion (slow CDN, crashed decode, view recycled), fire the
+            // pre-warm anyway 12s after the rows are added.
+            mainHandler.removeCallbacks(preWarmFallback)
+            mainHandler.postDelayed(preWarmFallback, 12_000L)
+          }
           tokens.forEach { token ->
-            list.addView(tokenRow(token) {
-              KickstartClient.watchToken(token.tokenMint)
-              selectedUrl = "${BuildConfig.HOME_URL.trimEnd('/')}/token/${token.tokenMint}"
-              selectTab(homeTab)
-              showHome(selectedUrl)
-            })
+            list.addView(tokenRow(
+              token = token,
+              onImageLoaded = if (countImages) {
+                {
+                  if (pendingImageLoads.decrementAndGet() <= 0) {
+                    mainHandler.removeCallbacks(preWarmFallback)
+                    leaderboardLoaded = true
+                    maybePreWarmCustomTabs()
+                  }
+                }
+              } else null,
+              onClick = {
+                KickstartClient.watchToken(token.tokenMint)
+                selectedUrl = "${BuildConfig.HOME_URL.trimEnd('/')}/token/${token.tokenMint}"
+                launchHomeInCustomTab(selectedUrl)
+              },
+            ))
           }
         }
       }
     }.start()
   }
 
-  private fun tokenRow(token: KickstartToken, onClick: () -> Unit): View {
+  private fun tokenRow(token: KickstartToken, onImageLoaded: (() -> Unit)?, onClick: () -> Unit): View {
     return LinearLayout(this).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
@@ -145,7 +179,7 @@ class MainActivity : Activity() {
         scaleType = ImageView.ScaleType.CENTER_CROP
         clipToOutline = true
       }
-      TokenImageLoader.loadInto(icon, token.iconUrl)
+      TokenImageLoader.loadInto(icon, token.iconUrl, onLoaded = onImageLoaded)
       val left = TextView(context).apply {
         text = "#${token.rank}  ${token.symbol}\n${token.name}"
         setTextColor(getColor(R.color.widget_text))
@@ -195,87 +229,58 @@ class MainActivity : Activity() {
 
   private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-  private fun handleExternalUrl(uri: Uri): Boolean {
-    val scheme = uri.scheme?.lowercase() ?: return false
-    if (scheme == "http" || scheme == "https") return false
-    if (isWalletUrl(uri)) showOpenInChromeDialog()
-    return true
-  }
-
-  private fun isWalletUrl(uri: Uri): Boolean {
-    val value = uri.toString().lowercase()
-    val scheme = uri.scheme?.lowercase()
-    if (scheme == "solana-wallet" || scheme == "phantom" || scheme == "solflare") return true
-    if (scheme != "intent") return value.contains("solana-wallet") || value.contains("phantom") || value.contains("solflare")
-    val intent = runCatching { Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME) }.getOrNull()
-    val parsedScheme = intent?.scheme?.lowercase()
-    val fallback = intent?.getStringExtra("browser_fallback_url")?.lowercase()
-    return parsedScheme == "solana-wallet" ||
-      parsedScheme == "phantom" ||
-      parsedScheme == "solflare" ||
-      fallback?.contains("solana-wallet") == true ||
-      fallback?.contains("phantom") == true ||
-      fallback?.contains("solflare") == true ||
-      value.contains("solana-wallet") ||
-      value.contains("phantom") ||
-      value.contains("solflare")
-  }
-
-  private fun showOpenInChromeDialog() {
-    if (isFinishing || isDestroyed) return
-    if (walletDialog?.isShowing == true) return
-    walletDialog = AlertDialog.Builder(this)
-      .setTitle("Open in Chrome")
-      .setMessage("Wallet connection is not supported inside this app. Open this token page in Chrome to connect a wallet.")
-      .setPositiveButton("Open") { _, _ -> openSelectedPageInBrowser() }
-      .setNegativeButton("Cancel", null)
-      .create()
-      .also { dialog ->
-        dialog.setOnDismissListener { walletDialog = null }
-        dialog.show()
+  private fun bindCustomTabsService() {
+    val packageName = CustomTabsClient.getPackageName(this, null) ?: return
+    val conn = object : CustomTabsServiceConnection() {
+      override fun onCustomTabsServiceConnected(name: ComponentName, client: CustomTabsClient) {
+        customTabsClient = client
+        // Don't warmup here — we wait until the leaderboard's images have
+        // finished loading so the cold CCT bind doesn't compete with a
+        // burst of icon HTTP fetches on first launch.
+        maybePreWarmCustomTabs()
       }
-  }
 
-  private fun openSelectedPageInBrowser() {
-    val pageUrl = selectedUrl.takeIf { it.startsWith("http://") || it.startsWith("https://") } ?: BuildConfig.HOME_URL
-    val uri = Uri.parse(pageUrl)
-    val chromeIntent = Intent(Intent.ACTION_VIEW, uri).apply {
-      addCategory(Intent.CATEGORY_BROWSABLE)
-      setPackage("com.android.chrome")
+      override fun onServiceDisconnected(name: ComponentName?) {
+        customTabsClient = null
+        customTabsSession = null
+      }
     }
-    runCatching { startActivity(chromeIntent) }
-      .recoverCatching { error ->
-        if (error is ActivityNotFoundException) {
-          startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
-        }
-      }
+    customTabsServiceConn = conn
+    runCatching { CustomTabsClient.bindCustomTabsService(this, packageName, conn) }
   }
 
-  override fun onBackPressed() {
-    if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
-    else super.onBackPressed()
+  private fun maybePreWarmCustomTabs() {
+    if (preWarmed) return
+    if (!leaderboardLoaded) return
+    val client = customTabsClient ?: return
+    preWarmed = true
+    runCatching { client.warmup(0L) }
+    val session = runCatching { client.newSession(null) }.getOrNull()
+    customTabsSession = session
+    if (session != null) {
+      val homeUri = runCatching { Uri.parse(BuildConfig.HOME_URL) }.getOrNull()
+      if (homeUri != null) {
+        runCatching { session.mayLaunchUrl(homeUri, null, null) }
+      }
+    }
   }
 
   override fun onDestroy() {
-    destroyWebViewIfPresent()
-    super.onDestroy()
-  }
-
-  private fun destroyWebViewIfPresent() {
-    if (::webView.isInitialized) {
-      webView.stopLoading()
-      webView.loadUrl("about:blank")
-      (webView.parent as? ViewGroup)?.removeView(webView)
-      webView.removeAllViews()
-      webView.destroy()
+    mainHandler.removeCallbacks(preWarmFallback)
+    customTabsServiceConn?.let { conn ->
+      runCatching { unbindService(conn) }
     }
+    customTabsServiceConn = null
+    customTabsClient = null
+    customTabsSession = null
+    super.onDestroy()
   }
 
   /**
    * Allow only HTTPS URLs whose host matches the configured kickstart home or
    * an explicit allowlist of trusted subdomains. Any other input falls back to
    * the configured `BuildConfig.HOME_URL` so an external app or deep link
-   * can't redirect this exported, JS-enabled WebView at an arbitrary origin.
+   * can't redirect this exported activity at an arbitrary origin.
    */
   private fun sanitizeIncomingUrl(rawUrl: String?): String {
     if (rawUrl.isNullOrBlank()) return BuildConfig.HOME_URL
@@ -301,9 +306,8 @@ class MainActivity : Activity() {
     const val EXTRA_URL = "io.easya.kickstart.EXTRA_URL"
 
     /**
-     * Hosts allowed for WebView loads in addition to the configured
-     * `BuildConfig.HOME_URL` host. Keep this list narrow; every entry
-     * widens the trust surface of an exported JS-enabled WebView.
+     * Hosts allowed for incoming intent URLs in addition to the configured
+     * `BuildConfig.HOME_URL` host. Keep this list narrow.
      */
     private val EXTRA_ALLOWED_HOSTS = setOf(
       "kickstart.easya.io",
