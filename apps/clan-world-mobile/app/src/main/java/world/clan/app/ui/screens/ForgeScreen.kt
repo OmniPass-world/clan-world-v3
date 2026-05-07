@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -271,6 +272,15 @@ private fun StepPickClan(state: ForgeUiState, onSelect: (Int) -> Unit) {
       color = ClanWorldTheme.colors.warmFaint,
       modifier = Modifier.padding(horizontal = 22.dp),
     )
+    if (state.ownedClanIds.isNotEmpty()) {
+      Spacer(Modifier.height(4.dp))
+      Text(
+        text = "clans already under your hand can't be re-forged.",
+        style = ClanWorldTheme.type.scriptItalicSmall,
+        color = ClanWorldTheme.colors.warmFaint,
+        modifier = Modifier.padding(horizontal = 22.dp),
+      )
+    }
     Spacer(Modifier.height(10.dp))
     LazyColumn(
       modifier = Modifier.fillMaxSize(),
@@ -278,10 +288,12 @@ private fun StepPickClan(state: ForgeUiState, onSelect: (Int) -> Unit) {
       contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp),
     ) {
       items((1..8).toList()) { clanId ->
+        val owned = clanId in state.ownedClanIds
         ClanCard(
           clanId = clanId,
           selected = state.clanId == clanId,
-          onClick = { onSelect(clanId) },
+          owned = owned,
+          onClick = { if (!owned) onSelect(clanId) },
         )
       }
     }
@@ -289,15 +301,26 @@ private fun StepPickClan(state: ForgeUiState, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun ClanCard(clanId: Int, selected: Boolean, onClick: () -> Unit) {
+private fun ClanCard(
+  clanId: Int,
+  selected: Boolean,
+  owned: Boolean,
+  onClick: () -> Unit,
+) {
   val accent = clanColor(clanId)
-  val borderColor = if (selected) accent else ClanWorldTheme.colors.hairline
-  val borderStroke = if (selected) 2.dp else 1.dp
+  val borderColor = when {
+    owned -> ClanWorldTheme.colors.hairline
+    selected -> accent
+    else -> ClanWorldTheme.colors.hairline
+  }
+  val borderStroke = if (selected && !owned) 2.dp else 1.dp
+  val cardAlpha = if (owned) 0.45f else 1f
 
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .clickable { onClick() }
+      .alpha(cardAlpha)
+      .clickable(enabled = !owned) { onClick() }
       .drawBehind {
         drawRoundRect(
           color = borderColor,
@@ -323,7 +346,7 @@ private fun ClanCard(clanId: Int, selected: Boolean, onClick: () -> Unit) {
             color = Ink,
           )
           Text(
-            text = clanTagline(clanId),
+            text = if (owned) "already under your hand" else clanTagline(clanId),
             style = ClanWorldTheme.type.scriptItalic,
             color = Ink2,
             modifier = Modifier.padding(top = 2.dp),
