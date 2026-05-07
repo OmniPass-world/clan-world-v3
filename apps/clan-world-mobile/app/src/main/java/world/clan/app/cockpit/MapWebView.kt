@@ -42,5 +42,6 @@ fun MapWebView(modifier: Modifier = Modifier) {
         loadUrl(BuildConfig.MAP_URL)
       }
     },
+    onRelease = { it.destroy() },
   )
 }
