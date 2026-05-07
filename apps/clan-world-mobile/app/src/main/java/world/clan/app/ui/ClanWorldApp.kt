@@ -413,9 +413,16 @@ fun ClanWorldApp(
               isBazaar = true,
               mwaSender = mwaSender,
               onHireConfirmed = {
-                val name = world.clan.app.data.bazaarListingByClan(clanId)
-                  ?.let { l -> "tkn 0x${"%04x".format(l.tokenId)}" }
-                  .orEmpty()
+                val listing = world.clan.app.data.bazaarListingByClan(clanId)
+                val name = listing?.let { "tkn 0x${"%04x".format(it.tokenId)}" }.orEmpty()
+                app.lineageStore.append(
+                  world.clan.app.data.LineageEntry(
+                    kind = "hired",
+                    clanId = clanId,
+                    title = "Hired ${world.clan.app.viewmodel.clanDisplayName(clanId)}",
+                    subtitle = listing?.let { "${it.pricePerSeason}g · 1 season · $name" } ?: name,
+                  ),
+                )
                 nav.navigate(Routes.forged(clanId, name, "HIRED")) {
                   popUpTo(Routes.Bazaar) { saveState = true }
                 }
@@ -473,7 +480,17 @@ fun ClanWorldApp(
               mwaSender = mwaSender,
               initialClanId = clanId,
               onBack = { nav.popBackStack() },
-              onSent = { nav.popBackStack() },
+              onSent = {
+                app.lineageStore.append(
+                  world.clan.app.data.LineageEntry(
+                    kind = "whispered",
+                    clanId = clanId,
+                    title = "Whispered to ${world.clan.app.viewmodel.clanDisplayName(clanId)}",
+                    subtitle = "queued for next tick",
+                  ),
+                )
+                nav.popBackStack()
+              },
             )
           }
 
@@ -490,9 +507,15 @@ fun ClanWorldApp(
               mwaSender = mwaSender,
               onBack = { nav.popBackStack() },
               onForged = { clanId, name ->
+                app.lineageStore.append(
+                  world.clan.app.data.LineageEntry(
+                    kind = "forged",
+                    clanId = clanId,
+                    title = "Forged ${name.ifBlank { "the unnamed seal" }}",
+                    subtitle = world.clan.app.viewmodel.clanDisplayName(clanId),
+                  ),
+                )
                 nav.navigate(Routes.forged(clanId, name, "FORGED")) {
-                  // Replace Forge wizard so back goes to Hall, not the
-                  // wizard's last step.
                   popUpTo(Routes.Forge) { inclusive = true }
                 }
               },
@@ -569,7 +592,17 @@ fun ClanWorldApp(
               mwaSender = mwaSender,
               clanId = clanId,
               onBack = { nav.popBackStack() },
-              onSaved = { nav.popBackStack() },
+              onSaved = {
+                app.lineageStore.append(
+                  world.clan.app.data.LineageEntry(
+                    kind = "sealed",
+                    clanId = clanId,
+                    title = "Sealed doctrine for ${world.clan.app.viewmodel.clanDisplayName(clanId)}",
+                    subtitle = "the elder will hold this counsel",
+                  ),
+                )
+                nav.popBackStack()
+              },
             )
           }
 
