@@ -488,7 +488,24 @@ private fun StepPickHarness(state: ForgeUiState, onSelect: (Harness) -> Unit) {
       style = ClanWorldTheme.type.scriptItalic,
       color = ClanWorldTheme.colors.warmDim,
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(12.dp))
+
+    // Picked-clan sigil preview (smaller than step 2; the harness cards
+    // are the focus here). Mirrors step 2's "see what you're naming"
+    // pattern.
+    val pickedClan = state.clanId
+    if (pickedClan != null) {
+      Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.Center,
+      ) {
+        Sigil(
+          spec = bigSigilSpec(clanColor(pickedClan)),
+          modifier = Modifier.size(80.dp),
+        )
+      }
+      Spacer(Modifier.height(4.dp))
+    }
 
     Harness.values().forEach { h ->
       HarnessCard(
