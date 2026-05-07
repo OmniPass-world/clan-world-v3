@@ -58,6 +58,7 @@ fun WhispersScreenRoute(
     onBack = onBack,
     onSetFilter = vm::setFilter,
     onCompose = onCompose,
+    onRefresh = vm::refresh,
   )
 }
 
@@ -68,6 +69,7 @@ private fun WhispersScreen(
   onBack: () -> Unit,
   onSetFilter: (WhispersFilter) -> Unit,
   onCompose: () -> Unit = {},
+  onRefresh: () -> Unit = {},
 ) {
   Column(modifier = Modifier.fillMaxSize()) {
     InboxBackBar(clanId = clanId, onBack = onBack)
@@ -100,30 +102,39 @@ private fun WhispersScreen(
           modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
         )
       }
-      state.errorMessage != null -> {
-        Text(
-          text = state.errorMessage,
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.danger,
-          modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
-        )
-      }
-      items.isEmpty() -> {
-        Text(
-          text = "no whispers carry this kind.",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-          modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+      state.errorMessage != null && items.isEmpty() -> {
+        world.clan.app.ui.components.RetryNotice(
+          message = state.errorMessage,
+          onRetry = onRefresh,
         )
       }
       else -> {
-        LazyColumn(
+        world.clan.app.ui.components.RefreshableContent(
+          isRefreshing = state.isLoading,
+          onRefresh = onRefresh,
           modifier = Modifier.fillMaxSize(),
-          verticalArrangement = Arrangement.spacedBy(10.dp),
-          contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp),
         ) {
-          items(items.withIndex().toList(), key = { (i, c) -> "${i}-${c.tick ?: c.timestamp ?: 0}" }) { (_, c) ->
-            InboxRow(comm = c)
+          if (items.isEmpty()) {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+              item {
+                Text(
+                  text = "no whispers carry this kind.",
+                  style = ClanWorldTheme.type.scriptItalic,
+                  color = ClanWorldTheme.colors.warmFaint,
+                  modifier = Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+                )
+              }
+            }
+          } else {
+            LazyColumn(
+              modifier = Modifier.fillMaxSize(),
+              verticalArrangement = Arrangement.spacedBy(10.dp),
+              contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp),
+            ) {
+              items(items.withIndex().toList(), key = { (i, c) -> "${i}-${c.tick ?: c.timestamp ?: 0}" }) { (_, c) ->
+                InboxRow(comm = c)
+              }
+            }
           }
         }
       }
