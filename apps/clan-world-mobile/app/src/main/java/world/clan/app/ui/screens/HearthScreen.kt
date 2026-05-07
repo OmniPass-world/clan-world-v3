@@ -39,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import world.clan.app.App
@@ -60,7 +59,6 @@ import world.clan.app.ui.theme.clanColor
 import world.clan.app.viewmodel.ClanWorldViewModelFactory
 import world.clan.app.viewmodel.HearthUiState
 import world.clan.app.viewmodel.HearthViewModel
-import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.viewmodel.clanTagline
 
 @Composable
