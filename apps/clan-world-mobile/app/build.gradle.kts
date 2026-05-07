@@ -5,16 +5,22 @@ plugins {
   id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// ─────────────────────────────────────────────────────────────────────────
 // Build-time URL config.
 //
-// We deliberately fall back from environment → Gradle project property → null.
-// If neither is set the build fails loudly: a hardcoded fallback previously
-// risked silently shipping a wrong/non-prod URL into release APKs.
+// MAP_URL and TERMINAL_BASE_URL: required at build time. We deliberately
+// fall back from env → Gradle property → hard fail. A hardcoded fallback
+// previously risked silently shipping the wrong backend into release APKs.
 //
-// Local devs can keep the URLs in `~/.gradle/gradle.properties`:
+// CONVEX_URL: optional with a sensible default (the V3 Convex deployment).
+// Falling back is safe here because the default points to the public read
+// endpoint — there's no auth or write surface that could leak.
+//
+// Local devs can keep these in `~/.gradle/gradle.properties`:
 //   clanWorldMapUrl=https://app.clan-world.com
 //   clanWorldTerminalBaseUrl=https://cockpit.clan-world.com
-// CI must pass the env vars explicitly.
+// ─────────────────────────────────────────────────────────────────────────
+
 fun resolveBuildConfigUrl(envName: String, propName: String): String {
   val envValue = System.getenv(envName)?.takeIf { it.isNotBlank() }
   if (envValue != null) return envValue
@@ -29,6 +35,8 @@ fun resolveBuildConfigUrl(envName: String, propName: String): String {
 
 val mapUrl = resolveBuildConfigUrl("CLAN_WORLD_MAP_URL", "clanWorldMapUrl")
 val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "clanWorldTerminalBaseUrl")
+val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
+  .orElse("https://valuable-kudu-985.convex.cloud")
 
 // Optional stable signing key. See apps/kickstart-mobile/app/build.gradle.kts
 // for details — both apps share the same secret names so one CI step can
@@ -41,9 +49,6 @@ val hasStableSigning = releaseKeystorePath != null &&
   !releaseKeystorePassword.isNullOrBlank() &&
   !releaseKeyAlias.isNullOrBlank() &&
   !releaseKeyPassword.isNullOrBlank()
-
-val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
-  .orElse("https://valuable-kudu-985.convex.cloud")
 
 android {
   namespace = "world.clan.app"
@@ -58,6 +63,7 @@ android {
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
+    vectorDrawables { useSupportLibrary = true }
   }
 
   if (hasStableSigning) {
@@ -83,6 +89,8 @@ android {
     buildConfig = true
     compose = true
   }
+  // Kotlin 2.0 routes Compose through the kotlin.plugin.compose plugin —
+  // do NOT add `composeOptions { kotlinCompilerExtensionVersion = … }`.
 
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -101,35 +109,59 @@ android {
 }
 
 dependencies {
-  // Compose BOM — pins all Compose lib versions to a tested set
+  // ── Core / lifecycle ─────────────────────────────────────────────────
+  implementation("androidx.core:core-ktx:1.15.0")
+  implementation("androidx.activity:activity-compose:1.9.3")
+  implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
+  implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+  implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
+
+  // ── Compose BOM — single source of truth for Compose artifact versions ─
   val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
   implementation(composeBom)
   androidTestImplementation(composeBom)
 
-  // Compose core
+  // ── Compose UI + Material3 ───────────────────────────────────────────
   implementation("androidx.compose.ui:ui")
   implementation("androidx.compose.ui:ui-graphics")
   implementation("androidx.compose.ui:ui-tooling-preview")
-  implementation("androidx.compose.foundation:foundation")
-  implementation("androidx.compose.material3:material3")
-  implementation("androidx.compose.runtime:runtime")
   debugImplementation("androidx.compose.ui:ui-tooling")
+  implementation("androidx.compose.foundation:foundation")
+  implementation("androidx.compose.runtime:runtime")
+  implementation("androidx.compose.material3:material3")
+  implementation("androidx.compose.material:material-icons-extended")
 
-  // Activity / lifecycle
-  implementation("androidx.activity:activity-compose:1.9.3")
-  implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
-  implementation("androidx.core:core-ktx:1.15.0")
-
-  // Navigation
+  // ── Navigation ───────────────────────────────────────────────────────
   implementation("androidx.navigation:navigation-compose:2.8.5")
 
-  // WebView (modern APIs + safe browsing)
+  // ── WebView (cockpit's MapWebView + slice 2 cockpit URL surface) ─────
   implementation("androidx.webkit:webkit:1.12.1")
 
-  // Solana Mobile Wallet Adapter — real signing
+  // ── Coroutines ───────────────────────────────────────────────────────
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+  // ── JSON serialization (Convex client) ───────────────────────────────
+  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+  // ── Networking — single shared OkHttp instance ───────────────────────
+  implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+  // ── Encrypted SharedPreferences (session token) ──────────────────────
+  implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+  // ── Image loading (Coil) ─────────────────────────────────────────────
+  implementation("io.coil-kt:coil-compose:2.7.0")
+
+  // ── Solana Mobile Wallet Adapter ─────────────────────────────────────
+  // Pinned to 2.0.7. The 2.1.0 release pulls androidx.core:core-ktx:1.17.0
+  // transitively, which requires AGP 8.9.1 + compileSdk 36. We're on AGP
+  // 8.7.3 / compileSdk 35. The 2.0.x line is API-identical for our usage
+  // (verified against the v2.0.5 + v2.0.7 tags).
   implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.7")
 
-  // Live Convex data wiring
-  implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-  implementation("com.squareup.okhttp3:okhttp:4.12.0")
+  // ── Tests ────────────────────────────────────────────────────────────
+  testImplementation("junit:junit:4.13.2")
+  androidTestImplementation("androidx.test.ext:junit:1.2.1")
+  androidTestImplementation("androidx.compose.ui:ui-test-junit4")
 }

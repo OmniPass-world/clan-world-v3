@@ -1,0 +1,2025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Clan World · Mobile · Slice I</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@1,400;1,500;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@300;400;500;600&family=Uncial+Antiqua&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --obsidian:#08070A;
+    --obsidian-2:#0d0c10;
+    --iron:#15110E;
+    --iron-2:#1F1A14;
+    --iron-3:#2A2418;
+    --iron-edge:#3a2f20;
+    --hairline:rgba(212,160,74,0.16);
+    --hairline-2:rgba(212,160,74,0.30);
+    --hairline-strong:rgba(212,160,74,0.55);
+    --ember:#FF6B35;
+    --ember-hover:#FF8A55;
+    --ember-glow:rgba(255,107,53,0.40);
+    --rune:#5FC5D4;
+    --rune-dim:rgba(95,197,212,0.55);
+    --gold:#D4A04A;
+    --gold-bright:#E8B658;
+    --gold-dim:rgba(212,160,74,0.55);
+    --parchment:#E8DEC7;
+    --parchment-2:#d8c79f;
+    --parchment-shade:#c8b58e;
+    --ink:#2A1F10;
+    --ink-2:#4A3820;
+    --ink-3:#6a532f;
+    --warm:#C9B88A;
+    --warm-dim:rgba(201,184,138,0.62);
+    --warm-faint:rgba(201,184,138,0.32);
+    --danger:#FF5050;
+    --clan-1:#C53030;
+    --clan-2:#2C5282;
+    --clan-3:#B7791F;
+    --clan-4:#2F855A;
+    --clan-5:#6B46C1;
+    --clan-6:#C05621;
+    --clan-7:#319795;
+    --clan-8:#744210;
+    --display:'Cinzel', serif;
+    --body:'EB Garamond', serif;
+    --mono:'JetBrains Mono', monospace;
+    --script:'Cormorant Garamond', serif;
+    --rune-font:'Uncial Antiqua', serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--obsidian)}
+  body{
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,107,53,0.06), transparent 70%),
+      radial-gradient(ellipse 60% 40% at 100% 100%, rgba(95,197,212,0.04), transparent 70%),
+      radial-gradient(ellipse 50% 50% at 0% 80%, rgba(212,160,74,0.03), transparent 70%);
+    background-attachment: fixed;
+    color:var(--warm);
+    font-family:var(--body);
+    min-height:100vh;
+    padding:72px 56px 120px;
+    overflow-x:auto;
+    position:relative;
+  }
+  body::before{
+    content:'';
+    position:fixed; inset:0;
+    pointer-events:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.85  0 0 0 0 0.72  0 0 0 0 0.45  0 0 0 0.045 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    z-index:1;
+    mix-blend-mode:overlay;
+  }
+  body::after{
+    content:'';
+    position:fixed; inset:0;
+    pointer-events:none;
+    background:
+      linear-gradient(to bottom, rgba(8,7,10,0.5), transparent 12%, transparent 88%, rgba(8,7,10,0.6));
+    z-index:2;
+  }
+
+  .canvas{
+    position:relative;
+    z-index:3;
+    display:flex;
+    flex-direction:column;
+    gap:64px;
+    width:max-content;
+    margin:0 auto;
+  }
+
+  .canvas-header{
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+    padding:0 8px;
+    max-width: 920px;
+  }
+  .eyebrow{
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.32em;
+    color:var(--gold-dim);
+    text-transform:uppercase;
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  .eyebrow::before, .eyebrow::after{
+    content:'';
+    height:1px;
+    flex:0 0 24px;
+    background:var(--hairline-strong);
+  }
+  .eyebrow::after{flex:1}
+  .canvas-title{
+    font-family:var(--display);
+    font-weight:500;
+    font-size:48px;
+    line-height:1.05;
+    letter-spacing:0.03em;
+    color:var(--parchment);
+  }
+  .canvas-title em{
+    font-family:var(--script);
+    font-style:italic;
+    font-weight:500;
+    color:var(--ember);
+  }
+  .canvas-deck{
+    font-family:var(--body);
+    font-size:18px;
+    line-height:1.6;
+    color:var(--warm-dim);
+    max-width:640px;
+  }
+  .canvas-meta{
+    display:flex;
+    gap:32px;
+    margin-top:8px;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.18em;
+    color:var(--warm-faint);
+    text-transform:uppercase;
+  }
+  .canvas-meta b{color:var(--gold);font-weight:500}
+
+  /* phone grid */
+  .deck{
+    display:grid;
+    grid-template-columns: repeat(5, 390px);
+    gap:48px;
+    align-items:start;
+  }
+  .frame-wrap{
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+    opacity:0;
+    transform:translateY(16px);
+    animation: rise 700ms cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  .frame-wrap:nth-child(1){animation-delay:60ms}
+  .frame-wrap:nth-child(2){animation-delay:160ms}
+  .frame-wrap:nth-child(3){animation-delay:260ms}
+  .frame-wrap:nth-child(4){animation-delay:360ms}
+  .frame-wrap:nth-child(5){animation-delay:460ms}
+  @keyframes rise{to{opacity:1;transform:none}}
+
+  .frame-label{
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    padding:0 6px;
+  }
+  .frame-num{
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:0.42em;
+    color:var(--gold);
+    text-transform:uppercase;
+  }
+  .frame-name{
+    font-family:var(--display);
+    font-size:18px;
+    letter-spacing:0.18em;
+    color:var(--parchment);
+    font-weight:500;
+    text-transform:uppercase;
+  }
+  .frame-note{
+    font-family:var(--script);
+    font-style:italic;
+    font-size:14px;
+    color:var(--warm-dim);
+    line-height:1.5;
+  }
+
+  /* phone frame */
+  .phone{
+    width:390px;
+    height:844px;
+    border-radius:48px;
+    background:var(--obsidian);
+    position:relative;
+    box-shadow:
+      0 0 0 1.5px rgba(212,160,74,0.18),
+      0 0 0 9px #0a0908,
+      0 0 0 10.5px rgba(212,160,74,0.10),
+      0 50px 80px -40px rgba(0,0,0,0.9),
+      0 30px 60px -30px rgba(255,107,53,0.05);
+    overflow:hidden;
+    isolation:isolate;
+  }
+  .phone::before{
+    /* notch */
+    content:'';
+    position:absolute;
+    top:8px; left:50%;
+    transform:translateX(-50%);
+    width:120px;
+    height:30px;
+    background:#000;
+    border-radius:18px;
+    z-index:30;
+  }
+  .phone::after{
+    /* status grain inside */
+    content:'';
+    position:absolute; inset:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n2'><feTurbulence type='fractalNoise' baseFrequency='0.95' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.85  0 0 0 0 0.72  0 0 0 0 0.45  0 0 0 0.04 0'/></filter><rect width='100%' height='100%' filter='url(%23n2)'/></svg>");
+    pointer-events:none;
+    mix-blend-mode:overlay;
+    z-index:25;
+  }
+
+  .screen{
+    position:absolute;
+    inset:0;
+    padding:54px 22px 30px;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+
+  /* status bar */
+  .status{
+    position:absolute;
+    top:18px; left:0; right:0;
+    padding:0 32px;
+    display:flex;
+    justify-content:space-between;
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--warm);
+    letter-spacing:0.04em;
+    z-index:5;
+  }
+  .status .right{display:flex;gap:6px;align-items:center}
+  .bars{display:inline-flex;gap:2px;align-items:flex-end}
+  .bars i{display:block;width:3px;background:currentColor;border-radius:1px}
+  .bars i:nth-child(1){height:4px}
+  .bars i:nth-child(2){height:6px}
+  .bars i:nth-child(3){height:8px}
+  .bars i:nth-child(4){height:10px}
+
+  /* shared header */
+  .crown{
+    margin-top:14px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--hairline);
+  }
+  .crown-left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .crown-mark{
+    width:22px; height:22px;
+    color:var(--gold);
+  }
+  .crown-name{
+    font-family:var(--display);
+    font-weight:500;
+    font-size:13px;
+    letter-spacing:0.32em;
+    color:var(--parchment);
+    text-transform:uppercase;
+  }
+  .crown-right{
+    display:flex; gap:8px; align-items:center;
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--warm-dim);
+    letter-spacing:0.14em;
+  }
+  .crown-pill{
+    border:1px solid var(--hairline);
+    border-radius:999px;
+    padding:4px 10px;
+    color:var(--warm);
+    background:rgba(212,160,74,0.04);
+  }
+  .crown-pill .dot{
+    display:inline-block;
+    width:5px; height:5px;
+    border-radius:99px;
+    background:var(--rune);
+    box-shadow:0 0 8px var(--rune);
+    margin-right:6px;
+    transform:translateY(-1px);
+  }
+  .gear{
+    width:18px; height:18px;
+    color:var(--warm-dim);
+    cursor:pointer;
+  }
+
+  /* tab bar */
+  .tabbar{
+    position:absolute;
+    bottom:0; left:0; right:0;
+    height:84px;
+    background:linear-gradient(to top, var(--obsidian) 50%, rgba(8,7,10,0.0));
+    border-top:1px solid var(--hairline);
+    display:flex;
+    padding:14px 28px 22px;
+    z-index:10;
+    backdrop-filter:blur(10px);
+  }
+  .tabbar > .tab{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:5px;
+    color:var(--warm-faint);
+    font-family:var(--mono);
+    font-size:9px;
+    letter-spacing:0.32em;
+    text-transform:uppercase;
+  }
+  .tab svg{width:20px;height:20px}
+  .tab.active{color:var(--ember)}
+  .tab.active svg{filter:drop-shadow(0 0 10px var(--ember-glow))}
+
+  /* —— SCREEN 1: CONNECT —— */
+  .connect{
+    align-items:center;
+    justify-content:center;
+    padding:0;
+  }
+  .connect-bg{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 50% 38%, rgba(255,107,53,0.16), transparent 55%),
+      radial-gradient(circle at 50% 100%, rgba(95,197,212,0.06), transparent 50%);
+    z-index:0;
+  }
+  .connect-vignette{
+    position:absolute; inset:0;
+    background:radial-gradient(circle at 50% 50%, transparent 30%, rgba(0,0,0,0.5) 80%);
+    z-index:1;
+  }
+  .connect-inner{
+    position:relative;
+    z-index:2;
+    text-align:center;
+    padding:64px 36px 56px;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .connect-top{
+    display:flex; flex-direction:column; align-items:center; gap:16px;
+    margin-top:30px;
+  }
+  .ornament-rule{
+    display:flex; align-items:center; gap:10px;
+    color:var(--gold);
+  }
+  .ornament-rule .line{
+    width:42px; height:1px; background:currentColor;
+    opacity:0.6;
+  }
+  .ornament-rule .lozenge{
+    width:6px; height:6px;
+    background:currentColor;
+    transform:rotate(45deg);
+  }
+  .ornament-rule.short .line{width:24px}
+  .wordmark{
+    font-family:var(--display);
+    font-size:22px;
+    letter-spacing:0.42em;
+    color:var(--parchment);
+    font-weight:500;
+    text-transform:uppercase;
+  }
+  .wordmark em{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--ember);
+    font-weight:500;
+    letter-spacing:normal;
+    margin-left:4px;
+    text-transform:none;
+  }
+  .sigil-stage{
+    position:relative;
+    width:230px; height:230px;
+    margin:8px 0 4px;
+  }
+  .sigil-stage .glow{
+    position:absolute; inset:-30px;
+    background:radial-gradient(circle, var(--ember-glow), transparent 60%);
+    filter:blur(16px);
+    animation: emberPulse 6s ease-in-out infinite;
+  }
+  @keyframes emberPulse{
+    0%,100%{opacity:0.55;transform:scale(0.95)}
+    50%{opacity:1;transform:scale(1.05)}
+  }
+  .sigil-stage svg{position:absolute; inset:0; width:100%; height:100%}
+  .ring-outer{animation: spin-slow 120s linear infinite}
+  .ring-mid{animation: spin-rev 90s linear infinite}
+  .ring-inner{animation: spin-slow 60s linear infinite}
+  @keyframes spin-slow{to{transform:rotate(360deg)}}
+  @keyframes spin-rev{to{transform:rotate(-360deg)}}
+
+  .invocation{
+    font-family:var(--script);
+    font-style:italic;
+    font-size:18px;
+    line-height:1.5;
+    color:var(--warm);
+    max-width:280px;
+    margin-top:6px;
+  }
+  .invocation b{
+    color:var(--gold);
+    font-weight:500;
+  }
+  .connect-bottom{
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:18px;
+  }
+  .ember-cta{
+    width:100%;
+    background:linear-gradient(180deg, var(--ember) 0%, #e85825 100%);
+    color:#1a0c04;
+    border:none;
+    padding:18px 24px;
+    border-radius:6px;
+    font-family:var(--display);
+    font-size:14px;
+    letter-spacing:0.42em;
+    font-weight:600;
+    text-transform:uppercase;
+    box-shadow:
+      0 0 0 1px rgba(255,170,120,0.4) inset,
+      0 0 24px rgba(255,107,53,0.35),
+      0 12px 40px -12px rgba(255,107,53,0.6);
+    cursor:pointer;
+    position:relative;
+    overflow:hidden;
+    animation: ctaBreathe 5s ease-in-out infinite;
+  }
+  @keyframes ctaBreathe{
+    0%,100%{box-shadow:0 0 0 1px rgba(255,170,120,0.4) inset,0 0 24px rgba(255,107,53,0.35),0 12px 40px -12px rgba(255,107,53,0.6)}
+    50%{box-shadow:0 0 0 1px rgba(255,170,120,0.55) inset,0 0 38px rgba(255,107,53,0.55),0 16px 50px -12px rgba(255,107,53,0.75)}
+  }
+  .ember-cta::before{
+    content:'';
+    position:absolute; inset:0;
+    background:linear-gradient(120deg, transparent, rgba(255,255,255,0.18), transparent);
+    transform:translateX(-100%);
+    animation: shimmer 4.5s ease-in-out infinite;
+  }
+  @keyframes shimmer{
+    40%{transform:translateX(-100%)}
+    70%{transform:translateX(100%)}
+    100%{transform:translateX(100%)}
+  }
+  .secondary-link{
+    font-family:var(--script);
+    font-style:italic;
+    font-size:14px;
+    color:var(--warm-dim);
+    text-decoration:none;
+    border-bottom:1px solid var(--hairline);
+    padding-bottom:2px;
+  }
+  .micro-foot{
+    position:absolute;
+    bottom:18px; left:0; right:0;
+    display:flex;
+    justify-content:center;
+    gap:14px;
+    font-family:var(--mono);
+    font-size:9px;
+    letter-spacing:0.32em;
+    color:var(--warm-faint);
+  }
+
+  /* —— SCREEN 2: HEARTH —— */
+  .hearth{padding-bottom:96px}
+  .scroll{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    gap:18px;
+    margin-top:14px;
+    overflow:hidden;
+  }
+
+  .banner{
+    position:relative;
+    background:
+      linear-gradient(180deg, rgba(212,160,74,0.04), rgba(95,197,212,0.02)),
+      var(--iron);
+    border:1px solid var(--hairline);
+    border-radius:10px;
+    padding:18px 18px 16px;
+    overflow:hidden;
+  }
+  .banner::before{
+    content:'';
+    position:absolute;
+    inset:1px;
+    border:1px solid rgba(212,160,74,0.10);
+    border-radius:9px;
+    pointer-events:none;
+  }
+  .banner-corners{
+    position:absolute; inset:5px;
+    pointer-events:none;
+    color:var(--gold-dim);
+  }
+  .banner-corners::before,.banner-corners::after,
+  .banner-corners > i::before,.banner-corners > i::after{
+    content:'';
+    position:absolute;
+    width:10px; height:10px;
+    border:1px solid currentColor;
+  }
+  .banner-corners::before{top:0;left:0;border-right:none;border-bottom:none}
+  .banner-corners::after{top:0;right:0;border-left:none;border-bottom:none}
+  .banner-corners > i{position:absolute; inset:0}
+  .banner-corners > i::before{bottom:0;left:0;border-right:none;border-top:none}
+  .banner-corners > i::after{bottom:0;right:0;border-left:none;border-top:none}
+
+  .banner-row{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    gap:16px;
+  }
+  .tick-block{display:flex;flex-direction:column;gap:4px}
+  .tick-label{
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:0.42em;
+    color:var(--gold);
+    text-transform:uppercase;
+  }
+  .tick-number{
+    font-family:var(--mono);
+    font-weight:300;
+    font-size:48px;
+    color:var(--parchment);
+    letter-spacing:0.06em;
+    line-height:1;
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+  }
+  .tick-number .dim{color:var(--warm-faint);font-size:24px}
+  .season-block{
+    text-align:right;
+    display:flex; flex-direction:column; gap:6px; min-width:120px;
+  }
+  .season-name{
+    font-family:var(--display);
+    font-size:13px;
+    letter-spacing:0.22em;
+    color:var(--warm);
+    text-transform:uppercase;
+  }
+  .season-day{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm-dim);
+    font-size:12px;
+  }
+  .progress{
+    margin-top:14px;
+    height:2px;
+    background:rgba(212,160,74,0.12);
+    border-radius:1px;
+    overflow:hidden;
+    position:relative;
+  }
+  .progress::before{
+    content:'';
+    position:absolute; inset:0;
+    width:46%;
+    background:linear-gradient(90deg, transparent, var(--gold) 30%, var(--gold-bright) 100%);
+    box-shadow:0 0 10px var(--gold-dim);
+  }
+  .progress-marks{
+    margin-top:8px;
+    display:flex;
+    justify-content:space-between;
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--warm-faint);
+    letter-spacing:0.18em;
+  }
+  .pulse-bead{
+    width:7px; height:7px; border-radius:99px;
+    background:var(--ember);
+    box-shadow:0 0 12px var(--ember-glow);
+    position:absolute;
+    top:-3px;
+    left:46%;
+    transform:translateX(-50%);
+    animation: bead 2.4s ease-in-out infinite;
+  }
+  @keyframes bead{
+    0%,100%{box-shadow:0 0 12px var(--ember-glow);opacity:1}
+    50%{box-shadow:0 0 20px var(--ember-glow);opacity:0.7}
+  }
+
+  .section-head{
+    display:flex; align-items:center; gap:10px;
+    margin-top:6px;
+  }
+  .section-head .lozenge{
+    width:5px; height:5px; background:var(--gold);
+    transform:rotate(45deg);
+  }
+  .section-head .title{
+    font-family:var(--display);
+    font-size:11px;
+    letter-spacing:0.36em;
+    color:var(--gold);
+    text-transform:uppercase;
+    font-weight:500;
+  }
+  .section-head .rule{
+    flex:1;
+    height:1px;
+    background:linear-gradient(90deg, var(--hairline-strong), transparent);
+  }
+  .section-head .meta{
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--warm-faint);
+    letter-spacing:0.16em;
+  }
+
+  .leaderboard{
+    display:flex; flex-direction:column; gap:1px;
+    background:var(--hairline);
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    overflow:hidden;
+  }
+  .lb-row{
+    display:grid;
+    grid-template-columns: 22px 24px 1fr auto auto;
+    align-items:center;
+    gap:10px;
+    padding:9px 12px;
+    background:var(--iron);
+    font-size:13px;
+  }
+  .lb-row.mine{
+    background:linear-gradient(90deg, rgba(255,107,53,0.13), rgba(255,107,53,0.02));
+    border-left:2px solid var(--ember);
+    padding-left:10px;
+  }
+  .lb-row .rank{
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--warm-faint);
+    letter-spacing:0.1em;
+  }
+  .lb-row .glyph{
+    width:22px; height:22px;
+    border-radius:99px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,0.04);
+    border:1px solid currentColor;
+    color:var(--clan-1);
+  }
+  .lb-row .glyph svg{width:13px;height:13px}
+  .lb-row .clan{
+    font-family:var(--body);
+    font-size:14px;
+    color:var(--parchment);
+    letter-spacing:0.04em;
+  }
+  .lb-row .clan small{
+    display:block;
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm-dim);
+    font-size:11px;
+    margin-top:1px;
+    letter-spacing:normal;
+  }
+  .lb-row .gold{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--gold);
+    text-align:right;
+  }
+  .lb-row .delta{
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--rune);
+    min-width:34px;
+    text-align:right;
+  }
+  .lb-row .delta.down{color:var(--danger)}
+
+  .whispers{
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .whisper{
+    border-left:1px solid var(--hairline-2);
+    padding:6px 10px 6px 12px;
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .whisper.rune{border-left-color:var(--rune-dim)}
+  .whisper.gold{border-left-color:var(--gold-dim)}
+  .whisper.ember{border-left-color:var(--ember)}
+  .whisper-meta{
+    display:flex; gap:8px; align-items:center;
+    font-family:var(--mono);
+    font-size:9px;
+    letter-spacing:0.18em;
+    color:var(--warm-faint);
+    text-transform:uppercase;
+  }
+  .whisper-meta b{color:var(--gold);font-weight:500}
+  .whisper-body{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm);
+    font-size:14px;
+    line-height:1.42;
+  }
+
+  /* —— SCREEN 3: HALL —— */
+  .hall{padding-bottom:96px}
+  .hall-head{
+    display:flex; align-items:flex-end; justify-content:space-between;
+    padding:14px 0 4px;
+    border-bottom:1px solid var(--hairline);
+    margin-bottom:18px;
+  }
+  .hall-head .h-title{
+    font-family:var(--display);
+    font-size:22px;
+    letter-spacing:0.18em;
+    color:var(--parchment);
+    text-transform:uppercase;
+    font-weight:500;
+  }
+  .hall-head .h-sub{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm-dim);
+    font-size:13px;
+    margin-top:2px;
+  }
+  .hall-head .h-count{
+    font-family:var(--mono);
+    font-size:11px;
+    color:var(--gold);
+    letter-spacing:0.18em;
+    text-align:right;
+  }
+  .hall-head .h-count b{
+    display:block; font-size:22px; font-weight:300; color:var(--parchment); letter-spacing:0.05em;
+  }
+
+  .letter-list{
+    display:flex; flex-direction:column; gap:14px;
+    overflow:hidden;
+  }
+  .letter{
+    position:relative;
+    background:
+      linear-gradient(135deg, var(--parchment) 0%, var(--parchment-2) 60%, var(--parchment-shade) 100%);
+    border-radius:6px;
+    padding:18px 18px 16px 22px;
+    color:var(--ink);
+    overflow:hidden;
+    box-shadow:
+      inset 0 0 0 1px rgba(42,31,16,0.10),
+      0 12px 24px -12px rgba(0,0,0,0.6),
+      0 2px 0 rgba(0,0,0,0.3);
+  }
+  .letter::before{
+    /* deckled edge */
+    content:'';
+    position:absolute;
+    top:0; left:0; bottom:0;
+    width:6px;
+    background:
+      linear-gradient(180deg, var(--parchment-shade), var(--parchment-2));
+    box-shadow: inset -1px 0 0 rgba(42,31,16,0.18);
+  }
+  .letter::after{
+    /* parchment grain */
+    content:'';
+    position:absolute; inset:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.06  0 0 0 0.10 0'/></filter><rect width='100%' height='100%' filter='url(%23p)'/></svg>");
+    mix-blend-mode:multiply;
+    opacity:0.6;
+    pointer-events:none;
+    border-radius:6px;
+  }
+  .letter-head{
+    display:flex; align-items:flex-start; justify-content:space-between;
+    gap:14px;
+    position:relative;
+    z-index:2;
+  }
+  .letter-head .info{display:flex;flex-direction:column;gap:2px;flex:1}
+  .letter-name{
+    font-family:var(--display);
+    font-size:18px;
+    color:var(--ink);
+    letter-spacing:0.06em;
+    font-weight:600;
+  }
+  .letter-name em{
+    font-family:var(--script);
+    font-style:italic;
+    font-weight:500;
+    color:var(--ink-2);
+    margin-left:4px;
+    letter-spacing:normal;
+  }
+  .letter-id{
+    font-family:var(--mono);
+    font-size:10px;
+    color:var(--ink-3);
+    letter-spacing:0.16em;
+    text-transform:uppercase;
+    margin-top:2px;
+  }
+  .letter-meta{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--ink-2);
+    font-size:13px;
+    margin-top:8px;
+    line-height:1.4;
+  }
+  .seal{
+    width:54px; height:54px;
+    border-radius:99px;
+    flex-shrink:0;
+    position:relative;
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;
+    box-shadow:
+      inset 0 -3px 6px rgba(0,0,0,0.35),
+      inset 0 3px 6px rgba(255,255,255,0.18),
+      0 4px 12px rgba(0,0,0,0.4);
+    transform:rotate(-6deg);
+  }
+  .seal::before{
+    content:'';
+    position:absolute; inset:4px;
+    border-radius:99px;
+    border:1.5px dashed rgba(255,255,255,0.32);
+  }
+  .seal svg{width:22px;height:22px;position:relative;z-index:2}
+
+  .letter-stats{
+    display:flex; gap:14px;
+    margin-top:14px;
+    padding-top:12px;
+    border-top:1px dashed rgba(42,31,16,0.20);
+    position:relative; z-index:2;
+  }
+  .stat{
+    display:flex; flex-direction:column; gap:2px;
+    flex:1;
+  }
+  .stat .l{
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--ink-3);
+    letter-spacing:0.20em;
+    text-transform:uppercase;
+  }
+  .stat .v{
+    font-family:var(--mono);
+    font-size:14px;
+    color:var(--ink);
+    letter-spacing:0.04em;
+  }
+  .stat .v.good{color:#2F855A}
+  .stat .v.warn{color:#9B2A2F}
+
+  /* —— SCREEN 4: INFT DETAIL —— */
+  .detail{
+    padding:54px 0 96px;
+  }
+  .detail-back{
+    padding: 14px 22px 8px;
+    display:flex; align-items:center; gap:10px;
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:0.32em;
+    color:var(--warm-dim);
+    text-transform:uppercase;
+  }
+  .detail-back .arrow{width:14px;height:14px;color:var(--gold)}
+  .hero{
+    margin:0 22px;
+    position:relative;
+    background:
+      linear-gradient(150deg, var(--parchment) 0%, var(--parchment-2) 70%, var(--parchment-shade) 100%);
+    border-radius:8px;
+    padding:24px 22px 22px;
+    color:var(--ink);
+    overflow:hidden;
+    box-shadow:
+      inset 0 0 0 1px rgba(42,31,16,0.12),
+      0 18px 36px -18px rgba(0,0,0,0.7);
+  }
+  .hero::after{
+    content:'';
+    position:absolute; inset:0;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='pg'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.16  0 0 0 0 0.12  0 0 0 0 0.06  0 0 0 0.10 0'/></filter><rect width='100%' height='100%' filter='url(%23pg)'/></svg>");
+    mix-blend-mode:multiply;
+    opacity:0.55;
+    pointer-events:none;
+    border-radius:8px;
+  }
+  .hero-head{
+    display:flex; justify-content:space-between; align-items:flex-start;
+    gap:14px;
+    position:relative;z-index:2;
+  }
+  .hero-id{
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:0.32em;
+    color:var(--ink-3);
+    text-transform:uppercase;
+  }
+  .hero-name{
+    font-family:var(--display);
+    font-size:26px;
+    color:var(--ink);
+    letter-spacing:0.04em;
+    font-weight:600;
+    margin-top:2px;
+    line-height:1.05;
+  }
+  .hero-arche{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--ink-2);
+    font-size:14px;
+    margin-top:4px;
+  }
+  .hero-clan-pill{
+    display:inline-flex; align-items:center; gap:6px;
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:0.18em;
+    color:#fff;
+    background:var(--clan-2);
+    padding:4px 10px;
+    border-radius:99px;
+    text-transform:uppercase;
+    box-shadow: inset 0 -2px 4px rgba(0,0,0,0.25);
+  }
+  .hero-sigil{
+    margin: 18px auto 14px;
+    width:140px; height:140px;
+    position:relative;z-index:2;
+    color:var(--clan-2);
+  }
+  .hero-stamp{
+    text-align:center;
+    font-family:var(--rune-font);
+    font-size:13px;
+    color:var(--ink-2);
+    letter-spacing:0.32em;
+    position:relative;z-index:2;
+  }
+  .hero-divider{
+    position:relative;z-index:2;
+    margin:14px 0;
+    display:flex; align-items:center; gap:10px;
+    color:var(--ink-2);
+  }
+  .hero-divider::before, .hero-divider::after{
+    content:''; flex:1; height:1px;
+    background:rgba(42,31,16,0.30);
+  }
+  .hero-divider .lozenge{
+    width:5px;height:5px;background:currentColor;transform:rotate(45deg);
+  }
+  .hero-meta{
+    position:relative;z-index:2;
+    display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;
+  }
+  .hero-meta .stat .l{font-size:9px}
+  .hero-meta .stat .v{font-size:13px;color:var(--ink)}
+
+  .tabs{
+    display:flex;
+    margin:22px 22px 14px;
+    border-bottom:1px solid var(--hairline);
+    gap:0;
+  }
+  .tabs .t{
+    flex:1; text-align:center; padding:10px 4px;
+    font-family:var(--display);
+    font-size:10px;
+    letter-spacing:0.32em;
+    color:var(--warm-faint);
+    text-transform:uppercase;
+    border-bottom:1.5px solid transparent;
+    transform:translateY(1px);
+    cursor:pointer;
+  }
+  .tabs .t.active{
+    color:var(--ember);
+    border-bottom-color:var(--ember);
+  }
+
+  .panel-list{
+    margin: 0 22px;
+    display:flex; flex-direction:column; gap:1px;
+    background:var(--hairline);
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    overflow:hidden;
+  }
+  .mem-row{
+    background:var(--iron);
+    padding:10px 14px;
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .mem-row .k{
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--rune);
+    letter-spacing:0.32em;
+    text-transform:uppercase;
+  }
+  .mem-row .v{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm);
+    font-size:14px;
+    line-height:1.4;
+  }
+  .mem-row .v code{
+    font-family:var(--mono);
+    font-style:normal;
+    color:var(--gold);
+    font-size:12px;
+    background:rgba(212,160,74,0.08);
+    padding:1px 5px;
+    border-radius:3px;
+  }
+  .mem-row .stamp{
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--warm-faint);
+    letter-spacing:0.18em;
+    margin-top:3px;
+  }
+
+  /* —— SCREEN 5: CODEX —— */
+  .codex{padding-bottom:96px}
+  .codex-head{
+    display:flex; flex-direction:column; gap:4px; padding:14px 0 18px;
+    border-bottom:1px solid var(--hairline);
+    margin-bottom:18px;
+  }
+  .codex-title{
+    font-family:var(--display);
+    font-size:22px;
+    letter-spacing:0.18em;
+    color:var(--parchment);
+    text-transform:uppercase;
+    font-weight:500;
+  }
+  .codex-deck{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm-dim);
+    font-size:13px;
+  }
+  .codex-section{
+    display:flex; flex-direction:column; gap:10px;
+    margin-bottom:24px;
+  }
+  .codex-section h3{
+    font-family:var(--display);
+    font-size:11px;
+    letter-spacing:0.36em;
+    color:var(--gold);
+    text-transform:uppercase;
+    font-weight:500;
+    display:flex; align-items:center; gap:10px;
+  }
+  .codex-section h3::after{
+    content:'';
+    flex:1;
+    height:1px;
+    background:linear-gradient(90deg, var(--hairline-strong), transparent);
+  }
+  .row-card{
+    background:var(--iron);
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    padding:12px 14px;
+    display:flex; flex-direction:column; gap:6px;
+    position:relative;
+  }
+  .row-card .k{
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--warm-faint);
+    letter-spacing:0.32em;
+    text-transform:uppercase;
+  }
+  .row-card .v{
+    font-family:var(--mono);
+    font-size:13px;
+    color:var(--parchment);
+    letter-spacing:0.04em;
+    word-break:break-all;
+  }
+  .row-card .v.script{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm);
+    font-size:14px;
+    letter-spacing:normal;
+  }
+  .row-card .actions{
+    position:absolute;
+    top:12px; right:12px;
+    display:flex; gap:6px;
+  }
+  .row-card .actions button{
+    background:transparent;
+    border:1px solid var(--hairline);
+    color:var(--warm-dim);
+    font-family:var(--mono);
+    font-size:9px;
+    letter-spacing:0.18em;
+    padding:4px 8px;
+    border-radius:3px;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .device-chip{
+    display:flex; align-items:center; gap:12px;
+    background:linear-gradient(180deg, rgba(95,197,212,0.06), rgba(95,197,212,0.02));
+    border:1px solid var(--rune-dim);
+    border-radius:8px;
+    padding:14px;
+  }
+  .device-chip .icon{
+    width:36px;height:36px;flex:0 0 auto;
+    color:var(--rune);
+    background:rgba(95,197,212,0.10);
+    border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .device-chip .icon svg{width:20px;height:20px}
+  .device-chip .label{
+    font-family:var(--display);
+    font-size:13px;
+    color:var(--rune);
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+    font-weight:500;
+  }
+  .device-chip .desc{
+    font-family:var(--script);
+    font-style:italic;
+    color:var(--warm-dim);
+    font-size:12px;
+    margin-top:2px;
+  }
+  .profile-list{
+    display:flex; flex-direction:column; gap:8px;
+  }
+  .profile{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--iron);
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    padding:10px 14px;
+    gap:10px;
+  }
+  .profile.active{
+    border-color:var(--ember);
+    background:linear-gradient(90deg, rgba(255,107,53,0.08), rgba(255,107,53,0.01));
+  }
+  .profile .glyph{
+    width:26px;height:26px;border-radius:99px;
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid currentColor;
+    color:var(--clan-1);
+  }
+  .profile .glyph svg{width:14px;height:14px}
+  .profile .name{
+    font-family:var(--display);
+    font-size:13px;
+    letter-spacing:0.06em;
+    color:var(--parchment);
+    flex:1;
+  }
+  .profile .name small{
+    display:block;
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--warm-faint);
+    letter-spacing:0.14em;
+    margin-top:1px;
+  }
+  .profile .check{
+    color:var(--ember);
+    width:16px;height:16px;
+  }
+
+  /* footer note */
+  .canvas-foot{
+    margin-top:32px;
+    padding:24px 8px;
+    border-top:1px solid var(--hairline);
+    display:flex; justify-content:space-between; align-items:flex-end;
+    color:var(--warm-faint);
+    font-family:var(--mono);
+    font-size:10px;
+    letter-spacing:0.18em;
+    text-transform:uppercase;
+  }
+  .canvas-foot .right{text-align:right}
+  .canvas-foot b{color:var(--gold);font-weight:500}
+
+  /* legend strip */
+  .legend{
+    display:grid;
+    grid-template-columns: repeat(8, 1fr);
+    gap:0;
+    border:1px solid var(--hairline);
+    border-radius:6px;
+    overflow:hidden;
+  }
+  .legend > div{
+    padding:10px 12px;
+    background:var(--iron);
+    border-right:1px solid var(--hairline);
+  }
+  .legend > div:last-child{border-right:none}
+  .legend .swatch{
+    width:18px;height:18px; border-radius:4px;
+    margin-bottom:6px;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06);
+  }
+  .legend .name{
+    font-family:var(--mono);
+    font-size:9px; color:var(--parchment);
+    letter-spacing:0.12em;
+    text-transform:uppercase;
+  }
+  .legend .hex{
+    font-family:var(--mono);
+    font-size:9px;
+    color:var(--warm-faint);
+    letter-spacing:0.06em;
+  }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- shared symbols -->
+  <defs>
+    <!-- ornament rule lozenge -->
+    <symbol id="loz" viewBox="0 0 8 8"><rect x="1" y="1" width="6" height="6" transform="rotate(45 4 4)" fill="currentColor"/></symbol>
+
+    <!-- crown / mark for header -->
+    <symbol id="crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="5.5"/>
+      <path d="M12 3 L12 7 M12 17 L12 21 M3 12 L7 12 M17 12 L21 12"/>
+      <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+    </symbol>
+
+    <!-- gear -->
+    <symbol id="gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <circle cx="12" cy="12" r="3.2"/>
+      <path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M4.5 4.5l2.1 2.1 M17.4 17.4l2.1 2.1 M19.5 4.5l-2.1 2.1 M6.6 17.4l-2.1 2.1"/>
+    </symbol>
+
+    <!-- arrow -->
+    <symbol id="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M14 6l-6 6 6 6"/>
+    </symbol>
+
+    <!-- check -->
+    <symbol id="chk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M5 12.5l4.5 4.5L20 7"/>
+    </symbol>
+
+    <!-- clan glyphs -->
+    <symbol id="g-blade" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M12 3l3 5-3 13-3-13 3-5z"/><path d="M9 8h6"/>
+    </symbol>
+    <symbol id="g-tide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M3 9c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>
+      <path d="M3 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>
+    </symbol>
+    <symbol id="g-flame" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M12 3c2 4 5 5 5 9a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3-1-3 0-5 1-8z"/>
+    </symbol>
+    <symbol id="g-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M5 18c0-7 6-13 14-13 0 8-6 14-14 14"/>
+      <path d="M5 18c4-3 8-7 11-11"/>
+    </symbol>
+    <symbol id="g-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M2 12c3-5 7-7 10-7s7 2 10 7c-3 5-7 7-10 7s-7-2-10-7z"/>
+      <circle cx="12" cy="12" r="2.5"/>
+    </symbol>
+    <symbol id="g-anvil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M4 9h16l-3 4H7z"/>
+      <path d="M9 13v5h6v-5"/>
+      <path d="M7 19h10"/>
+    </symbol>
+    <symbol id="g-crown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M3 17l2-9 4 5 3-7 3 7 4-5 2 9z"/><path d="M3 20h18"/>
+    </symbol>
+    <symbol id="g-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M12 3l2.4 5.5 5.6.5-4.2 3.8 1.3 5.7L12 15.7 6.9 18.5l1.3-5.7L4 9l5.6-.5z"/>
+    </symbol>
+
+    <!-- tab icons -->
+    <symbol id="tb-hearth" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M4 21V11l8-7 8 7v10z"/><path d="M9 21v-6h6v6"/>
+    </symbol>
+    <symbol id="tb-hall" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <rect x="3" y="6" width="18" height="14" rx="1.5"/>
+      <path d="M3 10h18 M8 6V4h8v2"/>
+    </symbol>
+    <symbol id="tb-codex" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <path d="M5 4h11l3 3v13H5z"/><path d="M5 8h13"/>
+    </symbol>
+
+    <!-- copy -->
+    <symbol id="cpy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <rect x="9" y="9" width="11" height="11" rx="1.2"/>
+      <path d="M5 15V5a1 1 0 0 1 1-1h10"/>
+    </symbol>
+
+    <!-- seeker icon -->
+    <symbol id="seek" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+      <rect x="6" y="3" width="12" height="18" rx="2"/>
+      <circle cx="12" cy="17" r="1.2"/>
+      <path d="M9 7l3-2 3 2"/>
+    </symbol>
+
+    <!-- detail sigil (large) -->
+    <symbol id="big-sigil" viewBox="0 0 100 100" fill="none" stroke="currentColor">
+      <circle cx="50" cy="50" r="46" stroke-width="0.6" opacity="0.6"/>
+      <circle cx="50" cy="50" r="38" stroke-width="0.4" stroke-dasharray="0.8 2"/>
+      <circle cx="50" cy="50" r="28" stroke-width="0.6"/>
+      <circle cx="50" cy="50" r="20" stroke-width="0.4" stroke-dasharray="2 1.5"/>
+      <g stroke-width="0.6">
+        <path d="M50 4 L50 14 M50 86 L50 96 M4 50 L14 50 M86 50 L96 50"/>
+        <path d="M14 14 L22 22 M78 78 L86 86 M86 14 L78 22 M14 86 L22 78" opacity="0.5"/>
+      </g>
+      <!-- inner glyph: tide-blade -->
+      <g stroke-width="0.8">
+        <path d="M50 30 L50 70"/>
+        <path d="M40 38 C 44 42, 56 42, 60 38"/>
+        <path d="M40 62 C 44 58, 56 58, 60 62"/>
+        <circle cx="50" cy="50" r="3.2" fill="currentColor"/>
+      </g>
+    </symbol>
+
+  </defs>
+</svg>
+
+<div class="canvas">
+
+  <header class="canvas-header">
+    <div class="eyebrow">Slice I · Foundation</div>
+    <h1 class="canvas-title">Clan World Mobile <em>— in the alchemical cockpit.</em></h1>
+    <p class="canvas-deck">
+      Five screens. Seeker-first. Solana MWA for identity, Convex for breath. The cockpit is deliberately raw &mdash; iron and obsidian beneath a thin veil of parchment. No glass, no neon. Ceremony where it counts.
+    </p>
+    <div class="canvas-meta">
+      <span><b>Build</b> · v0.1.0-slice.1</span>
+      <span><b>Surface</b> · 390 × 844</span>
+      <span><b>Theme</b> · Obsidian / Ember / Rune / Gold</span>
+      <span><b>Runtime</b> · Kotlin · Compose · MWA</span>
+    </div>
+  </header>
+
+  <div class="deck">
+
+    <!-- ============================================================ -->
+    <!-- ============== SCREEN 1 · CONNECT =========================== -->
+    <!-- ============================================================ -->
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="frame-num">I · Threshold</span>
+        <span class="frame-name">Connect</span>
+        <span class="frame-note">Cold launch. The grimoire opens. Seeker’s Seed Vault is invoked through Mobile Wallet Adapter.</span>
+      </div>
+      <div class="phone">
+        <div class="status">
+          <span>9:41</span>
+          <span class="right"><span class="bars"><i></i><i></i><i></i><i></i></span><span>5G</span><span>·</span><span>97%</span></span>
+        </div>
+        <div class="screen connect">
+          <div class="connect-bg"></div>
+          <div class="connect-vignette"></div>
+          <div class="connect-inner">
+
+            <div class="connect-top">
+              <div class="ornament-rule short">
+                <span class="line"></span>
+                <svg width="6" height="6"><use href="#loz"/></svg>
+                <span class="line"></span>
+              </div>
+              <div class="wordmark">Clan World <em>·</em></div>
+              <div class="ornament-rule">
+                <span class="line"></span>
+                <svg width="6" height="6"><use href="#loz"/></svg>
+                <svg width="6" height="6"><use href="#loz"/></svg>
+                <svg width="6" height="6"><use href="#loz"/></svg>
+                <span class="line"></span>
+              </div>
+            </div>
+
+            <div class="sigil-stage" aria-hidden="true">
+              <div class="glow"></div>
+              <!-- outer -->
+              <svg viewBox="0 0 100 100" class="ring-outer">
+                <g fill="none" stroke="rgba(212,160,74,0.55)" stroke-width="0.4">
+                  <circle cx="50" cy="50" r="48"/>
+                  <g stroke-width="0.5">
+                    <path d="M50 2 L50 8 M50 92 L50 98 M2 50 L8 50 M92 50 L98 50"/>
+                    <path d="M14 14 L18 18 M82 82 L86 86 M86 14 L82 18 M14 86 L18 82"/>
+                  </g>
+                </g>
+                <g fill="rgba(212,160,74,0.35)">
+                  <rect x="49" y="2" width="2" height="2" transform="rotate(45 50 3)"/>
+                  <rect x="49" y="96" width="2" height="2" transform="rotate(45 50 97)"/>
+                  <rect x="2" y="49" width="2" height="2" transform="rotate(45 3 50)"/>
+                  <rect x="96" y="49" width="2" height="2" transform="rotate(45 97 50)"/>
+                </g>
+              </svg>
+              <!-- mid -->
+              <svg viewBox="0 0 100 100" class="ring-mid" style="transform-origin:center">
+                <g fill="none" stroke="rgba(255,107,53,0.55)" stroke-width="0.5">
+                  <circle cx="50" cy="50" r="36" stroke-dasharray="1 1.6"/>
+                </g>
+                <g fill="none" stroke="rgba(255,107,53,0.35)" stroke-width="0.4">
+                  <circle cx="50" cy="50" r="30"/>
+                </g>
+              </svg>
+              <!-- inner glyph -->
+              <svg viewBox="0 0 100 100" class="ring-inner">
+                <g fill="none" stroke="rgba(232,182,88,0.85)" stroke-width="0.7">
+                  <circle cx="50" cy="50" r="22"/>
+                  <circle cx="50" cy="50" r="14" stroke-dasharray="2 2"/>
+                </g>
+                <g fill="none" stroke="rgba(255,170,120,0.95)" stroke-width="0.9">
+                  <path d="M50 32 L50 68"/>
+                  <path d="M42 38 C 46 42, 54 42, 58 38"/>
+                  <path d="M42 62 C 46 58, 54 58, 58 62"/>
+                </g>
+                <circle cx="50" cy="50" r="3" fill="rgba(255,107,53,1)"/>
+              </svg>
+            </div>
+
+            <p class="invocation">
+              The eight realms wait. <br>
+              Open your <b>Seed Vault</b>, traveller, <br>
+              and the Hearth shall recognize you.
+            </p>
+
+            <div class="connect-bottom">
+              <button class="ember-cta">Open Seed Vault</button>
+              <a href="#" class="secondary-link">use a paired Solana wallet instead</a>
+            </div>
+
+            <div class="micro-foot">
+              <span>v 0.1.0</span>
+              <span>·</span>
+              <span>Slice I</span>
+              <span>·</span>
+              <span>Seeker · Pixel</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ============== SCREEN 2 · HEARTH ============================ -->
+    <!-- ============================================================ -->
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="frame-num">II · Hearth</span>
+        <span class="frame-name">Dashboard</span>
+        <span class="frame-note">The pulse of the world. Tick, season, leaderboard, and the latest whispers across the eight realms.</span>
+      </div>
+      <div class="phone">
+        <div class="status">
+          <span>9:42</span>
+          <span class="right"><span class="bars"><i></i><i></i><i></i><i></i></span><span>5G</span><span>·</span><span>97%</span></span>
+        </div>
+        <div class="screen hearth">
+
+          <div class="crown">
+            <div class="crown-left">
+              <svg class="crown-mark"><use href="#crown"/></svg>
+              <span class="crown-name">Hearth</span>
+            </div>
+            <div class="crown-right">
+              <span class="crown-pill"><span class="dot"></span>9pK4 · 7vQy</span>
+              <svg class="gear"><use href="#gear"/></svg>
+            </div>
+          </div>
+
+          <div class="scroll">
+
+            <div class="banner">
+              <span class="banner-corners"><i></i></span>
+              <div class="banner-row">
+                <div class="tick-block">
+                  <div class="tick-label">Tick</div>
+                  <div class="tick-number">0427<span class="dim">/ 60</span></div>
+                </div>
+                <div class="season-block">
+                  <div class="season-name">Season II</div>
+                  <div class="season-day">day fourteen of thirty</div>
+                </div>
+              </div>
+              <div class="progress">
+                <div class="pulse-bead"></div>
+              </div>
+              <div class="progress-marks">
+                <span>S I</span><span>·</span><span>S II</span><span>·</span><span>S III</span>
+              </div>
+            </div>
+
+            <div class="section-head">
+              <span class="lozenge"></span>
+              <span class="title">Leaderboard</span>
+              <span class="rule"></span>
+              <span class="meta">7 of 8 active</span>
+            </div>
+
+            <div class="leaderboard">
+
+              <div class="lb-row mine">
+                <span class="rank">01</span>
+                <span class="glyph" style="color:var(--clan-2)"><svg><use href="#g-tide"/></svg></span>
+                <span class="clan">House Tideborne <small>guardians of the strait</small></span>
+                <span class="gold">14,820</span>
+                <span class="delta">+812</span>
+              </div>
+
+              <div class="lb-row">
+                <span class="rank">02</span>
+                <span class="glyph" style="color:var(--clan-1)"><svg><use href="#g-blade"/></svg></span>
+                <span class="clan">Clan Storm-Edge<small>blades of the high pass</small></span>
+                <span class="gold">12,440</span>
+                <span class="delta">+304</span>
+              </div>
+
+              <div class="lb-row">
+                <span class="rank">03</span>
+                <span class="glyph" style="color:var(--clan-3)"><svg><use href="#g-crown"/></svg></span>
+                <span class="clan">Court of Sunhold<small>keepers of the gilded oath</small></span>
+                <span class="gold">11,120</span>
+                <span class="delta">+118</span>
+              </div>
+
+              <div class="lb-row">
+                <span class="rank">04</span>
+                <span class="glyph" style="color:var(--clan-4)"><svg><use href="#g-leaf"/></svg></span>
+                <span class="clan">Vale-Ward<small>tenders of the green</small></span>
+                <span class="gold">9,980</span>
+                <span class="delta down">−54</span>
+              </div>
+
+              <div class="lb-row">
+                <span class="rank">05</span>
+                <span class="glyph" style="color:var(--clan-6)"><svg><use href="#g-flame"/></svg></span>
+                <span class="clan">Ember-Kin<small>forge before all</small></span>
+                <span class="gold">8,605</span>
+                <span class="delta">+402</span>
+              </div>
+
+              <div class="lb-row">
+                <span class="rank">06</span>
+                <span class="glyph" style="color:var(--clan-5)"><svg><use href="#g-eye"/></svg></span>
+                <span class="clan">Twilight Watch<small>they read the signs</small></span>
+                <span class="gold">7,712</span>
+                <span class="delta down">−16</span>
+              </div>
+
+            </div>
+
+            <div class="section-head">
+              <span class="lozenge"></span>
+              <span class="title">Whispers</span>
+              <span class="rule"></span>
+              <span class="meta">tick 0426</span>
+            </div>
+
+            <div class="whispers">
+              <div class="whisper rune">
+                <div class="whisper-meta"><b>Tideborne</b> · whispered to · <b>Vale-Ward</b> · 0426</div>
+                <div class="whisper-body">“Send your woodcutters east, and we shall not move on the strait this season.”</div>
+              </div>
+              <div class="whisper gold">
+                <div class="whisper-meta"><b>Orchestrator</b> · 0425</div>
+                <div class="whisper-body">A bandit camp grows in the northern marches; the tribute due to Sunhold is overdue by four ticks.</div>
+              </div>
+              <div class="whisper ember">
+                <div class="whisper-meta"><b>Storm-Edge</b> · steered · 0424</div>
+                <div class="whisper-body">The owner has commanded the elder to refuse the alliance.</div>
+              </div>
+            </div>
+
+          </div>
+
+          <nav class="tabbar">
+            <span class="tab active">
+              <svg><use href="#tb-hearth"/></svg>Hearth
+            </span>
+            <span class="tab">
+              <svg><use href="#tb-hall"/></svg>Hall
+            </span>
+            <span class="tab">
+              <svg><use href="#tb-codex"/></svg>Codex
+            </span>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ============== SCREEN 3 · HALL ============================== -->
+    <!-- ============================================================ -->
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="frame-num">III · Hall</span>
+        <span class="frame-name">My iNFTs</span>
+        <span class="frame-note">Each iNFT is a sealed letter, presented in parchment with the clan’s wax mark. Tap to open the writ.</span>
+      </div>
+      <div class="phone">
+        <div class="status">
+          <span>9:42</span>
+          <span class="right"><span class="bars"><i></i><i></i><i></i><i></i></span><span>5G</span><span>·</span><span>97%</span></span>
+        </div>
+        <div class="screen hall">
+
+          <div class="crown">
+            <div class="crown-left">
+              <svg class="crown-mark"><use href="#crown"/></svg>
+              <span class="crown-name">Hall</span>
+            </div>
+            <div class="crown-right">
+              <span class="crown-pill"><span class="dot"></span>9pK4</span>
+              <svg class="gear"><use href="#gear"/></svg>
+            </div>
+          </div>
+
+          <div class="hall-head">
+            <div>
+              <div class="h-title">My Hall</div>
+              <div class="h-sub">three sigils stand under your hand</div>
+            </div>
+            <div class="h-count">
+              <b>03</b>
+              of viii
+            </div>
+          </div>
+
+          <div class="letter-list">
+
+            <article class="letter">
+              <div class="letter-head">
+                <div class="info">
+                  <div class="letter-name">Caldris of the Strait <em>Tideborne</em></div>
+                  <div class="letter-id">tkn 0x71f2 · clan ii</div>
+                </div>
+                <div class="seal" style="background:radial-gradient(circle at 35% 30%, #4a73a8, #1f3d66 70%, #16294a)">
+                  <svg><use href="#g-tide"/></svg>
+                </div>
+              </div>
+              <div class="letter-meta">Sealed at tick 0148. Has weathered nine raids; once spoke peace into the Storm Pass.</div>
+              <div class="letter-stats">
+                <div class="stat"><span class="l">Hunger</span><span class="v good">tended</span></div>
+                <div class="stat"><span class="l">Memory</span><span class="v">42 keys</span></div>
+                <div class="stat"><span class="l">Vault</span><span class="v">14,820 g</span></div>
+              </div>
+            </article>
+
+            <article class="letter">
+              <div class="letter-head">
+                <div class="info">
+                  <div class="letter-name">Verra Ash-Kin <em>Ember</em></div>
+                  <div class="letter-id">tkn 0x9a40 · clan vi</div>
+                </div>
+                <div class="seal" style="background:radial-gradient(circle at 35% 30%, #d4762d, #8a3a14 70%, #5a2208)">
+                  <svg><use href="#g-flame"/></svg>
+                </div>
+              </div>
+              <div class="letter-meta">A young elder. Three forges under her watch. Her clansmen have not eaten beyond their rations once.</div>
+              <div class="letter-stats">
+                <div class="stat"><span class="l">Hunger</span><span class="v warn">lean</span></div>
+                <div class="stat"><span class="l">Memory</span><span class="v">17 keys</span></div>
+                <div class="stat"><span class="l">Vault</span><span class="v">8,605 g</span></div>
+              </div>
+            </article>
+
+            <article class="letter">
+              <div class="letter-head">
+                <div class="info">
+                  <div class="letter-name">Sirran Twin-Eye <em>Twilight</em></div>
+                  <div class="letter-id">tkn 0xb112 · clan v</div>
+                </div>
+                <div class="seal" style="background:radial-gradient(circle at 35% 30%, #8a64d6, #4d2c8a 70%, #2c1854)">
+                  <svg><use href="#g-eye"/></svg>
+                </div>
+              </div>
+              <div class="letter-meta">Reader of bandits. Has staved off four winter raids by feeding her watchers bread alone.</div>
+              <div class="letter-stats">
+                <div class="stat"><span class="l">Hunger</span><span class="v good">tended</span></div>
+                <div class="stat"><span class="l">Memory</span><span class="v">38 keys</span></div>
+                <div class="stat"><span class="l">Vault</span><span class="v">7,712 g</span></div>
+              </div>
+            </article>
+
+          </div>
+
+          <nav class="tabbar">
+            <span class="tab">
+              <svg><use href="#tb-hearth"/></svg>Hearth
+            </span>
+            <span class="tab active">
+              <svg><use href="#tb-hall"/></svg>Hall
+            </span>
+            <span class="tab">
+              <svg><use href="#tb-codex"/></svg>Codex
+            </span>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ============== SCREEN 4 · INFT DETAIL ======================= -->
+    <!-- ============================================================ -->
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="frame-num">IV · Writ</span>
+        <span class="frame-name">iNFT Detail</span>
+        <span class="frame-note">The opened letter. Memory, vault, whispers, and bulletin &mdash; lifted from Convex live, read-only in this slice.</span>
+      </div>
+      <div class="phone">
+        <div class="status">
+          <span>9:43</span>
+          <span class="right"><span class="bars"><i></i><i></i><i></i><i></i></span><span>5G</span><span>·</span><span>97%</span></span>
+        </div>
+        <div class="screen detail">
+
+          <div class="detail-back">
+            <svg class="arrow"><use href="#arr"/></svg>
+            <span>Hall</span>
+            <span style="margin:0 8px;color:var(--warm-faint)">·</span>
+            <span style="font-family:var(--script);font-style:italic;text-transform:none;letter-spacing:0;">the writ of caldris</span>
+          </div>
+
+          <div class="hero">
+            <div class="hero-head">
+              <div>
+                <div class="hero-id">tkn 0x71f2 · 0g</div>
+                <div class="hero-name">Caldris of the Strait</div>
+                <div class="hero-arche">tideborne, peace-broker</div>
+              </div>
+              <span class="hero-clan-pill">House ii</span>
+            </div>
+
+            <svg class="hero-sigil"><use href="#big-sigil"/></svg>
+
+            <div class="hero-stamp">— sealed tick 0148 —</div>
+
+            <div class="hero-divider">
+              <span class="lozenge"></span>
+            </div>
+
+            <div class="hero-meta">
+              <div class="stat"><span class="l">Owned</span><span class="v">279 ticks</span></div>
+              <div class="stat"><span class="l">Memory</span><span class="v">42 keys</span></div>
+              <div class="stat"><span class="l">Hires</span><span class="v">02</span></div>
+            </div>
+          </div>
+
+          <div class="tabs">
+            <span class="t active">Memory</span>
+            <span class="t">Vault</span>
+            <span class="t">Whispers</span>
+            <span class="t">Bulletin</span>
+          </div>
+
+          <div class="panel-list">
+
+            <div class="mem-row">
+              <span class="k">strategy.posture</span>
+              <span class="v">Withdraw inland when bandits exceed <code>tier ii</code>; otherwise hold the strait and broker peace.</span>
+              <span class="stamp">written tick 0414 · by elder</span>
+            </div>
+
+            <div class="mem-row">
+              <span class="k">peace.ally</span>
+              <span class="v">Vale-Ward, in exchange for <code>20 wood</code> per season.</span>
+              <span class="stamp">written tick 0388 · steered</span>
+            </div>
+
+            <div class="mem-row">
+              <span class="k">narrative.last</span>
+              <span class="v">“The strait holds. The forge of Ember has sent a courier; their tongue is patient. We shall hear them.”</span>
+              <span class="stamp">written tick 0426 · narrator</span>
+            </div>
+
+            <div class="mem-row">
+              <span class="k">vault.policy</span>
+              <span class="v">Reserve <code>4,000 g</code> at all times for winter; release surplus to market.</span>
+              <span class="stamp">written tick 0312 · steered</span>
+            </div>
+
+          </div>
+
+          <nav class="tabbar">
+            <span class="tab">
+              <svg><use href="#tb-hearth"/></svg>Hearth
+            </span>
+            <span class="tab active">
+              <svg><use href="#tb-hall"/></svg>Hall
+            </span>
+            <span class="tab">
+              <svg><use href="#tb-codex"/></svg>Codex
+            </span>
+          </nav>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ============== SCREEN 5 · CODEX ============================= -->
+    <!-- ============================================================ -->
+    <div class="frame-wrap">
+      <div class="frame-label">
+        <span class="frame-num">V · Codex</span>
+        <span class="frame-name">Settings</span>
+        <span class="frame-note">Identity, paired EVM address, device capability. The Seeker chip lights cyan when Seed Vault is detected.</span>
+      </div>
+      <div class="phone">
+        <div class="status">
+          <span>9:44</span>
+          <span class="right"><span class="bars"><i></i><i></i><i></i><i></i></span><span>5G</span><span>·</span><span>97%</span></span>
+        </div>
+        <div class="screen codex">
+
+          <div class="crown">
+            <div class="crown-left">
+              <svg class="crown-mark"><use href="#crown"/></svg>
+              <span class="crown-name">Codex</span>
+            </div>
+            <div class="crown-right">
+              <span class="crown-pill"><span class="dot"></span>connected</span>
+            </div>
+          </div>
+
+          <div class="codex-head">
+            <div class="codex-title">Codex</div>
+            <div class="codex-deck">where the keeper records what the world should know of you</div>
+          </div>
+
+          <div class="codex-section">
+            <h3>Identity</h3>
+            <div class="row-card">
+              <div class="actions">
+                <button><svg width="10" height="10" style="vertical-align:-1px"><use href="#cpy"/></svg></button>
+              </div>
+              <span class="k">Solana pubkey · MWA</span>
+              <span class="v">9pK4… 7vQy</span>
+            </div>
+            <div class="row-card">
+              <span class="k">Sigil</span>
+              <span class="v script">Caldris of the Strait — sealed at tick 0148.</span>
+            </div>
+          </div>
+
+          <div class="codex-section">
+            <h3>Linked Wallet</h3>
+            <div class="row-card">
+              <span class="k">EVM owner address (Base · 0G)</span>
+              <span class="v">0xA12c… 6F4d</span>
+            </div>
+
+            <div class="profile-list">
+              <div class="profile active">
+                <span class="glyph" style="color:var(--clan-2)"><svg><use href="#g-tide"/></svg></span>
+                <span class="name">Caldris (Tideborne)<small>0xA12c · 6F4d</small></span>
+                <svg class="check"><use href="#chk"/></svg>
+              </div>
+              <div class="profile">
+                <span class="glyph" style="color:var(--clan-6)"><svg><use href="#g-flame"/></svg></span>
+                <span class="name">Verra (Ember)<small>0x4d3F · 9b18</small></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="codex-section">
+            <h3>Device</h3>
+            <div class="device-chip">
+              <span class="icon"><svg><use href="#seek"/></svg></span>
+              <div>
+                <div class="label">Seeker · Seed Vault</div>
+                <div class="desc">on-device key custody detected. signing happens in silicon, never in software.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="codex-section">
+            <h3>About</h3>
+            <div class="row-card">
+              <span class="k">Build</span>
+              <span class="v">v 0.1.0 · slice I · 2026-05-07</span>
+            </div>
+          </div>
+
+          <nav class="tabbar">
+            <span class="tab">
+              <svg><use href="#tb-hearth"/></svg>Hearth
+            </span>
+            <span class="tab">
+              <svg><use href="#tb-hall"/></svg>Hall
+            </span>
+            <span class="tab active">
+              <svg><use href="#tb-codex"/></svg>Codex
+            </span>
+          </nav>
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- legend strip -->
+  <section class="canvas-header" style="margin-top:8px">
+    <div class="eyebrow">Tokens · ported from agent-tokens.ts</div>
+    <div class="legend">
+      <div><div class="swatch" style="background:#08070A"></div><div class="name">Obsidian</div><div class="hex">#08070A</div></div>
+      <div><div class="swatch" style="background:#15110E"></div><div class="name">Iron</div><div class="hex">#15110E</div></div>
+      <div><div class="swatch" style="background:#FF6B35"></div><div class="name">Ember</div><div class="hex">#FF6B35</div></div>
+      <div><div class="swatch" style="background:#5FC5D4"></div><div class="name">Rune</div><div class="hex">#5FC5D4</div></div>
+      <div><div class="swatch" style="background:#D4A04A"></div><div class="name">Gold</div><div class="hex">#D4A04A</div></div>
+      <div><div class="swatch" style="background:#E8DEC7"></div><div class="name">Parchment</div><div class="hex">#E8DEC7</div></div>
+      <div><div class="swatch" style="background:#C9B88A"></div><div class="name">Warm</div><div class="hex">#C9B88A</div></div>
+      <div><div class="swatch" style="background:#FF5050"></div><div class="name">Danger</div><div class="hex">#FF5050</div></div>
+    </div>
+  </section>
+
+  <footer class="canvas-foot">
+    <div>
+      <div><b>Clan World</b> · mobile · slice one</div>
+      <div style="margin-top:6px;font-family:var(--script);font-style:italic;font-size:13px;letter-spacing:normal;text-transform:none">
+        five surfaces, one breath: connect &middot; hearth &middot; hall &middot; writ &middot; codex.
+      </div>
+    </div>
+    <div class="right">
+      <div><b>Cinzel</b> · display · 12 26 36</div>
+      <div><b>EB Garamond</b> · body · 13 14 16</div>
+      <div><b>JetBrains Mono</b> · numerics · 9 11 13 48</div>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
