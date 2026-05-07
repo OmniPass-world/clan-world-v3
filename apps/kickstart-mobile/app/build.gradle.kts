@@ -28,6 +28,20 @@ fun resolveBuildConfigUrl(envName: String, propName: String): String {
 val convexUrl = resolveBuildConfigUrl("CLANWORLD_CONVEX_URL", "clanworldConvexUrl")
 val homeUrl = resolveBuildConfigUrl("KICKSTART_HOME_URL", "kickstartHomeUrl")
 
+// Optional stable signing key. When all four env vars are set (CI builds), debug
+// APKs are signed with the same key across releases so users can upgrade in
+// place. When unset (local dev), Gradle falls back to its auto-generated debug
+// keystore — fine for `./gradlew assembleDebug` on a workstation but each
+// machine produces a different cert.
+val releaseKeystorePath: String? = System.getenv("RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
+val releaseKeystorePassword: String? = System.getenv("RELEASE_KEYSTORE_PASSWORD")
+val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
+val releaseKeyPassword: String? = System.getenv("RELEASE_KEY_PASSWORD")
+val hasStableSigning = releaseKeystorePath != null &&
+  !releaseKeystorePassword.isNullOrBlank() &&
+  !releaseKeyAlias.isNullOrBlank() &&
+  !releaseKeyPassword.isNullOrBlank()
+
 android {
   namespace = "io.easya.kickstart"
   compileSdk = 35
@@ -36,10 +50,29 @@ android {
     applicationId = "io.easya.kickstart"
     minSdk = 26
     targetSdk = 35
-    versionCode = 9
-    versionName = "0.1.9"
+    versionCode = 10
+    versionName = "0.1.10"
     buildConfigField("String", "CONVEX_URL", "\"$convexUrl\"")
     buildConfigField("String", "HOME_URL", "\"$homeUrl\"")
+  }
+
+  if (hasStableSigning) {
+    signingConfigs {
+      create("stable") {
+        storeFile = file(releaseKeystorePath!!)
+        storePassword = releaseKeystorePassword
+        keyAlias = releaseKeyAlias
+        keyPassword = releaseKeyPassword
+      }
+    }
+  }
+
+  buildTypes {
+    debug {
+      if (hasStableSigning) {
+        signingConfig = signingConfigs.getByName("stable")
+      }
+    }
   }
 
   buildFeatures {
