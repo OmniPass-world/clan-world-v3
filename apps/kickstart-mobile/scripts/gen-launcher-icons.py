@@ -7,9 +7,12 @@ Reads app/src/main/res/drawable/kickstart_icon.png (the source-of-truth
   app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png
   app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_round.png
 
-Foreground bitmaps fill the entire 108dp adaptive frame (no transparent
-margin). The launcher mask clips the corners — that's intentional, the
-source corners are solid green and survive clipping cleanly.
+Foregrounds use a 108dp canvas with the source image centered at CONTENT_SCALE
+of the canvas size. The transparent margin lets squircle/circle launcher masks
+reveal more of the logo — the outer 18dp on each side of an adaptive foreground
+is parallax bleed that the launcher hides anyway.
+
+Legacy bitmaps stay at full bleed because adaptive launchers ignore them.
 """
 
 from __future__ import annotations
@@ -17,6 +20,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from PIL import Image
+
+# Fraction of the 108dp adaptive foreground canvas occupied by the source image.
+CONTENT_SCALE = 0.85
 
 FOREGROUND_PX = {
     "mdpi": 108,
@@ -43,6 +49,16 @@ def write(target: Path, img: Image.Image) -> None:
     img.save(target, format="PNG", optimize=True)
 
 
+def make_foreground(src: Image.Image, frame_px: int) -> Image.Image:
+    """Center src at CONTENT_SCALE inside a transparent frame_px canvas."""
+    content_px = max(1, round(frame_px * CONTENT_SCALE))
+    resized = src.resize((content_px, content_px), Image.LANCZOS)
+    canvas = Image.new("RGBA", (frame_px, frame_px), (0, 0, 0, 0))
+    pad = (frame_px - content_px) // 2
+    canvas.paste(resized, (pad, pad), resized)
+    return canvas
+
+
 def main() -> None:
     src = Image.open(SOURCE).convert("RGBA")
     if src.size[0] != src.size[1]:
@@ -50,7 +66,7 @@ def main() -> None:
 
     for density, px in FOREGROUND_PX.items():
         out = RES / f"mipmap-{density}" / "ic_launcher_foreground.png"
-        write(out, src.resize((px, px), Image.LANCZOS))
+        write(out, make_foreground(src, px))
 
     for density, px in LEGACY_PX.items():
         resized = src.resize((px, px), Image.LANCZOS)
