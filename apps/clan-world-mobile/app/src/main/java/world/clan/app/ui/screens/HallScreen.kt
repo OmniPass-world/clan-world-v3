@@ -16,6 +16,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -63,11 +66,21 @@ fun HallScreenRoute(
 ) {
   val vm: HallViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
+  // First-launch coachmark: read once from SessionStore, dismiss-on-tap
+  // toggles the local state and writes the persistent flag.
+  val hintFlagKey = "hall.hintSeen"
+  val hintInitial = remember { !app.sessionStore.hasSeenFlag(hintFlagKey) }
+  var hintVisible by remember { mutableStateOf(hintInitial) }
   HallScreen(
     state = state,
     onOpenInft = onOpenInft,
     onForge = onForge,
     onRefresh = vm::refresh,
+    showHint = hintVisible,
+    onDismissHint = {
+      hintVisible = false
+      app.sessionStore.markFlagSeen(hintFlagKey)
+    },
   )
 }
 
@@ -77,6 +90,8 @@ private fun HallScreen(
   onOpenInft: (Int) -> Unit,
   onForge: () -> Unit = {},
   onRefresh: () -> Unit = {},
+  showHint: Boolean = false,
+  onDismissHint: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
   Column(
@@ -93,6 +108,15 @@ private fun HallScreen(
     StaggeredEntry(index = 0) {
       HallHead(count = state.items.size)
     }
+
+    // First-launch coachmark — points new users at the FORGE entry below.
+    Spacer(Modifier.height(14.dp))
+    world.clan.app.ui.components.OnboardingHint(
+      visible = showHint,
+      title = "Begin your line",
+      body = "Tap “+ Forge a new sigil” below to mint your first iNFT.",
+      onDismiss = onDismissHint,
+    )
 
     // Forge entry — sits between the head divider and the list. Always
     // available; an empty hall still wants the option to forge a new one.

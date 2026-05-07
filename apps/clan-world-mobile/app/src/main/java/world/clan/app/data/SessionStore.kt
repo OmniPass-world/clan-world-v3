@@ -103,4 +103,15 @@ class SessionStore(context: Context) {
     toRemove.forEach { ed.remove(it) }
     ed.apply()
   }
+
+  // ── One-shot UI flags ─────────────────────────────────────────────────
+  // Persisted booleans for onboarding hints / coachmarks. Once a flag is
+  // marked seen, it stays seen across reinstalls (within EncryptedShared
+  // Preferences' device-keystore lifetime).
+
+  fun hasSeenFlag(key: String): Boolean = prefs.getBoolean("flag:$key", false)
+
+  fun markFlagSeen(key: String) {
+    prefs.edit().putBoolean("flag:$key", true).apply()
+  }
 }
