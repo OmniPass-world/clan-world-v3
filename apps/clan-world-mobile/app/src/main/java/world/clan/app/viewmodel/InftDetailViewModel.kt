@@ -50,7 +50,9 @@ class InftDetailViewModel(
       val comms = runCatching { convex.getCombinedComms(clanId, limit = 20) }
         .getOrDefault(emptyList())
         .sortedByDescending { it.tick ?: it.timestamp ?: 0L }
-      val vault = runCatching { convex.getVaultMovements(clanId, limit = 20) }.getOrDefault(emptyList())
+      val vault = runCatching { convex.getVaultMovements(clanId, limit = 20) }
+        .getOrDefault(emptyList())
+        .sortedByDescending { it.tick }
       _state.update {
         it.copy(
           isLoading = false,
