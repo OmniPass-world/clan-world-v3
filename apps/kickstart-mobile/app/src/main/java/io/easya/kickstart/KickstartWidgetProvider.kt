@@ -13,12 +13,12 @@ open class KickstartWidgetProvider : AppWidgetProvider() {
   override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
     appWidgetIds.forEach { appWidgetId ->
       updateWidget(context, manager, appWidgetId, WidgetStore.loadCachedToken(context, appWidgetId), layoutRes)
-      Thread {
+      BackgroundExecutors.widget.execute {
         val mint = WidgetStore.getWidgetTokenMint(context, appWidgetId)
         val fresh = mint?.let { runCatching { KickstartClient.fetchToken(it) }.getOrNull() }
         if (fresh != null) WidgetStore.saveCachedToken(context, appWidgetId, fresh)
         updateWidget(context, manager, appWidgetId, fresh ?: WidgetStore.loadCachedToken(context, appWidgetId), layoutRes)
-      }.start()
+      }
     }
   }
 
@@ -48,7 +48,7 @@ open class KickstartWidgetProvider : AppWidgetProvider() {
       views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
       manager.updateAppWidget(appWidgetId, views)
       if (TokenImageLoader.shouldFetchWidgetImage(context, token)) {
-        Thread {
+        BackgroundExecutors.widget.execute {
           val refreshedViews = KickstartWidgetRenderer.render(
             context,
             token,
@@ -58,7 +58,7 @@ open class KickstartWidgetProvider : AppWidgetProvider() {
           )
           refreshedViews.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
           manager.updateAppWidget(appWidgetId, refreshedViews)
-        }.start()
+        }
       }
     }
   }
