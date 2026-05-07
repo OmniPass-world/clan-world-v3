@@ -1,0 +1,9 @@
+<resources>
+  <color name="clan_bg">#101114</color>
+  <color name="clan_panel">#191B20</color>
+  <color name="clan_text">#F7F1E6</color>
+  <color name="clan_muted">#A7A08F</color>
+  <color name="clan_gold">#E8BE5A</color>
+  <color name="clan_teal">#61D7C4</color>
+  <color name="ic_launcher_background">#101114</color>
+</resources>

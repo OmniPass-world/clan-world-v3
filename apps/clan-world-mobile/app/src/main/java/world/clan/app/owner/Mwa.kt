@@ -1,0 +1,67 @@
+package world.clan.app.owner
+
+import android.net.Uri
+import androidx.activity.ComponentActivity
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
+import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
+import com.solana.mobilewalletadapter.clientlib.Solana
+import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import world.clan.app.data.Elder
+
+/**
+ * Real Mobile Wallet Adapter (Solana) sign-in. The user's installed
+ * wallet (Phantom / Solflare / fakewallet) returns a signed message;
+ * we do **not** verify the signature — any successful return is treated
+ * as "signed in" per the demo spec.
+ *
+ * On no-wallet-installed or user-cancelled, returns [SignInResult.Failed].
+ */
+sealed interface SignInResult {
+  data object Success : SignInResult
+  data class Failed(val reason: String) : SignInResult
+}
+
+object Mwa {
+
+  private val identity = ConnectionIdentity(
+    identityUri = Uri.parse("https://clan-world.com"),
+    iconUri = Uri.parse("/favicon.ico"),
+    identityName = "Clan World",
+  )
+
+  /**
+   * Triggers the wallet hand-off and asks the wallet to sign a per-clan
+   * message. Suspends until the user completes or cancels in the wallet
+   * app, or an error occurs (no wallet, transport failure, etc.).
+   */
+  suspend fun signInAsOwner(
+    activity: ComponentActivity,
+    elder: Elder,
+  ): SignInResult {
+    val sender = ActivityResultSender(activity)
+    val mwa = MobileWalletAdapter(connectionIdentity = identity)
+    mwa.blockchain = Solana.Mainnet
+
+    val message = ("Sign in as Ælder of ${elder.name} (clan ${elder.clanId})")
+      .toByteArray(Charsets.UTF_8)
+
+    val outcome: TransactionResult<ByteArray> = mwa.transact(sender) { authResult ->
+      val account = authResult.accounts.firstOrNull()
+        ?: error("No account returned from wallet authorization")
+      val signed = signMessagesDetached(
+        messages = arrayOf(message),
+        addresses = arrayOf(account.publicKey),
+      )
+      // We deliberately do NOT verify the signature — any successful return
+      // is treated as a successful sign-in per the demo spec.
+      signed.messages.firstOrNull()?.signatures?.firstOrNull() ?: ByteArray(0)
+    }
+
+    return when (outcome) {
+      is TransactionResult.Success         -> SignInResult.Success
+      is TransactionResult.NoWalletFound   -> SignInResult.Failed("No Solana wallet found")
+      is TransactionResult.Failure         -> SignInResult.Failed(outcome.e.message ?: "Sign-in failed")
+    }
+  }
+}

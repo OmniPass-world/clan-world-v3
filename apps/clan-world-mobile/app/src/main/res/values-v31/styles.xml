@@ -1,0 +1,10 @@
+<resources>
+  <style name="AppTheme.Splash" parent="android:style/Theme.Material.NoActionBar">
+    <item name="android:windowSplashScreenBackground">@color/clan_bg</item>
+    <item name="android:windowSplashScreenAnimatedIcon">@drawable/square_logo_main</item>
+    <item name="android:windowSplashScreenIconBackgroundColor">@color/clan_bg</item>
+    <item name="android:windowLightStatusBar">false</item>
+    <item name="android:statusBarColor">@color/clan_bg</item>
+    <item name="android:navigationBarColor">@color/clan_bg</item>
+  </style>
+</resources>
