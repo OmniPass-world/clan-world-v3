@@ -149,7 +149,13 @@ private fun StrategyEditor(
             )
           }
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(8.dp))
+        Text(
+          text = postureTagline(state.posture),
+          style = ClanWorldTheme.type.scriptItalicSmall,
+          color = ClanWorldTheme.colors.warmDim,
+        )
+        Spacer(Modifier.height(14.dp))
 
         // ── Pinned memory key ─────────────────────────────────────────────
         ParchmentCard(modifier = Modifier.fillMaxWidth()) {
@@ -301,6 +307,12 @@ private fun EditorHead(clanId: Int) {
       modifier = Modifier.padding(top = 2.dp),
     )
   }
+}
+
+private fun postureTagline(p: Posture): String = when (p) {
+  Posture.Defensive -> "hold the line; trade no ground without weight."
+  Posture.Balanced -> "read the season; move when both shores agree."
+  Posture.Aggressive -> "forge ahead; the season favors the bold."
 }
 
 @Composable
