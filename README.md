@@ -29,6 +29,9 @@
 </p>
 
 ---
+<a href="https://youtu.be/izGpAeqDHUo?si=qaOVs4wie-UxysAK">
+<img width="1533" height="863" alt="image" src="https://github.com/user-attachments/assets/09f2bd32-a469-4c42-a2fb-d1797e4b69aa" />
+</a>
 
 ## ❖  Why this matters
 
