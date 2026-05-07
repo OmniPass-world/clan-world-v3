@@ -63,6 +63,8 @@ object Routes {
   const val InftDetail = "inft/{clanId}"
   const val BazaarInftDetail = "bazaarInft/{clanId}"
   const val Whispers = "whispers/{clanId}"
+  const val SteeringConsole = "steer/{clanId}"
+  const val StrategyEditor = "strategy/{clanId}"
   const val Bridge = "bridge/{clanId}"
   const val Cockpit = "cockpit"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
@@ -70,6 +72,8 @@ object Routes {
   fun inftDetail(clanId: Int) = "inft/$clanId"
   fun bazaarInftDetail(clanId: Int) = "bazaarInft/$clanId"
   fun whispers(clanId: Int) = "whispers/$clanId"
+  fun steer(clanId: Int) = "steer/$clanId"
+  fun strategy(clanId: Int) = "strategy/$clanId"
   fun bridge(clanId: Int) = "bridge/$clanId"
   fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
   fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
@@ -207,7 +211,8 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     currentRoute == Routes.Codex ||
     currentRoute?.startsWith("inft/") == true ||
     currentRoute?.startsWith("bazaarInft/") == true ||
-    currentRoute?.startsWith("whispers/") == true
+    currentRoute?.startsWith("whispers/") == true ||
+    currentRoute?.startsWith("strategy/") == true
   // Cockpit + Owner sign-in / coming-soon are full-screen flows: tabbar hidden.
   val selectedTab = when {
     currentRoute == Routes.Hearth -> RootTab.Hearth
@@ -217,7 +222,9 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     currentRoute?.startsWith("inft/") == true -> RootTab.Hall // detail derived from Hall
     currentRoute?.startsWith("bazaarInft/") == true -> RootTab.Bazaar // detail derived from Bazaar
     currentRoute?.startsWith("whispers/") == true -> RootTab.Hall // inbox is a Hall drill-in
-    currentRoute?.startsWith("bridge/") == true ||
+    currentRoute?.startsWith("strategy/") == true -> RootTab.Hall // editor is a Hall drill-in
+    currentRoute?.startsWith("steer/") == true ||
+      currentRoute?.startsWith("bridge/") == true ||
       currentRoute == Routes.Cockpit ||
       currentRoute?.startsWith("ownerSignIn/") == true ||
       currentRoute?.startsWith("ownerComingSoon/") == true -> RootTab.Hall
@@ -363,6 +370,7 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
               onBack = { nav.popBackStack() },
               onEnterCockpit = { nav.navigate(Routes.bridge(clanId)) },
               onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
+              onEditStrategy = { nav.navigate(Routes.strategy(clanId)) },
             )
           }
 
@@ -423,6 +431,43 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
+              onCompose = { nav.navigate(Routes.steer(clanId)) },
+            )
+          }
+
+          // ── SteeringConsole (whisper composer; deep route from Whispers) ─
+          composable(
+            route = Routes.SteeringConsole,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            world.clan.app.ui.screens.SteeringConsoleScreenRoute(
+              app = app,
+              hostActivity = hostActivity,
+              initialClanId = clanId,
+              onBack = { nav.popBackStack() },
+              onSent = { nav.popBackStack() },
+            )
+          }
+
+          // ── StrategyEditor (per-iNFT doctrine form; deep route from InftDetail) ─
+          composable(
+            route = Routes.StrategyEditor,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            world.clan.app.ui.screens.StrategyEditorScreenRoute(
+              app = app,
+              hostActivity = hostActivity,
+              clanId = clanId,
+              onBack = { nav.popBackStack() },
+              onSaved = { nav.popBackStack() },
             )
           }
 

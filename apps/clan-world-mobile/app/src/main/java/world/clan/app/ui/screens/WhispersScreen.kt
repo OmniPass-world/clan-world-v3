@@ -48,6 +48,7 @@ fun WhispersScreenRoute(
   app: App,
   clanId: Int,
   onBack: () -> Unit,
+  onCompose: () -> Unit = {},
 ) {
   val vm: WhispersViewModel = viewModel(factory = WhispersViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
@@ -56,6 +57,7 @@ fun WhispersScreenRoute(
     clanId = clanId,
     onBack = onBack,
     onSetFilter = vm::setFilter,
+    onCompose = onCompose,
   )
 }
 
@@ -65,6 +67,7 @@ private fun WhispersScreen(
   clanId: Int,
   onBack: () -> Unit,
   onSetFilter: (WhispersFilter) -> Unit,
+  onCompose: () -> Unit = {},
 ) {
   Column(modifier = Modifier.fillMaxSize()) {
     InboxBackBar(clanId = clanId, onBack = onBack)
@@ -73,7 +76,18 @@ private fun WhispersScreen(
       InboxHead(clanId = clanId, count = state.filtered().size)
       Spacer(Modifier.height(12.dp))
       FilterRow(active = state.filter, onSelect = onSetFilter)
-      Spacer(Modifier.height(14.dp))
+      Spacer(Modifier.height(10.dp))
+      Text(
+        text = "+ NEW WHISPER",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.gold,
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { onCompose() }
+          .padding(vertical = 8.dp),
+        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+      )
+      Spacer(Modifier.height(8.dp))
     }
 
     val items = state.filtered()
