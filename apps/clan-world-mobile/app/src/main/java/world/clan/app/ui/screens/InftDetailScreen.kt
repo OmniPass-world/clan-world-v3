@@ -677,6 +677,10 @@ private fun BulletinPanel(bulletins: List<world.clan.app.data.Bulletin>) {
             // Right-side meta: written-tick + truncated tx-hash if present.
             val meta = buildString {
               b.updatedAt?.let { append("T %04d".format(it)) }
+              b.dataHash?.takeIf { it.length > 6 }?.let {
+                if (isNotEmpty()) append(" · ")
+                append("0g·${it.takeLast(6)}")
+              }
               b.txHash?.takeIf { it.length > 6 }?.let {
                 if (isNotEmpty()) append(" · ")
                 append("tx ${it.takeLast(6)}")
