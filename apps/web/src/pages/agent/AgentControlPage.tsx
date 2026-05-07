@@ -4,8 +4,6 @@ import {
   AGENTS,
   findAgent,
   type AgentDef,
-  INITIAL_BURN_COUNT,
-  INITIAL_SOL,
   INITIAL_GOLD,
   MOCK_WALLET,
   MOCK_ESSENCE,
@@ -15,33 +13,37 @@ import {
   FAUCET_DROP,
 } from './agent-tokens';
 import { ConnectGate } from './ConnectGate';
-import { AgentHeader } from './AgentHeader';
+import { DetailBack } from './DetailBack';
+import { HeroCard } from './HeroCard';
 import { EssenceSection } from './EssenceSection';
-import { WhispersSection } from './WhispersSection';
+import { WhispersSection, type Whisper } from './WhispersSection';
 import { SignSealModal } from './SignSealModal';
 import { ToastStack, type ToastDef } from './Toast';
 import { useTimeouts } from './useTimeouts';
 
 /**
- * Single-Agent Control Page.
+ * Single-Agent Control Page — "the writ of {name}".
  *
- * Three-zone vertical layout (mobile-portrait first, 100dvh):
+ * Vertical mobile-portrait layout:
  *
- *   ┌──────────────────────────────────┐  20%  Header
- *   │ wallet · sol · gold · burn · 🪙  │
- *   ├──────────────────────────────────┤  40%  Ælder Essence (iNFT metadata)
- *   │ Strategy textarea                │
- *   │ Notes    textarea                │
- *   │ [ Sign to Commit ]               │
- *   ├ ◈ rune divider ──────────────────┤
- *   │                                  │  40%  Ælder Whispers (chat)
- *   │ Whisper textarea                 │
- *   │ ▰▰▰▰▰▰▰▱▱▱  cooldown bar       │
- *   │ cost · [ Send ]                  │
- *   └──────────────────────────────────┘
+ *   ◀  HALL  ·  the writ of {name}             ← DetailBack
+ *   ┌──── parchment-letter HeroCard ──────┐
+ *   │ tkn · name · archetype · clan-pill  │
+ *   │ sigil · sealed tick · 3-stat grid   │
+ *   └─────────────────────────────────────┘
+ *   ── ÆLDER ESSENCE ──                         ← OrnamentRule
+ *   strategy / notes textareas + commit CTA
+ *   ── ÆLDER WHISPERS ──
+ *   whisper feed (scrolls)
+ *   ┌── ChatInput (LLM-style) ────────────┐
+ *   │ textarea + cooldown chip + send btn │
+ *   └─────────────────────────────────────┘
+ *   [+5 BURNED] (ephemeral, post-tx only)
+ *   GOLD · 12,450 g     [+ MINT 10K · DEVNET]
+ *   status line
  *
- * Auth: any tap on Connect = mock-success after 800ms wax-seal animation.
- * Mock ONLY — no real wallet, no Convex queries.
+ * Auth flow + sign-seal modal + decrypt skeleton are unchanged from the
+ * previous design — only the visual layer was rewritten.
  */
 
 interface Props {
@@ -52,12 +54,7 @@ type AuthState = 'gated' | 'gateConnecting' | 'decrypting' | 'live';
 
 export function AgentControlPage({ agentId }: Props) {
   const agent = findAgent(agentId);
-
-  // Invalid agent id — show graceful 404.
-  if (!agent) {
-    return <NotFound id={agentId} />;
-  }
-
+  if (!agent) return <NotFound id={agentId} />;
   return <AgentControlInner agent={agent} />;
 }
 
@@ -68,9 +65,7 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
   );
 
   // Wallet / balances
-  const [sol] = useState<number>(INITIAL_SOL);
   const [gold, setGold] = useState<number>(INITIAL_GOLD);
-  const [burned, setBurned] = useState<number>(INITIAL_BURN_COUNT);
   const [goldBouncing, setGoldBouncing] = useState(false);
   const [faucetCooling, setFaucetCooling] = useState(false);
 
@@ -85,9 +80,9 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     body: string;
   } | null>(null);
 
-  // Whispers
+  // Whispers — feed state, draft, send-in-flight
+  const [whispers, setWhispers] = useState<ReadonlyArray<Whisper>>([]);
   const [draft, setDraft] = useState<string>('');
-  const [sentCount, setSentCount] = useState<number>(0);
   const [lastSentAt, setLastSentAt] = useState<number>(-1);
   const [sending, setSending] = useState(false);
   const [whisperStatus, setWhisperStatus] = useState<{
@@ -95,27 +90,26 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     body: string;
   } | null>(null);
 
+  // BurnFlash trigger — increments per send, drives the ephemeral counter.
+  const [lastBurnAt, setLastBurnAt] = useState<number>(0);
+  const [lastBurnAmount, setLastBurnAmount] = useState<number>(WHISPER_BURN);
+
   // Toasts
   const [toasts, setToasts] = useState<ToastDef[]>([]);
   const toastIdRef = useRef(0);
 
-  // Centralized setTimeout tracker — auto-clears all pending IDs on unmount.
+  // Centralised setTimeout tracker — auto-clears all pending IDs on unmount.
   const tt = useTimeouts();
 
-  /* ---------- test hook (Playwright only) ---------------------------- */
-  // Exposes a tiny mutator for deterministic screenshots. Lives on
-  // window.__agentTestHook so it's invisible to anything that doesn't go
-  // looking. Reads from URL: only attaches when ?test=1 is present.
+  /* ---------- Playwright test hook (unchanged) -------------------------- */
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const hasFlag = new URLSearchParams(window.location.search).has('test');
     if (!hasFlag) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).__agentTestHook = {
-      setCooldownAgo(secondsAgo: number, sentCount: number) {
-        const t0 = Date.now() - secondsAgo * 1000;
-        setLastSentAt(t0);
-        setSentCount(sentCount);
+      setCooldownAgo(secondsAgo: number, _sentCount: number) {
+        setLastSentAt(Date.now() - secondsAgo * 1000);
       },
       setGold(g: number) {
         setGold(g);
@@ -128,22 +122,10 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     (kind: ToastDef['kind'], body: string, ttl = 2400) => {
       const id = ++toastIdRef.current;
       setToasts((arr) => [...arr, { id, kind, body }]);
-      tt.set(() => setToasts((arr) => arr.filter((t) => t.id !== id)), ttl);
+      tt.set(() => setToasts((arr) => arr.filter((toast) => toast.id !== id)), ttl);
     },
     [tt],
   );
-
-  /* ---------- ambient burn-counter drift ---------- */
-  // Slow background increment so the counter looks "alive" even without user
-  // actions — every ~1.8s nudges it by 7-23 GOLD. Looks like other players
-  // burning around the world.
-  useEffect(() => {
-    if (auth !== 'live') return;
-    const id = setInterval(() => {
-      setBurned((b) => b + Math.floor(7 + Math.random() * 17));
-    }, 1800);
-    return () => clearInterval(id);
-  }, [auth]);
 
   /* ---------- auto-dismiss success status ---------- */
   useEffect(() => {
@@ -164,8 +146,6 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
   const handleConnect = useCallback(() => {
     setAuth('gateConnecting');
     setSignSeal({ open: true, caption: 'to authenticate' });
-    // 800ms fake SIWS, then 1.5-3s decrypting skeleton (or shortened via
-    // ?fast query param for deterministic Playwright screenshots).
     const fast =
       typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).has('fast');
@@ -175,7 +155,6 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
       setAuth('decrypting');
       const decryptDuration = fast ? 400 : 1500 + Math.random() * 1500;
       tt.set(() => {
-        // Hydrate essence from mock
         const ess = MOCK_ESSENCE[agent.id] ?? { strategy: '', notes: '' };
         setCommittedStrategy(ess.strategy);
         setCommittedNotes(ess.notes);
@@ -187,19 +166,12 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     }, sealDelay);
   }, [agent.id, pushToast, tt]);
 
-  const handleCopyWallet = useCallback(() => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(MOCK_WALLET).catch(() => {});
-    }
-    pushToast('info', `wallet copied · ${MOCK_WALLET.slice(0, 6)}…`);
-  }, [pushToast]);
-
   const handleFaucet = useCallback(() => {
     if (faucetCooling) return;
     setFaucetCooling(true);
     setGold((g) => g + FAUCET_DROP);
     setGoldBouncing(true);
-    pushToast('success', `${FAUCET_DROP.toLocaleString()} GOLD added to your wallet`);
+    pushToast('success', `${FAUCET_DROP.toLocaleString()} GOLD added — devnet only`);
     tt.set(() => setGoldBouncing(false), 800);
     tt.set(() => setFaucetCooling(false), 1200);
   }, [faucetCooling, pushToast, tt]);
@@ -226,17 +198,18 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
   }, [signing, strategy, notes, committedStrategy, committedNotes, tt]);
 
   const handleSendWhisper = useCallback(() => {
-    const empty = draft.trim().length === 0;
-    if (empty || sending) return;
-    // Re-derive cooldown at click-time from lastSentAt — no longer carried
-    // as parent state (LOW-1 fix: clock is owned by WhispersSection).
+    const body = draft.trim();
+    if (body.length === 0 || sending) return;
     const cooldownMs =
       lastSentAt < 0 ? 0 : Math.max(0, WHISPER_COOLDOWN_MS - (Date.now() - lastSentAt));
     const fullMinutes = Math.ceil(cooldownMs / 60_000);
     const skipTax = cooldownMs > 0 ? fullMinutes * SKIP_TAX_PER_FULL_MINUTE : 0;
     const total = WHISPER_BURN + skipTax;
     if (gold < total) {
-      setWhisperStatus({ kind: 'error', body: `Insufficient GOLD (need ${total.toLocaleString()})` });
+      setWhisperStatus({
+        kind: 'error',
+        body: `Insufficient GOLD (need ${total.toLocaleString()})`,
+      });
       return;
     }
 
@@ -244,10 +217,12 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     setWhisperStatus(null);
 
     tt.set(() => {
+      const sentAt = Date.now();
       setGold((g) => g - total);
-      setBurned((b) => b + WHISPER_BURN); // only the 5-burn counts toward burn target
-      setSentCount((n) => n + 1);
-      setLastSentAt(Date.now());
+      setWhispers((arr) => [...arr, { id: sentAt, body, sentAt }]);
+      setLastSentAt(sentAt);
+      setLastBurnAt(sentAt);
+      setLastBurnAmount(WHISPER_BURN);
       setDraft('');
       setSending(false);
       setWhisperStatus({
@@ -268,13 +243,15 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
       data-testid="agent-control-page"
       data-agent-id={agent.id}
       data-auth-state={auth}
+      data-wallet={MOCK_WALLET}
       style={{
         position: 'relative',
         width: '100vw',
         height: '100dvh',
         background: t.bg.obsidian,
         color: t.text.primary,
-        overflow: 'hidden',
+        overflowX: 'hidden',
+        overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: t.font.body,
@@ -282,16 +259,28 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
     >
       <GlobalKeyframes />
 
-      {/* Subtle vignette + grain texture */}
+      {/* Atmospheric corner gradients — mirrors slice-1 page-level treatment */}
       <div
         aria-hidden
         style={{
-          position: 'absolute',
+          position: 'fixed',
           inset: 0,
           pointerEvents: 'none',
           background:
-            `radial-gradient(ellipse at top, rgba(255,107,53,0.05) 0%, transparent 50%),
-             radial-gradient(ellipse at bottom, rgba(95,197,212,0.04) 0%, transparent 60%)`,
+            `radial-gradient(ellipse 80% 50% at 50% 0%, rgba(255,107,53,0.06), transparent 70%),
+             radial-gradient(ellipse 60% 40% at 100% 100%, rgba(95,197,212,0.04), transparent 70%),
+             radial-gradient(ellipse 50% 50% at 0% 80%, rgba(212,160,74,0.03), transparent 70%)`,
+        }}
+      />
+      <div
+        aria-hidden
+        style={{
+          position: 'fixed',
+          inset: 0,
+          pointerEvents: 'none',
+          background: `url("${pageNoise}")`,
+          mixBlendMode: 'overlay',
+          opacity: 0.6,
         }}
       />
 
@@ -302,18 +291,19 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
           onConnect={handleConnect}
         />
       ) : (
-        <>
-          <AgentHeader
-            agent={agent}
-            wallet={MOCK_WALLET}
-            sol={sol}
-            gold={gold}
-            burned={burned}
-            goldBouncing={goldBouncing}
-            faucetCooling={faucetCooling}
-            onCopyWallet={handleCopyWallet}
-            onFaucet={handleFaucet}
-          />
+        <main
+          style={{
+            position: 'relative',
+            zIndex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '14px',
+            paddingBottom: '24px',
+          }}
+        >
+          <DetailBack agentName={agent.name} />
+
+          <HeroCard agent={agent} />
 
           <EssenceSection
             decrypting={auth === 'decrypting'}
@@ -335,13 +325,18 @@ function AgentControlInner({ agent }: { agent: AgentDef }) {
             onDraftChange={setDraft}
             lastSentAt={lastSentAt}
             cooldownTotalMs={WHISPER_COOLDOWN_MS}
+            feed={whispers}
+            lastBurnAt={lastBurnAt}
+            lastBurnAmount={lastBurnAmount}
             gold={gold}
-            sentCount={sentCount}
+            goldBouncing={goldBouncing}
+            faucetCooling={faucetCooling}
             sending={sending}
             status={whisperStatus}
             onSend={handleSendWhisper}
+            onFaucet={handleFaucet}
           />
-        </>
+        </main>
       )}
 
       <SignSealModal
@@ -425,6 +420,11 @@ function GlobalKeyframes() {
   return (
     <style>{`
       @keyframes spinFast { to { transform: rotate(360deg); } }
+      @keyframes agentSendShimmer {
+        40% { transform: translateX(-100%); }
+        70% { transform: translateX(100%); }
+        100% { transform: translateX(100%); }
+      }
       [data-testid="agent-control-page"] {
         scrollbar-width: thin;
         scrollbar-color: ${t.border.iron} transparent;
@@ -444,3 +444,10 @@ function GlobalKeyframes() {
     `}</style>
   );
 }
+
+/** Page-level grain — finer recipe than the parchment grain (stays subtle on dark). */
+const pageNoise =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'>" +
+  "<filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/>" +
+  "<feColorMatrix values='0 0 0 0 0.85  0 0 0 0 0.72  0 0 0 0 0.45  0 0 0 0.045 0'/></filter>" +
+  "<rect width='100%' height='100%' filter='url(%23n)'/></svg>";

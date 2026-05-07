@@ -1,9 +1,12 @@
 <resources>
-  <color name="clan_bg">#101114</color>
-  <color name="clan_panel">#191B20</color>
-  <color name="clan_text">#F7F1E6</color>
-  <color name="clan_muted">#A7A08F</color>
-  <color name="clan_gold">#E8BE5A</color>
-  <color name="clan_teal">#61D7C4</color>
-  <color name="ic_launcher_background">#101114</color>
+  <!-- Obsidian palette aligned with apps/web/src/pages/agent/agent-tokens.ts.
+       These are used by the launch theme and splash; the Compose UI reads
+       its own ClanWorldColors data class (see ui/theme/Color.kt). -->
+  <color name="clan_bg">#08070A</color>
+  <color name="clan_panel">#15110E</color>
+  <color name="clan_text">#E8DEC7</color>
+  <color name="clan_muted">#C9B88A</color>
+  <color name="clan_gold">#D4A04A</color>
+  <color name="clan_teal">#5FC5D4</color>
+  <color name="ic_launcher_background">#08070A</color>
 </resources>

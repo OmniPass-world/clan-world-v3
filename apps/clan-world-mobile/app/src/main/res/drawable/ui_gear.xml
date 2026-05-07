@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <!-- center hole r=3.2 -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.4"
+        android:fillColor="#00000000"
+        android:pathData="M12,12 m-3.2,0 a3.2,3.2 0 1,0 6.4,0 a3.2,3.2 0 1,0 -6.4,0"/>
+    <!-- 8 spokes -->
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,2 v3 M12,19 v3 M2,12 h3 M19,12 h3 M4.5,4.5 l2.1,2.1 M17.4,17.4 l2.1,2.1 M19.5,4.5 l-2.1,2.1 M6.6,17.4 l-2.1,2.1"/>
+</vector>

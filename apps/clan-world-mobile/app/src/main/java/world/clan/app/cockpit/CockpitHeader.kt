@@ -1,10 +1,7 @@
 package world.clan.app.cockpit
 
-import androidx.compose.animation.animateColor
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.keyframes
-import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,7 +19,12 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,8 +34,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.useConnectionStatus
+import world.clan.app.data.convex.useSnapshot
 import world.clan.app.ui.theme.CockpitFonts
 import world.clan.app.ui.theme.CockpitTokens
+import kotlin.math.max
+import kotlin.math.roundToInt
 
 /**
  * Title typography reused across the header (CLAN | WORLD) and the
@@ -63,14 +70,25 @@ val HeaderRow2Height = 40.dp
  * Row 2 — LIVE indicator (left) · BULLETINS button (centre) · MEMORY WIPE
  *   pill (right). 40dp tall, ironDeep bg.
  */
+/**
+ * Memory wipe interval in ticks — every Nth tick the world's memory wipes.
+ * Mirrors the web's `INTERVAL_TICKS` constant.
+ */
+private const val WIPE_INTERVAL_TICKS = 10
+
 @Composable
 fun CockpitHeader(
   modifier: Modifier = Modifier,
   bulletinOpen: Boolean = false,
   onBulletinToggle: () -> Unit = {},
-  ticksUntilWipe: Int = 8,
-  connection: ConnectionStatus = ConnectionStatus.Connected,
 ) {
+  // Live snapshot drives the tick counter + memory-wipe countdown.
+  val snapshotState = useSnapshot()
+  val connection = useConnectionStatus()
+
+  val tick: Int = (snapshotState as? QueryState.Live)?.data?.tick?.roundToInt() ?: 0
+  val ticksUntilWipe: Int = max(0, WIPE_INTERVAL_TICKS - (tick % WIPE_INTERVAL_TICKS))
+
   Column(modifier = modifier) {
     // Row 1 — CLAN [cutout] WORLD, centred on the cutout
     Row(
@@ -99,7 +117,7 @@ fun CockpitHeader(
       Spacer(modifier = Modifier.weight(1f))
       BulletinButton(open = bulletinOpen, onClick = onBulletinToggle)
       Spacer(modifier = Modifier.weight(1f))
-      TickCounterPill(ticksUntilWipe = ticksUntilWipe)
+      TickCounterPill(tick = tick, ticksUntilWipe = ticksUntilWipe)
     }
   }
 }
@@ -144,25 +162,23 @@ private fun BulletinButton(open: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TickCounterPill(ticksUntilWipe: Int) {
+private fun TickCounterPill(tick: Int, ticksUntilWipe: Int) {
   val accent = CockpitTokens.TextC.Accent
 
-  // Periodic 250ms accent flash on an 8s loop — proxy for "snapshot
-  // advanced" in the absence of live tick events.
-  val transition = rememberInfiniteTransition(label = "tickPulse")
-  val borderColor by transition.animateColor(
-    initialValue = CockpitTokens.Border.Iron,
-    targetValue = CockpitTokens.Border.Iron,
-    animationSpec = infiniteRepeatable(
-      animation = keyframes {
-        durationMillis = 8_000
-        CockpitTokens.Border.Iron at 0
-        accent                    at 250
-        CockpitTokens.Border.Iron at 600
-        CockpitTokens.Border.Iron at 8_000
-      },
-      repeatMode = RepeatMode.Restart,
-    ),
+  // Border flashes accent for ~250ms on every real tick advance, then
+  // settles back to neutral. Driven by the snapshot's tick — no tick
+  // change → no flash, so the pill is genuinely silent during outages.
+  var pulseActive by remember { mutableStateOf(false) }
+  LaunchedEffect(tick) {
+    if (tick > 0) {
+      pulseActive = true
+      delay(250)
+      pulseActive = false
+    }
+  }
+  val borderColor by animateColorAsState(
+    targetValue = if (pulseActive) accent else CockpitTokens.Border.Iron,
+    animationSpec = tween(durationMillis = if (pulseActive) 120 else 420),
     label = "tickPulseBorder",
   )
 

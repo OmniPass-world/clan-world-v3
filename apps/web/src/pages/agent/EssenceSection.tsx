@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { agentTokens as t } from './agent-tokens';
 import { DecryptingSkeleton } from './DecryptingSkeleton';
-import { RuneDivider } from './RuneDivider';
+import { OrnamentRule } from './OrnamentRule';
 
 interface Props {
   decrypting: boolean;
@@ -45,22 +45,16 @@ export function EssenceSection({
     <section
       data-testid="essence-section"
       style={{
-        flex: '0 0 40%',
-        minHeight: '40%',
+        flex: '0 0 auto',
         display: 'flex',
         flexDirection: 'column',
         background: `linear-gradient(180deg, ${t.bg.iron} 0%, ${t.bg.obsidian} 100%)`,
-        padding: '8px 12px 6px',
-        gap: '6px',
+        padding: '12px 22px 10px',
+        gap: '10px',
         overflow: 'hidden',
       }}
     >
-      <SectionLabel
-        kana="ÆLDER ESSENCE"
-        sub="iNFT · persistent metadata"
-        rune="ᚢᚱᛞ"
-        accent={t.rune.core}
-      />
+      <OrnamentRule label="ÆLDER ESSENCE" glyph="ᚢᚱᛞ" />
 
       {decrypting ? (
         <DecryptingSkeleton height={158} />
@@ -207,78 +201,11 @@ export function EssenceSection({
         </AnimatePresence>
       </div>
 
-      {/* Glowing rune-string section break — divides Essence from Whispers */}
-      <RuneDivider tone="ember" caption="seal · then whisper" glyph="ᛟ" />
     </section>
   );
 }
 
 /* ---------------------------------------------------------------------- */
-
-function SectionLabel({
-  kana,
-  sub,
-  rune,
-  accent,
-}: {
-  kana: string;
-  sub: string;
-  rune: string;
-  accent: string;
-}) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: '8px',
-        marginBottom: '2px',
-        minWidth: 0,
-      }}
-    >
-      <span
-        style={{
-          fontFamily: t.font.rune,
-          fontSize: '11px',
-          color: accent,
-          letterSpacing: '0.04em',
-          textShadow: `0 0 8px ${accent}`,
-        }}
-        aria-hidden
-      >
-        {rune}
-      </span>
-      <span
-        style={{
-          fontFamily: t.font.display,
-          fontSize: '11px',
-          color: t.text.primary,
-          letterSpacing: '0.34em',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-        }}
-      >
-        {kana}
-      </span>
-      <span
-        style={{
-          fontFamily: t.font.mono,
-          fontSize: '8.5px',
-          color: t.text.muted,
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-          flex: 1,
-          minWidth: 0,
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-        }}
-      >
-        — {sub}
-      </span>
-    </div>
-  );
-}
 
 function FieldShell({
   label,
