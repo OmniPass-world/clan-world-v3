@@ -1,47 +1,23 @@
 package world.clan.gold
 
 import android.app.Activity
+import android.net.Uri
 import android.os.Bundle
-import android.view.View
-import android.view.ViewGroup
 import android.widget.FrameLayout
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import androidx.browser.customtabs.CustomTabsIntent
 
 class MainActivity : Activity() {
-  private lateinit var webView: WebView
-
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     window.statusBarColor = getColor(R.color.widget_bg)
     window.navigationBarColor = getColor(R.color.widget_bg)
 
-    val container = FrameLayout(this)
-    webView = WebView(this)
-    webView.webViewClient = WebViewClient()
-    webView.settings.javaScriptEnabled = true
-    webView.settings.domStorageEnabled = true
-    container.setBackgroundColor(getColor(R.color.widget_bg))
-    webView.setBackgroundColor(getColor(R.color.widget_bg))
-    container.addView(
-      webView,
-      FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
-    )
-    container.setOnApplyWindowInsetsListener { view, insets ->
-      @Suppress("DEPRECATION")
-      view.setPadding(0, insets.systemWindowInsetTop, 0, 0)
-      insets
-    }
+    val container = FrameLayout(this).apply { setBackgroundColor(getColor(R.color.widget_bg)) }
     setContentView(container)
-    container.requestApplyInsets()
-    webView.loadUrl(BuildConfig.TOKEN_URL)
-  }
-
-  override fun onBackPressed() {
-    if (::webView.isInitialized && webView.canGoBack()) {
-      webView.goBack()
-    } else {
-      super.onBackPressed()
-    }
+    CustomTabsIntent.Builder()
+      .setShowTitle(true)
+      .setShareState(CustomTabsIntent.SHARE_STATE_OFF)
+      .build()
+      .launchUrl(this, Uri.parse(BuildConfig.TOKEN_URL))
   }
 }

@@ -16,8 +16,8 @@ android {
     applicationId = "world.clan.gold"
     minSdk = 26
     targetSdk = 35
-    versionCode = 1
-    versionName = "0.1.0"
+    versionCode = 2
+    versionName = "0.1.1"
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
     buildConfigField("String", "TOKEN_URL", "\"${tokenUrl.get()}\"")
   }
@@ -34,4 +34,8 @@ android {
   kotlinOptions {
     jvmTarget = "17"
   }
+}
+
+dependencies {
+  implementation("androidx.browser:browser:1.8.0")
 }
