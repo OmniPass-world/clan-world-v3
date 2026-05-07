@@ -89,6 +89,7 @@ class HearthViewModel(
         val snap = convex.getSnapshot()
         val comms = runCatching { convex.getCombinedComms(selectedClan, limit = 3) }
           .getOrDefault(emptyList())
+          .sortedByDescending { it.tick ?: it.timestamp ?: 0L }
         snap to comms
       }.onSuccess { (snap, comms) ->
         _state.update { _ ->
