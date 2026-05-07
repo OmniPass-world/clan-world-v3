@@ -20,24 +20,6 @@
     android:src="@drawable/gold_widget_logo" />
 
   <TextView
-    android:id="@+id/symbol_glow"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_gravity="top|start"
-    android:layout_marginStart="12dp"
-    android:layout_marginTop="12dp"
-    android:fontFamily="sans-serif-black"
-    android:includeFontPadding="false"
-    android:letterSpacing="0"
-    android:shadowColor="#E6000000"
-    android:shadowDx="0"
-    android:shadowDy="1"
-    android:shadowRadius="9"
-    android:text="GOLD"
-    android:textColor="@android:color/transparent"
-    android:textSize="30sp" />
-
-  <TextView
     android:id="@+id/symbol"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
@@ -113,11 +95,11 @@
   <ImageView
     android:id="@+id/sparkline"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
+    android:layout_height="128dp"
     android:layout_gravity="center"
     android:layout_marginStart="12dp"
     android:layout_marginTop="12dp"
-    android:layout_marginEnd="64dp"
+    android:layout_marginEnd="36dp"
     android:background="@drawable/sparkline_placeholder"
     android:contentDescription="@string/app_name"
     android:scaleType="fitXY" />
@@ -157,6 +139,6 @@
       android:shadowRadius="3"
       android:text="Choose a token"
       android:textColor="@color/widget_muted"
-      android:textSize="12sp" />
+      android:textSize="11sp" />
   </LinearLayout>
 </FrameLayout>
