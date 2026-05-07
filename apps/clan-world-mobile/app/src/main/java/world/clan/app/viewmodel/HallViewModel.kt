@@ -55,7 +55,19 @@ class HallViewModel(
   private val _state = MutableStateFlow(initial())
   val state: StateFlow<HallUiState> = _state.asStateFlow()
 
-  init { refresh() }
+  init {
+    refresh()
+    // Auto-refresh every 30s while VM is alive — new memory writes,
+    // transfers, etc should land in Hall without pull-to-refresh.
+    // Cleaned up by viewModelScope cancellation on disconnect.
+    viewModelScope.launch {
+      while (true) {
+        kotlinx.coroutines.delay(HearthViewModel.REFRESH_INTERVAL_MS)
+        if (_state.value.isLoading || _state.value.isRefreshing) continue
+        refresh()
+      }
+    }
+  }
 
   private fun initial(): HallUiState {
     val s = sessionStore.read()
