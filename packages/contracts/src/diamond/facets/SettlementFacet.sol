@@ -10,6 +10,7 @@ contract SettlementFacet is IClanWorldEvents {
     function settleClan(uint32 clanId) external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
         _settleClan(s, clanId);
         LibStorage.exitNonReentrant(s);
@@ -18,6 +19,7 @@ contract SettlementFacet is IClanWorldEvents {
     function settleClansman(uint32 clansmanId) external {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
 
         uint32 clanId = s.clansmen[clansmanId].clanId;

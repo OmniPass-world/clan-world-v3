@@ -20,14 +20,15 @@ import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
 import type * as getSnapshot from "../getSnapshot.js";
+import type * as goldQuote from "../goldQuote.js";
 import type * as heartbeat from "../heartbeat.js";
 import type * as http from "../http.js";
 import type * as indexer from "../indexer.js";
 import type * as inft from "../inft.js";
+import type * as kickstart from "../kickstart.js";
 import type * as memory from "../memory.js";
 import type * as mock from "../mock.js";
 import type * as vault from "../vault.js";
-import type * as verify from "../verify.js";
 
 /**
  * A utility for referencing Convex functions in your app's API.
@@ -45,14 +46,15 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   events: typeof events;
   getSnapshot: typeof getSnapshot;
+  goldQuote: typeof goldQuote;
   heartbeat: typeof heartbeat;
   http: typeof http;
   indexer: typeof indexer;
   inft: typeof inft;
+  kickstart: typeof kickstart;
   memory: typeof memory;
   mock: typeof mock;
   vault: typeof vault;
-  verify: typeof verify;
 }>;
 export declare const api: FilterApi<
   typeof fullApi,

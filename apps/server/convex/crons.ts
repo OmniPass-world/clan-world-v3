@@ -21,4 +21,8 @@ if (process.env.CLANWORLD_USE_REAL_INDEXER === "true") {
   crons.interval("real-indexer-log-poller", { seconds: 3 }, internal.indexer.pollLogs, {});
 }
 
+crons.interval("gold-quote-refresh", { minutes: 5 }, internal.goldQuote.refreshGoldQuote, {});
+crons.interval("kickstart-leaderboard-refresh", { minutes: 5 }, internal.kickstart.refreshKickstartLeaderboard, {});
+crons.interval("kickstart-watched-candles-refresh", { minutes: 1 }, internal.kickstart.refreshWatchedTokenCandles, {});
+
 export default crons;

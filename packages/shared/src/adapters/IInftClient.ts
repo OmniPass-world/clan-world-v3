@@ -216,17 +216,19 @@ class StubInftClient implements IInftClient {
 
 class RealInftClient implements IInftClient {
   private readonly address: Address;
+  private readonly zeroGRpcUrl = readEnv('ZERO_G_RPC_URL') ?? 'https://evmrpc.0g.ai';
+  private readonly zeroGRpcUrlFallback = readEnv('ZERO_G_RPC_URL_FALLBACK');
   private readonly chain = defineChain({
     id: Number(readEnv('OG_CHAIN_ID') ?? '16661'),
     name: readEnv('OG_CHAIN_NAME') ?? '0G',
     nativeCurrency: { name: '0G', symbol: '0G', decimals: 18 },
     rpcUrls: {
-      default: { http: [readEnv('OG_RPC_URL') ?? readEnv('EVM_RPC') ?? 'https://evmrpc.0g.ai'] },
+      default: { http: [this.zeroGRpcUrl] },
     },
   });
-  private readonly transport = readEnv('OG_RPC_URL_FALLBACK')
-    ? fallback([http(readEnv('OG_RPC_URL') ?? readEnv('EVM_RPC')), http(readEnv('OG_RPC_URL_FALLBACK'))])
-    : http(readEnv('OG_RPC_URL') ?? readEnv('EVM_RPC'));
+  private readonly transport = this.zeroGRpcUrlFallback
+    ? fallback([http(this.zeroGRpcUrl), http(this.zeroGRpcUrlFallback)])
+    : http(this.zeroGRpcUrl);
   private readonly publicClient = createPublicClient({ chain: this.chain, transport: this.transport });
 
   constructor() {

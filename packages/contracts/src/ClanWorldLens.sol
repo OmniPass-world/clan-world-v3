@@ -264,6 +264,8 @@ contract ClanWorldLens is IClanWorldLens {
             seasonFinalized: ws.seasonFinalized,
             currentSeasonNumber: ws.currentSeasonNumber,
             nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
+            worldPaused: ws.worldPaused,
+            pausedAtTs: ws.pausedAtTs,
             winterActive: ws.winterActive,
             winterStartsAtTick: ws.winterStartsAtTick,
             winterEndsAtTick: ws.winterEndsAtTick,

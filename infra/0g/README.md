@@ -26,7 +26,7 @@ In your `.env.local` at the monorepo root, set:
 ```
 OG_STORAGE_ENABLED=true
 ELDER_MNEMONIC=<from ~/.secrets/clanworld-elder-wallets.json key `mnemonic12`>
-EVM_RPC=https://evmrpc.0g.ai
+ZERO_G_RPC_URL=https://evmrpc.0g.ai
 INDEXER_RPC=https://indexer-storage-turbo.0g.ai
 FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526
 ```

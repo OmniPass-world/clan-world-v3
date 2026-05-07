@@ -31,6 +31,8 @@ library LibStorage {
         bytes32 currentTickSeed;
         uint32 activeBanditId;
         uint64 nextCommitSequence;
+        bool worldPaused;
+        uint64 pausedAtTs;
     }
 
     struct BanditSpawnState {

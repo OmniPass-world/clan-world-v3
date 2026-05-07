@@ -63,7 +63,6 @@ export default defineConfig({
     stderr: 'pipe',
     env: {
       VITE_CLANWORLD_DEMO_MODE: process.env.VITE_CLANWORLD_DEMO_MODE ?? 'true',
-      VITE_REQUIRE_WORLD_APP_GUARD: process.env.VITE_REQUIRE_WORLD_APP_GUARD ?? 'false',
     },
   },
 });

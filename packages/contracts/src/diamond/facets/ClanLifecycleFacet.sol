@@ -20,6 +20,7 @@ contract ClanLifecycleFacet is IClanWorldEvents {
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
 
+        LibGameRules.requireWorldNotPaused(s);
         LibGameRules.requireNoPendingSeasonFinalization(s);
         require(to != address(0), "ClanWorld: zero address");
         require(s.allClanIds.length < LibGameRules.MAX_CLANS, "ClanWorld: max clans");

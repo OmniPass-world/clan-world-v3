@@ -1,6 +1,6 @@
 # apps/server — AGENTS.md
 
-Convex backend. Hosts game-state queries, the indexer cron, and the post-tick webhook. One Convex deployment per realm (one for S1 World Chain Sepolia, redeployed for S2 Base Sepolia).
+Convex backend. Hosts game-state queries, the indexer cron, and the post-tick webhook for the active Base Sepolia realm.
 
 ## What this package does
 

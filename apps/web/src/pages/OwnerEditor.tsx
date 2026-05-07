@@ -24,14 +24,14 @@ declare global {
 }
 
 const OG_INFT_ADDRESS = import.meta.env.VITE_OG_INFT_ADDRESS as Address | undefined;
-const OG_RPC_URL = (import.meta.env.VITE_OG_RPC_URL as string | undefined) ?? 'https://evmrpc.0g.ai';
+const ZERO_G_RPC_URL = (import.meta.env.VITE_ZERO_G_RPC_URL as string | undefined) ?? 'https://evmrpc.0g.ai';
 const OG_CHAIN_ID = Number(import.meta.env.VITE_OG_CHAIN_ID ?? 16661);
 
 const ogChain = defineChain({
   id: OG_CHAIN_ID,
   name: '0G',
   nativeCurrency: { name: '0G', symbol: '0G', decimals: 18 },
-  rpcUrls: { default: { http: [OG_RPC_URL] } },
+  rpcUrls: { default: { http: [ZERO_G_RPC_URL] } },
 });
 
 const proofHex = (value: string): Hex => stringToHex(value.length > 0 ? value : 'demo-proof');
@@ -78,7 +78,7 @@ export function OwnerEditor() {
   const currentHash = useMemo(() => hashIntelligentData(data), [data]);
 
   const publicClient = useMemo(
-    () => createPublicClient({ chain: ogChain, transport: http(OG_RPC_URL) }),
+    () => createPublicClient({ chain: ogChain, transport: http(ZERO_G_RPC_URL) }),
     [],
   );
 

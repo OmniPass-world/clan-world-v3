@@ -35,7 +35,7 @@ Pre-demo feature drop. iNFT demo wiring, AXL transport, 0G storage scaffolding, 
 - **`getSnapshot` exposes season/winter state** (PR #489): pure `deriveSeasonState(tick)` mirroring `LibSeason.sol` semantics — no chain or schema change needed; `seasonStartTick` / `seasonEndTick` / `winterActive` / `winterStartsAtTick` available client-side.
 - **Diamond winter boundary tests** (PRs #472, #473, #474): `DiamondWinterBoundary.t.sol` covers winter-start parity, winter-end parity, and the `MAX_CROP_TRANSITION_PER_TICK` stress path against the diamond.
 - **Expanded README** (PR #490): 86 → 215 lines. Game mechanics (regions, missions, wheelbarrows, vault, trading, bandits, winter, seasons, monument), agent architecture (Four Ælders, Elder CLI, Memory & iNFT, Communication channels), tech-stack table, beyond-the-game pitch.
-- **AGENTS.md World out-of-scope banner** (PR #495): one-line sticky directing all agents to ignore WorldChain / WorldMiniApp / MiniKit / World ID references — Submission 2 only.
+- **AGENTS.md active-scope banner** (PR #495): one-line sticky directing all agents to Base Sepolia + 0G + AXL + KeeperHub V3 scope.
 
 ### Changed
 
@@ -347,7 +347,7 @@ Path A canonization of v4.6 economy semantics:
 - Resource reservation invariant enforced: `WithdrawResources` and all OTC transfer paths are reservation-aware, closing a class of vault-drain exploits found during pre-release audit
 - ABI drift is structurally impossible: generated `CLAN_WORLD_ABI` replaces every hand-rolled tuple; `gen-enums.mjs` and `gen-constants.mjs` keep TypeScript in sync with Solidity
 - Pixi.js canvas world map with 8 regions, isometric base sprites at five upgrade levels, clansman walking animations, speech bubbles, pinch-to-zoom, and a live scoreboard
-- World ID humanity verification at clan mint via MiniKit + IDKit integration
+- Browser-first frontend with direct access to the live map and cockpit
 - Convex real-time backend with heartbeat webhook, safety-net cron, and mock-mode for offline development
 - ABI parity test wired into CI — contract shape drift fails the build automatically
 
@@ -362,7 +362,7 @@ The contract evolved through ten ordered phases. Each phase is its own ratcheted
 > [!NOTE]
 > **Foundation Engine Online:**
 > 1. **`ClanWorld.sol`** — the real on-chain game contract replacing the planning stubs
-> 2. **`mintClan`** — clan creation with World ID verification handle
+> 2. **`mintClan`** — clan creation with EVM owner address
 > 3. **Order submission** — clansman action queue with explicit `ClanOrder` struct
 > 4. **Heartbeat skeleton** — the tick-advancement entry point for the world
 > 5. **Lazy settlement core** — clans replay tick-by-tick when next touched (the central performance pattern)
@@ -634,7 +634,7 @@ After all 10 phases landed in `dev-merge`, an 8–11 reviewer super-swarm (codex
 > **The World You Watch:**
 > 1. **8-region canvas world map** with clan flags + speech bubbles (#19)
 > 2. **`agentLogs` speech bubbles on canvas** — Elder reasoning surfaces visually (#33)
-> 3. **MiniKit + IDKit clan-join + World ID verify endpoint** (#34)
+> 3. **Browser clan-join surface and backend readiness checks** (#34)
 > 4. **Isometric base sprites at 5 upgrade levels** + region zones + floating level labels + fullscreen mode (#52, #161)
 > 5. **Walking clansman sprites** replace worker dots (#59)
 > 6. **Pinch-to-zoom via `pixi-viewport`** — multi-touch + Pixi v8 EventSystem fix (#50, #51, #53)
@@ -645,7 +645,7 @@ After all 10 phases landed in `dev-merge`, an 8–11 reviewer super-swarm (codex
 
 - Pixi.js canvas shell — 8 regions, clan flags, speech bubbles (#19)
 - Convex `agentLogs` speech bubbles (#33)
-- MiniKit + IDKit clan-join + World ID verify endpoint (#34)
+- Browser clan-join surface and backend readiness checks (#34)
 - Visual rework — isometric base sprites, region zones, floating level labels, fullscreen mode (#52, #161)
 - Clansman walking sprites (#59)
 - Speech bubble polish (#43, #55, #99)
@@ -689,7 +689,7 @@ After all 10 phases landed in `dev-merge`, an 8–11 reviewer super-swarm (codex
 > [!NOTE]
 > **Cleaner Surfaces:**
 > 1. **Phase 7 OTC strip-out** — OTC order type replaced with 5 *direct transfer functions* (#389)
-> 2. **Base Sepolia chain pivot** — replaces earlier World Chain Sepolia config (#132)
+> 2. **Base Sepolia chain pivot** — makes Base Sepolia the active chain config (#132)
 > 3. **`*Upgraded` events dropped**, `*LevelChanged` kept — cleaner event surface (#365)
 > 4. **`MAX_CLAN_SCAN_FOR_RANKING` derived** from `MAX_CLANS` instead of hardcoded (#360)
 > 5. **Carry-based market trades** — workers haul resources, no teleport (#284)

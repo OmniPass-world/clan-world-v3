@@ -27,11 +27,6 @@ forge fmt      # format
 The deploy script (Wave 1+) lives at `script/Deploy.s.sol`. Targets are parameterized by `RPC_URL_PRIMARY`.
 
 ```bash
-# Submission 1 — World Chain Sepolia
-RPC_URL_PRIMARY=$WORLDCHAIN_SEPOLIA_RPC \
-  forge script script/Deploy.s.sol --rpc-url $RPC_URL_PRIMARY --broadcast --verify
-
-# Submission 2 — Base Sepolia
 RPC_URL_PRIMARY=$BASE_SEPOLIA_RPC \
   forge script script/Deploy.s.sol --rpc-url $RPC_URL_PRIMARY --broadcast --slow --verify
 ```

@@ -13,7 +13,7 @@
  * No PRIVATE_KEY env var required.
  *
  * Mainnet config:
- *   EVM_RPC=https://evmrpc.0g.ai
+ *   ZERO_G_RPC_URL=https://evmrpc.0g.ai
  *   INDEXER_RPC=https://indexer-storage-turbo.0g.ai
  *   FLOW_CONTRACT=0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526
  *   CHAIN_ID=16661
@@ -134,9 +134,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 /**
  * Build a BatcherFactory using the real @0glabs/0g-ts-sdk.
- * Requires ELDER_MNEMONIC, EVM_RPC, INDEXER_RPC, FLOW_CONTRACT.
+ * Requires ELDER_MNEMONIC, ZERO_G_RPC_URL, INDEXER_RPC, FLOW_CONTRACT.
  *
- * @param env  - env vars (for non-index config like EVM_RPC, ELDER_MNEMONIC)
+ * @param env  - env vars (for non-index config like ZERO_G_RPC_URL, ELDER_MNEMONIC)
  * @param elderIndex - already-validated index from createMemoryStore opts — no re-read from env
  */
 function buildRealBatcherFactory(
@@ -167,11 +167,11 @@ function buildRealBatcherFactory(
     // Use the already-validated elderIndex passed in — never re-read process.env here.
     const index = elderIndex;
 
-    const evmRpc = env['EVM_RPC'] ?? 'https://evmrpc.0g.ai';
+    const zeroGRpcUrl = env['ZERO_G_RPC_URL'] ?? 'https://evmrpc.0g.ai';
     const indexerRpc = env['INDEXER_RPC'] ?? 'https://indexer-storage-turbo.0g.ai';
     const flowContract = env['FLOW_CONTRACT'] ?? '0x62D4144dB0F0a6fBBaeb6296c785C71B3D57C526';
 
-    const provider = new ethers.JsonRpcProvider(evmRpc);
+    const provider = new ethers.JsonRpcProvider(zeroGRpcUrl);
     const wallet = ethers.HDNodeWallet.fromPhrase(
       mnemonic,
       undefined,
@@ -187,7 +187,7 @@ function buildRealBatcherFactory(
     if (nodeErr) throw new Error(`[ZeroGMemoryStore] 0G node selection failed: ${nodeErr.message}`);
 
     const flow = sdk.FixedPriceFlow__factory.connect(flowContract, wallet);
-    return new sdk.Batcher(1, nodes, flow, evmRpc);
+    return new sdk.Batcher(1, nodes, flow, zeroGRpcUrl);
   };
 }
 

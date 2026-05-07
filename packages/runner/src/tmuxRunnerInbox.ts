@@ -5,6 +5,16 @@ import type { IRunnerInbox, DeliveryStatus } from '@clan-world/agents/seams';
 import { writeRestrictedFileSync } from './restrictedFile';
 import type { ElderId } from './types';
 
+// Per-Elder display identity. `/clear` in Claude Code resets the rename + color
+// every memory-wipe cycle, so we re-apply them after each /clear. Mirror of
+// the manual `~/clan-world/bin/elder-inject-startup.sh` bootstrap mapping.
+const ELDER_DISPLAY: Record<string, { name: string; color: string }> = {
+  '1': { name: 'Storm Riders', color: 'blue' },
+  '2': { name: 'Iron Guard', color: 'cyan' },
+  '3': { name: 'Crimson', color: 'red' },
+  '4': { name: 'Verdant Wardens', color: 'green' },
+};
+
 /**
  * `IRunnerInbox` impl that pushes tick updates into a tmux session via
  * `tmux send-keys`.
@@ -77,6 +87,20 @@ export class TmuxRunnerInbox implements IRunnerInbox {
       // the two concatenate as a single prompt and the /clear slash command is ignored.
       await this.runner.send(this.target, ['/clear'], { literal: false });
       await pressEnterTwice(this.runner, this.target);
+
+      // Re-apply per-Elder display identity. /clear in Claude Code resets the
+      // tmux pane title (set by /rename) and the session color (set by /color)
+      // back to defaults — without these calls every memory wipe strips the
+      // clan name from the pane header.
+      const elderId = this.target.split('-').pop() ?? '';
+      const display = ELDER_DISPLAY[elderId];
+      if (display) {
+        await this.runner.send(this.target, [`/rename Clan World: ${display.name}`], { literal: false });
+        await pressEnterTwice(this.runner, this.target);
+        await this.runner.send(this.target, [`/color ${display.color}`], { literal: false });
+        await pressEnterTwice(this.runner, this.target);
+      }
+
       await sendBlock(this.runner, this.target, this.bootstrapBlock);
     } catch {
       // /clear failures are non-fatal — the next tick will try again.

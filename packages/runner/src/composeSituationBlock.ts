@@ -80,6 +80,13 @@ export function composeSituationBlock(args: ComposeArgs): string {
     lines.push('- **Post to the public bulletin** to shape the realm narrative — declarations, threats, alliances, public ledger entries. Bulletins are 0G-stored and visible to every other Elder + the iNFT Owner.');
     lines.push('- **Save durable knowledge**: `elder memory save <key> <value>` for anything that needs to outlive the next wipe.');
     lines.push('');
+    lines.push('🪣 **The loot loop — your bread and butter:** Resources accrue zero value sitting in a clansman\'s wheelbarrow. Vault deposits are what fund vault upgrades, hunger relief, and trades. Every cycle you must:');
+    lines.push('  1. **Audit clansman capacities.** `elder clan view <clanId>` shows each clansman\'s `carryWood/Iron/Wheat/Fish`. Anyone near full (≥80% of capacity) is dead weight in the field.');
+    lines.push('  2. **Send full carriers home.** Order them on a `RETURN_TO_BASE` mission to deposit into the vault. Carrying capacity reopens, and the vault total goes up.');
+    lines.push('  3. **Dispatch idle clansmen** (state=WAITING, empty wheelbarrow) on `GATHER_*` missions to the right region — wood from forest, iron from mountains, wheat from farms, fish from docks.');
+    lines.push('  4. **Watch hunger.** `livingClansmen` decreases when starvation kicks in. If your wheat vault is low, prioritize wheat gathering AND wheat trades over raids.');
+    lines.push('Idle clansmen + full wheelbarrows = the most common failure mode. Don\'t let them stand around with loot.');
+    lines.push('');
     lines.push(`Memory cycle: your message history is cleared every ${CONTEXT_RESET_INTERVAL_TICKS} ticks. Next reset at tick ${nextResetTick}. The bulletin board, your saved memory keys, and your peer-whisper inbox all persist across resets independently of your message history — use them generously.`);
     lines.push('');
     lines.push('Diplomacy is a tool. Silent clans get out-played by communicative ones. Coordinate, threaten, broker — the world is a function of what gets said as much as what gets done.');

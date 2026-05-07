@@ -6,6 +6,7 @@ import {
   WINTER_PERIOD_TICKS,
   SEASON_DURATION_TICKS,
 } from "@clan-world/shared/generated/constants";
+import { BanditState } from "@clan-world/shared/generated/enums";
 
 const SEASON_LEN = Number(SEASON_DURATION_TICKS);
 const WINTER_START = Number(WINTER_START_TICK);
@@ -56,9 +57,38 @@ export const getSnapshot = query({
         tickEpoch: { startedAt: 0, durationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000 },
         regions: [],
         clans: [],
+        activeBanditId: undefined,
+        bandit: null,
         ...deriveSeasonState(0),
       };
     }
+    const activeBanditId = typeof snap.activeBanditId === "number" && snap.activeBanditId > 0
+      ? snap.activeBanditId
+      : undefined;
+    const activeBandit = activeBanditId === undefined
+      ? null
+      : await ctx.db
+        .query("banditView")
+        .withIndex("by_bandit_id", (q) => q.eq("id", activeBanditId))
+        .order("desc")
+        .first();
+    const bandit =
+      activeBandit
+      && activeBandit.exists
+      && activeBandit.state !== BanditState.None
+      && activeBandit.state !== BanditState.Defeated
+      && activeBandit.state !== BanditState.Escaped
+        ? {
+          id: activeBandit.id,
+          region: activeBandit.region,
+          state: activeBandit.state,
+          tier: activeBandit.tier,
+          attackPower: activeBandit.attackPower,
+          stateEnteredTick: activeBandit.stateEnteredTick,
+          nextActionTick: activeBandit.nextActionTick,
+          projectedTargetClanId: activeBandit.projectedTargetClanId,
+        }
+        : null;
     return {
       tick: snap.tick,
       tickEpoch: {
@@ -67,6 +97,8 @@ export const getSnapshot = query({
       },
       regions: snap.regions,
       clans: snap.clans,
+      activeBanditId,
+      bandit,
       ...deriveSeasonState(snap.tick),
     };
   },

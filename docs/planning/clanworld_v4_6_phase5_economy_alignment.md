@@ -3,7 +3,7 @@
 **Status:** Authoritative addendum, scoped to Phase 5 gathering / deposit / economy mechanics
 **Read order:** This doc supersedes the gathering-yield and economy-rate language in `clanworld_v4_spec.md` §3.10, §4.3–4.13, `clanworld_v4_1_addendum.md` A5–A6, A10, and the economy-related constants in `clanworld_v4_2_state_schema_interface_spec.md` §5. When implementers or UAT runners find disagreement on yield rates, carry caps, or starvation semantics, this doc wins.
 **Purpose:** Canonize the as-built Phase 5 economy as the authoritative Phase 5 ruleset for the hackathon submission, covering contract behavior, ABI/event naming, tests, and docs, and explicitly enumerate the v4 mechanics that diverged as DEFERRED-TO-RESTORATION.
-**Audience:** Reviewers, UAT runners against the contract on World Chain Sepolia / Base Sepolia, future restoration work.
+**Audience:** Reviewers, UAT runners against the contract on Base Sepolia, future restoration work.
 
 ---
 

@@ -57,6 +57,8 @@ struct StoredWorldState {
     bytes32 currentTickSeed;
     uint32 activeBanditId;
     uint64 nextCommitSequence;
+    bool worldPaused;
+    uint64 pausedAtTs;
 }
 
 /// @title ClanWorld
@@ -2981,6 +2983,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     ///         7. Resolve world events (season boundary, winter transitions).
     ///         8. Increment tick and publish the next tick seed atomically.
     function heartbeat() external override nonReentrant {
+        _requireWorldNotPaused();
         require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
         // Freeze before side effects. While finalization is pending, keepers may
@@ -3038,6 +3041,28 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         _world.nextHeartbeatAtTick = newTick + 1;
 
         emit TickAdvanced(closedTick, newTick, newSeed);
+    }
+
+    function pauseWorld() external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        require(!_world.worldPaused, "ClanWorld: already paused");
+        _world.worldPaused = true;
+        _world.pausedAtTs = uint64(block.timestamp);
+        emit WorldPaused(_world.currentTick, _world.pausedAtTs);
+    }
+
+    function unpauseWorld() external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        require(_world.worldPaused, "ClanWorld: not paused");
+        uint64 durationSeconds = uint64(block.timestamp) - _world.pausedAtTs;
+        _world.worldPaused = false;
+        _world.pausedAtTs = 0;
+        _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+        emit WorldUnpaused(_world.currentTick, durationSeconds, _world.nextHeartbeatAtTs);
+    }
+
+    function isWorldPaused() external view override returns (bool) {
+        return _world.worldPaused;
     }
 
     /// @dev Resolve world events for the tick that was just closed.
@@ -3139,6 +3164,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         ws.currentTickSeed = _world.currentTickSeed;
         ws.activeBanditId = _world.activeBanditId;
         ws.nextCommitSequence = _world.nextCommitSequence;
+        ws.worldPaused = _world.worldPaused;
+        ws.pausedAtTs = _world.pausedAtTs;
         (ws.winterActive, ws.winterStartsAtTick, ws.winterEndsAtTick) = _winterWindowForTick(_world.currentTick);
     }
 
@@ -3163,6 +3190,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     /// @notice Finalize season by settling final state and publishing rankings.
     function finalizeSeason() external override nonReentrant {
+        _requireWorldNotPaused();
         require(_world.currentTick >= _world.seasonEndTick, "ClanWorld: season not ended");
         require(!_world.seasonFinalized, "ClanWorld: season finalized");
 
@@ -4700,6 +4728,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         require(!_isSeasonFinalizationPending(), "ClanWorld: season ended, awaiting finalization");
     }
 
+    function _requireWorldNotPaused() internal view {
+        require(!_world.worldPaused, "ClanWorld: world paused");
+    }
+
     // =========================================================================
     // TREASURY / POOL SEEDING
     // =========================================================================
@@ -5530,6 +5562,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             seasonFinalized: ws.seasonFinalized,
             currentSeasonNumber: ws.currentSeasonNumber,
             nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
+            worldPaused: ws.worldPaused,
+            pausedAtTs: ws.pausedAtTs,
             winterActive: ws.winterActive,
             winterStartsAtTick: ws.winterStartsAtTick,
             winterEndsAtTick: ws.winterEndsAtTick,

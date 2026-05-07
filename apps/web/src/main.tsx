@@ -1,25 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
-import { MiniKit } from '@worldcoin/minikit-js';
 import { App } from './App';
-
-// MiniKit v2: install() must be called before rendering in the World App webview.
-// No MiniKitProvider component in v2 — install() is a static class call.
-// Guard against undefined APP_ID (e.g. env not baked into prod bundle): calling
-// install(undefined) in older builds shipped a literal `void 0` and broke the
-// page on first navigation. Skip install if missing — MiniKit.isInstalled()
-// will return false and App will render its "Open in World App" fallback.
-const worldAppId = import.meta.env.VITE_WORLD_APP_ID as string | undefined;
-if (worldAppId) {
-  try {
-    MiniKit.install(worldAppId as `app_${string}`);
-  } catch (err) {
-    console.error('MiniKit.install failed:', err);
-  }
-} else {
-  console.warn('VITE_WORLD_APP_ID not set — MiniKit not installed');
-}
 
 // Telegram Mini App fullscreen: hide the platform top chrome (the bar that
 // shows the app title + V down-arrow). Available in Telegram Mini App API
@@ -91,7 +73,7 @@ if (!convexUrl && !isCockpitPath) {
       >
         <h1 style={{ margin: 0, fontSize: '20px' }}>ClanWorld</h1>
         <p style={{ marginTop: '12px', opacity: 0.8 }}>
-          Backend not configured. Open in the World App or contact the team.
+          Backend not configured. Contact the team.
         </p>
       </div>
     </main>,

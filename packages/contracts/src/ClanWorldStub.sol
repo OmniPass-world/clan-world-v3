@@ -78,6 +78,7 @@ contract ClanWorldStub is IClanWorld {
     // -------------------------------------------------------------------------
 
     function heartbeat() external override {
+        require(!_world.worldPaused, "ClanWorld: world paused");
         require(block.timestamp >= _world.nextHeartbeatAtTs, "ClanWorld: heartbeat rate limited");
 
         uint64 closed = _world.currentTick;
@@ -99,7 +100,31 @@ contract ClanWorldStub is IClanWorld {
 
     function settleClansman(uint32) external override {}
 
-    function finalizeSeason() external override {}
+    function finalizeSeason() external override {
+        require(!_world.worldPaused, "ClanWorld: world paused");
+    }
+
+    function pauseWorld() external override {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        require(!_world.worldPaused, "ClanWorld: already paused");
+        _world.worldPaused = true;
+        _world.pausedAtTs = uint64(block.timestamp);
+        emit WorldPaused(_world.currentTick, _world.pausedAtTs);
+    }
+
+    function unpauseWorld() external override {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        require(_world.worldPaused, "ClanWorld: not paused");
+        uint64 durationSeconds = uint64(block.timestamp) - _world.pausedAtTs;
+        _world.worldPaused = false;
+        _world.pausedAtTs = 0;
+        _world.nextHeartbeatAtTs = uint64(block.timestamp) + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS;
+        emit WorldUnpaused(_world.currentTick, durationSeconds, _world.nextHeartbeatAtTs);
+    }
+
+    function isWorldPaused() external view override returns (bool) {
+        return _world.worldPaused;
+    }
 
     // -------------------------------------------------------------------------
     // Clan lifecycle
@@ -517,6 +542,8 @@ contract ClanWorldStub is IClanWorld {
             seasonFinalized: false,
             currentSeasonNumber: ws.currentSeasonNumber,
             nextHeartbeatAtTick: ws.nextHeartbeatAtTick,
+            worldPaused: ws.worldPaused,
+            pausedAtTs: ws.pausedAtTs,
             winterActive: ws.winterActive,
             winterStartsAtTick: ws.winterStartsAtTick,
             winterEndsAtTick: ws.winterEndsAtTick,

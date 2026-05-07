@@ -27,6 +27,8 @@ importers:
         specifier: ^2.48.7
         version: 2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2)
 
+  apps/android: {}
+
   apps/landing:
     dependencies:
       react:
@@ -95,15 +97,12 @@ importers:
       '@clan-world/shared':
         specifier: workspace:*
         version: link:../../packages/shared
-      '@worldcoin/idkit':
-        specifier: 4.1.2
-        version: 4.1.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@worldcoin/minikit-js':
-        specifier: 2.0.3
-        version: 2.0.3(react@18.3.1)(typescript@5.9.3)(viem@2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(wagmi@3.6.9(@coinbase/wallet-sdk@4.3.6(@types/react@18.3.12)(bufferutil@4.1.0)(immer@10.2.0)(react@18.3.1)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@18.3.1))(utf-8-validate@6.0.6)(zod@4.4.2))(@safe-global/safe-apps-provider@0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(@tanstack/query-core@5.100.7)(@tanstack/react-query@5.100.7(react@18.3.1))(@types/react@18.3.12)(@walletconnect/ethereum-provider@2.21.1(@types/react@18.3.12)(bufferutil@4.1.0)(react@18.3.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(immer@10.2.0)(react@18.3.1)(typescript@5.9.3)(viem@2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2)))(zod@4.4.2)
       convex:
         specifier: 1.17.4
         version: 1.17.4(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      framer-motion:
+        specifier: ^12.38.0
+        version: 12.38.0(@emotion/is-prop-valid@1.4.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       pixi-viewport:
         specifier: ^6.0.3
         version: 6.0.3(pixi.js@8.18.1)
@@ -4298,35 +4297,6 @@ packages:
   '@webgpu/types@0.1.69':
     resolution: {integrity: sha512-RPmm6kgRbI8e98zSD3RVACvnuktIja5+yLgDAkTmxLr90BEwdTXRQWNLF3ETTTyH/8mKhznZuN5AveXYFEsMGQ==}
 
-  '@worldcoin/idkit-core@4.1.2':
-    resolution: {integrity: sha512-5NNjl4RL5sazcsfGxivSvYmXfcu3XZAHsjCr+98AwhU6mVOBILq21cn3zyFD/9sLU7NNr61SRZUS1mhx3knvKw==}
-
-  '@worldcoin/idkit-server@1.1.1':
-    resolution: {integrity: sha512-iO4Kd3QBLzJak3BPz5eIzRjW0kT8Px5c3LbNzvCKMnczLvVSKoWqdvGiJlkK8Dp29KstNI62iv4ak0z8nzui/Q==}
-    engines: {node: '>=18'}
-
-  '@worldcoin/idkit@4.1.2':
-    resolution: {integrity: sha512-0ys1C4y/xpT2/NxqbvrpWcfhDGB+hkAkkJgmxcCDXyCrxTNDoVeJn74kBxmoeDBQ+6Aj89d3n8gTV6My8KZPBw==}
-    peerDependencies:
-      react: '>=18'
-      react-dom: '>=18'
-
-  '@worldcoin/minikit-js@2.0.3':
-    resolution: {integrity: sha512-41rhB59/MOWpAihcCidMijYmzlht5BDPTBQwRRDMhX65rC4Ac2+qEkajDgCR1xW/YWZm122Z8muJzr1pODDq1A==}
-    engines: {node: '>= 16'}
-    peerDependencies:
-      react: ^17 || ^18 || ^19
-      siwe: ^3.0.0
-      viem: ^2.21.0
-      wagmi: ^3.0.0
-    peerDependenciesMeta:
-      siwe:
-        optional: true
-      viem:
-        optional: true
-      wagmi:
-        optional: true
-
   '@wormhole-foundation/sdk-algorand-core@4.9.1':
     resolution: {integrity: sha512-L3C2Y1PXUfeRRxOmCJd4ATS7yNwlDDtZt4uXan0wP9eEWQDyntXRRTiRs5FlVX24x6jsWKyQu9nYy2AyE3Vw/A==}
     engines: {node: '>=16'}
@@ -5596,6 +5566,20 @@ packages:
     resolution: {integrity: sha512-8RipRLol37bNs2bhoV67fiTEvdTrbMUYcFTiy3+wuuOnUog2QBHCZWXDRijWQfAkhBj2Uf5UnVaiWwA5vdd82w==}
     engines: {node: '>= 6'}
 
+  framer-motion@12.38.0:
+    resolution: {integrity: sha512-rFYkY/pigbcswl1XQSb7q424kSTQ8q6eAC+YUsSKooHQYuLdzdHjrt6uxUC+PRAO++q5IS7+TamgIw1AphxR+g==}
+    peerDependencies:
+      '@emotion/is-prop-valid': '*'
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@emotion/is-prop-valid':
+        optional: true
+      react:
+        optional: true
+      react-dom:
+        optional: true
+
   fresh@0.5.2:
     resolution: {integrity: sha512-zJ2mQYM18rEFOudeV4GShTGIQ7RbzA7ozbU9I/XBpm7kqgMywgmylMwXHxZJmkVoYkna9d2pVXVXPdYTP9ej8Q==}
     engines: {node: '>= 0.6'}
@@ -6360,6 +6344,12 @@ packages:
     resolution: {integrity: sha512-vVqVZQyf3WLx2Shd0qJ9xuvqgAyKPLAiqITEtqW0oIUjzo3PePDd6fW9iFz30ef7Ysp/oiWqbhszeGWW2T6Gzw==}
     engines: {node: '>=10'}
     hasBin: true
+
+  motion-dom@12.38.0:
+    resolution: {integrity: sha512-pdkHLD8QYRp8VfiNLb8xIBJis1byQ9gPT3Jnh2jqfFtAsWUA3dEepDlsWe/xMpO8McV+VdpKVcp+E+TGJEtOoA==}
+
+  motion-utils@12.36.0:
+    resolution: {integrity: sha512-eHWisygbiwVvf6PZ1vhaHCLamvkSbPIeAYxWUuL3a2PD/TROgE7FvfHWTIH4vMl798QLfMw15nRqIaRDXTlYRg==}
 
   motion@10.16.2:
     resolution: {integrity: sha512-p+PurYqfUdcJZvtnmAqu5fJgV2kR0uLFQuBKtLeFVTrYEVllI99tiOTSefVNYuip9ELTEkepIIDftNdze76NAQ==}
@@ -15839,34 +15829,6 @@ snapshots:
 
   '@webgpu/types@0.1.69': {}
 
-  '@worldcoin/idkit-core@4.1.2':
-    dependencies:
-      '@noble/hashes': 1.8.0
-      '@worldcoin/idkit-server': 1.1.1
-
-  '@worldcoin/idkit-server@1.1.1':
-    dependencies:
-      '@noble/hashes': 1.8.0
-      '@noble/secp256k1': 2.3.0
-
-  '@worldcoin/idkit@4.1.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
-    dependencies:
-      '@worldcoin/idkit-core': 4.1.2
-      qrcode: 1.5.4
-      react: 18.3.1
-      react-dom: 18.3.1(react@18.3.1)
-
-  '@worldcoin/minikit-js@2.0.3(react@18.3.1)(typescript@5.9.3)(viem@2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(wagmi@3.6.9(@coinbase/wallet-sdk@4.3.6(@types/react@18.3.12)(bufferutil@4.1.0)(immer@10.2.0)(react@18.3.1)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@18.3.1))(utf-8-validate@6.0.6)(zod@4.4.2))(@safe-global/safe-apps-provider@0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(@tanstack/query-core@5.100.7)(@tanstack/react-query@5.100.7(react@18.3.1))(@types/react@18.3.12)(@walletconnect/ethereum-provider@2.21.1(@types/react@18.3.12)(bufferutil@4.1.0)(react@18.3.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(immer@10.2.0)(react@18.3.1)(typescript@5.9.3)(viem@2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2)))(zod@4.4.2)':
-    dependencies:
-      abitype: 1.2.4(typescript@5.9.3)(zod@4.4.2)
-      react: 18.3.1
-    optionalDependencies:
-      viem: 2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2)
-      wagmi: 3.6.9(@coinbase/wallet-sdk@4.3.6(@types/react@18.3.12)(bufferutil@4.1.0)(immer@10.2.0)(react@18.3.1)(typescript@5.9.3)(use-sync-external-store@1.6.0(react@18.3.1))(utf-8-validate@6.0.6)(zod@4.4.2))(@safe-global/safe-apps-provider@0.18.6(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(@safe-global/safe-apps-sdk@9.1.0(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(@tanstack/query-core@5.100.7)(@tanstack/react-query@5.100.7(react@18.3.1))(@types/react@18.3.12)(@walletconnect/ethereum-provider@2.21.1(@types/react@18.3.12)(bufferutil@4.1.0)(react@18.3.1)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))(immer@10.2.0)(react@18.3.1)(typescript@5.9.3)(viem@2.48.7(bufferutil@4.1.0)(typescript@5.9.3)(utf-8-validate@6.0.6)(zod@4.4.2))
-    transitivePeerDependencies:
-      - typescript
-      - zod
-
   '@wormhole-foundation/sdk-algorand-core@4.9.1':
     dependencies:
       '@wormhole-foundation/sdk-algorand': 4.9.1
@@ -17863,6 +17825,16 @@ snapshots:
       hasown: 2.0.3
       mime-types: 2.1.35
 
+  framer-motion@12.38.0(@emotion/is-prop-valid@1.4.0)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+    dependencies:
+      motion-dom: 12.38.0
+      motion-utils: 12.36.0
+      tslib: 2.8.1
+    optionalDependencies:
+      '@emotion/is-prop-valid': 1.4.0
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+
   fresh@0.5.2: {}
 
   fsevents@2.3.2:
@@ -18730,6 +18702,12 @@ snapshots:
       typescript: 5.9.3
 
   mkdirp@1.0.4: {}
+
+  motion-dom@12.38.0:
+    dependencies:
+      motion-utils: 12.36.0
+
+  motion-utils@12.36.0: {}
 
   motion@10.16.2:
     dependencies:

@@ -14,8 +14,7 @@ make dev              # turbo run dev (all workspaces)
 make build            # turbo run build
 make typecheck        # turbo run typecheck
 
-make deploy-s1        # forge script Deploy → World Chain Sepolia
-make deploy-s2        # forge script Deploy → Base Sepolia
+make deploy-base      # forge script Deploy → Base Sepolia
 
 make heartbeat-loop   # ./scripts/start-heartbeat-loop.sh
 make demo-reset       # nuke local state, redeploy, reseed regions
@@ -41,7 +40,6 @@ For repeatable demo recordings:
 
 Each Elder needs gas to submit orders. For testnet:
 
-- World Chain Sepolia faucet: TBD (PM action item)
 - Base Sepolia faucet: standard Base Sepolia faucet, 0.1 ETH per request
 
 Agent wallets are hot-keys. Cap each at 0.5 ETH testnet. Refund as needed.
@@ -51,8 +49,7 @@ Agent wallets are hot-keys. Cap each at 0.5 ETH testnet. Refund as needed.
 | Env | Convex deployment | Chain | Notes |
 |---|---|---|---|
 | Local dev | per-dev preview | local anvil or testnet | use `MOCK_MODE` flags first |
-| S1 demo | `clanworld-s1-prod` | World Chain Sepolia | shared credentials, see runbook |
-| S2 demo | `clanworld-s2-prod` (or reconfigured S1) | Base Sepolia | shared credentials |
+| Live demo | `clanworld-v3-prod` | Base Sepolia | shared credentials |
 
 ## Logging
 
@@ -66,9 +63,7 @@ Aggregate to a single OTEL collector in S2+.
 
 ## Demo recording
 
-For Submission 1:
-- Record on a real phone via World App (canonical demo).
-- Backup: screen-record from a Mac with World App in iOS simulator (if simulator works) or a desktop browser pretending to be the World App user-agent.
+Record from the browser/cockpit surfaces. Keep a direct app URL and a cockpit URL ready before the live run.
 
 ## Wallet management
 
