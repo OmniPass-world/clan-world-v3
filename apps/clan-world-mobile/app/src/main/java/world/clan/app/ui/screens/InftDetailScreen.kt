@@ -79,6 +79,9 @@ fun InftDetailScreenRoute(
   clanId: Int,
   onBack: () -> Unit,
   onEnterCockpit: () -> Unit = {},
+  isBazaar: Boolean = false,
+  hostActivity: androidx.activity.ComponentActivity? = null,
+  onHireConfirmed: (() -> Unit)? = null,
 ) {
   val vm: InftDetailViewModel = viewModel(factory = InftDetailViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
@@ -88,6 +91,10 @@ fun InftDetailScreenRoute(
     onBack = onBack,
     onSelectDetailTab = vm::selectTab,
     onEnterCockpit = onEnterCockpit,
+    isBazaar = isBazaar,
+    app = app,
+    hostActivity = hostActivity,
+    onHireConfirmed = onHireConfirmed ?: onBack,
   )
 }
 
@@ -98,8 +105,14 @@ private fun InftDetailScreen(
   onBack: () -> Unit,
   onSelectDetailTab: (DetailTab) -> Unit,
   onEnterCockpit: () -> Unit,
+  isBazaar: Boolean = false,
+  app: App? = null,
+  hostActivity: androidx.activity.ComponentActivity? = null,
+  onHireConfirmed: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
+  val showHireModal = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  Box(modifier = Modifier.fillMaxSize()) {
   Column(
     modifier = Modifier
       .fillMaxSize()
@@ -116,10 +129,10 @@ private fun InftDetailScreen(
 
     Spacer(Modifier.height(14.dp))
 
-    // ── Enter Cockpit CTA — drill into the live game cockpit ───────────
+    // ── Primary CTA: Hire (bazaar mode) or Enter Cockpit (linked mode) ─
     world.clan.app.ui.components.EmberCta(
-      text = "Enter Cockpit",
-      onClick = onEnterCockpit,
+      text = if (isBazaar) "Hire This Sigil" else "Enter Cockpit",
+      onClick = if (isBazaar) ({ showHireModal.value = true }) else onEnterCockpit,
       modifier = Modifier
         .fillMaxWidth()
         .padding(horizontal = 22.dp),
@@ -146,6 +159,24 @@ private fun InftDetailScreen(
 
     Spacer(Modifier.height(40.dp))
   }
+
+  // ── HireModal overlay (bazaar mode only) ────────────────────────────────
+  if (isBazaar && showHireModal.value && app != null && hostActivity != null) {
+    val listing = world.clan.app.data.bazaarListingByClan(clanId)
+    if (listing != null) {
+      world.clan.app.ui.components.HireModal(
+        app = app,
+        hostActivity = hostActivity,
+        listing = listing,
+        onDismiss = { showHireModal.value = false },
+        onConfirmed = {
+          showHireModal.value = false
+          onHireConfirmed()
+        },
+      )
+    }
+  }
+  } // close outer Box
 }
 
 // ─────────────────────────────────────────────────────────────────────────
