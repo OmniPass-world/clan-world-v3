@@ -143,13 +143,19 @@ fun TerminalTab(
               mainFrameFailedThisLoad = true
             }
 
-            override fun onPageFinished(view: WebView, url: String) {
+            override fun onPageFinished(view: WebView, finishedUrl: String) {
               if (mainFrameFailedThisLoad) {
                 // Hide the WebView's built-in error page behind a blank
                 // doc; the Compose overlay will render the reconnect chip.
+                // NOTE: this loadData() will fire a SECONDARY onPageFinished
+                // for the data: URL — gated below so it doesn't clear
+                // isReconnecting and kill the auto-reconnect loop.
                 view.loadData("<html><body style=\"background:#1a1612\"></body></html>", "text/html", "utf-8")
                 isReconnecting = true
-              } else {
+              } else if (finishedUrl.startsWith(url)) {
+                // Only clear the reconnecting flag when the REAL target
+                // URL finishes loading successfully. The data:/about:blank
+                // mask loaded above must not flip us out of reconnect.
                 isReconnecting = false
               }
             }
@@ -168,6 +174,7 @@ fun TerminalTab(
           webView.loadUrl(url)
         }
       },
+      onRelease = { it.destroy() },
     )
 
     if (isReconnecting) {
