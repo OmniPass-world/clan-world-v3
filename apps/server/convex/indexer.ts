@@ -693,7 +693,8 @@ export const pollLogs = internalAction({
     return await ctx.runMutation(indexerApi.ingestEvents, {
       events,
       blockNumber: Number(toBlock),
-      txHash: events.at(-1)?.transactionHash ?? checkpoint?.lastTxHash,
+      txHash:
+        events[events.length - 1]?.transactionHash ?? checkpoint?.lastTxHash,
       advanceCheckpoint: true,
     });
   },
@@ -703,5 +704,23 @@ export const readCheckpoint = internalQuery({
   args: {},
   handler: async (ctx) => {
     return await ctx.db.query("eventCheckpoint").first();
+  },
+});
+
+/**
+ * Demo-day operational reset. Used after redeploying the diamond at a new
+ * address to point the indexer at a block just before the new deployment so
+ * pollLogs backfills the new diamond's events instead of stale ones.
+ */
+export const resetCheckpoint = internalMutation({
+  args: { lastBlock: v.number() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.query("eventCheckpoint").first();
+    if (existing) await ctx.db.delete(existing._id);
+    await ctx.db.insert("eventCheckpoint", {
+      lastBlock: args.lastBlock,
+      lastSeenAt: Date.now(),
+    });
+    return { lastBlock: args.lastBlock };
   },
 });
