@@ -629,14 +629,8 @@ private fun WhispersPanel(
           "human" -> WhisperAccent.Ember
           else -> WhisperAccent.Default
         }
-        val from = c.fromClan?.let { clanDisplayName(it) }
-          ?: c.speaker
-          ?: when (c.kind) {
-            "orch" -> "Orchestrator"; "human" -> "Owner"; else -> "—"
-          }
-        val tickStr = c.tick?.let { "%04d".format(it) } ?: "—"
         WhisperRow(
-          meta = boldedMeta("*$from* · $tickStr".uppercase()),
+          meta = world.clan.app.ui.components.whisperMetaText(c),
           body = c.body,
           accent = accent,
         )
