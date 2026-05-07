@@ -53,7 +53,6 @@
               "targetCellHeight": 2,
               "updatePeriodMillis": 1800000,
               "resizeMode": "horizontal|vertical",
-              "widgetFeatures": "reconfigurable",
               "previewImage": "./assets/logo-main-square.png"
             }
           ]
@@ -71,9 +70,10 @@
         }
       ]
     ],
+    "owner": "mikail_18",
     "extra": {
       "eas": {
-        "projectId": "b4091d11-daf2-4f15-aee2-984f70198a9d"
+        "projectId": "b4d5af86-ead3-4104-b47e-704d66a8d943"
       }
     }
   }
