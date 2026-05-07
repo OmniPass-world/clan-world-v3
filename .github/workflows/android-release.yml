@@ -1,4 +1,9 @@
-name: Android Release
+# NOTE: this workflow currently builds an UNSIGNED debug APK
+# (`assembleDebug`), not a signed release artifact. The job name reflects that
+# so the GitHub UI doesn't imply a signed Play-Store-ready build is being cut.
+# When release signing is provisioned, switch to `assembleRelease` + signing
+# config and rename this back to "Android Release".
+name: Android Internal Build (Debug APK)
 
 on:
   push:
@@ -17,7 +22,7 @@ permissions:
   attestations: write
 
 jobs:
-  build-release-apks:
+  build-debug-apks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
