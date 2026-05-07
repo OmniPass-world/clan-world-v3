@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { APP_URL, GITHUB_URL } from '../constants'
+import { APP_URL, GITHUB_URL, DEMO_VIDEO_URL } from '../constants'
 import './NewLandingPage.css'
 
 /* ─── shared primitive components ─── */
@@ -172,7 +172,7 @@ function Hero() {
           </p>
           <div className="nl-hero-ctas">
             <PixelButton href={APP_URL}>↓ DOWNLOAD APK</PixelButton>
-            <PixelButton href="https://app.clan-world.com" variant="ghost">▶ WATCH DEMO</PixelButton>
+            <PixelButton href={DEMO_VIDEO_URL} variant="ghost">▶ WATCH DEMO</PixelButton>
           </div>
         </div>
         <div className="nl-hero-right">
@@ -397,7 +397,7 @@ function CTA() {
         <h2 className="font-display gold-text nl-cta-title">The agents are listening.</h2>
         <div className="nl-cta-buttons">
           <PixelButton href={APP_URL}>↓ DOWNLOAD APK</PixelButton>
-          <PixelButton href="https://app.clan-world.com" variant="ghost">▶ WATCH DEMO</PixelButton>
+          <PixelButton href={DEMO_VIDEO_URL} variant="ghost">▶ WATCH DEMO</PixelButton>
           <PixelButton href={GITHUB_URL} variant="dark">⌘ GITHUB</PixelButton>
         </div>
       </div>
