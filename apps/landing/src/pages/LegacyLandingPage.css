@@ -1,0 +1,700 @@
+/* ============ Hero ============ */
+
+/* Wide banner — full-bleed above the two-column hero grid */
+.hero-banner-wrap {
+  line-height: 0;
+  margin-bottom: 2.5rem;
+  border-bottom: 1px solid var(--ink-faded);
+}
+
+.hero-banner-img {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.hero {
+  position: relative;
+  padding: 0 0 4rem;
+  overflow: hidden;
+}
+
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(168, 124, 47, 0.10), transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(155, 42, 47, 0.05), transparent 50%);
+  pointer-events: none;
+}
+
+.hero-inner {
+  position: relative;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 1.5rem;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .hero-inner {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  .hero { padding: 0 0 3rem; }
+}
+
+.hero-eyebrow {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  background: var(--parchment-aged);
+  border: 1px solid var(--ink-faded);
+  margin-bottom: 1.5rem;
+  font-size: 0.8rem !important;
+  letter-spacing: 0.15em;
+  color: var(--ink) !important;
+}
+
+.hero-title {
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: var(--fs-display);
+  line-height: 0.92;
+  letter-spacing: 0.005em;
+  margin-bottom: 1.25rem;
+  color: var(--ink);
+}
+
+.hero-title-divider {
+  display: block;
+  font-size: 0.4em;
+  color: var(--gold-leaf);
+  letter-spacing: 0.5em;
+  margin: 0.5rem 0 0.3rem;
+  padding-left: 0.5em;
+}
+
+.hero-title-sub {
+  display: block;
+  font-style: italic;
+  color: var(--lapis);
+  font-size: 0.55em;
+  font-weight: 400;
+  font-family: var(--ff-manuscript);
+  letter-spacing: 0.005em;
+}
+
+.hero-proof {
+  display: block;
+  margin-top: -1.25rem;
+  margin-bottom: 2.25rem;
+  font-size: 0.78rem !important;
+  color: var(--lapis) !important;
+  letter-spacing: 0.12em !important;
+  line-height: 1.6;
+  max-width: 32rem;
+}
+
+.hero-tagline {
+  font-family: var(--ff-prose);
+  font-size: 1.35rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  max-width: 32rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .hero-tagline { font-size: 1.15rem; }
+}
+
+.hero-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.8rem !important;
+  color: var(--ink-faded) !important;
+}
+
+.hero-meta a {
+  color: var(--ink-faded);
+  text-decoration: none;
+}
+
+.hero-meta a:hover {
+  color: var(--vermillion);
+  text-decoration: underline;
+}
+
+.hero-meta .dot {
+  opacity: 0.5;
+}
+
+.hero-map {
+  position: relative;
+}
+
+.hero-map svg {
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+  filter: drop-shadow(8px 8px 0 rgba(168, 124, 47, 0.18));
+}
+
+.hero-map-caption {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.75rem !important;
+  color: var(--ink-faded) !important;
+  letter-spacing: 0.1em !important;
+}
+
+/* ============ Premise ============ */
+
+.section-premise {
+  padding: 4rem 0 3.25rem;
+}
+
+.premise-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3rem;
+  align-items: start;
+}
+
+@media (max-width: 800px) {
+  .premise-grid {
+    grid-template-columns: 1fr;
+    gap: 3rem;
+    max-width: 32rem;
+    margin: 0 auto;
+  }
+}
+
+.premise-col {
+  position: relative;
+  text-align: center;
+}
+
+.premise-col-left {
+  /* desktop default — preserves existing centered icon/title above copy */
+  display: contents;
+}
+
+.premise-col::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1.5rem;
+  border-left: 1px solid var(--gold-leaf);
+  opacity: 0.4;
+}
+
+.premise-col:first-child::before {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .premise-col::before { display: none; }
+}
+
+.premise-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  background: var(--parchment-aged);
+  border-radius: 50%;
+  width: 90px;
+  height: 90px;
+  margin-left: auto;
+  margin-right: auto;
+  align-items: center;
+  border: 1px solid var(--ink-faded);
+}
+
+.premise-tag {
+  font-size: 0.85rem !important;
+  color: var(--gold-leaf) !important;
+  letter-spacing: 0.2em !important;
+  margin-bottom: 0.5rem;
+}
+
+.premise-title {
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: 2rem;
+  color: var(--ink);
+  margin-bottom: 1rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.premise-copy {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--ink);
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .premise-col {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 1rem;
+    align-items: center;
+    text-align: left;
+  }
+  .premise-col-left {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .premise-icon {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 0;
+    padding: 0.6rem;
+  }
+  .premise-icon svg {
+    width: 40px;
+    height: 40px;
+  }
+  .premise-tag {
+    font-size: 0.7rem !important;
+    margin-bottom: 0;
+  }
+  .premise-title {
+    /* tighten title for the cramped cell */
+    font-size: 1.4rem;
+    margin: 0;
+  }
+  .premise-copy {
+    font-size: 0.95rem;
+    line-height: 1.45;
+  }
+}
+
+/* ============ Ælder dictionary section ============ */
+
+.section-aelder {
+  padding: 3rem 0 4rem;
+  background: var(--parchment);
+}
+
+.aelder-heading {
+  font-family: var(--ff-display);
+  font-weight: 700;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  text-align: center;
+  color: var(--ink);
+  margin: 0 0 2rem;
+  letter-spacing: 0.005em;
+}
+
+.aelder-card-wrap {
+  max-width: 36rem;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.aelder-card-img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(168, 124, 47, 0.18);
+}
+
+.aelder-card-caption {
+  margin-top: 0.6rem;
+  font-size: 0.75rem;
+  color: var(--ink-faded);
+  letter-spacing: 0.18em;
+}
+
+/* ============ Hook section ============ */
+
+.section-hook {
+  padding: 4rem 0;
+}
+
+.hook-eyebrow {
+  text-align: center;
+  margin-bottom: 1rem;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.2em !important;
+  color: var(--lapis) !important;
+}
+
+.hook-title {
+  text-align: center;
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  letter-spacing: 0.01em;
+  margin-bottom: 2.5rem;
+}
+
+.hook-quote {
+  text-align: center;
+  margin: 0 auto 2.5rem;
+  border-left: none;
+  padding-left: 0;
+  border-top: 2px solid var(--vermillion);
+  border-bottom: 2px solid var(--vermillion);
+  padding: 2.5rem 1rem;
+  font-size: 1.6rem;
+  line-height: 1.4;
+  max-width: none;
+}
+
+@media (max-width: 640px) {
+  .hook-quote { font-size: 1.3rem; padding: 2rem 0.5rem; }
+}
+
+.hook-explanation {
+  font-size: 1.15rem;
+  line-height: 1.65;
+  margin: 2rem auto;
+  max-width: 36rem;
+  text-align: center;
+}
+
+.hook-explanation-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.2em;
+  text-decoration-color: var(--gold-leaf);
+  transition: color 0.2s ease;
+}
+
+.hook-explanation-link:hover {
+  color: var(--gold-leaf);
+}
+
+.hook-game {
+  margin-top: 2rem;
+}
+
+.hook-game-frame {
+  position: relative;
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  border: 1.5px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(168, 124, 47, 0.18);
+  background: #0a0a14;
+  overflow: hidden;
+}
+
+.hook-game-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+
+.hook-game-caption {
+  margin-top: 0.6rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--ink-faded);
+  letter-spacing: 0.18em;
+}
+
+@media (max-width: 720px) {
+  .hook-game-frame {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+.hook-poster {
+  margin: 3rem auto 0;
+  max-width: 32rem;
+}
+
+.hook-poster-frame {
+  position: relative;
+  aspect-ratio: 16/9;
+  background:
+    repeating-linear-gradient(
+      135deg,
+      var(--parchment-aged) 0px,
+      var(--parchment-aged) 2px,
+      var(--parchment) 2px,
+      var(--parchment) 16px
+    );
+  border: 1.5px solid var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.hook-poster-frame::before,
+.hook-poster-frame::after {
+  content: '';
+  position: absolute;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid var(--gold-leaf);
+}
+.hook-poster-frame::before { top: -5px; left: -5px; border-right: none; border-bottom: none; }
+.hook-poster-frame::after { bottom: -5px; right: -5px; border-left: none; border-top: none; }
+
+.hook-poster-frame:hover {
+  transform: translateY(-2px);
+}
+
+.hook-poster-content {
+  text-align: center;
+}
+
+.hook-poster-icon {
+  display: inline-flex;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 50%;
+  background: var(--vermillion);
+  color: var(--parchment);
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+  margin-bottom: 1rem;
+  border: 2px solid var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  padding-left: 0.25rem;
+}
+
+.hook-poster-label {
+  font-family: var(--ff-manuscript);
+  font-size: 1.2rem;
+  color: var(--ink);
+  margin-bottom: 0.4rem;
+}
+
+.hook-poster-sub {
+  font-size: 0.7rem !important;
+  color: var(--ink-faded) !important;
+  letter-spacing: 0.15em !important;
+}
+
+/* ============ Codex section ============ */
+
+.section-codex {
+  padding: 5rem 0;
+  background: rgba(168, 149, 106, 0.08);
+  border-top: 1px solid var(--gold-leaf);
+  border-bottom: 1px solid var(--gold-leaf);
+}
+
+.codex-header {
+  text-align: center;
+  max-width: 38rem;
+  margin: 0 auto 4rem;
+}
+
+.codex-eyebrow {
+  font-size: 0.85rem !important;
+  letter-spacing: 0.25em !important;
+  color: var(--gold-leaf) !important;
+  margin-bottom: 1rem;
+}
+
+.codex-title {
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: clamp(2.5rem, 6vw, 4rem);
+  letter-spacing: 0.01em;
+  margin-bottom: 1.5rem;
+  line-height: 1;
+}
+
+.codex-title i {
+  font-family: var(--ff-manuscript);
+  font-weight: 400;
+  color: var(--vermillion);
+  font-style: italic;
+}
+
+.codex-intro {
+  font-size: 1.15rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
+.codex-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1.75rem;
+}
+
+@media (max-width: 1100px) {
+  .codex-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .codex-grid { grid-template-columns: 1fr; }
+}
+
+/* ============ Tales ============ */
+
+.section-tales {
+  padding: 5rem 0;
+}
+
+.tales-header {
+  text-align: center;
+  max-width: 36rem;
+  margin: 0 auto 4rem;
+}
+
+.tales-eyebrow {
+  font-size: 0.85rem !important;
+  letter-spacing: 0.25em !important;
+  color: var(--gold-leaf) !important;
+  margin-bottom: 1rem;
+}
+
+.tales-header h2 {
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: clamp(2.25rem, 5vw, 3.5rem);
+  letter-spacing: 0.01em;
+}
+
+.tales-intro {
+  margin-top: 1rem;
+  font-size: 1.1rem;
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.tales-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+  .tales-grid { grid-template-columns: 1fr; max-width: 36rem; margin: 0 auto; }
+}
+
+.tale-card {
+  display: block;
+}
+
+.tale-frame {
+  position: relative;
+  background: var(--parchment-aged);
+  border: 1px solid var(--ink);
+  padding: 2rem 1.75rem;
+  height: 100%;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.tale-card:hover .tale-frame {
+  transform: translateY(-2px);
+  box-shadow: 3px 3px 0 rgba(42, 24, 16, 0.15);
+}
+
+.tale-number {
+  font-family: var(--ff-manuscript);
+  font-style: italic;
+  font-size: 1.5rem;
+  color: var(--lapis);
+  margin-bottom: 0.5rem;
+}
+
+.tale-title {
+  font-family: var(--ff-manuscript);
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--ink);
+  line-height: 1.15;
+}
+
+/* TODO(post-hackathon): consider removing italic from .tale-body (codex design #4 — taste call). */
+.tale-body {
+  font-family: var(--ff-prose);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: var(--ink);
+  font-style: italic;
+}
+
+/* ============ Path forward ============ */
+
+.section-path {
+  padding: 4rem 0 6rem;
+}
+
+.path-card {
+  position: relative;
+  text-align: center;
+  background: var(--parchment-aged);
+  border: 1.5px solid var(--ink);
+  padding: 3rem 2rem;
+}
+
+.path-card::before,
+.path-card::after {
+  content: '';
+  position: absolute;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1.5px solid var(--gold-leaf);
+}
+
+.path-card::before { top: -7px; left: -7px; border-right: none; border-bottom: none; }
+.path-card::after { bottom: -7px; right: -7px; border-left: none; border-top: none; }
+
+.path-eyebrow {
+  font-size: 0.85rem !important;
+  letter-spacing: 0.25em !important;
+  color: var(--gold-leaf) !important;
+  margin-bottom: 1rem;
+}
+
+.path-card h2 {
+  font-family: var(--ff-display);
+  font-weight: 500;
+  font-size: clamp(2rem, 4vw, 3rem);
+  letter-spacing: 0.01em;
+  margin-bottom: 1.25rem;
+}
+
+.path-card p {
+  font-size: 1.1rem;
+  max-width: 30rem;
+  margin: 0 auto 2rem;
+  line-height: 1.6;
+}
+
+.path-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.25rem;
+}

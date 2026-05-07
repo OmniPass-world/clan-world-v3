@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" width="1200" height="720" role="img" aria-label="Hackathon demo status — working now vs roadmap">
+  <defs>
+    <linearGradient id="parchST" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6ebcb"></stop>
+      <stop offset="100%" stop-color="#d9bf83"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" fill="url(#parchST)"></rect>
+
+  <text x="600" y="60" text-anchor="middle" font-family="Cinzel, serif" font-weight="800" font-size="38" fill="#2a1d0c">Hackathon Demo Status</text>
+  <text x="600" y="90" text-anchor="middle" font-family="IM Fell English, serif" font-style="italic" font-size="18" fill="#5b3f1a">Honest about what&#39;s live · ambitious about what&#39;s next.</text>
+
+  
+  <g transform="translate(80, 130)">
+    <rect width="500" height="48" fill="#4a6b2a" stroke="#2a1d0c" stroke-width="3"></rect>
+    <text x="250" y="32" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="13" fill="#f6ebcb">✓  WORKING IN THIS SUBMISSION</text>
+
+    <g font-family="Inter, sans-serif" fill="#2a1d0c">
+      
+      <g transform="translate(0, 60)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Functional Android APK</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Installable on Seeker and any Android device</text>
+      </g>
+      <g transform="translate(0, 116)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Solana MWA wallet connect &amp; signing</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Native Mobile Wallet Adapter integration</text>
+      </g>
+      <g transform="translate(0, 172)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">GOLD token integration on Solana</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Live SPL token via EasyA Kickstart</text>
+      </g>
+      <g transform="translate(0, 228)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Mobile game dashboard</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Watch your agent compete in real time</text>
+      </g>
+      <g transform="translate(0, 284)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Push notifications</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Season + ranking alerts</text>
+      </g>
+      <g transform="translate(0, 340)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Haptic feedback</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Whispers, wins, and warnings</text>
+      </g>
+      <g transform="translate(0, 396)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Kickstart token Android widget app</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">4 widget styles · GOLD + top 100 tokens</text>
+      </g>
+      <g transform="translate(0, 452)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Solana-signed metadata updates</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Stored in backend DB for the demo</text>
+      </g>
+      <g transform="translate(0, 508)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#4a6b2a"></rect>
+          <polyline points="3,-1 7,3 13,-3" fill="none" stroke="#f6ebcb" stroke-width="2"></polyline>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">On-chain game engine demo (Base)</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Live tick-driven world simulation</text>
+      </g>
+    </g>
+  </g>
+
+  
+  <g transform="translate(620, 130)">
+    <rect width="500" height="48" fill="#9945ff" stroke="#2a1d0c" stroke-width="3"></rect>
+    <text x="250" y="32" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="13" fill="#f6ebcb">→  IN PROGRESS  /  ROADMAP</text>
+
+    <g font-family="Inter, sans-serif" fill="#2a1d0c">
+      <g transform="translate(0, 60)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">0G iNFT owner oracle (per-agent)</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Source-of-truth ownership tied to Solana</text>
+      </g>
+      <g transform="translate(0, 116)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Global iNFT manager on 0G</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Indexes the whole agent fleet</text>
+      </g>
+      <g transform="translate(0, 172)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Solana-signed → 0G paymaster relay</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Validate signature on 0G, paymaster pays gas</text>
+      </g>
+      <g transform="translate(0, 228)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Production marketplace settlement</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Atomic Solana ↔ 0G iNFT swap</text>
+      </g>
+      <g transform="translate(0, 284)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Whisper burn automation (5 GOLD)</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Direct on-chain burn per message</text>
+      </g>
+      <g transform="translate(0, 340)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Cooldown-skip GOLD payments</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">1,000/min whisper · 100/hr re-entry</text>
+      </g>
+      <g transform="translate(0, 396)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Agent rental marketplace</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Rent · play · keep winnings</text>
+      </g>
+      <g transform="translate(0, 452)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">SKR-priced limited iNFT drops</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">Special editions for Seeker holders</text>
+      </g>
+      <g transform="translate(0, 508)">
+        <rect width="500" height="50" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+        <g transform="translate(16, 25)" shape-rendering="crispEdges">
+          <rect x="0" y="-8" width="16" height="16" fill="#9945ff"></rect>
+          <text x="8" y="4" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="9" fill="#f6ebcb">→</text>
+        </g>
+        <text x="44" y="22" font-family="Cinzel, serif" font-weight="700" font-size="16">Solana dApp Store publish</text>
+        <text x="44" y="40" font-size="12" fill="#5b3f1a">After production hardening</text>
+      </g>
+    </g>
+  </g>
+
+  
+  <g transform="translate(80, 680)">
+    <rect width="1040" height="28" fill="#2a1d0c"></rect>
+    <text x="520" y="20" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="11" fill="#f5c542">REAL TODAY · BIGGER TOMORROW</text>
+  </g>
+</svg>
