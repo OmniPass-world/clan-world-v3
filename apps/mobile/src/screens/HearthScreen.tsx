@@ -10,6 +10,7 @@ import {
   REAL_CLAN_DISPLAY,
   type SnapshotForHero,
 } from '../clanData';
+import { findExtraInft } from '../extraInfts';
 import {
   getForgedInfts,
   getFreeForgeUsed,
@@ -49,7 +50,9 @@ export const HearthScreen = ({
   const freeForgeUsed = pubkey ? getFreeForgeUsed(pubkey) : false;
   const showSeekerNudge = isSeekerBearer && !freeForgeUsed;
   const realClanId = realClanIdFromInftId(loadedInftId);
-  const isForged = !!loadedInftId && loadedInftId.startsWith('forged-');
+  const isForged =
+    !!loadedInftId &&
+    (loadedInftId.startsWith('forged-') || loadedInftId.startsWith('extra-'));
 
   // Live snapshot — used both for the loaded-real-clan Hero data and as a
   // ticker. Always queried so the rest of the UI stays warm.
@@ -67,10 +70,17 @@ export const HearthScreen = ({
       const snapClan = snapshot?.clans.find((c) => Number(c.id) === realClanId);
       return mergeRealClan(display, snapClan, snapshot ?? null);
     }
-    if (isForged && pubkey) {
-      const all = getForgedInfts(pubkey);
-      const f = all.find((entry) => entry.id === loadedInftId);
-      return f ? forgedToInft(f) : null;
+    if (isForged) {
+      // Static pre-populated extras (extra-…) live in code, not MMKV.
+      if (loadedInftId.startsWith('extra-')) {
+        return findExtraInft(loadedInftId);
+      }
+      // User-forged INFTs (forged-…) live in MMKV scoped by pubkey.
+      if (pubkey) {
+        const all = getForgedInfts(pubkey);
+        const f = all.find((entry) => entry.id === loadedInftId);
+        return f ? forgedToInft(f) : null;
+      }
     }
     return null;
   }, [loadedInftId, realClanId, isForged, snapshot, pubkey]);

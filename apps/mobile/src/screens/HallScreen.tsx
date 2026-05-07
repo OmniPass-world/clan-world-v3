@@ -9,6 +9,7 @@ import {
   REAL_CLAN_DISPLAY,
   type SnapshotForHero,
 } from '../clanData';
+import { EXTRA_INFTS } from '../extraInfts';
 import { getForgedInfts } from '../storage';
 import { Btn, Chip } from '../components/Buttons';
 import { InftCard } from '../components/InftCard';
@@ -51,7 +52,13 @@ export const HallScreen = ({ pubkey, loadedInftId, onOpenInft, onForge }: Props)
     [pubkey, snapshot?.tick], // tick refresh makes Hall pick up newly-forged INFTs after the seal animation
   );
 
-  const all = useMemo(() => [...realInfts, ...forgedInfts], [realInfts, forgedInfts]);
+  // Order: real live clans first, then user's freshly-forged Elders, then
+  // the static roster of pre-populated Elders so the demo Hall has depth
+  // to scroll through.
+  const all = useMemo(
+    () => [...realInfts, ...forgedInfts, ...EXTRA_INFTS],
+    [realInfts, forgedInfts],
+  );
 
   const list = useMemo(
     () =>

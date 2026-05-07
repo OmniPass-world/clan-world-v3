@@ -326,8 +326,12 @@ export const forgedToInft = (forged: ForgedInft): Inft => {
   };
 };
 
-/** Returns true if this Inft is a forged-only INFT (not in the live world). */
-export const isForgedInft = (inft: Inft): boolean => inft.id.startsWith('forged-');
+/** Returns true if this Inft is a hall-only INFT — either a user-forged
+ *  Elder or one of the static EXTRA_INFTS. Hall-only INFTs can be loaded
+ *  into the Hero but cannot enter the cockpit (they aren't in the live
+ *  Convex world). */
+export const isForgedInft = (inft: Inft): boolean =>
+  inft.id.startsWith('forged-') || inft.id.startsWith('extra-');
 
 /** Returns the integer clanId for a real-clan Inft, or null if it's forged. */
 export const realClanIdOf = (inft: Inft): number | null => {
