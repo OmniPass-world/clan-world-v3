@@ -58,7 +58,7 @@ class HearthViewModel(
       _state.update { it.copy(isRefreshing = true, errorMessage = null) }
       val session = sessionStore.read()
       val selectedClan = session?.selectedClanId ?: DEFAULT_LINKED_CLAN
-      val ownedClanIds = (LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).toSet()
+      val ownedClanIds = (LINKED_CLAN_IDS + sessionStore.getOwnedClanIdsExtra()).toSet()
       runCatching {
         val snap = convex.getSnapshot()
         val comms = runCatching { convex.getCombinedComms(selectedClan, limit = 3) }

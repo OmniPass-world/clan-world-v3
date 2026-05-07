@@ -28,6 +28,8 @@ data class ForgeUiState(
   val harness: Harness = Harness.Tide,
   val mintPhase: SendPhase = SendPhase.Idle,
   val errorMessage: String? = null,
+  /** Clans the user already owns — disabled in step 1 (PickClan). */
+  val ownedClanIds: Set<Int> = emptySet(),
 )
 
 /**
@@ -51,14 +53,22 @@ class ForgeViewModel(
     val draftHarness = sessionStore?.getDraft(draftScope, "harness")
       ?.let { runCatching { Harness.valueOf(it) }.getOrNull() }
       ?: Harness.Tide
+    val owned = (HearthViewModel.LINKED_CLAN_IDS + sessionStore?.getOwnedClanIdsExtra().orEmpty()).toSet()
+    // If the persisted draftClan was a clan you've since acquired, drop
+    // it so step 1 doesn't preselect a now-disabled card.
+    val safeClanId = draftClan?.takeIf { it !in owned }
     return ForgeUiState(
-      clanId = draftClan,
+      clanId = safeClanId,
       sigilName = draftName,
       harness = draftHarness,
+      ownedClanIds = owned,
     )
   }
 
   fun setClanId(clanId: Int) {
+    // Defensive: ignore taps on already-owned clans (step 1 should already
+    // tap-disable them, but the VM is the source of truth).
+    if (clanId in _state.value.ownedClanIds) return
     _state.update { it.copy(clanId = clanId) }
     sessionStore?.setDraft(draftScope, "clanId", clanId.toString())
   }

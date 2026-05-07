@@ -62,7 +62,7 @@ class HallViewModel(
   fun refresh() {
     viewModelScope.launch {
       _state.update { it.copy(isRefreshing = true, errorMessage = null) }
-      val ownedClanIds = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getHiredClanIds()).distinct()
+      val ownedClanIds = (HearthViewModel.LINKED_CLAN_IDS + sessionStore.getOwnedClanIdsExtra()).distinct()
       runCatching {
         coroutineScope {
           ownedClanIds
