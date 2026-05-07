@@ -264,9 +264,30 @@ export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
       clansmen: view.clansmen ?? [],
     }));
 
+// M-5: tighten internal-mutation arg shape. We can't enumerate every event
+// payload here (the contract emits a wide discriminated union, and the args
+// are post-`bigintSafe` arbitrary nested records), but we CAN gate the
+// envelope: eventName must be a string, and the metadata fields must match
+// the parsed-log shape from viem (bigints from viem.Log.blockNumber are
+// passed through; convex serializes them via v.int64()).
+const indexerEventValidator = v.object({
+  eventName: v.string(),
+  // TODO(post-demo): if event union narrows enough, replace v.any with a
+  // discriminated union keyed on eventName (M-5 audit).
+  args: v.any(),
+  address: v.optional(v.string()),
+  blockHash: v.optional(v.union(v.string(), v.null())),
+  blockNumber: v.optional(
+    v.union(v.int64(), v.number(), v.string(), v.null()),
+  ),
+  transactionHash: v.optional(v.union(v.string(), v.null())),
+  transactionIndex: v.optional(v.union(v.number(), v.null())),
+  logIndex: v.optional(v.union(v.number(), v.null())),
+});
+
 export const ingestEvents = internalMutation({
   args: {
-    events: v.array(v.any()),
+    events: v.array(indexerEventValidator),
     blockNumber: v.number(),
     txHash: v.optional(v.string()),
     firedAtTs: v.optional(v.number()),
@@ -372,9 +393,24 @@ export const ingestEvents = internalMutation({
   },
 });
 
+// M-5: tighten the snapshot envelope. Inner contract-read blobs are kept
+// as v.any() — they're post-`bigintSafe` arbitrary records that mirror
+// dozens of solidity struct fields, and the handler defends with
+// `objectAt`/`asNumber`/`asString` coercers anyway.
+const snapshotValidator = v.object({
+  blockNumber: v.optional(v.number()),
+  txHash: v.optional(v.string()),
+  // TODO(post-demo): tighten world/market/bandit/clans inner record shapes
+  // once contract structs stabilize (M-5 audit).
+  world: v.any(),
+  market: v.optional(v.any()),
+  bandit: v.optional(v.any()),
+  clans: v.array(v.any()),
+});
+
 export const commitSnapshot = internalMutation({
   args: {
-    snapshot: v.any(),
+    snapshot: snapshotValidator,
   },
   handler: async (ctx, args) => {
     const snapshot = args.snapshot as SnapshotPayload;
