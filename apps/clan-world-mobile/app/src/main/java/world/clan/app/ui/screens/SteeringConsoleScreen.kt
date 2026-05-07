@@ -230,6 +230,12 @@ private fun TargetClanRow(active: Int, onSelect: (Int) -> Unit) {
         )
       }
     }
+    Spacer(Modifier.height(8.dp))
+    Text(
+      text = world.clan.app.viewmodel.clanTagline(active),
+      style = ClanWorldTheme.type.scriptItalicSmall,
+      color = ClanWorldTheme.colors.warmDim,
+    )
   }
 }
 
@@ -239,6 +245,7 @@ private fun ClanPill(clanId: Int, selected: Boolean, onClick: () -> Unit) {
   val bg = if (selected) accent.copy(alpha = 0.18f) else Color.Transparent
   val border = if (selected) accent else ClanWorldTheme.colors.hairline
   val tint = if (selected) ClanWorldTheme.colors.parchment else ClanWorldTheme.colors.warmDim
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
   Row(
     modifier = Modifier
       .clip(RoundedCornerShape(4.dp))
@@ -250,7 +257,12 @@ private fun ClanPill(clanId: Int, selected: Boolean, onClick: () -> Unit) {
           style = Stroke(width = 1.dp.toPx()),
         )
       }
-      .clickable { onClick() }
+      .clickable {
+        if (!selected) {
+          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        }
+        onClick()
+      }
       .padding(horizontal = 12.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -303,10 +315,15 @@ private fun DraftCard(draft: String, onChange: (String) -> Unit, enabled: Boolea
       )
     }
     Spacer(Modifier.height(8.dp))
+    val counterColor = when {
+      draft.length >= 280 -> ClanWorldTheme.colors.danger
+      draft.length >= 238 -> ClanWorldTheme.colors.warn  // 85% of 280
+      else -> Ink3
+    }
     Text(
       text = "${draft.length}/280",
       style = ClanWorldTheme.type.monoNano,
-      color = Ink3,
+      color = counterColor,
       textAlign = TextAlign.End,
       modifier = Modifier.fillMaxWidth(),
     )

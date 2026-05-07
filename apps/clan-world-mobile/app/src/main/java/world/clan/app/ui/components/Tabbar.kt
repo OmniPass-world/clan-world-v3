@@ -144,6 +144,7 @@ private fun TabItem(
 ) {
   val ember = ClanWorldTheme.colors.ember
   val warmFaint = ClanWorldTheme.colors.warmFaint
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   // Smooth tint crossfade on selection. The actual halo is drawn ONCE
   // by the parent at an animated offset — this composable never moves.
@@ -154,7 +155,14 @@ private fun TabItem(
   )
 
   Column(
-    modifier = modifier.clickable(role = Role.Tab) { onClick() },
+    modifier = modifier.clickable(role = Role.Tab) {
+      // Lighter tick than the EmberCta LongPress — tabs are navigation,
+      // not commit-style actions.
+      if (!selected) {
+        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+      }
+      onClick()
+    },
     horizontalAlignment = Alignment.CenterHorizontally,
     verticalArrangement = Arrangement.spacedBy(5.dp),
   ) {

@@ -34,7 +34,18 @@ class WhispersViewModel(
   private val _state = MutableStateFlow(WhispersUiState())
   val state: StateFlow<WhispersUiState> = _state.asStateFlow()
 
-  init { refresh() }
+  init {
+    refresh()
+    // Inbox-style surface — new whispers should appear without manual
+    // pull. 30s cadence matches Hearth/Hall (see HearthViewModel).
+    viewModelScope.launch {
+      while (true) {
+        kotlinx.coroutines.delay(HearthViewModel.REFRESH_INTERVAL_MS)
+        if (_state.value.isLoading) continue
+        refresh()
+      }
+    }
+  }
 
   fun refresh() {
     viewModelScope.launch {

@@ -222,7 +222,7 @@ private fun ConnectScreen(
         }
         Spacer(Modifier.height(2.dp))
         Text(
-          text = "v 0.1.0   ·   Slice I   ·   Seeker · Pixel",
+          text = "v ${world.clan.app.BuildConfig.VERSION_NAME}   ·   build ${world.clan.app.BuildConfig.VERSION_CODE}",
           style = ClanWorldTheme.type.monoNano,
           color = warmFaint,
         )

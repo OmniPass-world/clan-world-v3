@@ -11,7 +11,7 @@ import world.clan.app.App
 class ClanWorldViewModelFactory(private val app: App) : ViewModelProvider.Factory {
   @Suppress("UNCHECKED_CAST")
   override fun <T : ViewModel> create(modelClass: Class<T>): T = when (modelClass) {
-    ConnectViewModel::class.java -> ConnectViewModel(app.mwaClient, app.sessionStore)
+    ConnectViewModel::class.java -> ConnectViewModel(app.mwaClient, app.sessionStore, app.lineageStore)
     HearthViewModel::class.java -> HearthViewModel(app.convexClient, app.sessionStore)
     HallViewModel::class.java -> HallViewModel(app.convexClient, app.sessionStore)
     BazaarViewModel::class.java -> BazaarViewModel(app.sessionStore)

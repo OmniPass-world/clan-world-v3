@@ -11,9 +11,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +58,7 @@ import world.clan.app.wallet.WalletIdentity
  *   the visual hook that says "this user is on a verified Seeker."
  */
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun WalletPill(
   identity: WalletIdentity,
   onDisconnect: () -> Unit,
@@ -63,6 +66,8 @@ fun WalletPill(
 ) {
   var menuOpen by remember { mutableStateOf(false) }
   val pillShape = RoundedCornerShape(999.dp)
+  val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
+  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
 
   val rune = ClanWorldTheme.colors.rune
   val ember = ClanWorldTheme.colors.ember
@@ -143,7 +148,13 @@ fun WalletPill(
             gold.copy(alpha = 0.04f),
           shape = pillShape,
         )
-        .clickable { menuOpen = !menuOpen }
+        .combinedClickable(
+          onClick = { menuOpen = !menuOpen },
+          onLongClick = {
+            clipboard.setText(androidx.compose.ui.text.AnnotatedString(identity.pubkeyBase58))
+            haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+          },
+        )
         .padding(horizontal = 14.dp, vertical = 8.dp)
         .widthIn(min = 140.dp),
       verticalAlignment = Alignment.CenterVertically,
