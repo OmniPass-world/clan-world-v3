@@ -132,7 +132,7 @@ export default function App() {
   const pop = () => setStack((prev) => prev.slice(0, -1));
   const showToast = (text: string) => setToast(text);
 
-  const navigate = (target: 'forge' | 'bazaar' | 'hearth') => {
+  const navigate = (target: 'forge' | 'bazaar' | 'hearth' | 'hall') => {
     if (target === 'forge') setForge(true);
     else if (target === 'bazaar') {
       setStack([]);
@@ -140,6 +140,9 @@ export default function App() {
     } else if (target === 'hearth') {
       setStack([]);
       setTab('hearth');
+    } else if (target === 'hall') {
+      setStack([]);
+      setTab('hall');
     }
   };
 

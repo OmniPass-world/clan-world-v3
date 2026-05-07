@@ -34,7 +34,7 @@ type Props = {
   onEnterCockpit: (inft: Inft) => void;
   onWhispers: () => void;
   onSettings: () => void;
-  navigate: (target: 'forge' | 'bazaar' | 'hearth') => void;
+  navigate: (target: 'forge' | 'bazaar' | 'hearth' | 'hall') => void;
 };
 
 export const HearthScreen = ({
@@ -414,7 +414,7 @@ export const HearthScreen = ({
                 <Btn
                   variant="secondary"
                   style={{ flex: 1, borderColor: colors.inkParchmentMuted }}
-                  onPress={() => navigate('hearth')}
+                  onPress={() => navigate('hall')}
                 >
                   HALL
                 </Btn>
