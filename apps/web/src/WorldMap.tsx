@@ -923,6 +923,10 @@ export function WorldMap() {
       clan: ClanDef;
       baseY: number;
       phaseOffset: number;
+      /** Natural scale.y captured at relayout (after sprite.height = baseSize).
+       *  Breathing animation multiplies this — never assigns scale.y directly,
+       *  which would clobber the height-fit ratio and stretch bases ~3x tall. */
+      baseScaleY: number;
     }[];
     /** Floating "Lv N" badge beside each base. */
     levelBadges: { bg: Graphics; label: Text; clan: ClanDef }[];
@@ -1498,11 +1502,14 @@ export function WorldMap() {
             // the painted rooflines. phaseOffset keeps bases out of sync.
             // zIndex is already set during relayout (base.baseY is static between
             // relayouts), so no need to reassign each tick.
-            const scaleY = 1 + Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 0.03;
+            // IMPORTANT: multiply by baseScaleY (the natural scale captured at
+            // relayout). Setting scale.y directly would clobber the
+            // sprite.height=baseSize sizing and stretch the sprite ~3x tall.
+            const breath = 1 + Math.sin((now + base.phaseOffset) * Math.PI / 2000) * 0.03;
             if (base.sprite) {
-              base.sprite.scale.y = scaleY;
+              base.sprite.scale.y = base.baseScaleY * breath;
             } else {
-              base.fallback.scale.y = scaleY;
+              base.fallback.scale.y = base.baseScaleY * breath;
             }
           });
           updateLiveClansmanPositions();
@@ -1769,6 +1776,10 @@ export function WorldMap() {
         clan: ClanDef;
         baseY: number;
         phaseOffset: number;
+        // Natural scale.y at relayout, BEFORE breathing animation. The breathing
+        // tick multiplies this — without it, scale.y would clobber the
+        // sprite.height=baseSize sizing and stretch the base ~3x tall.
+        baseScaleY: number;
       } = {
         container,
         sprite: null,
@@ -1777,6 +1788,7 @@ export function WorldMap() {
         clan,
         baseY: 0,
         phaseOffset: 0,
+        baseScaleY: 1,
       };
       drawn.bases.push(entry);
 
@@ -2566,6 +2578,14 @@ export function WorldMap() {
           sprite.x = 0;
           sprite.y = 0; // anchor=bottom-center; parent sits slightly below region center
           sprite.alpha = 1;
+          // Cache the natural scale.y so the breathing tick can multiply, not
+          // clobber. sprite.height = baseSize internally sets scale.y to
+          // baseSize/texture.height (often ~0.3-0.5); the breathing animation
+          // must preserve that ratio.
+          entry.baseScaleY = sprite.scale.y;
+        } else {
+          // Fallback Graphics is drawn at native coords (scale.y === 1).
+          entry.baseScaleY = 1;
         }
         glow.clear();
         glow.circle(0, -baseSize * 0.8, Math.max(6, 8 * cappedSizeScale));
