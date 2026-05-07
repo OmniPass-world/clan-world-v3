@@ -309,10 +309,15 @@ private fun DraftCard(draft: String, onChange: (String) -> Unit, enabled: Boolea
       )
     }
     Spacer(Modifier.height(8.dp))
+    val counterColor = when {
+      draft.length >= 280 -> ClanWorldTheme.colors.danger
+      draft.length >= 238 -> ClanWorldTheme.colors.warn  // 85% of 280
+      else -> Ink3
+    }
     Text(
       text = "${draft.length}/280",
       style = ClanWorldTheme.type.monoNano,
-      color = Ink3,
+      color = counterColor,
       textAlign = TextAlign.End,
       modifier = Modifier.fillMaxWidth(),
     )

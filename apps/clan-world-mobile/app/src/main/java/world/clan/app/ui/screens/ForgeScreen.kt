@@ -469,10 +469,15 @@ private fun StepNameSigil(state: ForgeUiState, onChange: (String) -> Unit) {
         )
       }
       Spacer(Modifier.height(8.dp))
+      val nameCounterColor = when {
+        state.sigilName.length >= 32 -> ClanWorldTheme.colors.danger
+        state.sigilName.length >= 27 -> ClanWorldTheme.colors.warn  // 85% of 32
+        else -> Ink3
+      }
       Text(
         text = "${state.sigilName.length}/32",
         style = ClanWorldTheme.type.monoNano,
-        color = Ink3,
+        color = nameCounterColor,
         textAlign = TextAlign.End,
         modifier = Modifier.fillMaxWidth(),
       )

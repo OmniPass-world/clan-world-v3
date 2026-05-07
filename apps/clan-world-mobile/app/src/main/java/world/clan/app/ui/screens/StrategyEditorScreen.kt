@@ -208,10 +208,15 @@ private fun StrategyEditor(
             )
           }
           Spacer(Modifier.height(8.dp))
+          val docCounterColor = when {
+            state.doctrine.length >= 280 -> ClanWorldTheme.colors.danger
+            state.doctrine.length >= 238 -> ClanWorldTheme.colors.warn
+            else -> Ink3
+          }
           Text(
             text = "${state.doctrine.length}/280",
             style = ClanWorldTheme.type.monoNano,
-            color = Ink3,
+            color = docCounterColor,
             textAlign = TextAlign.End,
             modifier = Modifier.fillMaxWidth(),
           )
