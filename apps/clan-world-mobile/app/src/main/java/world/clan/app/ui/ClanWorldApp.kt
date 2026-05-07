@@ -58,12 +58,15 @@ object Routes {
   const val Connect = "connect"
   const val Hearth = "hearth"
   const val Hall = "hall"
+  const val Bazaar = "bazaar"
   const val Codex = "codex"
   const val InftDetail = "inft/{clanId}"
+  const val BazaarInftDetail = "bazaarInft/{clanId}"
   const val Cockpit = "cockpit"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
   const val OwnerComingSoon = "ownerComingSoon/{clanId}"
   fun inftDetail(clanId: Int) = "inft/$clanId"
+  fun bazaarInftDetail(clanId: Int) = "bazaarInft/$clanId"
   fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
   fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
 }
@@ -75,7 +78,8 @@ object Routes {
 private val tabIndex = mapOf(
   Routes.Hearth to 0,
   Routes.Hall to 1,
-  Routes.Codex to 2,
+  Routes.Bazaar to 2,
+  Routes.Codex to 3,
 )
 
 private fun NavBackStackEntry?.tabIdx(): Int? =
@@ -195,14 +199,18 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
   val currentRoute = currentBackStack?.destination?.route
   val showTabBar = currentRoute == Routes.Hearth ||
     currentRoute == Routes.Hall ||
+    currentRoute == Routes.Bazaar ||
     currentRoute == Routes.Codex ||
-    currentRoute?.startsWith("inft/") == true
+    currentRoute?.startsWith("inft/") == true ||
+    currentRoute?.startsWith("bazaarInft/") == true
   // Cockpit + Owner sign-in / coming-soon are full-screen flows: tabbar hidden.
   val selectedTab = when {
     currentRoute == Routes.Hearth -> RootTab.Hearth
     currentRoute == Routes.Hall -> RootTab.Hall
+    currentRoute == Routes.Bazaar -> RootTab.Bazaar
     currentRoute == Routes.Codex -> RootTab.Codex
     currentRoute?.startsWith("inft/") == true -> RootTab.Hall // detail derived from Hall
+    currentRoute?.startsWith("bazaarInft/") == true -> RootTab.Bazaar // detail derived from Bazaar
     currentRoute == Routes.Cockpit ||
       currentRoute?.startsWith("ownerSignIn/") == true ||
       currentRoute?.startsWith("ownerComingSoon/") == true -> RootTab.Hall
@@ -297,6 +305,33 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
           }
 
           composable(
+            route = Routes.Bazaar,
+            enterTransition = { tabEnter() },
+            exitTransition = {
+              if (targetState.destination.route == Routes.BazaarInftDetail)
+                fadeOut(tween(TAB_FADE_OUT_MS, easing = FastOutSlowInEasing))
+              else tabExit()
+            },
+            popEnterTransition = {
+              if (initialState.destination.route == Routes.BazaarInftDetail)
+                fadeIn(
+                  tween(
+                    durationMillis = TAB_FADE_IN_MS,
+                    delayMillis = TAB_FADE_IN_DELAY_MS,
+                    easing = FastOutSlowInEasing,
+                  ),
+                )
+              else tabEnter()
+            },
+          ) {
+            world.clan.app.ui.screens.BazaarScreenRoute(
+              app = app,
+              factory = factory,
+              onOpenListing = { clanId -> nav.navigate(Routes.bazaarInftDetail(clanId)) },
+            )
+          }
+
+          composable(
             route = Routes.Codex,
             enterTransition = { tabEnter() },
             exitTransition = { tabExit() },
@@ -320,6 +355,30 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
               clanId = clanId,
               onBack = { nav.popBackStack() },
               onEnterCockpit = { nav.navigate(Routes.Cockpit) },
+            )
+          }
+
+          // ── Bazaar iNFT detail (preview a hireable sigil; "Hire" instead
+          //    of "Enter Cockpit"). Confirms via HireModal → SIWS sign.
+          composable(
+            route = Routes.BazaarInftDetail,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            InftDetailScreenRoute(
+              app = app,
+              clanId = clanId,
+              onBack = { nav.popBackStack() },
+              isBazaar = true,
+              hostActivity = hostActivity,
+              onHireConfirmed = {
+                // For now: simply pop back to Bazaar. A future "Hired"
+                // confirmation screen could replace this.
+                nav.popBackStack()
+              },
             )
           }
 
@@ -386,6 +445,7 @@ private fun navigateTab(
   val route = when (tab) {
     RootTab.Hearth -> Routes.Hearth
     RootTab.Hall -> Routes.Hall
+    RootTab.Bazaar -> Routes.Bazaar
     RootTab.Codex -> Routes.Codex
   }
   nav.navigate(route) {
