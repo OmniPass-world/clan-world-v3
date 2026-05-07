@@ -1,8 +1,8 @@
 package world.clan.app.viewmodel
 
-import androidx.activity.ComponentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,18 +64,17 @@ class ConnectViewModel(
     )
   }
 
-  fun connect(activity: ComponentActivity) {
+  fun connect(sender: ActivityResultSender) {
     if (_state.value.phase == ConnectUiState.Phase.Connecting) return
     viewModelScope.launch {
       _state.update {
         it.copy(phase = ConnectUiState.Phase.Connecting, errorMessage = null)
       }
       val existing = sessionStore.read()
-      val result = if (existing != null) {
-        mwa.reauthorize(activity, existing.mwaAuthToken)
-      } else {
-        mwa.connect(activity)
-      }
+      val result = runCatching {
+        if (existing != null) mwa.reauthorize(sender, existing.mwaAuthToken)
+        else mwa.connect(sender)
+      }.getOrElse { MwaResult.Error(it) }
       handle(result)
     }
   }
