@@ -180,7 +180,7 @@ private fun InftDetailScreen(
         )
         DetailTab.Vault -> VaultPanel(state.vault, onOpenTreasury = onOpenTreasury)
         DetailTab.Whispers -> WhispersPanel(state.comms, onOpenInbox = onOpenInbox)
-        DetailTab.Bulletin -> BulletinPanel(state.state?.bulletins?.map { it.body } ?: emptyList())
+        DetailTab.Bulletin -> BulletinPanel(state.state?.bulletins.orEmpty())
       }
     }
 
@@ -626,12 +626,12 @@ private fun WhispersPanel(
 }
 
 @Composable
-private fun BulletinPanel(bulletins: List<String>) {
+private fun BulletinPanel(bulletins: List<world.clan.app.data.Bulletin>) {
   PanelSurface(modifier = Modifier.padding(horizontal = 22.dp)) {
     if (bulletins.isEmpty()) {
       ComingNextSlice("no bulletins posted")
     } else {
-      bulletins.forEachIndexed { i, body ->
+      bulletins.forEach { b ->
         Column(
           modifier = Modifier
             .fillMaxWidth()
@@ -639,13 +639,34 @@ private fun BulletinPanel(bulletins: List<String>) {
             .padding(horizontal = 14.dp, vertical = 12.dp),
           verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+          Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text(
+              text = "SLOT %02d".format(b.slot),
+              style = ClanWorldTheme.type.monoNano,
+              color = ClanWorldTheme.colors.gold,
+            )
+            // Right-side meta: written-tick + truncated tx-hash if present.
+            val meta = buildString {
+              b.updatedAt?.let { append("T %04d".format(it)) }
+              b.txHash?.takeIf { it.length > 6 }?.let {
+                if (isNotEmpty()) append(" · ")
+                append("tx ${it.takeLast(6)}")
+              }
+            }
+            if (meta.isNotEmpty()) {
+              Text(
+                text = meta,
+                style = ClanWorldTheme.type.monoNano,
+                color = ClanWorldTheme.colors.warmFaint,
+              )
+            }
+          }
           Text(
-            text = "SLOT %02d".format(i + 1),
-            style = ClanWorldTheme.type.monoNano,
-            color = ClanWorldTheme.colors.gold,
-          )
-          Text(
-            text = body,
+            text = b.body,
             style = ClanWorldTheme.type.scriptItalic,
             color = ClanWorldTheme.colors.warm,
           )
