@@ -52,8 +52,11 @@ class WhispersViewModel(
       _state.update { it.copy(isLoading = true, errorMessage = null) }
       runCatching { convex.getCombinedComms(clanId, limit = 80) }
         .onSuccess { comms ->
+          // Newest-first by tick. Server order isn't guaranteed; this
+          // makes the inbox chat-like regardless.
+          val sorted = comms.sortedByDescending { it.tick ?: it.timestamp ?: 0L }
           _state.update {
-            it.copy(isLoading = false, items = comms, errorMessage = null)
+            it.copy(isLoading = false, items = sorted, errorMessage = null)
           }
         }
         .onFailure { e ->
