@@ -69,14 +69,14 @@ jobs:
       - name: Build Clan World APK
         working-directory: apps/clan-world-mobile
         env:
+          # build.gradle.kts now refuses to fall back to a hardcoded URL —
+          # promote these to actual repo secrets when prod URLs change.
+          CLAN_WORLD_MAP_URL: ${{ secrets.CLAN_WORLD_MAP_URL || 'https://app.clan-world.com' }}
+          CLAN_WORLD_TERMINAL_BASE_URL: ${{ secrets.CLAN_WORLD_TERMINAL_BASE_URL || 'https://cockpit.clan-world.com' }}
           RELEASE_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleDebug
-
-      - name: Build Clan World APK
-        working-directory: apps/clan-world-mobile
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Prepare release assets

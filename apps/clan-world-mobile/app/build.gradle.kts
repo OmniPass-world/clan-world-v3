@@ -49,8 +49,8 @@ android {
     applicationId = "world.clan.app"
     minSdk = 26
     targetSdk = 35
-    versionCode = 5
-    versionName = "0.1.12"
+    versionCode = 6
+    versionName = "0.1.13"
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
   }
