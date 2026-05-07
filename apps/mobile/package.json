@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@babel/runtime": "^7.25.0",
     "@expo-google-fonts/cinzel": "^0.2.3",
     "@expo-google-fonts/cormorant-garamond": "^0.2.3",
     "@expo-google-fonts/eb-garamond": "^0.2.3",
