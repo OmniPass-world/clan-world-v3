@@ -46,7 +46,10 @@ object KickstartWidgetRenderer {
     views.setChange(R.id.change_6h, "6H", token?.priceChange6h)
     views.setChange(R.id.change_24h, "24H", token?.priceChange24h)
     views.setChange(R.id.change_7d, "7D", token?.priceChange7d)
-    coinBitmap?.let { views.setImageViewBitmap(R.id.coin, it) }
+    coinBitmap?.let {
+      views.setImageViewBitmap(R.id.coin, it)
+      views.setInt(R.id.coin, "setImageAlpha", 204)
+    }
     views.setImageViewBitmap(R.id.sparkline, drawChart(token, chartType))
     return views
   }
