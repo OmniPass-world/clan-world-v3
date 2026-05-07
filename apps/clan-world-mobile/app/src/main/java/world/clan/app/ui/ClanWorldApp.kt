@@ -68,6 +68,7 @@ object Routes {
   const val StrategyEditor = "strategy/{clanId}"
   const val Treasury = "treasury/{clanId}"
   const val Forge = "forge"
+  const val Forged = "forged/{clanId}?name={name}&label={label}"
   const val Bridge = "bridge/{clanId}"
   const val Cockpit = "cockpit"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
@@ -78,6 +79,11 @@ object Routes {
   fun steer(clanId: Int) = "steer/$clanId"
   fun strategy(clanId: Int) = "strategy/$clanId"
   fun treasury(clanId: Int) = "treasury/$clanId"
+  fun forged(clanId: Int, name: String = "", label: String = "FORGED"): String {
+    val n = java.net.URLEncoder.encode(name, "UTF-8")
+    val l = java.net.URLEncoder.encode(label, "UTF-8")
+    return "forged/$clanId?name=$n&label=$l"
+  }
   fun bridge(clanId: Int) = "bridge/$clanId"
   fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
   fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
@@ -407,9 +413,12 @@ fun ClanWorldApp(
               isBazaar = true,
               mwaSender = mwaSender,
               onHireConfirmed = {
-                // For now: simply pop back to Bazaar. A future "Hired"
-                // confirmation screen could replace this.
-                nav.popBackStack()
+                val name = world.clan.app.data.bazaarListingByClan(clanId)
+                  ?.let { l -> "tkn 0x${"%04x".format(l.tokenId)}" }
+                  .orEmpty()
+                nav.navigate(Routes.forged(clanId, name, "HIRED")) {
+                  popUpTo(Routes.Bazaar) { saveState = true }
+                }
               },
             )
           }
@@ -480,7 +489,53 @@ fun ClanWorldApp(
               factory = factory,
               mwaSender = mwaSender,
               onBack = { nav.popBackStack() },
-              onForged = { nav.popBackStack() },
+              onForged = { clanId, name ->
+                nav.navigate(Routes.forged(clanId, name, "FORGED")) {
+                  // Replace Forge wizard so back goes to Hall, not the
+                  // wizard's last step.
+                  popUpTo(Routes.Forge) { inclusive = true }
+                }
+              },
+            )
+          }
+
+          // ── Forged (celebration landing for Forge + Hire) ───────────────
+          composable(
+            route = Routes.Forged,
+            arguments = listOf(
+              androidx.navigation.navArgument("clanId") { type = NavType.IntType },
+              androidx.navigation.navArgument("name") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = ""
+              },
+              androidx.navigation.navArgument("label") {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = "FORGED"
+              },
+            ),
+            enterTransition = { fadeIn(tween(360, easing = FastOutSlowInEasing)) },
+            popExitTransition = { fadeOut(tween(220, easing = FastOutSlowInEasing)) },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            val name = entry.arguments?.getString("name").orEmpty().let {
+              runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it)
+            }
+            val label = (entry.arguments?.getString("label") ?: "FORGED").let {
+              runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it)
+            }
+            world.clan.app.ui.screens.ForgedScreen(
+              clanId = clanId,
+              label = label,
+              sigilName = name,
+              onEnterHall = {
+                nav.navigate(Routes.Hall) {
+                  popUpTo(Routes.Hearth) { saveState = true }
+                  launchSingleTop = true
+                  restoreState = true
+                }
+              },
             )
           }
 
