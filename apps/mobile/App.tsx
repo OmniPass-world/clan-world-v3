@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, View } from 'react-native';
+import { ActivityIndicator, AppState, Linking, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -480,7 +480,13 @@ export default function App() {
     } else if (tab === 'treasury') {
       body = (
         <TreasuryScreen
-          onBuyGold={() => showToast('Opening Kickstart in WebView…')}
+          onBuyGold={() => {
+            const url =
+              'https://kickstart.easya.io/token/4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL';
+            Linking.openURL(url).catch(() =>
+              showToast('Could not open the Kickstart page.'),
+            );
+          }}
           onTx={() => showToast('Transaction details coming.')}
         />
       );
