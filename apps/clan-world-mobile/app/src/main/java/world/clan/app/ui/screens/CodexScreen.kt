@@ -61,12 +61,13 @@ fun CodexScreenRoute(
   // Re-read lineage on each Codex visit so newly-signed actions appear
   // without a kill/relaunch.
   androidx.compose.runtime.LaunchedEffect(Unit) { vm.refreshLineage() }
-  CodexScreen(state = state)
+  CodexScreen(state = state, onResetDemo = vm::resetDemoState)
 }
 
 @Composable
 private fun CodexScreen(
   state: CodexUiState,
+  onResetDemo: () -> Unit = {},
 ) {
   // Background and tab bar are app-level. Disconnect now lives in the
   // wallet-pill dropdown in CrownHeader — no big "FORGET THIS SIGIL"
@@ -172,7 +173,62 @@ private fun CodexScreen(
       }
     }
 
+    Spacer(Modifier.height(28.dp))
+
+    // ── Demo reset (bottom of Codex) ─────────────────────────────────
+    StaggeredEntry(index = 11) {
+      DemoResetRow(onConfirm = onResetDemo)
+    }
+
     Spacer(Modifier.height(40.dp))
+  }
+}
+
+@Composable
+private fun DemoResetRow(onConfirm: () -> Unit) {
+  val armedState = androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+  val armed = armedState.value
+  Column(
+    verticalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    Text(
+      text = "Demo".uppercase(),
+      style = ClanWorldTheme.type.crownLabel,
+      color = ClanWorldTheme.colors.warmFaint,
+    )
+    Box(
+      modifier = Modifier
+        .fillMaxWidth()
+        .clip(RoundedCornerShape(6.dp))
+        .background(ClanWorldTheme.colors.iron)
+        .border(
+          1.dp,
+          if (armed) ClanWorldTheme.colors.danger else ClanWorldTheme.colors.hairline,
+          RoundedCornerShape(6.dp),
+        )
+        .clickable {
+          if (armed) {
+            onConfirm()
+            armedState.value = false
+          } else {
+            armedState.value = true
+          }
+        }
+        .padding(horizontal = 14.dp, vertical = 14.dp),
+    ) {
+      Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+          text = if (armed) "TAP AGAIN TO CONFIRM RESET" else "RESET DEMO STATE",
+          style = ClanWorldTheme.type.monoMicro,
+          color = if (armed) ClanWorldTheme.colors.danger else ClanWorldTheme.colors.warmDim,
+        )
+        Text(
+          text = "wipes hired + forged clans, drafts, and lineage. wallet stays connected.",
+          style = ClanWorldTheme.type.scriptItalicSmall,
+          color = ClanWorldTheme.colors.warmFaint,
+        )
+      }
+    }
   }
 }
 
