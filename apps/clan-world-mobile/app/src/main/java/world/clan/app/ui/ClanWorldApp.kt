@@ -182,8 +182,10 @@ fun ClanWorldApp(
   // pubkey changes.
   val connectVm: ConnectViewModel = viewModel(factory = factory)
   val connectState by connectVm.state.collectAsState()
-  val startDestination = if (connectState.phase == ConnectUiState.Phase.Connected)
-    Routes.Hearth else Routes.Connect
+  // v0.2.1 demo: skip the Connect/Seed Vault entry screen — MWA flow is broken
+  // and the demo flows don't require a wallet identity for read-only screens.
+  // Users that need wallet ops can reach Connect via Disconnect→onDisconnect.
+  val startDestination = Routes.Hearth
 
   val identity: WalletIdentity? by remember(connectState.solanaPubkeyBase58) {
     derivedStateOf {
