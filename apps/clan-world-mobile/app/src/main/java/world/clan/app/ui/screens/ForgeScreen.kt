@@ -75,7 +75,7 @@ fun ForgeScreenRoute(
   factory: ClanWorldViewModelFactory,
   mwaSender: ActivityResultSender,
   onBack: () -> Unit,
-  onForged: () -> Unit,
+  onForged: (clanId: Int, name: String) -> Unit,
 ) {
   val vm: ForgeViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
@@ -114,7 +114,8 @@ fun ForgeScreenRoute(
   if (state.mintPhase == SendPhase.Queued) {
     androidx.compose.runtime.LaunchedEffect(Unit) {
       delay(1500L)
-      onForged()
+      val cid = state.clanId ?: 1
+      onForged(cid, state.sigilName)
     }
   }
 }
