@@ -1,8 +1,16 @@
 package world.clan.app.ui.screens
 
-import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,18 +19,23 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,25 +43,24 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import world.clan.app.App
 import world.clan.app.R
 import world.clan.app.ui.components.EmberCta
-import world.clan.app.ui.components.ParchmentCard
 import world.clan.app.ui.theme.ClanWorldTheme
-import world.clan.app.ui.theme.Ink
-import world.clan.app.ui.theme.Ink2
-import world.clan.app.ui.theme.Ink3
-import world.clan.app.ui.theme.clanColor
-import world.clan.app.viewmodel.Posture
 import world.clan.app.viewmodel.SendPhase
 import world.clan.app.viewmodel.StrategyEditorUiState
 import world.clan.app.viewmodel.StrategyEditorViewModel
@@ -56,6 +68,15 @@ import world.clan.app.viewmodel.StrategyEditorViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.wallet.MwaResult
 
+private const val STRATEGY_LIMIT = 800
+private const val NOTES_LIMIT = 400
+
+/**
+ * Slice 4d redesign: dual STRATEGY + NOTES textarea pattern that mirrors
+ * web PR #51's `EssenceSection.tsx`. Each FieldShell glows ember when dirty.
+ * "Sign to Commit" CTA becomes the primary action when there are unsaved
+ * changes; its post-sign success transitions to "Sealed ✓" then auto-pops.
+ */
 @Composable
 fun StrategyEditorScreenRoute(
   app: App,
@@ -64,194 +85,146 @@ fun StrategyEditorScreenRoute(
   onBack: () -> Unit,
   onSaved: () -> Unit,
 ) {
-  val vm: StrategyEditorViewModel =
-    viewModel(factory = StrategyEditorViewModelFactory(app, clanId))
+  val vm: StrategyEditorViewModel = viewModel(
+    factory = StrategyEditorViewModelFactory(app, clanId),
+  )
   val state by vm.state.collectAsState()
   val scope = rememberCoroutineScope()
+  val view = LocalView.current
+
+  // Auto-pop ~1.3s after Queued — fire a confirm haptic on the transition.
+  LaunchedEffect(state.savePhase) {
+    if (state.savePhase == SendPhase.Queued) {
+      view.performHapticFeedback(
+        if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
+        else HapticFeedbackConstants.VIRTUAL_KEY,
+      )
+      delay(1_300L)
+      onSaved()
+    }
+  }
 
   StrategyEditor(
     state = state,
     onBack = onBack,
-    onSetPosture = vm::setPosture,
-    onSetDoctrine = vm::setDoctrine,
-    onSetPinnedKey = vm::setPinnedKey,
-    onSave = {
+    onStrategyChange = vm::setDraftStrategy,
+    onNotesChange = vm::setDraftNotes,
+    onCommit = {
       scope.launch {
         vm.setSavePhase(SendPhase.Signing)
         val token = app.sessionStore.read()?.mwaAuthToken
         if (token == null) {
-          vm.setSavePhase(SendPhase.Queued)
+          vm.setSavePhase(SendPhase.Failed, "not signed in.")
           return@launch
         }
-        val msg = ("ClanWorld Strategy — clan ${state.clanId} | ${state.posture.name} | " +
-          "${state.pinnedKey} = ${state.doctrine}").toByteArray()
-        when (val r = app.mwaClient.signMessage(mwaSender, token, msg)) {
-          is MwaResult.Ok -> vm.setSavePhase(SendPhase.Queued)
+        val msg = "ClanWorld Essence — clan ${state.clanId}".toByteArray()
+        val result = app.mwaClient.signMessage(mwaSender, token, msg)
+        when (result) {
+          is MwaResult.Ok -> vm.confirmSeal()
           is MwaResult.UserDeclined -> vm.setSavePhase(SendPhase.Idle)
           is MwaResult.WalletNotFound ->
             vm.setSavePhase(SendPhase.Failed, "no wallet found on device.")
           is MwaResult.Error ->
-            vm.setSavePhase(SendPhase.Failed, r.cause.message ?: "the wallet refused the seal.")
+            vm.setSavePhase(SendPhase.Failed, result.cause.message ?: "the wallet refused the seal.")
         }
       }
     },
+    onDismissStatus = vm::clearStatus,
   )
-
-  if (state.savePhase == SendPhase.Queued) {
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-      delay(1300L)
-      onSaved()
-    }
-  }
 }
 
 @Composable
 private fun StrategyEditor(
   state: StrategyEditorUiState,
   onBack: () -> Unit,
-  onSetPosture: (Posture) -> Unit,
-  onSetDoctrine: (String) -> Unit,
-  onSetPinnedKey: (String) -> Unit,
-  onSave: () -> Unit,
+  onStrategyChange: (String) -> Unit,
+  onNotesChange: (String) -> Unit,
+  onCommit: () -> Unit,
+  onDismissStatus: () -> Unit,
 ) {
+  val strategyDirty = state.draftStrategy != state.committedStrategy
+  val notesDirty = state.draftNotes != state.committedNotes
+  val anyDirty = strategyDirty || notesDirty
+
   Column(
     modifier = Modifier
       .fillMaxSize()
+      .imePadding()
       .verticalScroll(rememberScrollState()),
   ) {
-    BackBar(text = "back to ${clanDisplayName(state.clanId).lowercase()}", onBack = onBack)
+    BackBar(text = clanDisplayName(state.clanId), onBack = onBack)
 
     Column(modifier = Modifier.padding(horizontal = 22.dp)) {
-      EditorHead(state.clanId)
-      Spacer(Modifier.height(14.dp))
+      OrnamentRule(label = "ÆLDER ESSENCE")
 
-      if (state.isLoading) {
-        Text(
-          text = "the elder's last counsel is being read…",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-          modifier = Modifier.padding(top = 24.dp),
+      Spacer(Modifier.height(18.dp))
+
+      FieldShell(
+        label = "STRATEGY",
+        charCount = state.draftStrategy.length,
+        limit = STRATEGY_LIMIT,
+        dirty = strategyDirty,
+      ) {
+        EssenceTextField(
+          value = state.draftStrategy,
+          onValueChange = onStrategyChange,
+          minHeight = 110.dp,
+          maxHeight = 220.dp,
+          enabled = state.savePhase != SendPhase.Signing,
+          placeholder = "Tell your Elder what to focus on this season — economy, alliances, defense priorities. They'll read this every time their context resets.",
         )
-      } else {
-        // ── Posture ───────────────────────────────────────────────────────
-        Text(
-          text = "POSTURE",
-          style = ClanWorldTheme.type.monoNano,
-          color = ClanWorldTheme.colors.warmFaint,
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          Posture.values().forEach { p ->
-            PosturePill(
-              posture = p,
-              selected = p == state.posture,
-              onClick = { onSetPosture(p) },
-            )
-          }
-        }
-        Spacer(Modifier.height(8.dp))
-        Text(
-          text = postureTagline(state.posture),
-          style = ClanWorldTheme.type.scriptItalicSmall,
-          color = ClanWorldTheme.colors.warmDim,
-        )
-        Spacer(Modifier.height(14.dp))
-
-        // ── Pinned memory key ─────────────────────────────────────────────
-        ParchmentCard(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "PINNED KEY",
-            style = ClanWorldTheme.type.monoNano,
-            color = Ink3,
-          )
-          Spacer(Modifier.height(6.dp))
-          BasicTextField(
-            value = state.pinnedKey,
-            onValueChange = onSetPinnedKey,
-            singleLine = true,
-            textStyle = LocalTextStyle.current.copy(
-              fontFamily = ClanWorldTheme.type.monoData.fontFamily,
-              fontSize = ClanWorldTheme.type.monoData.fontSize,
-              color = Ink,
-            ),
-            cursorBrush = SolidColor(Ink2),
-            modifier = Modifier.fillMaxWidth(),
-          )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        // ── Doctrine ──────────────────────────────────────────────────────
-        ParchmentCard(modifier = Modifier.fillMaxWidth()) {
-          Text(
-            text = "DOCTRINE",
-            style = ClanWorldTheme.type.monoNano,
-            color = Ink3,
-          )
-          Spacer(Modifier.height(6.dp))
-          Box(
-            modifier = Modifier
-              .fillMaxWidth()
-              .height(140.dp),
-          ) {
-            if (state.doctrine.isEmpty()) {
-              Text(
-                text = "what should the elder hold to, even when the season turns?",
-                style = ClanWorldTheme.type.scriptItalic.copy(color = Ink3),
-              )
-            }
-            BasicTextField(
-              value = state.doctrine,
-              onValueChange = onSetDoctrine,
-              textStyle = LocalTextStyle.current.copy(
-                fontFamily = ClanWorldTheme.type.scriptItalic.fontFamily,
-                fontStyle = ClanWorldTheme.type.scriptItalic.fontStyle,
-                fontSize = ClanWorldTheme.type.scriptItalic.fontSize,
-                color = Ink,
-              ),
-              cursorBrush = SolidColor(Ink2),
-              modifier = Modifier.fillMaxSize(),
-            )
-          }
-          Spacer(Modifier.height(8.dp))
-          val docCounterColor = when {
-            state.doctrine.length >= 280 -> ClanWorldTheme.colors.danger
-            state.doctrine.length >= 238 -> ClanWorldTheme.colors.warn
-            else -> Ink3
-          }
-          Text(
-            text = "${state.doctrine.length}/280",
-            style = ClanWorldTheme.type.monoNano,
-            color = docCounterColor,
-            textAlign = TextAlign.End,
-            modifier = Modifier.fillMaxWidth(),
-          )
-        }
-
-        Spacer(Modifier.height(14.dp))
-
-        // ── Save status ───────────────────────────────────────────────────
-        EditorStatus(state)
-        Spacer(Modifier.height(14.dp))
-
-        EmberCta(
-          text = when (state.savePhase) {
-            SendPhase.Idle -> "Sign and Seal"
-            SendPhase.Signing -> "Awaiting the seal…"
-            SendPhase.Queued -> "Sealed ✓"
-            SendPhase.Failed -> "Try Again"
-          },
-          onClick = onSave,
-          enabled = state.doctrine.isNotBlank() &&
-            state.pinnedKey.isNotBlank() &&
-            (state.savePhase == SendPhase.Idle || state.savePhase == SendPhase.Failed),
-          modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(40.dp))
       }
+
+      Spacer(Modifier.height(12.dp))
+
+      FieldShell(
+        label = "NOTES",
+        charCount = state.draftNotes.length,
+        limit = NOTES_LIMIT,
+        dirty = notesDirty,
+      ) {
+        EssenceTextField(
+          value = state.draftNotes,
+          onValueChange = onNotesChange,
+          minHeight = 80.dp,
+          maxHeight = 160.dp,
+          enabled = state.savePhase != SendPhase.Signing,
+          placeholder = "Free-form reminders, intel about other clans, debts owed. Anything you want them to remember.",
+        )
+      }
+
+      Spacer(Modifier.height(20.dp))
+
+      val ctaEnabled = anyDirty &&
+        (state.savePhase == SendPhase.Idle || state.savePhase == SendPhase.Failed)
+      EmberCta(
+        text = when (state.savePhase) {
+          SendPhase.Idle -> if (anyDirty) "Sign to Commit" else "Sealed · No Changes"
+          SendPhase.Signing -> "Sealing…"
+          SendPhase.Queued -> "Sealed ✓"
+          SendPhase.Failed -> "Try Again"
+        },
+        onClick = onCommit,
+        enabled = ctaEnabled,
+        modifier = Modifier.fillMaxWidth(),
+      )
+
+      Spacer(Modifier.height(10.dp))
+
+      StatusLine(
+        successMsg = state.statusBody,
+        errorMsg = state.errorMessage,
+        onDismiss = onDismissStatus,
+      )
+
+      Spacer(Modifier.height(40.dp))
     }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Sub-composables
+// ─────────────────────────────────────────────────────────────────────
 
 @Composable
 private fun BackBar(text: String, onBack: () -> Unit) {
@@ -266,131 +239,219 @@ private fun BackBar(text: String, onBack: () -> Unit) {
     Icon(
       painter = painterResource(R.drawable.ui_arrow),
       contentDescription = "back",
-      tint = ClanWorldTheme.colors.warm,
-      modifier = Modifier.height(16.dp),
+      tint = ClanWorldTheme.colors.gold,
+      modifier = Modifier.size(14.dp),
     )
     Text(
-      text = text,
+      text = "HALL",
       style = ClanWorldTheme.type.monoMicro,
+      color = ClanWorldTheme.colors.warmDim,
+    )
+    Text(
+      text = "·",
+      style = ClanWorldTheme.type.monoMicro,
+      color = ClanWorldTheme.colors.warmFaint,
+    )
+    Text(
+      text = "the writ of ${text.split(" ").lastOrNull()?.lowercase() ?: "—"}",
+      style = ClanWorldTheme.type.scriptItalic,
       color = ClanWorldTheme.colors.warmDim,
     )
   }
 }
 
 @Composable
-private fun EditorHead(clanId: Int) {
-  val parchment = ClanWorldTheme.colors.parchment
-  val warmDim = ClanWorldTheme.colors.warmDim
-  val hairline = ClanWorldTheme.colors.hairline
+private fun OrnamentRule(label: String) {
+  Row(
+    modifier = Modifier
+      .fillMaxWidth()
+      .padding(vertical = 4.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    SideRule()
+    Text(
+      text = label,
+      style = ClanWorldTheme.type.sectionHead,
+      color = ClanWorldTheme.colors.parchment,
+    )
+    SideRule()
+  }
+}
 
-  Column(
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.SideRule() {
+  Box(
+    modifier = Modifier
+      .weight(1f)
+      .height(1.dp)
+      .background(ClanWorldTheme.colors.hairlineStrong),
+  )
+}
+
+/**
+ * Iron-card with a gold-mono header (label + dirty dot + char count) and
+ * the inner text field. Border + glow shift to ember when dirty. Mirrors
+ * web PR #51's `FieldShell` in `EssenceSection.tsx`.
+ */
+@Composable
+private fun FieldShell(
+  label: String,
+  charCount: Int,
+  limit: Int,
+  dirty: Boolean,
+  content: @Composable () -> Unit,
+) {
+  val ember = ClanWorldTheme.colors.ember
+  val emberGlow = ClanWorldTheme.colors.emberGlow
+  val borderIron = ClanWorldTheme.colors.hairline
+  val borderColor by animateColorAsState(
+    targetValue = if (dirty) ember else borderIron,
+    animationSpec = tween(220),
+    label = "field-border",
+  )
+  val overshoot = charCount > (limit * 0.9).toInt()
+  val shape = RoundedCornerShape(6.dp)
+
+  Box(
     modifier = Modifier
       .fillMaxWidth()
       .drawBehind {
-        drawLine(
-          color = hairline,
-          start = Offset(0f, size.height + 14f),
-          end = Offset(size.width, size.height + 14f),
-          strokeWidth = 1f,
-        )
-      },
-  ) {
-    Text(
-      text = "STRATEGY",
-      style = ClanWorldTheme.type.displayHero,
-      color = parchment,
-    )
-    Text(
-      text = "the doctrine kept by ${clanDisplayName(clanId).lowercase()}",
-      style = ClanWorldTheme.type.scriptItalic,
-      color = warmDim,
-      modifier = Modifier.padding(top = 2.dp),
-    )
-  }
-}
-
-private fun postureTagline(p: Posture): String = when (p) {
-  Posture.Defensive -> "hold the line; trade no ground without weight."
-  Posture.Balanced -> "read the season; move when both shores agree."
-  Posture.Aggressive -> "forge ahead; the season favors the bold."
-}
-
-@Composable
-private fun PosturePill(posture: Posture, selected: Boolean, onClick: () -> Unit) {
-  val accent = when (posture) {
-    Posture.Defensive -> ClanWorldTheme.colors.rune
-    Posture.Balanced -> ClanWorldTheme.colors.gold
-    Posture.Aggressive -> ClanWorldTheme.colors.ember
-  }
-  val bg = if (selected) accent.copy(alpha = 0.18f) else Color.Transparent
-  val border = if (selected) accent else ClanWorldTheme.colors.hairline
-  val tint = if (selected) ClanWorldTheme.colors.parchment else ClanWorldTheme.colors.warmDim
-  val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
-  Row(
-    modifier = Modifier
-      .clip(RoundedCornerShape(4.dp))
-      .background(bg)
-      .drawBehind {
-        drawRoundRect(
-          color = border,
-          cornerRadius = CornerRadius(4.dp.toPx()),
-          style = Stroke(width = 1.dp.toPx()),
-        )
-      }
-      .clickable {
-        if (!selected) {
-          haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        if (dirty) {
+          val expand = 6.dp.toPx()
+          drawRoundRect(
+            color = emberGlow.copy(alpha = 0.18f),
+            topLeft = Offset(-expand, -expand + 1.dp.toPx()),
+            size = Size(size.width + expand * 2, size.height + expand * 2),
+            cornerRadius = CornerRadius(6.dp.toPx() + expand),
+          )
         }
-        onClick()
       }
-      .padding(horizontal = 14.dp, vertical = 10.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
+      .clip(shape)
+      .background(ClanWorldTheme.colors.iron2)
+      .border(1.dp, borderColor, shape),
   ) {
-    Box(
-      modifier = Modifier
-        .size(8.dp)
-        .clip(RoundedCornerShape(50))
-        .background(accent),
-    )
-    Text(
-      text = posture.name.uppercase(),
-      style = ClanWorldTheme.type.monoMicro,
-      color = tint,
-    )
+    Column {
+      Row(
+        modifier = Modifier
+          .fillMaxWidth()
+          .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        Text(
+          text = label,
+          style = ClanWorldTheme.type.eyebrow.copy(fontSize = 10.sp),
+          color = if (dirty) emberGlow else ClanWorldTheme.colors.warmFaint,
+        )
+        if (dirty) {
+          Box(
+            modifier = Modifier
+              .size(6.dp)
+              .clip(CircleShape)
+              .drawBehind {
+                val r = size.minDimension / 2f
+                drawCircle(ember.copy(alpha = 0.55f), radius = r * 1.6f, center = Offset(r, r))
+              }
+              .background(ember),
+          )
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+          text = "$charCount / $limit",
+          style = ClanWorldTheme.type.monoNano,
+          color = if (overshoot) ClanWorldTheme.colors.goldBright
+          else ClanWorldTheme.colors.warmFaint,
+        )
+      }
+      content()
+    }
   }
 }
 
 @Composable
-private fun EditorStatus(state: StrategyEditorUiState) {
-  when (state.savePhase) {
-    SendPhase.Idle -> {
-      Text(
-        text = "your seal will write the doctrine to the elder's memory.",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.warmDim,
-      )
+private fun EssenceTextField(
+  value: String,
+  onValueChange: (String) -> Unit,
+  minHeight: Dp,
+  maxHeight: Dp,
+  enabled: Boolean,
+  placeholder: String,
+) {
+  val ember = ClanWorldTheme.colors.ember
+  val warm = ClanWorldTheme.colors.warm
+  val warmFaint = ClanWorldTheme.colors.warmFaint
+  val interactionSource = remember { MutableInteractionSource() }
+
+  BasicTextField(
+    value = value,
+    onValueChange = onValueChange,
+    enabled = enabled,
+    textStyle = ClanWorldTheme.type.body.copy(color = warm),
+    cursorBrush = SolidColor(ember),
+    interactionSource = interactionSource,
+    keyboardOptions = KeyboardOptions(
+      capitalization = KeyboardCapitalization.Sentences,
+      imeAction = ImeAction.Default,
+    ),
+    modifier = Modifier
+      .fillMaxWidth()
+      .heightIn(min = minHeight, max = maxHeight)
+      .padding(horizontal = 12.dp, vertical = 8.dp),
+    decorationBox = { inner ->
+      if (value.isEmpty()) {
+        Text(
+          text = placeholder,
+          style = ClanWorldTheme.type.scriptItalic.copy(color = warmFaint),
+        )
+      }
+      inner()
+    },
+  )
+}
+
+@Composable
+private fun StatusLine(
+  successMsg: String?,
+  errorMsg: String?,
+  onDismiss: () -> Unit,
+) {
+  LaunchedEffect(successMsg) {
+    if (successMsg != null) {
+      delay(5_000L)
+      onDismiss()
     }
-    SendPhase.Signing -> {
+  }
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .height(18.dp)
+      .clickable(enabled = errorMsg != null || successMsg != null) { onDismiss() },
+    contentAlignment = Alignment.CenterStart,
+  ) {
+    AnimatedVisibility(
+      visible = errorMsg != null,
+      enter = fadeIn(),
+      exit = fadeOut(),
+    ) {
       Text(
-        text = "the wallet is preparing the seal…",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.gold,
-      )
-    }
-    SendPhase.Queued -> {
-      Text(
-        text = "sealed — the elder will hold this counsel through the next tick.",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.success,
-      )
-    }
-    SendPhase.Failed -> {
-      Text(
-        text = state.errorMessage ?: "the seal could not be set.",
-        style = ClanWorldTheme.type.scriptItalic,
+        text = "✕  ${errorMsg ?: ""}",
+        style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.danger,
       )
     }
+    AnimatedVisibility(
+      visible = errorMsg == null && successMsg != null,
+      enter = fadeIn(),
+      exit = fadeOut(),
+    ) {
+      Text(
+        text = "✓  ${successMsg ?: ""}",
+        style = ClanWorldTheme.type.monoNano,
+        color = ClanWorldTheme.colors.success,
+      )
+    }
   }
 }
+
+@Suppress("unused") private val _kKeepColor: Color = Color.Transparent
