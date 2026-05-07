@@ -23,6 +23,7 @@ data class HearthUiState(
   val winterActive: Boolean = false,
   val leaderboard: List<LeaderboardRow> = emptyList(),
   val recentComms: List<CombinedComm> = emptyList(),
+  val banditAlert: BanditAlert? = null,
   val walletShort: String = "",
   val errorMessage: String? = null,
 ) {
@@ -34,6 +35,13 @@ data class HearthUiState(
     val gold: Long,
     val delta: Long,
     val isMine: Boolean,
+  )
+
+  /** A bandit visible in the snapshot — surfaced as an alert pill on Hearth. */
+  data class BanditAlert(
+    val banditId: Int,
+    val regionName: String?,
+    val tier: Int?,
   )
 }
 
@@ -130,6 +138,17 @@ class HearthViewModel(
     val seasonEnd = snap.seasonEndTick ?: (seasonStart + 60L)
     val seasonNumber = maxOf(1, (seasonStart / 60L).toInt() + 1)
 
+    val banditAlert = snap.bandit?.let { b ->
+      val regionName = snap.regions.firstOrNull { it.id.toIntOrNull() == b.region }?.name
+      HearthUiState.BanditAlert(
+        banditId = b.id,
+        regionName = regionName,
+        tier = b.tier,
+      )
+    } ?: snap.activeBanditId?.let { id ->
+      HearthUiState.BanditAlert(banditId = id, regionName = null, tier = null)
+    }
+
     return HearthUiState(
       isLoading = false,
       isRefreshing = false,
@@ -140,6 +159,7 @@ class HearthViewModel(
       winterActive = snap.winterActive,
       leaderboard = leaderboard,
       recentComms = comms,
+      banditAlert = banditAlert,
       walletShort = solanaPubkey.shortenPubkey(),
     )
   }
