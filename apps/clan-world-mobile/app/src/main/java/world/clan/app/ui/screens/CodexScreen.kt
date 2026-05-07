@@ -155,12 +155,7 @@ private fun CodexScreen(
       SectionHeader(title = "Share", showLozenge = false)
     }
     StaggeredEntry(index = 6) {
-      RowCard(
-        label = "APK download · for friends",
-        value = state.apkShareUrl,
-        copyable = true,
-        copyText = state.apkShareUrl,
-      )
+      ShareApkRow(url = state.apkShareUrl)
     }
 
     Spacer(Modifier.height(20.dp))
@@ -189,6 +184,77 @@ private fun CodexScreen(
     }
 
     Spacer(Modifier.height(40.dp))
+  }
+}
+
+@Composable
+private fun ShareApkRow(url: String) {
+  val context = androidx.compose.ui.platform.LocalContext.current
+  val clipboard = LocalClipboardManager.current
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .clip(RoundedCornerShape(6.dp))
+      .background(ClanWorldTheme.colors.iron)
+      .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp))
+      .padding(horizontal = 14.dp, vertical = 12.dp),
+  ) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+      Text(
+        text = "APK DOWNLOAD · FOR FRIENDS",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.warmFaint,
+      )
+      Text(
+        text = url,
+        style = ClanWorldTheme.type.monoData,
+        color = ClanWorldTheme.colors.parchment,
+      )
+    }
+    Row(
+      modifier = Modifier.align(Alignment.TopEnd),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+      // Copy
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(4.dp))
+          .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(4.dp))
+          .clickable { clipboard.setText(AnnotatedString(url)) }
+          .padding(horizontal = 8.dp, vertical = 4.dp),
+      ) {
+        Icon(
+          painter = painterResource(R.drawable.ui_copy),
+          contentDescription = "Copy",
+          tint = ClanWorldTheme.colors.warmDim,
+          modifier = Modifier.size(10.dp),
+        )
+      }
+      // Share via Android intent
+      Box(
+        modifier = Modifier
+          .clip(RoundedCornerShape(4.dp))
+          .border(1.dp, ClanWorldTheme.colors.hairlineMid, RoundedCornerShape(4.dp))
+          .clickable {
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+              type = "text/plain"
+              putExtra(android.content.Intent.EXTRA_TEXT, url)
+              putExtra(android.content.Intent.EXTRA_SUBJECT, "Try the ClanWorld Android demo")
+            }
+            val chooser = android.content.Intent.createChooser(intent, "Share APK link").apply {
+              addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+          }
+          .padding(horizontal = 8.dp, vertical = 4.dp),
+      ) {
+        Text(
+          text = "SHARE",
+          style = ClanWorldTheme.type.monoNano,
+          color = ClanWorldTheme.colors.gold,
+        )
+      }
+    }
   }
 }
 
