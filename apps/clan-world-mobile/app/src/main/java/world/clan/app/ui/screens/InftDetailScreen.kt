@@ -79,6 +79,7 @@ fun InftDetailScreenRoute(
   clanId: Int,
   onBack: () -> Unit,
   onEnterCockpit: () -> Unit = {},
+  onOpenInbox: () -> Unit = {},
   isBazaar: Boolean = false,
   hostActivity: androidx.activity.ComponentActivity? = null,
   onHireConfirmed: (() -> Unit)? = null,
@@ -91,6 +92,7 @@ fun InftDetailScreenRoute(
     onBack = onBack,
     onSelectDetailTab = vm::selectTab,
     onEnterCockpit = onEnterCockpit,
+    onOpenInbox = onOpenInbox,
     isBazaar = isBazaar,
     app = app,
     hostActivity = hostActivity,
@@ -105,6 +107,7 @@ private fun InftDetailScreen(
   onBack: () -> Unit,
   onSelectDetailTab: (DetailTab) -> Unit,
   onEnterCockpit: () -> Unit,
+  onOpenInbox: () -> Unit = {},
   isBazaar: Boolean = false,
   app: App? = null,
   hostActivity: androidx.activity.ComponentActivity? = null,
@@ -152,7 +155,7 @@ private fun InftDetailScreen(
       when (tab) {
         DetailTab.Memory -> MemoryPanel(state.state?.memory.orEmpty())
         DetailTab.Vault -> VaultPanel(state.vault)
-        DetailTab.Whispers -> WhispersPanel(state.comms)
+        DetailTab.Whispers -> WhispersPanel(state.comms, onOpenInbox = onOpenInbox)
         DetailTab.Bulletin -> BulletinPanel(state.state?.bulletins?.map { it.body } ?: emptyList())
       }
     }
@@ -482,7 +485,10 @@ private fun VaultPanel(vault: List<VaultMovement>) {
 }
 
 @Composable
-private fun WhispersPanel(comms: List<world.clan.app.data.CombinedComm>) {
+private fun WhispersPanel(
+  comms: List<world.clan.app.data.CombinedComm>,
+  onOpenInbox: () -> Unit = {},
+) {
   Column(
     modifier = Modifier
       .fillMaxWidth()
@@ -511,6 +517,17 @@ private fun WhispersPanel(comms: List<world.clan.app.data.CombinedComm>) {
           accent = accent,
         )
       }
+      Spacer(Modifier.height(4.dp))
+      Text(
+        text = "OPEN FULL INBOX →",
+        style = ClanWorldTheme.type.monoMicro,
+        color = ClanWorldTheme.colors.gold,
+        modifier = Modifier
+          .fillMaxWidth()
+          .clickable { onOpenInbox() }
+          .padding(vertical = 10.dp),
+        textAlign = TextAlign.Center,
+      )
     }
   }
 }

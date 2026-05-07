@@ -62,11 +62,15 @@ object Routes {
   const val Codex = "codex"
   const val InftDetail = "inft/{clanId}"
   const val BazaarInftDetail = "bazaarInft/{clanId}"
+  const val Whispers = "whispers/{clanId}"
+  const val Bridge = "bridge/{clanId}"
   const val Cockpit = "cockpit"
   const val OwnerSignIn = "ownerSignIn/{clanId}"
   const val OwnerComingSoon = "ownerComingSoon/{clanId}"
   fun inftDetail(clanId: Int) = "inft/$clanId"
   fun bazaarInftDetail(clanId: Int) = "bazaarInft/$clanId"
+  fun whispers(clanId: Int) = "whispers/$clanId"
+  fun bridge(clanId: Int) = "bridge/$clanId"
   fun ownerSignIn(clanId: Int) = "ownerSignIn/$clanId"
   fun ownerComingSoon(clanId: Int) = "ownerComingSoon/$clanId"
 }
@@ -202,7 +206,8 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     currentRoute == Routes.Bazaar ||
     currentRoute == Routes.Codex ||
     currentRoute?.startsWith("inft/") == true ||
-    currentRoute?.startsWith("bazaarInft/") == true
+    currentRoute?.startsWith("bazaarInft/") == true ||
+    currentRoute?.startsWith("whispers/") == true
   // Cockpit + Owner sign-in / coming-soon are full-screen flows: tabbar hidden.
   val selectedTab = when {
     currentRoute == Routes.Hearth -> RootTab.Hearth
@@ -211,7 +216,9 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
     currentRoute == Routes.Codex -> RootTab.Codex
     currentRoute?.startsWith("inft/") == true -> RootTab.Hall // detail derived from Hall
     currentRoute?.startsWith("bazaarInft/") == true -> RootTab.Bazaar // detail derived from Bazaar
-    currentRoute == Routes.Cockpit ||
+    currentRoute?.startsWith("whispers/") == true -> RootTab.Hall // inbox is a Hall drill-in
+    currentRoute?.startsWith("bridge/") == true ||
+      currentRoute == Routes.Cockpit ||
       currentRoute?.startsWith("ownerSignIn/") == true ||
       currentRoute?.startsWith("ownerComingSoon/") == true -> RootTab.Hall
     else -> RootTab.Hearth
@@ -354,7 +361,8 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
-              onEnterCockpit = { nav.navigate(Routes.Cockpit) },
+              onEnterCockpit = { nav.navigate(Routes.bridge(clanId)) },
+              onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
             )
           }
 
@@ -372,6 +380,7 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
+              onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
               isBazaar = true,
               hostActivity = hostActivity,
               onHireConfirmed = {
@@ -382,7 +391,42 @@ fun ClanWorldApp(app: App, hostActivity: ComponentActivity) {
             )
           }
 
-          // ── Cockpit (deep route from InftDetail "Enter Cockpit" CTA) ────
+          // ── Bridge loader (between InftDetail "Enter Cockpit" and Cockpit) ─
+          composable(
+            route = Routes.Bridge,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { fadeIn(tween(280, easing = FastOutSlowInEasing)) },
+            exitTransition = { fadeOut(tween(280, easing = FastOutSlowInEasing)) },
+            popExitTransition = { fadeOut(tween(220, easing = FastOutSlowInEasing)) },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            world.clan.app.ui.screens.BridgeScreen(
+              clanId = clanId,
+              onReady = {
+                nav.navigate(Routes.Cockpit) {
+                  popUpTo(Routes.Bridge) { inclusive = true }
+                }
+              },
+            )
+          }
+
+          // ── Whispers inbox (deep route from InftDetail Whispers tab) ────
+          composable(
+            route = Routes.Whispers,
+            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            enterTransition = { detailEnter() },
+            popExitTransition = { detailPopExit() },
+            exitTransition = { tabExit() },
+          ) { entry ->
+            val clanId = entry.arguments?.getInt("clanId") ?: 1
+            world.clan.app.ui.screens.WhispersScreenRoute(
+              app = app,
+              clanId = clanId,
+              onBack = { nav.popBackStack() },
+            )
+          }
+
+          // ── Cockpit (deep route from Bridge after the loader resolves) ──
           composable(
             route = Routes.Cockpit,
             enterTransition = { detailEnter() },

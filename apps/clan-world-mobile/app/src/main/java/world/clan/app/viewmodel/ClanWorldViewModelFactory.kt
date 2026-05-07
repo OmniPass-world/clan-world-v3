@@ -29,3 +29,13 @@ class InftDetailViewModelFactory(
   override fun <T : ViewModel> create(modelClass: Class<T>): T =
     InftDetailViewModel(app.convexClient, clanId) as T
 }
+
+/** Per-route factory for Whispers, which depends on a clanId. */
+class WhispersViewModelFactory(
+  private val app: App,
+  private val clanId: Int,
+) : ViewModelProvider.Factory {
+  @Suppress("UNCHECKED_CAST")
+  override fun <T : ViewModel> create(modelClass: Class<T>): T =
+    WhispersViewModel(app.convexClient, clanId) as T
+}
