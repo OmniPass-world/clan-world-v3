@@ -43,12 +43,12 @@ class WidgetConfigActivity : Activity() {
     list.addView(text("Top Kickstart tokens by market cap", 13, getColor(R.color.widget_muted)))
     list.addView(text("Loading...", 14, getColor(R.color.widget_muted)))
 
-    Thread {
+    BackgroundExecutors.widget.execute {
       val tokens = runCatching { KickstartClient.listTokens() }.getOrElse { emptyList() }
       runOnUiThread {
         renderTokenPicker(list, tokens)
       }
-    }.start()
+    }
   }
 
   private fun renderTokenPicker(list: LinearLayout, tokens: List<KickstartToken>) {

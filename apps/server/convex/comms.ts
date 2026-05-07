@@ -88,6 +88,9 @@ export const seedWhisper = mutation({
     fromClanId: v.number(),
     toClanIds: v.array(v.number()),
     body: v.string(),
+    // Optional on-chain transaction hash from the whisper write — useful
+    // provenance for the cockpit feed. Optional in the whispers table.
+    txHash: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
@@ -117,6 +120,9 @@ export const seedHumanSteering = mutation({
     tick: v.number(),
     targetClanId: v.number(),
     body: v.string(),
+    // Optional wallet/owner address of the sender — surfaced on the
+    // cockpit feed. Optional in the humanSteeringMessages table schema.
+    sentBy: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);

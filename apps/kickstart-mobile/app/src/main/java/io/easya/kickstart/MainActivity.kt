@@ -79,6 +79,10 @@ class MainActivity : Activity() {
   private fun showHome(url: String) {
     selectedUrl = url
     selectTab(homeTab)
+    // Tear down any prior WebView before re-allocating: showHome() can be
+    // re-invoked (tab switch, deep link, onNewIntent) and otherwise leaks
+    // the renderer process per re-entry.
+    destroyWebViewIfPresent()
     content.removeAllViews()
     webView = WebView(this).apply {
       webViewClient = object : WebViewClient() {
@@ -250,6 +254,21 @@ class MainActivity : Activity() {
   override fun onBackPressed() {
     if (::webView.isInitialized && webView.canGoBack()) webView.goBack()
     else super.onBackPressed()
+  }
+
+  override fun onDestroy() {
+    destroyWebViewIfPresent()
+    super.onDestroy()
+  }
+
+  private fun destroyWebViewIfPresent() {
+    if (::webView.isInitialized) {
+      webView.stopLoading()
+      webView.loadUrl("about:blank")
+      (webView.parent as? ViewGroup)?.removeView(webView)
+      webView.removeAllViews()
+      webView.destroy()
+    }
   }
 
   /**

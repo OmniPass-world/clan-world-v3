@@ -3,8 +3,28 @@ plugins {
   id("org.jetbrains.kotlin.android")
 }
 
-val homeUrl = providers.environmentVariable("CLAN_WORLD_HOME_URL")
-  .orElse("https://clan-world.com")
+// Build-time URL config.
+//
+// We deliberately fall back from environment → Gradle project property → null.
+// If neither is set the build fails loudly: a hardcoded fallback previously
+// risked silently shipping a wrong/non-prod URL into release APKs.
+//
+// Local devs can keep the URL in `~/.gradle/gradle.properties`:
+//   clanWorldHomeUrl=https://clan-world.com
+// CI must pass the env var explicitly.
+fun resolveBuildConfigUrl(envName: String, propName: String): String {
+  val envValue = System.getenv(envName)?.takeIf { it.isNotBlank() }
+  if (envValue != null) return envValue
+  val propValue = (project.findProperty(propName) as? String)?.takeIf { it.isNotBlank() }
+  if (propValue != null) return propValue
+  error(
+    "$envName must be set at build time (env var or Gradle property `$propName`). " +
+      "Refusing to fall back to a hardcoded URL — that path silently shipped wrong " +
+      "backends in past releases.",
+  )
+}
+
+val homeUrl = resolveBuildConfigUrl("CLAN_WORLD_HOME_URL", "clanWorldHomeUrl")
 
 // Optional stable signing key. See apps/kickstart-mobile/app/build.gradle.kts
 // for details — both apps share the same secret names so one CI step can
@@ -28,7 +48,7 @@ android {
     targetSdk = 35
     versionCode = 3
     versionName = "0.1.10"
-    buildConfigField("String", "HOME_URL", "\"${homeUrl.get()}\"")
+    buildConfigField("String", "HOME_URL", "\"$homeUrl\"")
   }
 
   if (hasStableSigning) {

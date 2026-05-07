@@ -47,6 +47,11 @@ export const seedBulletin = mutation({
     clanId: v.number(),
     slot: v.number(),
     body: v.string(),
+    // Optional provenance from the on-chain bulletin write — surfaced on
+    // the cockpit. Both fields are also optional in the bulletins table
+    // schema so older rows without them stay valid.
+    dataHash: v.optional(v.string()),
+    txHash: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
