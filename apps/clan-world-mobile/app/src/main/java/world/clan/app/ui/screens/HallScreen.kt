@@ -63,7 +63,12 @@ fun HallScreenRoute(
 ) {
   val vm: HallViewModel = viewModel(factory = factory)
   val state by vm.state.collectAsState()
-  HallScreen(state = state, onOpenInft = onOpenInft, onForge = onForge)
+  HallScreen(
+    state = state,
+    onOpenInft = onOpenInft,
+    onForge = onForge,
+    onRefresh = vm::refresh,
+  )
 }
 
 @Composable
@@ -71,6 +76,7 @@ private fun HallScreen(
   state: HallUiState,
   onOpenInft: (Int) -> Unit,
   onForge: () -> Unit = {},
+  onRefresh: () -> Unit = {},
 ) {
   // Background and tab bar are app-level (ClanWorldApp.kt).
   Column(
@@ -111,25 +117,42 @@ private fun HallScreen(
         color = ClanWorldTheme.colors.warmFaint,
         modifier = Modifier.padding(top = 24.dp),
       )
-    } else if (state.items.isEmpty()) {
-      Text(
-        text = state.errorMessage ?: "your hall is quiet — no sigils linked.",
-        style = ClanWorldTheme.type.scriptItalic,
-        color = ClanWorldTheme.colors.warmFaint,
-        modifier = Modifier.padding(top = 24.dp),
+    } else if (state.errorMessage != null && state.items.isEmpty()) {
+      world.clan.app.ui.components.RetryNotice(
+        message = state.errorMessage,
+        onRetry = onRefresh,
       )
     } else {
-      LazyColumn(
+      world.clan.app.ui.components.RefreshableContent(
+        isRefreshing = state.isRefreshing,
+        onRefresh = onRefresh,
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
       ) {
-        items(state.items, key = { it.tokenId }) { card ->
-          StaggeredEntry(index = card.tokenId.coerceAtMost(8)) {
-            LetterCard(
-              card = card,
-              onClick = { onOpenInft(card.clanId) },
-            )
+        if (state.items.isEmpty()) {
+          LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+              Text(
+                text = "your hall is quiet — no sigils linked.",
+                style = ClanWorldTheme.type.scriptItalic,
+                color = ClanWorldTheme.colors.warmFaint,
+                modifier = Modifier.padding(top = 24.dp),
+              )
+            }
+          }
+        } else {
+          LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp),
+          ) {
+            items(state.items, key = { it.tokenId }) { card ->
+              StaggeredEntry(index = card.tokenId.coerceAtMost(8)) {
+                LetterCard(
+                  card = card,
+                  onClick = { onOpenInft(card.clanId) },
+                )
+              }
+            }
           }
         }
       }

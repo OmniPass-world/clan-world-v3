@@ -61,6 +61,7 @@ fun TreasuryScreenRoute(
     clanId = clanId,
     onBack = onBack,
     onSetFilter = vm::setFilter,
+    onRefresh = vm::refresh,
   )
 }
 
@@ -70,6 +71,7 @@ private fun TreasuryScreen(
   clanId: Int,
   onBack: () -> Unit,
   onSetFilter: (TreasuryFilter) -> Unit,
+  onRefresh: () -> Unit = {},
 ) {
   Column(modifier = Modifier.fillMaxSize()) {
     BackBar(text = "back to ${clanDisplayName(clanId).lowercase()}", onBack = onBack)
@@ -86,11 +88,9 @@ private fun TreasuryScreen(
           modifier = Modifier.padding(top = 18.dp),
         )
       } else if (state.errorMessage != null) {
-        Text(
-          text = state.errorMessage,
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.danger,
-          modifier = Modifier.padding(top = 18.dp),
+        world.clan.app.ui.components.RetryNotice(
+          message = state.errorMessage,
+          onRetry = onRefresh,
         )
       } else {
         GoldHeroCard(gold = state.balance.gold, clanId = clanId)
@@ -110,23 +110,33 @@ private fun TreasuryScreen(
 
     if (!state.isLoading && state.errorMessage == null) {
       val items = state.filteredMovements()
-      if (items.isEmpty()) {
-        Text(
-          text = "the vault keeps its silence",
-          style = ClanWorldTheme.type.scriptItalic,
-          color = ClanWorldTheme.colors.warmFaint,
-          modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
-        )
-      } else {
-        LazyColumn(
-          modifier = Modifier.fillMaxSize(),
-          verticalArrangement = Arrangement.spacedBy(0.dp),
-          contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp),
-        ) {
-          items(items.withIndex().toList(), key = { (i, m) -> "${i}-${m.tick}-${m.resource}" }) { (_, mv) ->
-            MovementRow(mv)
+      world.clan.app.ui.components.RefreshableContent(
+        isRefreshing = state.isLoading,
+        onRefresh = onRefresh,
+        modifier = Modifier.fillMaxSize(),
+      ) {
+        if (items.isEmpty()) {
+          LazyColumn(modifier = Modifier.fillMaxSize()) {
+            item {
+              Text(
+                text = "the vault keeps its silence",
+                style = ClanWorldTheme.type.scriptItalic,
+                color = ClanWorldTheme.colors.warmFaint,
+                modifier = Modifier.padding(horizontal = 22.dp, vertical = 16.dp),
+              )
+            }
           }
-          item { Spacer(Modifier.height(40.dp)) }
+        } else {
+          LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(0.dp),
+            contentPadding = PaddingValues(horizontal = 22.dp, vertical = 4.dp),
+          ) {
+            items(items.withIndex().toList(), key = { (i, m) -> "${i}-${m.tick}-${m.resource}" }) { (_, mv) ->
+              MovementRow(mv)
+            }
+            item { Spacer(Modifier.height(40.dp)) }
+          }
         }
       }
     }
