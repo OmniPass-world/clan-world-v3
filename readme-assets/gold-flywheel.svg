@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900" role="img" aria-label="GOLD economic flywheel">
+  <defs>
+    <linearGradient id="parch" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6ebcb"></stop>
+      <stop offset="100%" stop-color="#d9bf83"></stop>
+    </linearGradient>
+    <linearGradient id="goldG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff3b8"></stop>
+      <stop offset="50%" stop-color="#f5c542"></stop>
+      <stop offset="100%" stop-color="#a8740e"></stop>
+    </linearGradient>
+    <radialGradient id="coreGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff3b8" stop-opacity="0.9"></stop>
+      <stop offset="60%" stop-color="#f5c542" stop-opacity="0.4"></stop>
+      <stop offset="100%" stop-color="#f5c542" stop-opacity="0"></stop>
+    </radialGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b3f1a"></path>
+    </marker>
+  </defs>
+
+  
+  <rect width="1200" height="900" fill="url(#parch)"></rect>
+  <g opacity="0.08" shape-rendering="crispEdges">
+    <rect x="0" y="0" width="1200" height="900" fill="url(#parch)"></rect>
+  </g>
+
+  
+  <text x="600" y="70" text-anchor="middle" font-family="Cinzel, serif" font-weight="800" font-size="42" fill="#2a1d0c">The GOLD Flywheel</text>
+  <text x="600" y="100" text-anchor="middle" font-family="IM Fell English, serif" font-style="italic" font-size="20" fill="#5b3f1a">Every action in Clan World moves GOLD.</text>
+
+  
+  <g transform="translate(600, 470)">
+    <circle r="280" fill="url(#coreGlow)"></circle>
+    <circle r="120" fill="#6b4910"></circle>
+    <circle r="112" fill="url(#goldG)"></circle>
+    <circle r="100" fill="none" stroke="#7a5210" stroke-width="2" stroke-dasharray="4 5"></circle>
+    <text y="-6" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="20" fill="#5b3f1a">GOLD</text>
+    <text y="22" text-anchor="middle" font-family="IM Fell English, serif" font-style="italic" font-size="16" fill="#5b3f1a">on Solana</text>
+  </g>
+
+  
+  
+  
+  
+  
+  
+  
+  
+
+  <g font-family="Cinzel, serif" font-size="18" fill="#2a1d0c" text-anchor="middle">
+    
+    
+    <g transform="translate(600, 150)">
+      <rect x="-130" y="-44" width="260" height="88" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="3"></rect>
+      <rect x="-130" y="-44" width="260" height="22" fill="#5b3f1a"></rect>
+      <text y="-28" font-family="Press Start 2P, monospace" font-size="10" fill="#f6ebcb">STEP 1</text>
+      <text y="0" font-weight="800" font-size="20">ACQUIRE</text>
+      <text y="24" font-family="IM Fell English, serif" font-style="italic" font-size="15" fill="#5b3f1a">Buy GOLD on Solana</text>
+    </g>
+
+    
+    <g transform="translate(890, 310)">
+      <rect x="-130" y="-44" width="260" height="88" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="3"></rect>
+      <rect x="-130" y="-44" width="260" height="22" fill="#5b3f1a"></rect>
+      <text y="-28" font-family="Press Start 2P, monospace" font-size="10" fill="#f6ebcb">STEP 2</text>
+      <text y="0" font-weight="800" font-size="20">MINT · RENT · BUY</text>
+      <text y="24" font-family="IM Fell English, serif" font-style="italic" font-size="15" fill="#5b3f1a">Acquire iNFT Ælders</text>
+    </g>
+
+    
+    <g transform="translate(890, 630)">
+      <rect x="-130" y="-44" width="260" height="88" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="3"></rect>
+      <rect x="-130" y="-44" width="260" height="22" fill="#5b3f1a"></rect>
+      <text y="-28" font-family="Press Start 2P, monospace" font-size="10" fill="#f6ebcb">STEP 3</text>
+      <text y="0" font-weight="800" font-size="20">ENTER &amp; WHISPER</text>
+      <text y="24" font-family="IM Fell English, serif" font-style="italic" font-size="15" fill="#5b3f1a">1,000 GOLD per agent</text>
+    </g>
+
+    
+    <g transform="translate(600, 790)">
+      <rect x="-130" y="-44" width="260" height="88" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="3"></rect>
+      <rect x="-130" y="-44" width="260" height="22" fill="#5b3f1a"></rect>
+      <text y="-28" font-family="Press Start 2P, monospace" font-size="10" fill="#f6ebcb">STEP 4</text>
+      <text y="0" font-weight="800" font-size="20">AGENTS COMPETE</text>
+      <text y="24" font-family="IM Fell English, serif" font-style="italic" font-size="15" fill="#5b3f1a">Up to 12 per world</text>
+    </g>
+
+    
+    <g transform="translate(310, 630)">
+      <rect x="-130" y="-44" width="260" height="88" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="3"></rect>
+      <rect x="-130" y="-44" width="260" height="22" fill="#5b3f1a"></rect>
+      <text y="-28" font-family="Press Start 2P, monospace" font-size="10" fill="#f6ebcb">STEP 5</text>
+      <text y="0" font-weight="800" font-size="20">WINNERS EARN</text>
+      <text y="24" font-family="IM Fell English, serif" font-style="italic" font-size="15" fill="#5b3f1a">Top 3 split the pot</text>
+    </g>
+
+    
+    <g transform="translate(310, 310)">
+      <rect x="-130" y="-44" width="260" height="88" fill="#f6ebcb" stroke="#9b2424" stroke-width="3"></rect>
+      <rect x="-130" y="-44" width="260" height="22" fill="#9b2424"></rect>
+      <text y="-28" font-family="Press Start 2P, monospace" font-size="10" fill="#f6ebcb">STEP 6</text>
+      <text y="0" font-weight="800" font-size="18" fill="#9b2424">BURN + TREASURY</text>
+      <text y="24" font-family="IM Fell English, serif" font-style="italic" font-size="13" fill="#5b3f1a">5 GOLD whisper burns · rest = revenue</text>
+    </g>
+  </g>
+
+  
+  <g fill="none" stroke="#5b3f1a" stroke-width="3" marker-end="url(#arrow)" stroke-linecap="round">
+    
+    <path d="M 730 180 A 320 320 0 0 1 880 250"></path>
+    
+    <path d="M 920 360 A 320 320 0 0 1 920 580"></path>
+    
+    <path d="M 880 690 A 320 320 0 0 1 730 760"></path>
+    
+    <path d="M 470 760 A 320 320 0 0 1 320 690"></path>
+    
+    <path d="M 280 580 A 320 320 0 0 1 280 360"></path>
+    
+    <path d="M 320 250 A 320 320 0 0 1 470 180"></path>
+  </g>
+
+  
+  <text x="600" y="868" text-anchor="middle" font-family="Inter, sans-serif" font-weight="600" font-size="13" fill="#5b3f1a" letter-spacing="2">ONLY THE 5-GOLD WHISPER IS BURNED  ·  ALL OTHER FEES FUND THE STUDIO + REWARDS</text>
+</svg>

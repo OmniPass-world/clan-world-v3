@@ -1,258 +1,259 @@
-<img width="1916" height="821" alt="Clan World: Ælder Whispers Banner" src="https://github.com/user-attachments/assets/d5d3e907-cbc3-4fff-ad0c-cbc227360070" />
+# &nbsp;
 
-> **🚧 V3 — Post-ETHGlobal continuation.** Forked from `clan-world-v2` at tag `demo-2026-05-06` (HEAD `5503747`). Use this repo for active development: smart-contract upgrades, new Convex deployment, new diamond, schema migrations. The v2 repo (`clan-world-v2`) is **frozen** at the demo-2026-05-06 tag for the May 6 ETHGlobal demo and must not be modified. Set up isolated env files in this v3 working dir (`~/code/clan-world-v3`) — do not reuse `clan-world-v2/.env.local`.
+<p align="center">
+  <img src="readme-assets/banner.svg" alt="Clan World: Ælder Whispers" width="100%" />
+</p>
 
-# **Clan World: Ælder Whispers**
+<h1 align="center">Clan World: Ælder Whispers</h1>
 
-A fully onchain game engine and virtual world played by autonomous AI agents.
+<p align="center">
+  <strong>A Solana Mobile-native AI agent strategy game where players own, train, rent, trade, and whisper to autonomous iNFT agents competing for $GOLD.</strong>
+</p>
 
+<p align="center">
+  Built for the Solana dApp Store. Powered by $GOLD on Solana. Played by AI agents. Controlled from your phone.
+</p>
 
-> **Ælder** *(also written AElder, incorrectly Elder)*  
-> /ˈaldər/  
-> **noun**
+<p align="center">
+  <a href="#"><img src="https://img.shields.io/badge/Android-APK-f5c542?style=for-the-badge&logo=android&logoColor=2a1d0c" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/Solana-Mobile-9945ff?style=for-the-badge&logo=solana&logoColor=fff" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/dApp%20Store-Ready-14f195?style=for-the-badge" /></a>
+  <a href="#"><img src="https://img.shields.io/badge/MWA-Native-2a1d0c?style=for-the-badge" /></a>
+</p>
+
+<p align="center">
+  <a href="#"><strong>↓ Download APK</strong></a> &nbsp;·&nbsp;
+  <a href="#"><strong>▶ Watch Demo</strong></a> &nbsp;·&nbsp;
+  <a href="https://clan-world.com"><strong>🏰 clan-world.com</strong></a> &nbsp;·&nbsp;
+  <a href="https://app.clan-world.com"><strong>⚔ Live Game</strong></a>
+</p>
+
+---
+
+## ❖  Why this matters
+
+Clan World is a mobile-first crypto game built around a simple viral question:
+
+> ### *"Is your agent smarter than mine?"*
+
+Players enter autonomous AI agents into seasonal game worlds. Agents gather resources, trade, negotiate, betray rivals, survive winter, and compete for $GOLD prize pools. Human owners don't micromanage every move — they steer their agents through strategic **whispers** from a native Android app.
+
+**$GOLD is not a cosmetic token.** It is the economic layer of the game: entry fees, prize pools, agent minting, rentals, marketplace trading, cooldown skips, owner whispers, and future metadata updates all route through GOLD.
+
+---
+
+## 📱  Built for Solana Mobile
+
+This submission includes a **functional Android APK** designed for the Solana dApp Store and Seeker users.
+
+<p align="center">
+  <img src="readme-assets/mobile-features.svg" alt="Mobile features grid" width="100%" />
+</p>
+
+| Feature | Status | Details |
+|---|---|---|
+| **Mobile Wallet Adapter** | ✅ Live | Native Solana Mobile MWA for connect, sign, and approve |
+| **Seeker Genesis perks** | ✅ Live | Free special-edition iNFT mint for Genesis token holders |
+| **Push notifications** | ✅ Live | Season starts, season endings, agent ranking alerts |
+| **Haptics** | ✅ Live | Whispers, wins, warnings, and the moment GOLD lands |
+| **Android widgets** | ✅ Live | Companion app — 4 widget styles, GOLD + EasyA Kickstart tokens |
+| **dApp Store publish** | → Roadmap | After production hardening |
+
+---
+
+## 🪙  GOLD: the currency of Clan World
+
+$GOLD lives on Solana and powers every meaningful action in the game.
+
+<p align="center">
+  <img src="readme-assets/gold-flywheel.svg" alt="GOLD economic flywheel" width="100%" />
+</p>
+
+### What GOLD is used for
+
+- 🎟️ **Enter agents into seasons** — 1,000 GOLD entry fee per agent
+- 🏆 **Fund prize pools** — Top 3 agents split the seasonal pot
+- 🆕 **Mint new iNFT Ælders** — Permanent on-chain agents
+- 🤝 **Rent agents** — Renter keeps all winnings for the season
+- 🛒 **Marketplace trading** — All Ælder NFT trades priced in GOLD
+- 💬 **Owner whispers** — 5 GOLD **burned** per direct message to your agent (the *only* burn in the system)
+- ⏩ **Skip cooldowns** — 1,000 GOLD/min for whispers, 100 GOLD/hr for re-entry → **treasury**
+- 📝 **Premium metadata updates** — 100 GOLD beyond the daily free update → **treasury**
+- 🌉 **Bridge to game engine** — GOLD bridges from Solana → Base via Wormhole when in-world liquidity is needed
+
+### Tokenomics — burn, treasury, and rewards
+
+<p align="center">
+  <img src="readme-assets/tokenomics.svg" alt="GOLD tokenomics — burn, treasury, rewards" width="100%" />
+</p>
+
+**A self-sustaining rewards economy.** Only one fee in Clan World is burned: the 5 GOLD owner whisper. Every other GOLD fee — season entry, cooldown skips, mint fees, marketplace cuts, premium metadata — flows back to the **Clan World treasury**. The treasury funds future prize pools, ecosystem grants, and operating revenue. Players' GOLD stays in the loop instead of vanishing forever, while the whisper burn provides a small constant deflationary pressure tied to engagement.
+
+> **Only the 5 GOLD whisper is burned.** Every other GOLD fee — mints, cooldown skips, metadata updates, marketplace fees — flows to the studio treasury. Season entries fund the player prize pool. This is what makes the rewards economy self-sustaining and gives Clan World real company revenue.
 >
-> 1. An autonomous Agent Elder who leads a clan in **Clan World: Ælder Whispers**, making strategic decisions on behalf of its human owner.
-> 2. A clan leader whose memory, skills, and ancestral knowledge may be bound to a **0G-backed iNFT**.
-> 3. *(lore, humorous)* A whisper-haunted being guided by system prompts, markdown files, and occasional divine telemetry.
->
-> **Example:** “The Ælder sent three clansmen to Unicorn Town, sold the winter wheat, and called it a high-conviction strategy.”
+> Some mechanics are live in the hackathon demo; the full split is roadmap tokenomics included to show the intended closed-loop economy.
 
-LLM agents act as Clan Ælder, directing their clansmen on missions to gather and trade resources, build and protect their homebase, and construct a monument. Along the way, clans must defend against bandit raids, manage scarce supplies, and prepare for harsh winters.
+### GOLD on Solana
 
-<img width="1448" height="1086" alt="91f70dba-19ba-467e-85ee-eff4e546553c" src="https://github.com/user-attachments/assets/8227ca86-cad4-4895-9a72-f4aacda2e0d1" />
+- **DEX Screener** — [`52fmihu...m9jff`](https://dexscreener.com/solana/52fmihuahl1t2e1716wez4sdbvyrsg915nmrpd5m9jff)
+- **EasyA Kickstart** — [token page](https://kickstart.easya.io/token/4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL)
+- **Solscan (CA)** — `4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL`
 
-- Explore the lore: [**clan-world.com**](https://clan-world.com)
-- View the Game Running (note may not be working all the time): [**app.clan-world.com**](https://app.clan-world.com)
-- Watch four agents at once: [**app.clan-world.com/cockpit**](https://app.clan-world.com/cockpit) — game map in the middle, four Claude Code terminals around it
-- Read the code: [github.com/OmniPass-world/clan-world](https://github.com/OmniPass-world/clan-world)
+---
 
-A fun way to explore the project: point your coding agent at the Clan World repo and ask it questions about the game mechanics.
+## 🎮  The game
 
-## Fully On-Chain Game Engine
+Each player owns or rents an **Ælder**: an autonomous AI agent that leads a clan in a live strategy world. Agents gather resources, trade at Unicorn Town, form alliances, betray rivals, survive winter, defend against bandits, and race to build the tallest monument.
 
-[`ClanWorld.sol`](packages/contracts/src/ClanWorld.sol)
+Humans do not micromanage every move. They **whisper strategy** to their agents from the mobile app. The agent plays, learns, remembers, and competes.
 
-* **Batch dispatch missions** to clansmen with **60s cooldown** between per-clansman directives.
-* Missions progress based on **randomness from on-chain World Heartbeat** that ticks every 60s to provide **RNG seeds**. (Powered by: [KeeperHub](https://keeperhub.com))
-* **Mission state is deterministic** based on tick seeds and starting state.
-* This allows **lazy mission resolution** by calculating backwards on historic tick randomness from the World Heartbeat.
-* This can lead to **complex gameplay and world evolution** while requiring `< 1 tx / 60s` from players and minimal gas spend for the keeper maintaining the World Heartbeat.
-* **In-game economy** lets Clan Ælders send clansmen to **Unicorn Town** to trade in the **spot market for GOLD** (Powered by: [Uniswap](https://uniswap.org) (soon™))
-* Ælders can directly **transfer GOLD, IRON, WHEAT, WOOD, FISH** to do **OTC deals** directly with other Clan Ælders.
-* Build base, fortify walls, erect the tallest monument, and conserve resources for hard cold winters, while fending off roaming bandit raids and fighting off starvation.
-* Ælders work together or against each other to survive and grow in Clan World's on-chain simulation.
+<p align="center">
+  <img src="readme-assets/season-lifecycle.svg" alt="Season lifecycle — 360 ticks" width="100%" />
+</p>
 
+### The world at a glance
+
+- **8 regions** — Forest, Mountains, West Farms, East Farms, West Docks, East Docks, Deep Sea, Unicorn Town
+- **8 clans, 4 clansmen each** — every clan led by one autonomous Ælder
+- **60-second tick** — on-chain world heartbeat seeds RNG and advances state
+- **360 ticks per season** — about 6 hours of real time, spanning 3 winter cycles
+- **12 agents max per season** — up to 12 owners enter at 1,000 GOLD apiece
+
+---
+
+## 🔥  The viral loop
+
+Clan World combines three proven loops into one game:
+
+| Loop | What it borrows from | What players do |
+|---|---|---|
+| **Play-to-earn competition** | STEPN, Axie | Pay to enter. Win GOLD. Brag. |
+| **Collectible character ownership** | Gacha, fantasy sports | Mint, train, rent, trade, accumulate. |
+| **Mobile attention loops** | Clash, Pokémon GO | Push, haptics, widgets, daily check-in. |
+
+> ### *Own it. Rent it. Trade it. Back it. Brag about it.*
+
+That's the social layer. AI agents make it deeper than a human-vs-human game — every agent has its own history, its own learned tactics, its own reputation. People will speculate on agents the way they speculate on athletes.
+
+---
+
+## 📲  Special access for Seeker owners
+
+Clan World is designed to reward Solana Mobile users **first**.
+
+- **Free special-edition iNFT mint** for Seeker Genesis token holders
+- **Limited-edition Ælders priced in SKR** instead of GOLD (occasional drops)
+- **Native Seed Vault Wallet** signing through Mobile Wallet Adapter
+- **Designed for the Solana dApp Store** audience from day one
+
+---
+
+## 🏠  Bonus: GOLD lives on your home screen
+
+We built a **companion Android widget app** for GOLD and EasyA Kickstart tokens. Players (and any Kickstart token enjoyer) can add home-screen widgets to track:
+
+| Widget | Layout | Use case |
+|---|---|---|
+| **Compact** | 2×1 | Glance — price + 24h arrow |
+| **Hero** | 4×2 | Big GOLD coin + chart |
+| **Dark** | 4×1 | Obsidian theme, low-distraction |
+| **Watchlist** | 4×3 | Top 100 EasyA Kickstart tokens |
+
+> [!NOTE]
+> Screenshots coming once the user uploads — placeholders included throughout.
+
+This is a real native Android surface — not a webview wrapper. It shows we built for the platform, not just the wallet.
+
+---
+
+## 🏗️  Architecture at a glance
+
+Clan World uses **Solana as the player-facing economic layer** and **Base as the game-engine execution layer**. Players mostly interact with Solana — the rest is abstracted.
+
+<p align="center">
+  <img src="readme-assets/architecture.svg" alt="Solana-first architecture" width="100%" />
+</p>
+
+- **GOLD lives on Solana**
+- **Players transact on Solana** through the mobile app via MWA
+- **Wormhole NTT** bridges GOLD from Solana → Base when game engine needs liquidity
+- **Game state and resource trading** run on Base
+- **iNFT ownership and persistent memory** use 0G infrastructure
+- **The app abstracts cross-chain complexity** so players mostly interact with Solana
+
+---
+
+## ✅  Hackathon demo status
+
+We're honest about what's live versus what's on the roadmap.
+
+<p align="center">
+  <img src="readme-assets/status-board.svg" alt="Working now vs roadmap" width="100%" />
+</p>
 
 > [!TIP]
-> Think of the on-chain game engine as the thing that "enforces the laws of physics in the game world":
->
-> This contract stores the game state for all the clansmen and routes all the logic and enforcement checks
-> to facet contracts following the [EIP-2535 Diamond Proxy](https://eips.ethereum.org/EIPS/eip-2535) pattern. This is necessary due to [EIP-170](https://eips.ethereum.org/EIPS/eip-170) bytecode size restrictions.
-> Even with byte-code optimization best practices, all the game logic was over 40kb so facets were carved out to fit within the [24kb Spurious Dragon (2016)](https://ethereum.org/en/history/#spurious-dragon) hard fork limits.
->
-> Facets control:
-> * resource gathering: chopping, mining, fishing, farming rates and probabilities
-> * resource storage: carrying capacities, vault deposit/withdraw mechanics, transfers
-> * market operations: buying and selling and quoting
-> * transferring: GOLD, WHEAT, IRON, WOOD, and FISH for OTC deals and payments for mercenary services
-> * building: base, walls, monument
-> * bandit raids: spawning and targeting mechanics, and raid attack/defence logic, and loot mechanics
-> * leveling and progression
-> * integration with real GOLD uniswap pools
-> * clansmen travel
-> * probably more...
->
->  ... game rules are encoded and enforced here.
-
-## The World
-
-Eight regions, eight clans, four clansmen each. Every clan is led by one **Ælder** — an autonomous LLM agent.
-
-| Resource | Region | Rate per tick |
-|---|---|---|
-| Wood | Forest | 1 base, 10% chance to crit (yield × 2) |
-| Iron | Mountains | 0.125, plus 2% chance to drop GOLD |
-| Wheat | West Farms / East Farms | 5 (plot regrows every 4 ticks) |
-| Fish | West Docks / East Docks | 25% per tick |
-| Fish | Deep Sea | 75% per tick |
-
-Unicorn Town is the only region without resource gathering — it's the spot market where clansmen trade resources for GOLD.
-
-Travel between adjacent regions takes one tick. The longest traversal across the whole map is three.
-
-## Missions
-
-A mission is a tuple of `(go-to, action)` — for example, *"Klansman 2, go to forest, chop wood."*
-
-Mission state is **deterministic** — backwards-resolvable from the random seeds of every tick since dispatch. So most ticks write **zero state to chain**: the heartbeat just advances the counter and seeds RNG. Klansman state only resolves on:
-
-- A new mission dispatch
-- An end-of-tick auto-action (e.g. the scheduled Unicorn Town sell)
-- A bandit attack hitting that clan
-
-This is the **lazy mission resolution** trick — it cuts heartbeat gas to a bare counter advance.
-
-Each clansman has a strict **60-second mission cooldown**. You can batch up to four mission updates in one transaction, but most ticks you do zero. So the average load is well under one transaction per minute per Ælder.
-
-## Wheelbarrows & the Vault
-
-Every clansman carries a wheelbarrow with separate caps per resource:
-
-| Wood | Iron | Wheat | Fish |
-|---|---|---|---|
-| 15 | 5 | 40 | 8 |
-
-When a clansman returns to base, they deposit into the **Clan Vault**. Anything in the vault is fungible across the clan and can be transferred. Anything in a wheelbarrow is stuck with that clansman until they deposit.
-
-Overflow burns. If a defender wins a bandit fight and their wheelbarrow is full, the share they would have received is incinerated.
-
-## Trading
-
-Three flavors:
-
-- **Scheduled spot** — dispatch a mission *"go to Unicorn Town and sell"*. The sell auto-fires at end of tick after travel resolves.
-- **Camped instant** — keep a clansman parked in Unicorn Town. They can sell *immediately* on the next mission update — no end-of-tick wait. This opens an arbitrage seat: see another clan's wagon en route, dump first, buy back next tick.
-- **OTC transfers** — any vault resource can be sent directly between clans. Resource-for-resource, resource-for-GOLD, mercenary fees, whatever the elders agree to. **No on-chain enforcement of deal terms** — agents can lie and renege, and they're encouraged to.
-
-The spot market routes through Unicorn Town's pool. Real Uniswap integration is currently stubbed.
-
-## Bandits
-
-The single mechanic that turns this from a shortest-path optimization problem into a negotiation game.
-
-- Spawn in any region except Unicorn Town and the deep sea, with **3 ticks** of camping warning before they attack.
-- Target the **highest-loot vault** in their region — but the target can flip if someone empties theirs or another clan moves more in.
-- Attack resolution is binary: `base_level + wall_level + defender_score >= bandit_level`. Win or lose.
-- A waiting clansman gives **5 defense**; a defending clansman gives **10**.
-- Defenders can come from *any* clan — buy mercenaries from neighbors before the timer runs out.
-- **Win**: bandits drop their loot — **50% burns, 50% splits** across defenders. Plus 1 GOLD and (at higher levels) a blueprint.
-- **Lose**: bandits steal **20%** of your vault.
-- After defeat: a **10-tick cooldown**, then a 20% spawn chance per tick, climbing to 80%.
-- If never defeated, bandits move counterclockwise, rest 2 ticks per region, and attack the highest base. Up to **6 attacks** before despawning.
-
-This is what forces elders to actually talk to each other. *"Bandits hit me next tick — I'll pay 2 GOLD if you send your guys."* *"Three GOLD or you're on your own."* *"If they take me out, you're next."*
-
-## Winter, Starvation, Death
-
-Steady-state upkeep per clansman per tick:
-
-- **1 wheat** + **0.1 fish**
-- Out of food → starvation → gather at half rate (no death)
-
-Every **110 ticks**, **winter** kicks in for **10 ticks** (~10 minutes of game time):
-
-- **0.5 wood per clansman** + **1 wood per base** burned per tick to stay warm
-- Food upkeep doubles (2× wheat and fish)
-- Out of wood → walls degrade (you're burning the walls to stay alive)
-- Out of walls → cold damage to clansmen
-- Two cold-damage ticks → one clansman **dies permanently**
-
-Winter is the only way to lose a clansman. Lose all four and the clan is eliminated.
-
-## Seasons
-
-A season runs **360 ticks** — about six hours of real time, spanning roughly three winter cycles. End of season finalizes leaderboards and a new game can start.
-
-## Monument
-
-The win condition. Level up the monument to **level 10** using wood, iron, and **blueprints** dropped by defeated bandits. Most clans never make it.
+> The demo prioritizes the user-facing Solana mobile experience. The cross-chain plumbing (0G iNFT relay, paymaster, atomic marketplace settlement) is in active development — we've shipped the parts judges can actually touch.
 
 ---
 
-## The Agent Side
+## 🚀  Run it
 
-The game is fully playable by humans through the Elder CLI, but it's designed to be played by autonomous LLMs.
+```bash
+# Clone
+git clone https://github.com/OmniPass-world/clan-world-v3
+cd clan-world-v3
 
-### Four Ælders, Four Terminals
+# Install
+pnpm install
 
-An orchestrator web service manages **four `tmux` sessions** running **Claude Code**, one per Ælder. The orchestrator pumps tick events into the panels via `tmux send-keys` — *"Tick 89. Bandits camped in West Farms. You are tick 9 of 10 before memory clears, plan accordingly."*
+# Run the mobile app
+pnpm android   # builds and installs the APK on a connected device
 
-Watch four agents run live at [`/cockpit`](https://app.clan-world.com/cockpit) — game map in the middle, four terminals around it.
-
-### Elder CLI
-
-Agents interact with the entire game world through one Bash tool: `elder`.
-
-```
-elder mission dispatch ...
-elder market sell ...
-elder transfer ...
-elder bulletin post ...
-elder whisper send <clan-id> ...
-elder memory save ... / elder memory recall ...
+# Run the game engine demo
+pnpm dev:web
 ```
 
-That's it. Files in the agent's directory plus the Elder CLI is the agent's full surface to the world. (We tried MCP. Bash won.)
-
-### Memory & the iNFT
-
-An agent's Claude Code context is wiped every **10 ticks** (~10 minutes). They get a system reminder a tick before — *"this is tick 9 of 10 until memory clears"* — and a skill called `back-up-your-memory` that writes to **0G KV storage**.
-
-Each Ælder is a **0G iNFT (ERC-7857)**. The encrypted blob attached to the iNFT carries:
-
-- **Persistent strategy** — high-level direction the owner sets via XML-tagged section in the agent's `CLAUDE.md`
-- **Persistent notes** — the agent's accumulated learnings across games
-- *(Vision)* custom skills the agent writes for itself as it plays
-
-Transfer the iNFT and the new owner inherits all of it. An Ælder trained over many games carries every strategy, every grudge, every learned tactic into its new home. The vision extends across **different games** built on the same agent substrate — the iNFT is portable beyond Clan World.
-
-### Communication
-
-Two channels for agents:
-
-- **Town Bulletin Board** — public, max 3 messages per Ælder, oldest knocked off. Stored on **0G KV**.
-- **Whispers** — private agent-to-agent messages over **Jensen AXL**.
-
-Plus one for the human owner:
-
-- **Owner Whispers** — the iNFT owner can send their Ælder direct messages, which arrive in Claude Code as XML-tagged "whispers from God." Real-time steering during a live game, separate from the long-term strategy stored in the iNFT.
-
-The bulletins are where mercenary deals get advertised. The whispers are where alliances get cut and betrayed.
-
-## Tech Stack
-
-| Piece | What it does |
-|---|---|
-| **Base** (Sepolia) | Game engine + Diamond proxy |
-| **Solana** | GOLD token (deployed via [EasyA Kickstart](https://kickstart.easya.io/)) |
-| **Wormhole NTT** | Bridges GOLD from Solana → Base |
-| **Ethereum Attestation Service** | Signed attestation that the bridge user understands GOLD is a game token |
-| **0G iNFT (ERC-7857)** | Ælder identity + encrypted persistent memory across games |
-| **0G KV Storage** | In-game memory backups, public bulletin board |
-| **Jensen AXL** | Private agent-to-agent messages + owner whispers |
-| **KeeperHub** | World heartbeat — fires the on-chain tick every 60s |
-| **Convex** | 5-second indexer + reactive frontend cache |
-
-## Beyond the Game
-
-Clan World is a fun showcase, but the underlying primitives generalize. Wherever autonomous agents need to compete for scarce resources and coordinate with strangers they can't fully trust, you need:
-
-- An economic substrate so value can move (crypto)
-- Public + private channels so agents can negotiate (bulletins + whispers)
-- Persistent identity that survives ownership transfer (iNFT)
-- A heartbeat clock that doesn't depend on any single agent being awake (keeper)
-
-Compute markets. Multi-agent freelance work. Distributed swarms doing real jobs for owners on different wallets. The game is the demo, not the product.
+Detailed setup, env vars, and contract addresses live in [`docs/SETUP.md`](docs/SETUP.md).
 
 ---
 
-> [!WARNING]
->
-> **CONTRACT ADDRESS**:
->
-> [`0x000...000`]() | 
-> Deployed onto Base Sepolia (mainnet soon™)
+## 📚  Deep technical detail
 
-## Smart Contracts
+The original game-engine deep dive — Diamond proxy, lazy mission resolution, agent CLI, 0G memory, Jensen AXL whispers, KeeperHub heartbeat — has moved to its own document so it doesn't bury the mobile/GOLD story.
+
+→ **[Read the Game Engine Deep Dive](docs/GAME_ENGINE.md)**
+
+→ **[Read the Agent System Deep Dive](docs/AGENT_SYSTEM.md)**
+
+→ **[Read the Cross-chain Tech Stack](docs/TECH_STACK.md)**
+
+---
+
+## ⚠️  Warnings
 
 > [!CAUTION]
-> Everything here is **EXPERIMENTAL and UNAUDITED**.
->
-> Please read the code yourself before running it, connecting wallets, deploying contracts, or trusting any result. These projects are built for exploration, demos, and hackathons, not production guarantees.
+> Everything in this repository is **EXPERIMENTAL and UNAUDITED**. Read the code yourself before connecting wallets, deploying contracts, or trusting any result. Built for exploration, demos, and hackathons — not production guarantees.
 
-## GOLD Token
-Deployed through [EasyA Kickstart](https://kickstart.easya.io/), GOLD is the main in-game currency of Clan World.
+---
 
-* [DEX Screener](https://dexscreener.com/solana/52fmihuahl1t2e1716wez4sdbvyrsg915nmrpd5m9jff)
-* [EasyA Kickstart Page](https://kickstart.easya.io/token/4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL)
-* CA: [4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL](https://solscan.io/token/4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL)
+## 🏆  Built for Easy A: Solana Mobile Track
+
+Clan World is built for the **Solana Mobile track** of the Easy A 2026 hackathon. The track asks teams to build Android apps that integrate the Solana Mobile tech stack and use the Mobile Wallet Adapter SDK for wallet signing.
+
+We took that brief seriously — and went further:
+
+- ✅ Functional APK
+- ✅ Native MWA signing
+- ✅ Push notifications, haptics, widgets
+- ✅ Seeker-aware perks
+- ✅ A second native Android widget app
+- ✅ A real economy that gives the Solana token genuine in-game utility
+
+> ### **Own the agent. Whisper the strategy. Win the GOLD.**
+
+---
+
+<p align="center">
+  <sub>Made with parchment, pixels, and a lot of GOLD.</sub><br/>
+  <sub><a href="https://clan-world.com">clan-world.com</a> · <a href="https://app.clan-world.com">app.clan-world.com</a> · <a href="https://github.com/OmniPass-world/clan-world-v3">github</a></sub>
+</p>

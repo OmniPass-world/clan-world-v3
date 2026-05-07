@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" role="img" aria-label="GOLD tokenomics — burn, treasury, rewards">
+  <defs>
+    <linearGradient id="parchTok" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6ebcb"></stop>
+      <stop offset="100%" stop-color="#d9bf83"></stop>
+    </linearGradient>
+    <linearGradient id="goldT" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fff3b8"></stop>
+      <stop offset="100%" stop-color="#c98f1d"></stop>
+    </linearGradient>
+    <marker id="arrTok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5b3f1a"></path>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="800" fill="url(#parchTok)"></rect>
+
+  <text x="600" y="58" text-anchor="middle" font-family="Cinzel, serif" font-weight="800" font-size="38" fill="#2a1d0c">GOLD Tokenomics</text>
+  <text x="600" y="86" text-anchor="middle" font-family="IM Fell English, serif" font-style="italic" font-size="18" fill="#5b3f1a">Whispers burn. Fees fund the treasury. Players earn from the prize pool.</text>
+
+  
+  <g transform="translate(600, 150)">
+    <circle r="42" fill="#6b4910"></circle>
+    <circle r="36" fill="url(#goldT)"></circle>
+    <text y="6" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="11" fill="#5b3f1a">GOLD</text>
+  </g>
+  <text x="600" y="220" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#5b3f1a">All player GOLD spend flows here, then splits three ways</text>
+
+  
+  
+  <g transform="translate(60, 260)">
+    <rect width="340" height="48" fill="#9b2424" stroke="#2a1d0c" stroke-width="3"></rect>
+    <text x="170" y="32" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="13" fill="#f6ebcb">BURNED · DEFLATIONARY</text>
+    <text x="170" y="78" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#5b3f1a">Permanently removed from supply</text>
+
+    <g transform="translate(0, 100)">
+      <rect width="340" height="80" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="80" fill="#9b2424"></rect>
+      <text x="22" y="32" font-family="Cinzel, serif" font-weight="700" font-size="17" fill="#2a1d0c">Owner Whisper</text>
+      <text x="22" y="54" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Direct strategic message</text>
+      <text x="22" y="70" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">to your agent · burned on send</text>
+      <text x="318" y="50" text-anchor="end" font-family="Press Start 2P, monospace" font-size="14" fill="#9b2424">5 GOLD</text>
+    </g>
+
+    <g transform="translate(0, 200)">
+      <rect width="340" height="100" fill="rgba(155,36,36,0.08)" stroke="#9b2424" stroke-width="2" stroke-dasharray="4 4"></rect>
+      <text x="170" y="34" text-anchor="middle" font-family="Cinzel, serif" font-weight="700" font-size="15" fill="#9b2424">The Only Burn</text>
+      <text x="170" y="58" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#3a2a14">Whispers are the deflationary</text>
+      <text x="170" y="74" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#3a2a14">heartbeat of the economy.</text>
+      <text x="170" y="90" text-anchor="middle" font-family="Inter, sans-serif" font-size="12" fill="#3a2a14">More play → tighter supply.</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(430, 260)">
+    <rect width="340" height="48" fill="url(#goldT)" stroke="#2a1d0c" stroke-width="3"></rect>
+    <text x="170" y="32" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="13" fill="#2a1d0c">TREASURY · COMPANY</text>
+    <text x="170" y="78" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#5b3f1a">Sustainable revenue for the studio</text>
+
+    <g transform="translate(0, 100)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#c98f1d"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Mint a New iNFT Ælder</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Permanent on-chain agent</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#7a5210">VARIABLE</text>
+    </g>
+    <g transform="translate(0, 168)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#c98f1d"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Skip Whisper Cooldown</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Per minute saved (10 min cap)</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#7a5210">1,000/MIN</text>
+    </g>
+    <g transform="translate(0, 236)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#c98f1d"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Skip Agent Rest</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Per hour off the 24h cooldown</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#7a5210">100/HR</text>
+    </g>
+    <g transform="translate(0, 304)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#c98f1d"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Extra Metadata Update</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Beyond 1 free / 24h · covers gas</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#7a5210">100 GOLD</text>
+    </g>
+    <g transform="translate(0, 372)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#c98f1d"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Marketplace Fee</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Studio cut on every iNFT trade</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#7a5210">% OF SALE</text>
+    </g>
+  </g>
+
+  
+  <g transform="translate(800, 260)">
+    <rect width="340" height="48" fill="#9945ff" stroke="#2a1d0c" stroke-width="3"></rect>
+    <text x="170" y="32" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="13" fill="#f6ebcb">REWARDS · PLAYERS</text>
+    <text x="170" y="78" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#5b3f1a">Self-sustaining player payouts</text>
+
+    <g transform="translate(0, 100)">
+      <rect width="340" height="80" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="80" fill="#14f195"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Season Entry → Prize Pot</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">1,000 GOLD/agent funds the pot</text>
+      <text x="22" y="68" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Top 3 agents split it</text>
+    </g>
+    <g transform="translate(0, 200)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#14f195"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Rent Out Your Agent</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Owner-set seasonal rate</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#3a8f60">MARKET</text>
+    </g>
+    <g transform="translate(0, 268)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#14f195"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Sell on Marketplace</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Trade Ælders priced in GOLD</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#3a8f60">P2P</text>
+    </g>
+    <g transform="translate(0, 336)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#14f195"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Mercenary OTC Deals</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Sell defense to neighbors</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#3a8f60">P2P</text>
+    </g>
+    <g transform="translate(0, 404)">
+      <rect width="340" height="64" fill="#f6ebcb" stroke="#5b3f1a" stroke-width="2"></rect>
+      <rect width="6" height="64" fill="#9945ff"></rect>
+      <text x="22" y="28" font-family="Cinzel, serif" font-weight="700" font-size="16" fill="#2a1d0c">Seeker Genesis Drop</text>
+      <text x="22" y="50" font-family="Inter, sans-serif" font-size="12" fill="#5b3f1a">Free special-edition iNFT</text>
+      <text x="318" y="42" text-anchor="end" font-family="Press Start 2P, monospace" font-size="13" fill="#9945ff">FREE</text>
+    </g>
+  </g>
+
+  
+  <g fill="none" stroke="#5b3f1a" stroke-width="3" marker-end="url(#arrTok)">
+    <path d="M 580 175 C 460 200, 320 220, 230 256"></path>
+    <path d="M 600 195 L 600 256"></path>
+    <path d="M 620 175 C 740 200, 880 220, 970 256"></path>
+  </g>
+
+  
+  <g transform="translate(60, 720)">
+    <rect width="1080" height="40" fill="#2a1d0c"></rect>
+    <text x="540" y="26" text-anchor="middle" font-family="Press Start 2P, monospace" font-size="11" fill="#f5c542">5 GOLD WHISPER = ONLY BURN  ·  ALL OTHER FEES → TREASURY OR PLAYERS</text>
+  </g>
+</svg>
