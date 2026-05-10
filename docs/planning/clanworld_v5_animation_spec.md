@@ -533,16 +533,11 @@ The combat outcome is known onchain at tick start. The animation just plays out 
 ```
 T+0s   ── Combat tick begins. World filter dims.
 T+1s   ── "Combat begin" visual cue.
-T+2s   ── Bandits start march toward base.
-T+3s   ── Defenders converge from base perimeter.
-T+15s  ── All combatants arrive at combat ring radius.
-T+16s  ── Slow circle begins. ~15° per second.
-T+30s  ── Circle accelerates. ~45° per second.
-T+45s  ── Whirlwind phase. ~180° per second, motion blur.
-T+55s  ── Whirlwind peaks. Camera shakes subtly.
-T+58s  ── FLASH (full screen, 200ms).
-T+58.2s ── Resolution animation begins (success or failure).
-T+59.5s ── Resolution completes.
+T+1s   ── Bandits start slow march toward base.
+T+45s  ── All combatants arrive at combat ring radius.
+T+46s  ── Slow circle begins and accelerates into whirlwind.
+T+56s  ── FLASH + resolution window begins.
+T+58s  ── Bandit-win outcome converges at base center.
 T+60s  ── Tick closes, world filter releases, normal state.
 ```
 
@@ -551,12 +546,10 @@ Combat phase derived value:
 ```
 function computeCombatPhase(now: number, tickStartMs: number, tickDurationMs: number): CombatPhase {
   const p = (now - tickStartMs) / tickDurationMs
-  if (p < 0.025) return 'dim'
-  if (p < 0.25)  return 'advance'
-  if (p < 0.5)   return 'slow_circle'
-  if (p < 0.75)  return 'accelerate'
-  if (p < 0.92)  return 'whirlwind'
-  if (p < 0.97)  return 'flash'
+  if (p < 1 / 60)   return 'dim'
+  if (p < 45 / 60)  return 'advance'
+  if (p < 46 / 60)  return 'wait'
+  if (p < 56 / 60)  return 'accelerate'
   return 'resolution'
 }
 ```
@@ -586,58 +579,47 @@ stage.addChild(worldCombatHighlight)
 // On combat end: move them back, fade dimOverlay alpha 0.55 → 0 over 600ms
 ```
 
-### 9.3 Phase 2 — Bandit advance (T+2s to T+15s)
+### 9.3 Phase 2 — Bandit advance (T+1s to T+45s)
 
 - Bandits start at staging position (bandit camp tile or just outside base region).
 - Each bandit's combat-ring target position: baseAngle + (i / N) * 2π. Spread evenly.
 - March uses bandit_march (4 frames, 6fps).
 - Pulse glow during march: tint = lerp(0xff8888, 0xffffff, sin(now/400)). Period 800ms, 1.25Hz.
-- Bandits move slowly. Cover the distance over 13 seconds. Suspense, not action-paced.
+- Bandits move slowly. Cover the distance over 44 seconds. Suspense, not action-paced.
 
-### 9.4 Phase 3 — Defender convergence (T+3s, parallel with Phase 2)
+### 9.4 Phase 3 — Defender convergence (parallel with Phase 2)
 
 - Defenders (clansmen on defend_base + idle clansmen at home + mercenaries from other clans) leave wander positions, walk toward combat ring on the *opposite side* from each bandit.
 - If 5 defenders vs 3 bandits, defenders fill arc gaps between bandits.
 - walk_* animation, 4-direction. Face ring center.
 - Stagger: each defender starts 200ms after previous so they don't all kick off in sync.
 
-### 9.5 Phase 4 — The wait (T+15s to T+16s)
+### 9.5 Phase 4 — The wait (T+45s to T+46s)
 
 Brief 1-second beat. Everyone in position, idle, facing base. World dim, combat circle bright. Nothing moves except 4-fps idle bobs and bandit pulse glow.
 
 This pause is critical — the calm before.
 
-### 9.6 Phase 5 — Slow circle (T+16s to T+30s)
+### 9.6 Phase 5 — Slow circle → whirlwind acceleration (T+46s to T+56s)
 
 - Bandits and defenders orbit the base. Alternate around the ring (B D B D B D…).
-- Angular velocity: 15°/s clockwise. Quarter-rotation = 6 seconds.
+- Angular velocity starts at 15°/s clockwise and accelerates to 180°/s over 10 seconds.
 - Position: (baseX + r·cos(angle), baseY + r·sin(angle)). Combat ring radius ~80px.
 - Sprites face *tangent* to circle (direction of motion). 4-way walk reads correctly as they orbit.
 - walk_* animation throughout.
 - Camera *very gently* zooms in by 5% over this phase. Imperceptible per-frame.
-
-### 9.7 Phase 6 — Whirlwind acceleration (T+30s to T+45s)
-
-- Angular velocity ramps 15°/s → 180°/s over 15 seconds. Easing: cubic.
 - At ~60°/s, sprite frame rate accelerates: walk frames advance at 12fps instead of 8fps.
 - At ~120°/s, motion blur: pre-rendered radial smear sprites overlay each combatant. Or use Pixi's BlurFilter with blur = lerp(0, 4, accelProgress).
 - Particles spin out tangentially: small dust/spark sprites emit from ring, 4-frame, fade fast.
 - Subtle whirlwind shape (concentric semi-transparent rings) appears underneath, rotating in *opposite* direction. Sells the vortex.
 
-### 9.8 Phase 7 — Whirlwind peak (T+45s to T+55s)
+### 9.7 Phase 6 — Flash + resolution (T+56s to T+60s)
 
-- Angular velocity holds at 180°/s.
-- Blur maxes out. Combatants are unrecognizable streaks.
-- Camera shakes: subtle, ±2px offset, 3Hz.
-- Base in center dims and glitches (1px x-offset jitter, 4Hz).
-
-### 9.9 Phase 8 — The flash (T+55s to T+58s)
-
-- Whirlwind continues but adds an *outer* expanding white ring at T+55s — shockwave warning.
-- At T+58s exactly: full-screen white flash. Alpha 0→1 in 80ms (2 frames at 60fps), held 100ms, fade to 0 over 800ms.
+- Whirlwind continues but adds an *outer* expanding white ring at T+56s — shockwave warning.
+- Full-screen white flash. Alpha 0→1 in 80ms (2 frames at 60fps), held 100ms, fade to 0 over 800ms.
 - During the flash, combatant positions snap to resolution starting positions. Flash hides the snap.
 
-### 9.10 Phase 9a — Defense success (T+58.2s to T+59.5s)
+#### 9.7a Defense success
 
 - Bandits launch radially outward from base center. Initial velocity ~200px/s.
 - Bandits decelerate over 600ms (drag), travel ~60px, come to rest.
@@ -645,21 +627,36 @@ This pause is critical — the calm before.
   - Frames 1–2: ground pose, dazed.
   - Frames 3–4: white flash overlay (full sprite alpha-tinted white).
   - Frames 5–6: shrink to 30% scale, fade alpha 1→0.
-- After death anim (~750ms), coin_explode spawns at each bandit's last position.
+- Bandit death sprites oscillate brightness, then fade over the next ~12s into the following tick. Actual chain removal happens at T+60s on the heartbeat.
+- After death anim starts, coin_explode spawns at each bandit's last position.
 - Defenders play cheer (4 frames, 6fps, 2 loops = ~1.3s).
 - Blueprint Fragment (if awarded): icon rises from bandit corpse, drifts to base, fades into vault. ~1.5s.
 
-### 9.11 Phase 9b — Defense failure (T+58.2s to T+59.5s)
+#### 9.7b Bandits win
 
 - Clansmen jump backward 20–30px (much less than bandits would be thrown). easeOutQuad over 300ms.
 - On landing, each clansman's tile gets dust_puff (4 frames, 8fps, 500ms).
 - Stagger: clansmen play idle with 1px horizontal jitter for 500ms (shaking it off).
 - Wall sprite drops one level *visibly*: scale.y interpolates 1.0 → newRatio over 400ms easeInQuad. Small chunk-of-stone sprite falls from wall top, hits ground, dust.
 - Resources fly out of base as small icon sprites (one per 20% stolen), drift to bandit positions over 800ms. Each bandit "absorbs" them (sprite shrinks to bandit, fades).
-- Bandits converge to base center: brief huddle, sprites overlap at center 500ms.
-- Bandits then march out toward next region. bandit_march. Camera doesn't follow.
+- Bandits converge to base center at T+58s: brief huddle, sprites overlap at center 500ms.
+- Starting at T+60s, bandits walk visibly to the next region into the next 3-tick `Camped` phase. bandit_march. Camera doesn't follow.
 
-### 9.12 Phase 10 — Cleanup (T+59.5s to T+60s)
+### 9.8 Bandit cycle UI mapping
+
+```
+Tick 1 (Spawned): camp sprite appears, faint red glow ramping
+Ticks 2-3 (Camped): camp sprite, full ominous red glow
+Tick 4 (Camped, last): all 60s = combat animation (march+circle+flash+resolve)
+
+After a successful escape:
+Tick 5 (Camped, in NEW region): walk-in animation 0-15s + camp glow ramping
+Ticks 6-7 (Camped): full glow
+Tick 8 (Camped, last): combat animation again
+... repeat
+```
+
+### 9.9 Cleanup (T+59.5s to T+60s)
 
 - World dim overlay fades to 0 over 600ms.
 - Surviving combatants return to wander positions (smooth walk).

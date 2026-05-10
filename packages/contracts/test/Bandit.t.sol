@@ -21,6 +21,7 @@ contract BanditHarness is ClanWorld {
 
 contract BanditTest is Test {
     BanditHarness world;
+    uint160 nextElder = 0xA11CE;
 
     function setUp() public {
         world = new BanditHarness();
@@ -35,6 +36,24 @@ contract BanditTest is Test {
         for (uint64 i = 0; i < ticks; i++) {
             _advanceTick();
         }
+    }
+
+    function _advanceUntil(uint64 tick) internal {
+        while (world.getWorldState().currentTick < tick) {
+            _advanceTick();
+        }
+    }
+
+    function _closeTick(uint64 tick) internal {
+        while (world.getWorldState().currentTick <= tick) {
+            _advanceTick();
+        }
+    }
+
+    function _mintClan() internal returns (uint32 clanId) {
+        address elder = address(nextElder++);
+        vm.prank(elder);
+        (clanId,) = world.mintClan(elder);
     }
 
     function _spawnAndCamp() internal returns (uint32 id) {
@@ -162,40 +181,66 @@ contract BanditTest is Test {
         assertEq(world.getBandit(id3).id, id3, "newer bandit remains live");
     }
 
-    function test_attackingToEscapedRestingCampedCycleWorks() public {
+    function test_attackingEscapeMovesBanditToNextRegion() public {
         uint32 id = _spawnCampAndAttack(77);
 
-        world.transitionBandit(id, BanditState.Escaped);
-        BanditTroop memory escaped = world.getBandit(id);
-        assertEq(uint8(escaped.state), uint8(BanditState.Escaped), "escaped");
-        assertEq(escaped.targetClanId, 0, "target cleared on escape");
-
-        world.transitionBandit(id, BanditState.Resting);
-        BanditTroop memory resting = world.getBandit(id);
-        assertEq(uint8(resting.state), uint8(BanditState.Resting), "resting");
-        assertEq(resting.tickEnteredState, world.getWorldState().currentTick, "resting tick");
-
-        _advanceTicks(ClanWorldConstants.BANDIT_REST_TICKS + 1);
-
+        world.transitionBandit(id, BanditState.Camped);
         BanditTroop memory camped = world.getBandit(id);
-        assertEq(uint8(camped.state), uint8(BanditState.Camped), "camped again");
+        assertEq(uint8(camped.state), uint8(BanditState.Camped), "camped");
         assertEq(camped.targetClanId, 0, "target remains clear");
         assertEq(camped.region, ClanWorldConstants.REGION_MOUNTAINS, "rampaged to next region");
         assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "left forest index");
         assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS)[0], id, "entered mountain index");
     }
 
-    function test_restingToCampedFollowsRampagePath() public {
-        uint32 id = _spawnCampAndAttack(77);
-        world.transitionBandit(id, BanditState.Escaped);
-        world.transitionBandit(id, BanditState.Resting);
+    function test_multipleBanditsSameRegionAttackResolution() public {
+        uint32 id1 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint32 id2 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 200);
+        uint32 id3 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 300);
 
-        _advanceTicks(ClanWorldConstants.BANDIT_REST_TICKS + 1);
-        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "forest to mountains");
+        _advanceTicks(2);
+        _advanceTicks(ClanWorldConstants.BANDIT_CAMP_TICKS - 1);
 
-        world.transitionBandit(id, BanditState.Resting);
-        _advanceTicks(ClanWorldConstants.BANDIT_REST_TICKS + 1);
-        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_FARMS, "mountains to east farms");
+        world.transitionBanditToAttacking(id1, 77);
+        world.transitionBanditToAttacking(id2, 77);
+        world.transitionBanditToAttacking(id3, 77);
+
+        _advanceTick();
+
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "all left forest");
+        uint32[] memory mountainBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS);
+        assertEq(mountainBandits.length, 3, "all entered mountains");
+
+        _assertResolvedInMountains(id1, mountainBandits, "id1");
+        _assertResolvedInMountains(id2, mountainBandits, "id2");
+        _assertResolvedInMountains(id3, mountainBandits, "id3");
+    }
+
+    function test_steadyStateCycleIs3Ticks() public {
+        for (uint256 i = 0; i < 6; i++) {
+            _mintClan();
+        }
+
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 1000);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+        assertEq(uint8(world.getBandit(id).state), uint8(BanditState.Camped), "first attack recamped");
+        assertEq(world.getBandit(id).attackAttemptsMade, 1, "first attempt");
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "first move");
+        assertEq(world.getBandit(id).tickEnteredState, spawnedAt + 4, "first recamp tick");
+
+        _closeTick(spawnedAt + 7);
+        assertEq(uint8(world.getBandit(id).state), uint8(BanditState.Camped), "second attack recamped");
+        assertEq(world.getBandit(id).attackAttemptsMade, 2, "second attempt");
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_FARMS, "second move");
+        assertEq(world.getBandit(id).tickEnteredState, spawnedAt + 7, "second recamp tick");
+
+        _closeTick(spawnedAt + 10);
+        assertEq(uint8(world.getBandit(id).state), uint8(BanditState.Camped), "third attack recamped");
+        assertEq(world.getBandit(id).attackAttemptsMade, 3, "third attempt");
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_DOCKS, "third move");
+        assertEq(world.getBandit(id).tickEnteredState, spawnedAt + 10, "third recamp tick");
     }
 
     function test_invalidTransitionsRevert() public {
@@ -236,5 +281,22 @@ contract BanditTest is Test {
         forestBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST);
         assertEq(forestBandits.length, 1, "forest count after delete");
         assertEq(forestBandits[0], id2, "remaining forest bandit");
+    }
+
+    function _assertResolvedInMountains(uint32 id, uint32[] memory mountainBandits, string memory label) internal view {
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(uint8(bandit.state), uint8(BanditState.Camped), label);
+        assertEq(bandit.targetClanId, 0, label);
+        assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, label);
+        assertTrue(_containsBandit(mountainBandits, id), label);
+    }
+
+    function _containsBandit(uint32[] memory banditIds, uint32 id) internal pure returns (bool) {
+        for (uint256 i = 0; i < banditIds.length; i++) {
+            if (banditIds[i] == id) {
+                return true;
+            }
+        }
+        return false;
     }
 }

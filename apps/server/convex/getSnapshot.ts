@@ -77,7 +77,6 @@ export const getSnapshot = query({
       && activeBandit.exists
       && activeBandit.state !== BanditState.None
       && activeBandit.state !== BanditState.Defeated
-      && activeBandit.state !== BanditState.Escaped
         ? {
           id: activeBandit.id,
           region: activeBandit.region,

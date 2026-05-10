@@ -7,7 +7,6 @@ export const WINTER_PERIOD_TICKS = 110n;
 export const SEASON_DURATION_TICKS = 360n;
 export const BANDIT_COOLDOWN_TICKS = 10n;
 export const BANDIT_CAMP_TICKS = 3n;
-export const BANDIT_REST_TICKS = 2n;
 export const BANDIT_MAX_ATTACK_ATTEMPTS = 6n;
 export const CLANSMAN_COOLDOWN_SECONDS = 60n;
 export const CLANSMAN_CARRY_CAP = 10000000000000000000n;

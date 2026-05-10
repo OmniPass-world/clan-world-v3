@@ -38,27 +38,31 @@ This doc canonizes the as-built mechanics. The eight largest drifted mechanics a
 
 ## 2. As-built bandit lifecycle
 
+> **Updated 2026-05-10**: removed `Escaped` and `Resting` states; cycle is 3 ticks between attacks. v2.3.0 deploy required.
+
 ### 2.1 State machine
 
-The implementation defines **7 states** (vs. 5 in v4 §6.5):
+The implementation defines **5 states**:
 
 ```
-None → Spawned → Camped → Attacking → (Defeated | Escaped) → Resting → Camped → Attacking → ...
+None → Spawned (1) → Camped (3) → Attacking-instant
+                                        │
+                                        ├─── Defeated (terminal)
+                                        │
+                                        └─── Escape outcome → Camped (3, NEXT region) → ...
 ```
 
-| State | Duration | Transition trigger | Notes |
-|---|---|---|---|
-| `None` | (sentinel) | Default zero value, indicates no troop | Defensive — prevents zero-init from looking like a real state |
-| `Spawned` | 1 tick | Heartbeat `_advanceBanditStates` | Settles candidate region, then transitions to `Camped` |
-| `Camped` | 3 ticks (`BANDIT_CAMP_TICKS`) | Tick counter expires | Picks attack target on exit (NOT at attack resolution time) |
-| `Attacking` | 1 tick | Heartbeat resolves attack via `_resolveBanditAttack` | Either Defeated (if defenders win threshold) or Escaped (if attack lands as damage event) |
-| `Defeated` | terminal | n/a | Bandit removed; carry distributed; blueprint awarded to target clan |
-| `Escaped` | 2 ticks | Tick counter expires → `Resting` | NON-TERMINAL — distinguishes from spec's terminal escape |
-| `Resting` | 2 ticks | Tick counter expires → `Camped` | Bandit stays in the same region; no rampage |
+| State | Duration | Notes |
+|---|---|---|
+| `None` | sentinel | Default zero value, indicates no troop |
+| `Spawned` | 1 tick | One-tick init before the first `Camped` |
+| `Camped` | 3 ticks (`BANDIT_CAMP_TICKS`) | Same duration whether first camp or rampage recamp |
+| `Attacking` | instant (resolves in same heartbeat as `Camped` → `Attacking` transition) | Never visible as a separate phase |
+| `Defeated` | terminal | Bandit removed from storage |
 
-**Effective spawn-to-attack interval = 4 ticks** (1 Spawned + 3 Camped). After the first attack, the steady-state cycle is `Attacking → Escaped(2) → Resting(2) → Camped(3) → Attacking` = 7 ticks per attempt.
+**Cycle math:** first attack = 4 ticks (1 Spawned + 3 Camped). Subsequent attacks happen every 3 ticks. After 6 attempts, terminal escape burns carry and removes the bandit.
 
-**Bandit `region` is set on spawn and never changes.** A bandit lives in its spawn region for its entire lifecycle. There is no rampage path, no inter-region movement.
+On a successful attack escape outcome, `Attacking → Camped` moves the bandit to the next rampage region in the same transition. `Camped` then lasts 3 ticks in that new region before the next attack attempt.
 
 ### 2.2 Spawn cadence
 
@@ -112,7 +116,7 @@ At `Camped → Attacking` transition (one tick before resolution), the implement
 - Eager-settles the eventually-picked target (per-target settlement; does NOT eager-settle ALL bases in region as v4_1 A4 demands)
 - Ranks remaining bases by loot value: `wood + wheat + 2*fish + 4*iron` (matches spec §6.9 — gold is NOT counted)
 - Tiebreak among equal-loot bases: **uniform random across ties** (NOT lowest-clanId as spec §6.8 requires)
-- If no eligible base in region → bandit transitions to `Escaped` (spec wanted noop "stay in region, try next tick"; impl marks Escaped which is non-terminal here, so functionally similar but surfaces as Escaped state in ABI)
+- If no eligible base in region → attack attempt count increments. If attempts are exhausted, terminal escape removes the bandit; otherwise it remains `Camped` and retries after another `BANDIT_CAMP_TICKS`.
 
 ---
 
@@ -146,7 +150,7 @@ Compare `totalClansmanDefense` vs `2 * attackPower`:
   2. Base HP next: `BASE_HP_PER_LEVEL = 25`. Base absorbs up to `baseLevel * 25` damage.
   3. Clansman casualties: if damage exceeds combined wall+base HP, **clansmen die** to absorb the residual. This contradicts spec §6.15 which says no clansman casualties from bandits in v1.
   4. If all clansmen die → clan is marked dead.
-- Bandit transitions to `Escaped` (which is non-terminal in this impl).
+- Bandit transitions directly `Attacking → Camped`, which moves it to the next rampage region.
 
 ### 3.3 No vault loot theft
 
@@ -158,9 +162,9 @@ Compare `totalClansmanDefense` vs `2 * attackPower`:
 
 **Net effect:** target clan vaults are unchanged by bandit attacks. Bandits do damage to wall/base/clansmen but never extract physical loot.
 
-### 3.4 No attack-attempt cap
+### 3.4 Attack-attempt cap
 
-Spec §6.12 requires bandits to be removed from the world after 6 attempts (7th = ESCAPED + carried loot burned + troop deleted). The impl has no `attackAttemptsMade` counter; the field is absent from the struct (`IClanWorld.sol:303-315`) and the ABI returns `attackAttemptsMade: 0` always. Bandits cycle indefinitely until either the target clan dies or defenders defeat them.
+Spec §6.12 requires bandits to be removed from the world after 6 attempts. The 2026-05-10 update implements this with `attackAttemptsMade`: each no-target retry or resolved failed attack increments the counter, and once it reaches `BANDIT_MAX_ATTACK_ATTEMPTS` the bandit terminally escapes, burns carry, emits `BanditEscaped`, and is deleted from storage.
 
 ---
 
@@ -197,7 +201,7 @@ On `Defeated` outcome:
 
 - `DefendBase` is a persistent mission — a clansman set to defend stays defending across multiple bandit attacks until reassigned, killed, or until the defended clan dies (matches v4.2 §8.2).
 - Defender registries are cleaned on clansman death (`_clearDefender` at `ClanWorld.sol:565-588`) and on defended-clan death (`_releaseDefendersForDeadTarget` at `ClanWorld.sol:2771-2792`).
-- Dead-target cleanup transitions any active bandit attack against a dead clan to `Escaped` (`_abortBanditAttacksForDeadTarget` at `ClanWorld.sol:590-608`).
+- Dead-target cleanup transitions any active bandit attack against a dead clan to `Camped` (`_abortBanditAttacksForDeadTarget`), which clears the target and follows the same `Attacking → Camped` rampage path.
 
 ---
 
@@ -209,8 +213,7 @@ These supersede the bandit-related constants in `clanworld_v4_2_state_schema_int
 |---|---|---|---|
 | `BANDIT_COOLDOWN_TICKS` | 10 | 10 | `ClanWorld.sol:90` ✅ unchanged |
 | `BANDIT_CAMP_TICKS` | 3 | 3 | `ClanWorld.sol:1605, 1612` ✅ unchanged |
-| `BANDIT_REST_TICKS` | 2 (post-attack) | 2 (in `Resting`); 2 additional in `Escaped` | `ClanWorld.sol:1689-1697` |
-| `BANDIT_MAX_ATTEMPTS` | 6 | not implemented | — |
+| `BANDIT_MAX_ATTEMPTS` | 6 | 6 | `IClanWorld.sol` ✅ unchanged |
 | `BANDIT_BASE_STEAL_BPS` | 2000 (20%) | declared, not referenced | `IClanWorld.sol:71` |
 | `BANDIT_DROP_TO_DEFENDERS_BPS` | 5000 (50%) | declared, not referenced; impl uses 100% | `IClanWorld.sol:72` |
 | Spawn base chance | 5% | 10% | `ClanWorld.sol:91` |
@@ -223,33 +226,31 @@ These supersede the bandit-related constants in `clanworld_v4_2_state_schema_int
 | `WALL_HP_PER_LEVEL` | (n/a; threshold = 10×wall) | 100 | `ClanWorld.sol:111` |
 | `BASE_HP_PER_LEVEL` | (n/a; threshold = 5×base) | 25 | `ClanWorld.sol:112` |
 
-The state enum is also expanded:
+The state enum is:
 
 | State | v4 spec (§6.5) | As-built (`IClanWorld.sol:107-115`) |
 |---|---|---|
 | `None` | — | 0 (sentinel) |
 | `Spawned` | — | 1 (1-tick pre-camp) |
 | `CAMPING` / `Camped` | yes | 2 |
-| `RESTING` / `Resting` | yes | 3 |
-| `ATTACKING` / `Attacking` | yes | 4 |
-| `DEFEATED` / `Defeated` | yes (terminal) | 5 (terminal) |
-| `ESCAPED` / `Escaped` | yes (terminal in spec) | 6 (NON-terminal in impl; cycles back to Resting) |
+| `ATTACKING` / `Attacking` | yes | 3 |
+| `DEFEATED` / `Defeated` | yes (terminal) | 4 (terminal) |
 
 ---
 
 ## 6. Deferred to restoration milestone (`spec-v4-restoration-post-hackathon`)
 
-The following v4 mechanics are **explicitly NOT being implemented for the hackathon submissions**. They are tracked for evaluation under the `spec-v4-restoration-post-hackathon` GH milestone. Restoration is conditional on hackathon timeline and the post-hackathon evaluation that the original v4 mechanics deliver more gameplay value than the as-built simpler model.
+The following v4 mechanics remain tracked for post-hackathon restoration or have been closed by the 2026-05-10 lifecycle update:
 
 | # | v4 spec mechanic | As-built behavior | Restoration cost (rough) |
 |---|---|---|---|
 | 1 | **Vault loot theft** (§6.15C, §6.16) — bandits steal 20% of wood/wheat/fish/iron on failed defense, accumulate carry until defeat/escape | Bandits never extract loot; carry remains 0 in production | Medium — re-wire `_resolveBanditAttack`, write carry update path, plumb through `BanditAttackResolved` event |
-| 2 | **Rampage path** (§6.10, §6.11) — bandit moves 1→2→5→7→6→4→1 clockwise on completion of each attack-rest cycle | Bandit stays in spawn region forever | Medium — add region-transition logic on rest-end, ensure single-troop-per-rampage invariant if combined with #5 |
-| 3 | **Attack-attempt cap** (§6.12) — 6 attempts max, 7th = ESCAPED + carry burned + troop removed | No counter; bandits cycle indefinitely | Small — add `attackAttemptsMade` field to `BanditTroop`, increment on each Attacking-tick, terminal-Escape branch when ≥ 6 |
+| 2 | **Rampage path** (§6.10, §6.11) — bandit moves 1→2→5→7→6→4→1 clockwise on each successful attack escape | Implemented on `Attacking → Camped` | Done |
+| 3 | **Attack-attempt cap** (§6.12) — 6 attempts max, terminal escape burns carry and deletes troop | Implemented via `attackAttemptsMade` | Done |
 | 4 | **Tier-based attack power** (§6.14, v4.3 G) — `tier` 1..5 with `attackPower` ∈ {30, 45, 60, 80, 95}, derivation via `getBanditAttackPower(tier)` | Random uniform `[100, 250]` strength; no tier field | Small — add `tier` field, derivation helper, replace strength roll |
 | 5 | **Lowest-clanId tiebreak** (§6.8) — when multiple bases tied for highest loot value, lowest clanId targeted (deterministic) | RNG-bounded uniform pick (non-deterministic across replay) | Tiny — replace RNG pick with min-clanId scan |
 | 6 | **WAITING-at-home defense contribution** (§6.13) — clansmen passively at home contribute 5 defense each (vs 10 for explicit `DefendBase`) | Only `DefendBase` mission counts; passive home clansmen contribute 0 | Small — extend `_collectDefenderContribution` to include WAITING-at-home, add 5-or-10 dispatch on mission state |
-| 7 | **Terminal Escaped state** (§6.12) — Escaped is a removal event; troop deleted from world; carry burned | Escaped is a 2-tick transient that cycles back into Resting | Small — when terminal-escape branch fires (e.g. from #3), remove troop instead of cycling |
+| 7 | **Terminal escape** (§6.12) — escape is a removal event; troop deleted from world; carry burned | Implemented without a persistent `Escaped` enum state | Done |
 | 8 | **Single-troop global limit** (§6.1) — at most ONE active bandit globally | Up to 8 globally; up to 3 per region | Small — set `MAX_TOTAL_BANDITS = 1`; remove per-region cap (or set both to 1); collapse multi-troop spawn loop |
 
 **Additional smaller drifts** noted in the UAT report but bundled with the above on restoration (no separate tracking):
@@ -271,8 +272,8 @@ The following v4 mechanics are **explicitly NOT being implemented for the hackat
 When Liam (or anyone running interactive UAT against this contract) observes bandit behavior, **expect the as-built mechanics, not the v4 spec mechanics.** Specifically:
 
 - ✅ Bandits spawn frequently (10% per region per tick, ramping to 80%) and can stack up to 8 globally / 3 per region
-- ✅ Bandits stay in their spawn region for their entire lifecycle
-- ✅ Bandits attack the same region repeatedly until their target clan dies, defenders defeat them, or you stop watching
+- ✅ Bandits rampage to the next region after each successful attack escape
+- ✅ Bandits attack every 3 ticks after the first attack until defenders defeat them or they hit the 6-attempt terminal escape cap
 - ✅ Bandits do damage to wall, base, and clansmen (clansmen DO die from bandit attacks in this impl)
 - ✅ Bandits do NOT steal vault resources; vault wood/wheat/fish/iron are unchanged after bandit attacks
 - ✅ Defeated bandits drop only the blueprint (no carry, no gold) to the target clan vault

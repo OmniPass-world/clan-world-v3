@@ -173,8 +173,6 @@ contract ClanWorldLens is IClanWorldLens {
                 nextActionTick = bandit.tickEnteredState + 1;
             } else if (bandit.state == BanditState.Camped) {
                 nextActionTick = bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS;
-            } else if (bandit.state == BanditState.Resting) {
-                nextActionTick = bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS;
             }
             if (bandit.attackAttemptsMade < ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
                 maxAttemptsRemaining = ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS - bandit.attackAttemptsMade;
@@ -274,5 +272,4 @@ contract ClanWorldLens is IClanWorldLens {
             leaderboard: leaderboard
         });
     }
-
 }
