@@ -106,11 +106,12 @@ library LibSettlement {
     }
 
     function eagerSettleBanditCandidateRegion(LibStorage.AppStorage storage s, uint8 region) internal {
-        uint256 clanScanCount = s.allClanIds.length < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION
-            ? s.allClanIds.length
-            : MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION;
-
-        for (uint256 i = 0; i < clanScanCount; i++) {
+        uint256 inRegionScanCount;
+        for (
+            uint256 i = 0;
+            i < s.allClanIds.length && inRegionScanCount < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION;
+            i++
+        ) {
             uint32 clanId = s.allClanIds[i];
             Clan storage clan = s.clans[clanId];
             if (clan.clanState == ClanState.DEAD || clan.baseRegion != region) {
@@ -119,6 +120,7 @@ library LibSettlement {
 
             settleClanForBanditCandidate(s, clanId);
             eagerSettleActiveDefendersForBase(s, clanId, region);
+            inRegionScanCount++;
         }
     }
 
@@ -134,16 +136,16 @@ library LibSettlement {
 
     function eagerSettleActiveDefendersForBase(LibStorage.AppStorage storage s, uint32 targetClanId, uint8 region)
         private
-        view
     {
         uint32[] storage defendingClans = s.defendingClansByRegion[region];
         uint256 defendingClanScanCount = defendingClans.length < MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION
             ? defendingClans.length
             : MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION;
+        uint32[] memory defendingClanSnapshot = defendingClans;
         uint256 defendersScanned;
 
         for (uint256 i = 0; i < defendingClanScanCount; i++) {
-            uint32 defenderClanId = defendingClans[i];
+            uint32 defenderClanId = defendingClanSnapshot[i];
             uint32[] storage clansmanIds = s.clanClansmanIds[defenderClanId];
 
             for (
@@ -154,6 +156,7 @@ library LibSettlement {
                 defendersScanned += 1;
                 Mission storage mission = s.missions[clansmanIds[j]];
                 if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    settleClanForBanditCandidate(s, defenderClanId);
                     break;
                 }
             }

@@ -31,9 +31,8 @@ library LibBanditLifecycle {
         require(s.world.currentTick == closedTick, "ClanWorld: bandit advance tick mismatch");
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = s.banditsByRegion[region];
-            uint256 i = 0;
-            while (i < regionBandits.length) {
-                uint32 banditId = regionBandits[i];
+            for (uint256 i = regionBandits.length; i > 0; i--) {
+                uint32 banditId = regionBandits[i - 1];
                 BanditTroop storage bandit = s.bandits[banditId];
                 uint8 regionBefore = bandit.region;
 
@@ -44,6 +43,7 @@ library LibBanditLifecycle {
                         && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS
                 ) {
                     LibSettlement.eagerSettleBanditCandidateRegion(s, bandit.region);
+                    if (s.bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) continue;
                     uint32 targetClanId = pickBanditAttackTarget(s, bandit);
                     if (targetClanId == ClanWorldConstants.CLAN_ID_NULL) {
                         if (recordBanditAttackAttempt(s, banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
@@ -63,7 +63,6 @@ library LibBanditLifecycle {
 
                 if (s.bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) continue;
                 if (regionBefore != s.bandits[banditId].region) continue;
-                i++;
             }
         }
     }
