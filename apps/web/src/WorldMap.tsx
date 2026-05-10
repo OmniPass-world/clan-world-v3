@@ -2858,7 +2858,7 @@ export function WorldMap() {
         ))
         ?? drawn.bases.find(b => b.clan.id === targetClanId);
       if (targetBase) {
-        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 };
+        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 * layoutRef.current.scale };
       }
     }
     // If the target clan has been deleted from the snapshot, use the neutral
