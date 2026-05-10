@@ -51,25 +51,6 @@ jobs:
           echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > "$path"
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
-      # Each app builds independently. continue-on-error so one failure
-      # doesn't block the other from publishing — demo-day robustness.
-      - name: Build Kickstart APK
-        id: build-kickstart
-        continue-on-error: true
-        working-directory: apps/kickstart-mobile
-        env:
-          # build.gradle.kts now refuses to fall back to a hardcoded URL.
-          # These currently point at the dev Convex deployment + production
-          # Kickstart home; promote to repo secrets when the prod Convex URL
-          # is provisioned.
-          CLANWORLD_CONVEX_URL: ${{ secrets.CLANWORLD_CONVEX_URL || 'https://valuable-kudu-985.convex.cloud' }}
-          KICKSTART_HOME_URL: ${{ secrets.KICKSTART_HOME_URL || 'https://kickstart.easya.io' }}
-          RELEASE_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
-          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleDebug
-
       - name: Build Clan World APK
         id: build-clan-world
         continue-on-error: true
@@ -89,32 +70,18 @@ jobs:
         id: prepare-assets
         run: |
           mkdir -p release-assets
-          # Copy whichever APKs successfully built; skip missing ones.
-          # continue-on-error on the build steps means a failed build leaves
+          # continue-on-error on the build step means a failed build leaves
           # no APK at the expected path, so we test before copying.
-          shipped=()
-          if [ -f apps/kickstart-mobile/app/build/outputs/apk/debug/app-debug.apk ]; then
-            cp apps/kickstart-mobile/app/build/outputs/apk/debug/app-debug.apk \
-              "release-assets/kickstart-${{ steps.release.outputs.version }}-debug.apk"
-            shipped+=(kickstart)
-          else
-            echo "::warning ::Kickstart APK missing — skipping in release."
-          fi
           if [ -f apps/clan-world-mobile/app/build/outputs/apk/debug/app-debug.apk ]; then
             cp apps/clan-world-mobile/app/build/outputs/apk/debug/app-debug.apk \
               "release-assets/clan-world-${{ steps.release.outputs.version }}-debug.apk"
-            shipped+=(clan-world)
           else
-            echo "::warning ::Clan World APK missing — skipping in release."
-          fi
-          if [ ${#shipped[@]} -eq 0 ]; then
-            echo "::error ::Both APK builds failed — nothing to release."
+            echo "::error ::Clan World APK missing — nothing to release."
             exit 1
           fi
-          echo "shipped=${shipped[*]}" >> "$GITHUB_OUTPUT"
           cd release-assets
           sha256sum *.apk > SHA256SUMS.txt
-          echo "::notice ::Shipping ${shipped[*]} in release ${{ steps.release.outputs.version }}."
+          echo "::notice ::Shipping clan-world APK in release ${{ steps.release.outputs.version }}."
 
       - name: Attest APK build provenance
         continue-on-error: true

@@ -38,7 +38,6 @@ val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "cla
 val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
   .orElse("https://valuable-kudu-985.convex.cloud")
 
-// Optional stable signing key. See apps/kickstart-mobile/app/build.gradle.kts
 // for details — both apps share the same secret names so one CI step can
 // provision both.
 val releaseKeystorePath: String? = System.getenv("RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
