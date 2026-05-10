@@ -462,7 +462,6 @@ BANDITS
 ================================================================
   BANDIT_COOLDOWN_TICKS         = 10
   BANDIT_CAMP_TICKS             = 3   (bandit camps for N ticks before attacking)
-  BANDIT_REST_TICKS             = 2   (rest between attacks)
   BANDIT_MAX_ATTACK_ATTEMPTS    = 6
   BANDIT_BASE_STEAL_BPS         = 2000 (steal 20% on success)
   BANDIT_DROP_TO_DEFENDERS_BPS  = 5000 (defenders recover 50% on kill)
@@ -563,7 +562,7 @@ export function resolveHelp(args: string[]): string | undefined {
   const two = positional.slice(0, 2).join(' ');
   if (SUBCOMMAND_HELP[two]) return SUBCOMMAND_HELP[two];
   const one = positional[0];
-  if (SUBCOMMAND_HELP[one]) return SUBCOMMAND_HELP[one];
+  if (one && SUBCOMMAND_HELP[one]) return SUBCOMMAND_HELP[one];
   return TOP_LEVEL_HELP;
 }
 
