@@ -216,6 +216,87 @@ contract BanditTest is Test {
         _assertResolvedInMountains(id3, mountainBandits, "id3");
     }
 
+    function test_noTargetAdvancesToNextRegion() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(uint8(bandit.state), uint8(BanditState.Camped), "still camped");
+        assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, "advanced to next region");
+        assertEq(bandit.attackAttemptsMade, 1, "no-target attempt counted");
+        assertEq(bandit.tickEnteredState, spawnedAt + 4, "camp timer reset");
+        assertEq(bandit.targetClanId, 0, "target remains clear");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "left forest index");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS)[0], id, "entered mountain index");
+    }
+
+    function test_noTargetCounterPersistsAcrossRegions() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "first no-target move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 1, "first no-target counted");
+
+        _closeTick(spawnedAt + 7);
+
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(bandit.region, ClanWorldConstants.REGION_EAST_FARMS, "second no-target move");
+        assertEq(bandit.attackAttemptsMade, 2, "counter persisted");
+        assertEq(bandit.tickEnteredState, spawnedAt + 7, "second camp timer reset");
+    }
+
+    function test_terminalEscapeAfterSixNoTargetRegionAdvances() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "first move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 1, "first attempt");
+
+        _closeTick(spawnedAt + 7);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_FARMS, "second move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 2, "second attempt");
+
+        _closeTick(spawnedAt + 10);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_DOCKS, "third move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 3, "third attempt");
+
+        _closeTick(spawnedAt + 13);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_WEST_DOCKS, "fourth move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 4, "fourth attempt");
+
+        _closeTick(spawnedAt + 16);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_WEST_FARMS, "fifth move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 5, "fifth attempt");
+
+        _closeTick(spawnedAt + 19);
+
+        BanditTroop memory deletedBandit = world.getBandit(id);
+        assertEq(deletedBandit.id, 0, "bandit deleted at no-target cap");
+        assertEq(uint8(deletedBandit.state), uint8(BanditState.None), "terminal escape removed troop");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_WEST_FARMS).length, 0, "removed from final region");
+    }
+
+    function test_multipleBanditsSameRegionNoTargetAdvance() public {
+        uint32 id1 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint32 id2 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 200);
+        uint32 id3 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 300);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "all left forest");
+        uint32[] memory mountainBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS);
+        assertEq(mountainBandits.length, 3, "all entered mountains");
+
+        _assertNoTargetAdvancedToMountains(id1, mountainBandits, "id1");
+        _assertNoTargetAdvancedToMountains(id2, mountainBandits, "id2");
+        _assertNoTargetAdvancedToMountains(id3, mountainBandits, "id3");
+    }
+
     function test_steadyStateCycleIs3Ticks() public {
         for (uint256 i = 0; i < 6; i++) {
             _mintClan();
@@ -288,6 +369,18 @@ contract BanditTest is Test {
         assertEq(uint8(bandit.state), uint8(BanditState.Camped), label);
         assertEq(bandit.targetClanId, 0, label);
         assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, label);
+        assertTrue(_containsBandit(mountainBandits, id), label);
+    }
+
+    function _assertNoTargetAdvancedToMountains(uint32 id, uint32[] memory mountainBandits, string memory label)
+        internal
+        view
+    {
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(uint8(bandit.state), uint8(BanditState.Camped), label);
+        assertEq(bandit.targetClanId, 0, label);
+        assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, label);
+        assertEq(bandit.attackAttemptsMade, 1, label);
         assertTrue(_containsBandit(mountainBandits, id), label);
     }
 

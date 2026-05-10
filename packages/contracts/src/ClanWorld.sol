@@ -2126,6 +2126,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                         }
                         bandit.tickEnteredState = _world.currentTick;
                         bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
+                        _moveBanditToRampageNextRegion(banditId);
                         emit BanditStateChanged(
                             banditId, BanditState.Camped, BanditState.Camped, bandit.region, _world.currentTick
                         );

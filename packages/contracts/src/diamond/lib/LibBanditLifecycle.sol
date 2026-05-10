@@ -50,6 +50,7 @@ library LibBanditLifecycle {
                         }
                         bandit.tickEnteredState = s.world.currentTick;
                         bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
+                        moveBanditToRampageNextRegion(s, banditId);
                         emit BanditStateChanged(
                             banditId, BanditState.Camped, BanditState.Camped, bandit.region, s.world.currentTick
                         );
