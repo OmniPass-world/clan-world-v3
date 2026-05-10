@@ -14,7 +14,7 @@ If you're skimming, these are the steps people consistently miss when redeployin
 
 1. **Update `dev-ui` Vercel env `VITE_DEFAULT_DIAMOND`** when you redeploy the diamond. The dev-ui SPA reads this at build time. Forgetting it leaves dev-ui pointing at the old (dead) address.
 2. **Update Convex env `CLAN_WORLD_CONTRACT_ADDRESS` + `CLAN_WORLD_LENS_ADDRESS` + `INDEXER_START_BLOCK`** simultaneously. Just changing the diamond addr without bumping the start block forces the indexer to re-scan thousands of irrelevant blocks (slow + likely to hit RPC rate limits).
-3. **Pause the heartbeat-loop tmux session BEFORE running `forge script Deploy.s.sol`**. The heartbeat-loop fires txs from the deployer wallet every 60s; if it races with deploy txs, you get nonce-too-low errors mid-deploy and end up with a half-cut diamond.
+3. **Pause the heartbeat-loop tmux session BEFORE running `forge script Deploy.s.sol`**. The heartbeat-loop fires txs from the deployer wallet every 61s; if it races with deploy txs, you get nonce-too-low errors mid-deploy and end up with a half-cut diamond.
 4. **Mint a clan for each elder wallet** (`mintClan(elderAddress)` from the deployer) AFTER deploy. A fresh diamond has treasury seeded but no clans — elders will sit idle until they own a clan.
 
 ---
@@ -344,15 +344,24 @@ cast call "$LENS" 'getActiveClanCount()(uint32)' --rpc-url "$RPC_URL_PRIMARY"
 
 ### 9.1 `clanworld-heartbeat`
 
-Calls `heartbeat()` every 65 s (just past the on-chain 60 s rate-limit guard). The heartbeat advances the world tick + emits ChainHeartbeat events that the Convex webhook ingests.
+Calls `heartbeat()` every **61 s** (3 s slack past the on-chain **58 s** rate-limit guard — see "Canonical defaults" below). The heartbeat advances the world tick + emits ChainHeartbeat events that the Convex webhook ingests.
 
 ```bash
 cd ~/code/clan-world/clan-world-game
 tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
-  'while true; do bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log; echo "[$(date)] loop exited; restart in 5s" >> /tmp/clanworld-heartbeat.log; sleep 5; done'
+  'export HEARTBEAT_SLEEP_SECONDS=61; while true; do bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log; echo "[$(date)] loop exited; restart in 5s" >> /tmp/clanworld-heartbeat.log; sleep 5; done'
 ```
 
 The outer `while true` wrapper restarts the inner loop if it errors out (e.g., on a transient RPC blip — `start-heartbeat-loop.sh` has `set -e` so it exits on first error).
+
+#### Canonical defaults (heartbeat cadence)
+
+| Setting | Value | How to set |
+|---|---|---|
+| **On-chain `heartbeatIntervalSeconds()` guard** | `58` s | `cast send $DIAMOND 'setHeartbeatIntervalSeconds(uint64)' 58 --rpc-url $RPC_URL_PRIMARY --private-key $DEPLOYER_PRIVATE_KEY` (owner-only) |
+| **Loop fire interval** (`HEARTBEAT_SLEEP_SECONDS`) | `61` s | env var on the heartbeat tmux session (see launch command above) |
+
+The relationship: `loop interval = on-chain guard + 3 s slack`. The 3 s prevents "rate limited" reverts from clock drift / RPC propagation lag. Adjust both together if you want to change cadence — e.g., 30 s ticks = on-chain `28`, loop `31`. The per-tick game economics calibrate to 60 s bins, so don't change without considering downstream impacts (mission durations, season length, etc.).
 
 ### 9.2 `clanworld-finalize`
 
@@ -421,15 +430,17 @@ done
 
 Each elder should authenticate to Claude Code (OAuth flow on first run — sign in with the same Anthropic MAX account; per-agent CLAUDE_CONFIG_DIR isolation is set up in run.sh) and start receiving prompts from `clanworld-elder-runner`.
 
-### 10.1 Elder-runner
+### 10.1 Elder-runner (v2 — Convex tick-event-driven)
 
-A 6th tmux session prompts each elder every 180 s with current tick context, so they keep working on missions without idling.
+A 6th tmux session fires each elder right after every chain heartbeat (Cycle B per memory `feedback_runner_cycle_separation`). Polls the Convex `getSnapshot:getSnapshot` query every 5 s, detects when `tick` increments, then `tmux send-keys` a prompt into each `elder-N` REPL.
 
 ```bash
-tmux new-session -d -s elder-runner '/home/<user>/bin/clanworld-elder-runner'
+tmux new-session -d -s elder-runner '/home/<user>/bin/clanworld-elder-runner-v2'
 ```
 
-The script polls the chain, builds a per-elder context (current tick, season state, their clan's vault + missions + bandits), and `tmux send-keys` to inject the prompt into each elder's REPL.
+The v2 script (at `~/bin/clanworld-elder-runner-v2`) replaces v1's wall-clock 180 s timer. Each tick → 1 cycle of all 4 elders, with a 2 s stagger between them so prompts don't hit the same instant.
+
+> **Future work (issue #146):** move this elder-fire logic into a Convex internal action triggered by `chainEvents` insert. Removes the local bash script entirely. Quoted at ~1 h impl. Until then, v2 above is the canonical setup.
 
 ## 11. Fund elder wallets
 
