@@ -103,7 +103,7 @@ Both files come from `github.com/google/fonts` and ship under SIL OFL-1.1.
 - Cross-chain identity link (Solana pubkey ↔ clan owner address)
 - Pull-to-refresh on Hearth/Hall
 - Push notifications (FCM)
-- Glance home-screen widget (lift pattern from `apps/kickstart-mobile/`)
+- Glance home-screen widget
 
 ## Reference
 
