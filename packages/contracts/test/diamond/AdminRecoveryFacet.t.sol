@@ -106,6 +106,7 @@ contract AdminRecoveryHarnessFacet {
         s.clans[clanId].clanState = ClanState.DEAD;
         s.clans[clanId].livingClansmen = 3;
         s.clans[clanId].coldDamage = 2;
+        s.clans[clanId].starvationStartsAtTick = 11;
     }
 
     function dirtyClansmanState(uint32 clansmanId) external {
@@ -357,7 +358,8 @@ contract AdminRecoveryFacetTest is Test {
 
         assertEq(uint8(world.getClan(clanId).clanState), uint8(ClanState.DEAD), "other death remains dead");
         assertEq(world.getClan(clanId).livingClansmen, 4, "living increments");
-        assertEq(world.getClan(clanId).coldDamage, 0, "cold reset");
+        assertEq(world.getClan(clanId).coldDamage, 2, "cold preserved");
+        assertEq(world.getClan(clanId).starvationStartsAtTick, 11, "starvation preserved");
     }
 
     function test_reviveClansman_clearsDefenderRegistry() public {

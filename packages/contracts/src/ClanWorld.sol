@@ -4743,10 +4743,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         cs.carryFish = 0;
 
         clan.livingClansmen = livingBefore + 1;
-        clan.coldDamage = 0;
-        clan.starvationStartsAtTick = 0;
         if (clan.clanState == ClanState.DEAD && livingBefore == 0) {
             clan.clanState = ClanState.ACTIVE;
+            clan.coldDamage = 0;
+            clan.starvationStartsAtTick = 0;
         }
         if (resetLastSettledTick) {
             clan.lastSettledTick = _world.currentTick;
@@ -4760,9 +4760,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         _clearDefender(clansmanId);
         _refundUpgradeReservation(clansmanId, mission.action);
-        _clearWallUpgradeReservation(clansmanId);
-        _clearBaseUpgradeReservation(clansmanId);
-        _clearMonumentUpgradeReservation(clansmanId);
 
         if (mission.active && (mission.action == ActionType.MarketBuy || mission.action == ActionType.MarketSell)) {
             _purgeScheduledMarketActions(clansmanId, mission.settlesAtTick);

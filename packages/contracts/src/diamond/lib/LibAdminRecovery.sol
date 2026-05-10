@@ -70,10 +70,10 @@ library LibAdminRecovery {
         cs.carryFish = 0;
 
         clan.livingClansmen = livingBefore + 1;
-        clan.coldDamage = 0;
-        clan.starvationStartsAtTick = 0;
         if (clan.clanState == ClanState.DEAD && livingBefore == 0) {
             clan.clanState = ClanState.ACTIVE;
+            clan.coldDamage = 0;
+            clan.starvationStartsAtTick = 0;
         }
         if (resetLastSettledTick) {
             clan.lastSettledTick = s.world.currentTick;
@@ -109,9 +109,6 @@ library LibAdminRecovery {
 
         LibOrderDefenders.clearDefender(s, clansmanId);
         LibOrderUpgrades.refundUpgradeReservation(s, clansmanId, mission.action);
-        LibOrderUpgrades.clearWallUpgradeReservation(s, clansmanId);
-        LibOrderUpgrades.clearBaseUpgradeReservation(s, clansmanId);
-        LibOrderUpgrades.clearMonumentUpgradeReservation(s, clansmanId);
 
         if (mission.active && (mission.action == ActionType.MarketBuy || mission.action == ActionType.MarketSell)) {
             _purgeScheduledMarketActions(s, clansmanId, mission.settlesAtTick);
