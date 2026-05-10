@@ -536,8 +536,8 @@ library LibBanditCombat {
     ) internal {
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = s.banditsByRegion[region];
-            for (uint256 i = 0; i < regionBandits.length; i++) {
-                uint32 banditId = regionBandits[i];
+            for (uint256 i = regionBandits.length; i > 0; i--) {
+                uint32 banditId = regionBandits[i - 1];
                 if (banditId == excludedBanditId) continue;
 
                 BanditTroop storage bandit = s.bandits[banditId];
