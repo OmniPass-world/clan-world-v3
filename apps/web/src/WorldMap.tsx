@@ -1137,7 +1137,6 @@ export function WorldMap() {
   const prevBanditRef = useRef<SnapshotBandit | null>(null);
   const lastBanditOutcomeRef = useRef<BanditDiffOutcome | null>(null);
   const banditAnimRef = useRef<{
-    container: Container | null;
     campSprite: Sprite | null;
     campGlow: Graphics | null;
     walkers: Sprite[];
@@ -1147,7 +1146,6 @@ export function WorldMap() {
     campTexture: import('pixi.js').Texture | null;
     assetsReady: boolean;
   }>({
-    container: null,
     campSprite: null,
     campGlow: null,
     walkers: [],
@@ -1239,15 +1237,20 @@ export function WorldMap() {
     if (typeof tick === 'number' && wasResolutionCandidate && prev) {
       // The resolution tick has closed (or already passed). Diff prev vs curr.
       if (!curr) {
-        // Bandit removed entirely.
-        // Backend snapshots do not expose attackAttemptsMade yet, so we cannot
-        // discriminate terminal no-target escape from defeat. Prefer defeated
-        // until a compact lastResolution snapshot field is available.
-        lastBanditOutcomeRef.current = {
-          type: 'defeated',
-          resolvedTick: tick,
-          fromRegion: prev.region,
-        };
+        if (prev.state !== BanditState.Defeated) {
+          // Bandit removed entirely.
+          // Backend snapshots do not expose attackAttemptsMade yet, so we cannot
+          // discriminate terminal no-target escape from defeat. Prefer defeated
+          // until a compact lastResolution snapshot field is available.
+          lastBanditOutcomeRef.current = {
+            type: 'defeated',
+            resolvedTick: tick,
+            fromRegion: prev.region,
+          };
+        } else {
+          // Live synth in computeBanditAnimPhase already ran the death animation.
+          // Don't overwrite lastBanditOutcomeRef with the purge tick.
+        }
       } else if (curr.region !== prev.region) {
         // Bandit advanced to a new region.
         // Win-with-rampage and no-target-advance are visually different (battle vs
@@ -1279,6 +1282,10 @@ export function WorldMap() {
     }
 
     prevBanditRef.current = curr;
+    const existing = lastBanditOutcomeRef.current;
+    if (existing && (currentTickFloat() - existing.resolvedTick) >= BATTLE_T_FADE_END) {
+      lastBanditOutcomeRef.current = null;
+    }
   }, [snapshot]);
 
   function getDayNightProgress() {
@@ -1847,7 +1854,6 @@ export function WorldMap() {
       // child-tree cleanup, but we need to clear the cached state so the next
       // mount re-loads textures fresh.
       banditAnimRef.current = {
-        container: null,
         campSprite: null,
         campGlow: null,
         walkers: [],
@@ -2606,16 +2612,7 @@ export function WorldMap() {
       return;
     }
 
-    // Set up the dedicated container layer (between worldDynamic and the existing
-    // combatHighlight). Using worldDynamic for now so Y-sort works against bases —
-    // a separate `worldBanditCombat` layer is overkill until multi-bandit lands.
-    const container = new Container();
-    container.sortableChildren = true;
-    container.visible = false;
-    layers.worldDynamic.addChild(container);
-
     const animContainer = banditAnimRef.current;
-    animContainer.container = container;
     animContainer.walkTextures = { ne: neFiltered, se: seFiltered };
     animContainer.deathTextures = deathFiltered;
     animContainer.campTexture = campTex ?? null;
@@ -2626,12 +2623,12 @@ export function WorldMap() {
       campSprite.anchor.set(0.5, 0.85); // anchor near base of tents
       campSprite.visible = false;
       attachBanditPointer(campSprite as SelectableTarget);
-      container.addChild(campSprite);
+      layers.worldDynamic.addChild(campSprite);
       animContainer.campSprite = campSprite;
     }
     const glow = new Graphics();
     glow.alpha = 0;
-    container.addChild(glow);
+    layers.worldDynamic.addChild(glow);
     animContainer.campGlow = glow;
 
     // Pre-create 3 walker sprites + 3 death sprites (max active bandits = 3 per spec).
@@ -2642,7 +2639,7 @@ export function WorldMap() {
         walker.anchor.set(0.5, 0.85);
         walker.visible = false;
         attachBanditPointer(walker as SelectableTarget);
-        container.addChild(walker);
+        layers.worldDynamic.addChild(walker);
         animContainer.walkers.push(walker);
       }
     }
@@ -2652,7 +2649,7 @@ export function WorldMap() {
         const dead = new Sprite(deathBase);
         dead.anchor.set(0.5, 0.85);
         dead.visible = false;
-        container.addChild(dead);
+        layers.worldDynamic.addChild(dead);
         animContainer.deathSprites.push(dead);
       }
     }
@@ -2701,18 +2698,25 @@ export function WorldMap() {
   // Render dispatch — called from the bandit-anim ticker every frame.
   function updateBanditAnimation() {
     const animState = banditAnimRef.current;
-    const container = animState.container;
-    if (!container || !animState.assetsReady) return;
+    if (!animState.assetsReady) return;
+
+    const hideBanditAnimSprites = () => {
+      if (animState.campSprite) animState.campSprite.visible = false;
+      if (animState.campGlow) animState.campGlow.alpha = 0;
+      animState.walkers.forEach(w => { w.visible = false; });
+      animState.deathSprites.forEach(d => { d.visible = false; });
+    };
+
     // Yield to the existing combat vignette (DEMO mode) so we don't double-render.
     if (combatVignetteRef.current) {
-      container.visible = false;
+      hideBanditAnimSprites();
       return;
     }
 
     // DEMO_MODE keeps the legacy redrawBandit + combat-vignette path intact;
     // the new phase machine activates only with a live snapshot.
     if (DEMO_MODE) {
-      container.visible = false;
+      hideBanditAnimSprites();
       return;
     }
 
@@ -2726,20 +2730,15 @@ export function WorldMap() {
       REGION_KEY_BY_CHAIN_ID,
     );
 
-    // World paused: freeze visual state (don't reset phase, just don't advance frame timing).
-    // §"Edge cases / 5. Pause" — currentTickFloat plateaus when worldPaused is true;
-    // renderNow also freezes orbit, flicker, and cluster jitter.
-    const worldPaused = (snap as { worldPaused?: boolean } | undefined)?.worldPaused === true;
+    // TODO(backend): worldPaused is not currently in worldSnapshot schema.
+    // Plumb through apps/server/convex/getSnapshot.ts when adding pause support.
+    // Until then, this branch is dormant and animations advance during pause.
+    const worldPaused = ((snap as any)?.worldPaused ?? false) === true;
 
     // Hide everything by default, then enable per-phase.
-    container.visible = true;
-    if (animState.campSprite) animState.campSprite.visible = false;
-    if (animState.campGlow) animState.campGlow.alpha = 0;
-    animState.walkers.forEach(w => { w.visible = false; });
-    animState.deathSprites.forEach(d => { d.visible = false; });
+    hideBanditAnimSprites();
 
     if (phase.kind === 'hidden') {
-      container.visible = false;
       return;
     }
 
@@ -2765,6 +2764,7 @@ export function WorldMap() {
         animState.campGlow.circle(anchor.x, anchor.y - 6 * layoutScale, 28 * layoutScale);
         animState.campGlow.fill({ color: 0xcc1122, alpha: 0.55 });
         animState.campGlow.alpha = phase.glowAlpha * 0.85;
+        animState.campGlow.zIndex = Math.round(anchor.y) - 1;
       }
       return;
     }
@@ -2792,6 +2792,7 @@ export function WorldMap() {
         animState.campGlow.circle(anchor.x, anchor.y - 6 * layoutScale, 28 * layoutScale);
         animState.campGlow.fill({ color: 0xcc1122, alpha: 0.55 });
         animState.campGlow.alpha = (1 - phase.telegraphProgress) * 0.85;
+        animState.campGlow.zIndex = Math.round(anchor.y) - 1;
       }
       return;
     }
@@ -2847,12 +2848,13 @@ export function WorldMap() {
           && Number.isFinite(targetClanNum)
           && Number(b.clan.id) === targetClanNum
         ))
-        ?? drawn.bases.find(b => b.clan.id === targetClanId)
-        ?? drawn.bases.find(b => b.clan.homeRegion === phase.regionKey);
+        ?? drawn.bases.find(b => b.clan.id === targetClanId);
       if (targetBase) {
         targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 };
       }
     }
+    // If the target clan has been deleted from the snapshot, use the neutral
+    // region anchor rather than visually attributing the battle to another base.
     targetCenter = targetCenter ?? { x: fromAnchor.x + 40, y: fromAnchor.y + 30 };
 
     const t = phase.battleT;
@@ -3004,6 +3006,7 @@ export function WorldMap() {
           animState.campGlow.circle(toAnchor.x, toAnchor.y - 6 * layoutScale, 28 * layoutScale);
           animState.campGlow.fill({ color: 0xcc1122, alpha: 0.55 });
           animState.campGlow.alpha = clamp01((t - BATTLE_T_WIN_WALK_END) / 0.05) * 0.85;
+          animState.campGlow.zIndex = Math.round(toAnchor.y) - 1;
         }
       }
       return;
