@@ -55,11 +55,12 @@ data class ClanSummary(
   val vaultIron: String? = null,
   val vaultWheat: String? = null,
   val vaultFish: String? = null,
-  val baseRegion: Int? = null,
-  val baseLevel: Int? = null,
-  val wallLevel: Int? = null,
-  val monumentLevel: Int? = null,
-  val livingClansmen: Int? = null,
+  /** May arrive as numeric string ("1.0") from Convex BigDecimal serialization — use [.toIntFlexible]. */
+  val baseRegion: String? = null,
+  val baseLevel: String? = null,
+  val wallLevel: String? = null,
+  val monumentLevel: String? = null,
+  val livingClansmen: String? = null,
   val owner: String? = null,
 )
 

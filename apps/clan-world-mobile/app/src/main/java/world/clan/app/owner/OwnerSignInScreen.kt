@@ -67,12 +67,11 @@ import world.clan.app.ui.theme.CockpitTokens
 @Composable
 fun OwnerSignInScreen(
   clanId: Int,
+  mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender,
   onSignedIn: () -> Unit,
   onBack: () -> Unit,
 ) {
   val elder = remember(clanId) { elderById(clanId) }
-  val ctx = LocalContext.current
-  val activity = ctx as? ComponentActivity
   val scope = rememberCoroutineScope()
   val snackbar = remember { SnackbarHostState() }
 
@@ -112,10 +111,13 @@ fun OwnerSignInScreen(
         oneLineEssence = elder.oneLineEssence,
         loading = loading,
         onConnect = {
-          val act = activity ?: return@Lockstone
           loading = true
           scope.launch {
-            val result = Mwa.signInAsOwner(act, elder)
+            val result = try {
+              Mwa.signInAsOwner(mwaSender, elder)
+            } catch (t: Throwable) {
+              SignInResult.Failed(t.message ?: "Wallet sign-in error")
+            }
             loading = false
             when (result) {
               is SignInResult.Success -> onSignedIn()

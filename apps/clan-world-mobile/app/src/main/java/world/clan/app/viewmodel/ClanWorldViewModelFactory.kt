@@ -15,9 +15,19 @@ class ClanWorldViewModelFactory(private val app: App) : ViewModelProvider.Factor
     HearthViewModel::class.java -> HearthViewModel(app.convexClient, app.sessionStore)
     HallViewModel::class.java -> HallViewModel(app.convexClient, app.sessionStore)
     BazaarViewModel::class.java -> BazaarViewModel()
-    CodexViewModel::class.java -> CodexViewModel(app.sessionStore, app.deviceClass)
+    CodexViewModel::class.java -> CodexViewModel(app.sessionStore, app.lineageStore, app.deviceClass)
     else -> error("Unknown ViewModel: ${modelClass.simpleName}")
   } as T
+}
+
+/** Per-route factory for Treasury, which depends on a clanId. */
+class TreasuryViewModelFactory(
+  private val app: App,
+  private val clanId: Int,
+) : ViewModelProvider.Factory {
+  @Suppress("UNCHECKED_CAST")
+  override fun <T : ViewModel> create(modelClass: Class<T>): T =
+    TreasuryViewModel(app.convexClient, clanId) as T
 }
 
 /** Per-route factory for InftDetail, which depends on a clanId. */

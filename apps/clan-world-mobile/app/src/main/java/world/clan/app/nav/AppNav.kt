@@ -20,7 +20,9 @@ object Routes {
 }
 
 @Composable
-fun AppNav() {
+fun AppNav(
+  mwaSender: com.solana.mobilewalletadapter.clientlib.ActivityResultSender,
+) {
   val nav = rememberNavController()
 
   NavHost(navController = nav, startDestination = Routes.Cockpit) {
@@ -37,6 +39,7 @@ fun AppNav() {
       val clanId = entry.arguments?.getInt("clanId") ?: return@composable
       OwnerSignInScreen(
         clanId = clanId,
+        mwaSender = mwaSender,
         onSignedIn = {
           nav.navigate(Routes.ownerComingSoon(clanId)) {
             // Replace the sign-in screen so back goes to Cockpit, not back

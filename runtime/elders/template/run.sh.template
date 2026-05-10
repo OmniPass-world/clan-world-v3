@@ -36,7 +36,7 @@ fi
 # Run once during agent setup if not already present:
 mkdir -p "$CLAUDE_CONFIG_DIR"
 if [ ! -e "$CLAUDE_CONFIG_DIR/.credentials.json" ]; then
-  ln -sf ~/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true
+  cp -p ~/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true
 fi
 
 # === Plugin isolation (Telegram unused for Elders, but isolation matters) ===
@@ -63,12 +63,17 @@ export TZ="America/New_York"
 # The runner injects situation blocks; Elders respond by calling `elder` subcommands
 # (world snapshot, clan view, market actions, peer whispers, memory save, ack-clear).
 # Binary lives in the clan-world workspace; symlink/PATH avoids hardcoding repo paths in skills.
-export PATH="$HOME/code/omnipass-world/clan-world/packages/agents/bin:$PATH"
+export PATH="$CLAN_WORLD_REPO/packages/agents/bin:$PATH"
 
 # === CWD stays per-Elder; CLAUDE_CONFIG_DIR is shared ===
 cd "$AGENT_DIR"
 echo "[$AGENT_NAME] Starting... model=$ANTHROPIC_MODEL $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
+export ENABLE_CLAUDEAI_MCP_SERVERS=false
+
 # Elders don't need the Telegram plugin (no inbound Telegram), so omit --channels.
 # The runner injects situation blocks via tmux send-keys directly to this REPL.
-exec claude "$@"
+exec claude \
+  --config-dir "$CLAUDE_CONFIG_DIR" \
+  --append-system-prompt "You are a Clan World Elder. Have access to `date` and `elder` bash commands. You are running on Elder $." \
+  "$@"

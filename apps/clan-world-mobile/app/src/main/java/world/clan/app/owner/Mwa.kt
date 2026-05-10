@@ -26,7 +26,7 @@ object Mwa {
 
   private val identity = ConnectionIdentity(
     identityUri = Uri.parse("https://clan-world.com"),
-    iconUri = Uri.parse("/favicon.ico"),
+    iconUri = Uri.parse("favicon.svg"),
     identityName = "Clan World",
   )
 
@@ -34,12 +34,15 @@ object Mwa {
    * Triggers the wallet hand-off and asks the wallet to sign a per-clan
    * message. Suspends until the user completes or cancels in the wallet
    * app, or an error occurs (no wallet, transport failure, etc.).
+   *
+   * [sender] MUST be the long-lived ActivityResultSender created in
+   * MainActivity.onCreate — constructing one here would call
+   * registerForActivityResult on a RESUMED activity and crash the app.
    */
   suspend fun signInAsOwner(
-    activity: ComponentActivity,
+    sender: ActivityResultSender,
     elder: Elder,
   ): SignInResult {
-    val sender = ActivityResultSender(activity)
     val mwa = MobileWalletAdapter(connectionIdentity = identity)
     mwa.blockchain = Solana.Mainnet
 
