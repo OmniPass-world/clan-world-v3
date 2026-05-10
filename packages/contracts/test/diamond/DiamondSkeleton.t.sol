@@ -36,6 +36,7 @@ import {
 } from "../../src/IClanWorld.sol";
 import {IDiamondCut} from "../../src/diamond/IDiamondCut.sol";
 import {IDiamondLoupe} from "../../src/diamond/IDiamondLoupe.sol";
+import {AdminRecoveryFacet} from "../../src/diamond/facets/AdminRecoveryFacet.sol";
 import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {BanditViewsFacet} from "../../src/diamond/facets/BanditViewsFacet.sol";
 import {ClanFullViewFacet} from "../../src/diamond/facets/ClanFullViewFacet.sol";
@@ -1450,7 +1451,7 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _productionCut(address loupeFacet) internal returns (IDiamondCut.FacetCut[] memory cut) {
-        cut = new IDiamondCut.FacetCut[](24);
+        cut = new IDiamondCut.FacetCut[](25);
         cut[0] = IDiamondCut.FacetCut({
             facetAddress: loupeFacet,
             action: IDiamondCut.FacetCutAction.Add,
@@ -1477,96 +1478,101 @@ contract DiamondSkeletonTest is Test {
             functionSelectors: DiamondSelectors.worldPauseSelectors()
         });
         cut[5] = IDiamondCut.FacetCut({
+            facetAddress: address(new AdminRecoveryFacet()),
+            action: IDiamondCut.FacetCutAction.Add,
+            functionSelectors: DiamondSelectors.adminRecoverySelectors()
+        });
+        cut[6] = IDiamondCut.FacetCut({
             facetAddress: address(new FinalizeSeasonFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.seasonSelectors()
         });
-        cut[6] = IDiamondCut.FacetCut({
+        cut[7] = IDiamondCut.FacetCut({
             facetAddress: address(new RawWorldViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawWorldViewsSelectors()
         });
-        cut[7] = IDiamondCut.FacetCut({
+        cut[8] = IDiamondCut.FacetCut({
             facetAddress: address(new RawTreasuryViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawTreasuryViewsSelectors()
         });
-        cut[8] = IDiamondCut.FacetCut({
+        cut[9] = IDiamondCut.FacetCut({
             facetAddress: address(new RawClanViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawClanViewsSelectors()
         });
-        cut[9] = IDiamondCut.FacetCut({
+        cut[10] = IDiamondCut.FacetCut({
             facetAddress: address(new RawBanditViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.rawBanditViewsSelectors()
         });
-        cut[10] = IDiamondCut.FacetCut({
+        cut[11] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanLifecycleFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.lifecycleSelectors()
         });
-        cut[11] = IDiamondCut.FacetCut({
+        cut[12] = IDiamondCut.FacetCut({
             facetAddress: address(new SubmitOrdersFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.submitOrdersSelectors()
         });
-        cut[12] = IDiamondCut.FacetCut({
+        cut[13] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanOwnershipFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.ownershipSelectors()
         });
-        cut[13] = IDiamondCut.FacetCut({
+        cut[14] = IDiamondCut.FacetCut({
             facetAddress: address(new TreasuryFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.treasurySelectors()
         });
-        cut[14] = IDiamondCut.FacetCut({
+        cut[15] = IDiamondCut.FacetCut({
             facetAddress: address(new SettlementFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.settlementSelectors()
         });
-        cut[15] = IDiamondCut.FacetCut({
+        cut[16] = IDiamondCut.FacetCut({
             facetAddress: address(new DirectTransfersFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.directTransferSelectors()
         });
-        cut[16] = IDiamondCut.FacetCut({
+        cut[17] = IDiamondCut.FacetCut({
             facetAddress: address(new DerivedViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.derivedViewsSelectors()
         });
-        cut[17] = IDiamondCut.FacetCut({
+        cut[18] = IDiamondCut.FacetCut({
             facetAddress: address(new MarketViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.marketViewsSelectors()
         });
-        cut[18] = IDiamondCut.FacetCut({
+        cut[19] = IDiamondCut.FacetCut({
             facetAddress: address(new BanditViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.banditViewsSelectors()
         });
-        cut[19] = IDiamondCut.FacetCut({
+        cut[20] = IDiamondCut.FacetCut({
             facetAddress: address(new RegionViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.regionViewsSelectors()
         });
-        cut[20] = IDiamondCut.FacetCut({
+        cut[21] = IDiamondCut.FacetCut({
             facetAddress: address(new SnapshotViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.snapshotViewsSelectors()
         });
-        cut[21] = IDiamondCut.FacetCut({
+        cut[22] = IDiamondCut.FacetCut({
             facetAddress: address(new ClanFullViewFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.clanFullViewSelectors()
         });
-        cut[22] = IDiamondCut.FacetCut({
+        cut[23] = IDiamondCut.FacetCut({
             facetAddress: address(new QuoteViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.quoteViewsSelectors()
         });
-        cut[23] = IDiamondCut.FacetCut({
+        cut[24] = IDiamondCut.FacetCut({
             facetAddress: address(new ScoringViewsFacet()),
             action: IDiamondCut.FacetCutAction.Add,
             functionSelectors: DiamondSelectors.scoringViewsSelectors()
@@ -1574,7 +1580,7 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _expectedProductionSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](68);
+        selectors = new bytes4[](71);
         uint256 offset;
         selectors[offset++] = IDiamondCut.diamondCut.selector;
         offset = _copySelectors(selectors, offset, DiamondSelectors.loupeSelectors());
@@ -1582,6 +1588,7 @@ contract DiamondSkeletonTest is Test {
         offset = _copySelectors(selectors, offset, DiamondSelectors.heartbeatSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.heartbeatConfigSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.worldPauseSelectors());
+        offset = _copySelectors(selectors, offset, DiamondSelectors.adminRecoverySelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.seasonSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.rawWorldViewsSelectors());
         offset = _copySelectors(selectors, offset, DiamondSelectors.rawTreasuryViewsSelectors());

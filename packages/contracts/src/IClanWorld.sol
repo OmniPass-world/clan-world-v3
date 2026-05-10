@@ -558,6 +558,7 @@ interface IClanWorldEvents {
     event ClanColdShortage(uint32 indexed clanId, uint64 tick, uint256 woodShort);
     event WallDegradedByCold(uint32 indexed clanId, uint8 newWallLevel, uint64 tick);
     event ClansmanColdDeath(uint32 indexed clanId, uint32 csId, uint64 tick);
+    event ClansmanRevived(uint32 indexed clanId, uint32 indexed clansmanId, uint64 atTick);
 
     // ----- missions -----
     event MissionAssigned(
@@ -606,6 +607,9 @@ interface IClanWorldEvents {
         uint256 wheatDelta,
         uint256 fishDelta,
         uint64 atTick
+    );
+    event ResourcesInjected(
+        uint32 indexed clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish, uint64 atTick
     );
 
     // ----- building -----
@@ -755,6 +759,15 @@ interface IClanWorld is IClanWorldEvents {
 
     /// @notice Finalize the current season. Permissionless after seasonEndTick.
     function finalizeSeason() external;
+
+    /// @notice Owner-only ops recovery. Revives all dead clansmen for a clan.
+    function reviveDeadClansmen(uint32 clanId) external;
+
+    /// @notice Owner-only ops recovery. Revives a single dead clansman.
+    function reviveClansman(uint32 clansmanId) external;
+
+    /// @notice Owner-only ops recovery. Adds resources directly to a clan vault.
+    function injectClanResources(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external;
 
     // -------------------------------------------------------------------------
     // Clan lifecycle

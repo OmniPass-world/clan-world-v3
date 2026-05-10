@@ -552,8 +552,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             fishNeeded = fishNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
         }
 
-        uint256 spendableWheat =
-            _spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clan.clanId], 0);
+        uint256 spendableWheat = _spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clan.clanId], 0);
         bool hadEnoughWheat = spendableWheat >= wheatNeeded;
         bool hadEnoughFish = clan.vaultFish >= fishNeeded;
 
@@ -591,8 +590,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (winter) {
             uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
                 * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
-            uint256 spendableWood =
-                _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], 0);
+            uint256 spendableWood = _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], 0);
             if (spendableWood >= woodNeeded) {
                 clan.vaultWood -= woodNeeded;
             } else {
@@ -760,9 +758,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             for (uint256 j = 0; j < csIds.length; j++) {
                 uint32 clansmanId = csIds[j];
                 Mission storage mission = _missions[clansmanId];
-                if (
-                    mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
-                ) {
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId) {
                     if (_clansmanDefendingRegion[clansmanId] == baseRegion) {
                         _clearDefender(clansmanId);
                     }
@@ -1730,10 +1726,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         WithdrawResourcesData memory req = m.withdrawResources;
         if (!_hasWithdrawRequest(req)) return _simulateCompleteMission(cs, m);
 
-        uint256 spendableWood =
-            _spendableAfterReleasing(sim.clan.vaultWood, _reservedWoodByClan[sim.clan.clanId], 0);
-        uint256 spendableIron =
-            _spendableAfterReleasing(sim.clan.vaultIron, _reservedIronByClan[sim.clan.clanId], 0);
+        uint256 spendableWood = _spendableAfterReleasing(sim.clan.vaultWood, _reservedWoodByClan[sim.clan.clanId], 0);
+        uint256 spendableIron = _spendableAfterReleasing(sim.clan.vaultIron, _reservedIronByClan[sim.clan.clanId], 0);
         uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
 
         if (
@@ -2433,8 +2427,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint32 targetClanId = targetClan.clanId;
         uint256 spendableWood = _spendableAfterReleasing(targetClan.vaultWood, _reservedWoodByClan[targetClanId], 0);
         uint256 spendableIron = _spendableAfterReleasing(targetClan.vaultIron, _reservedIronByClan[targetClanId], 0);
-        uint256 spendableWheat =
-            _spendableAfterReleasing(targetClan.vaultWheat, _reservedWheatByClan[targetClanId], 0);
+        uint256 spendableWheat = _spendableAfterReleasing(targetClan.vaultWheat, _reservedWheatByClan[targetClanId], 0);
 
         stolenWood = _banditStealAmount(spendableWood);
         stolenIron = _banditStealAmount(spendableIron);
@@ -3063,6 +3056,38 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
     function isWorldPaused() external view override returns (bool) {
         return _world.worldPaused;
+    }
+
+    function reviveDeadClansmen(uint32 clanId) external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        uint32[] storage clansmanIds = _clanClansmanIds[clanId];
+        for (uint256 i = 0; i < clansmanIds.length; i++) {
+            (uint32 revivedClanId, bool revived) = _reviveClansman(clansmanIds[i]);
+            if (revived) emit ClansmanRevived(revivedClanId, clansmanIds[i], _world.currentTick);
+        }
+    }
+
+    function reviveClansman(uint32 clansmanId) external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        (uint32 clanId, bool revived) = _reviveClansman(clansmanId);
+        if (revived) emit ClansmanRevived(clanId, clansmanId, _world.currentTick);
+    }
+
+    function injectClanResources(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish)
+        external
+        override
+        nonReentrant
+    {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        Clan storage clan = _clans[clanId];
+        if (clan.clanId == ClanWorldConstants.CLAN_ID_NULL) return;
+
+        clan.vaultWood += wood;
+        clan.vaultIron += iron;
+        clan.vaultWheat += wheat;
+        clan.vaultFish += fish;
+
+        emit ResourcesInjected(clanId, wood, iron, wheat, fish, _world.currentTick);
     }
 
     /// @dev Resolve world events for the tick that was just closed.
@@ -4664,6 +4689,68 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
     }
 
+    function _reviveClansman(uint32 clansmanId) internal returns (uint32 clanId, bool revived) {
+        Clansman storage cs = _clansmen[clansmanId];
+        clanId = cs.clanId;
+        if (clanId == ClanWorldConstants.CLAN_ID_NULL || cs.clansmanId == 0 || cs.state != ClansmanState.DEAD) {
+            return (clanId, false);
+        }
+
+        Clan storage clan = _clans[clanId];
+        if (clan.clanId == ClanWorldConstants.CLAN_ID_NULL) return (clanId, false);
+
+        uint8 livingBefore = clan.livingClansmen;
+        _clearClansmanRecoveryState(clansmanId);
+
+        cs.state = ClansmanState.WAITING;
+        cs.currentRegion = clan.baseRegion;
+        cs.cooldownEndsAtTs = 0;
+        cs.lastMissionNonce = _world.currentTick;
+        cs.carryWood = 0;
+        cs.carryIron = 0;
+        cs.carryWheat = 0;
+        cs.carryFish = 0;
+
+        clan.livingClansmen = livingBefore + 1;
+        clan.coldDamage = 0;
+        clan.starvationStartsAtTick = 0;
+        if (clan.clanState == ClanState.DEAD && livingBefore == 0) {
+            clan.clanState = ClanState.ACTIVE;
+        }
+
+        return (clanId, true);
+    }
+
+    function _clearClansmanRecoveryState(uint32 clansmanId) internal {
+        Mission memory mission = _missions[clansmanId];
+
+        _clearDefender(clansmanId);
+        _refundUpgradeReservation(clansmanId, mission.action);
+        _clearWallUpgradeReservation(clansmanId);
+        _clearBaseUpgradeReservation(clansmanId);
+        _clearMonumentUpgradeReservation(clansmanId);
+
+        if (mission.active && (mission.action == ActionType.MarketBuy || mission.action == ActionType.MarketSell)) {
+            _purgeScheduledMarketActions(clansmanId, mission.settlesAtTick);
+        }
+
+        delete _marketMissionCommitSequence[clansmanId];
+        delete _missions[clansmanId];
+    }
+
+    function _purgeScheduledMarketActions(uint32 clansmanId, uint64 tick) internal {
+        ScheduledMarketAction[] storage actions = _scheduledMarketActions[tick];
+        uint256 i = 0;
+        while (i < actions.length) {
+            if (actions[i].clansmanId == clansmanId) {
+                actions[i] = actions[actions.length - 1];
+                actions.pop();
+            } else {
+                i++;
+            }
+        }
+    }
+
     function _releasedUpgradeResources(uint32 clanId, uint32 clansmanId)
         internal
         view
@@ -4991,14 +5078,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
         if (wood > 0) {
             require(
-                _spendableVaultResource(fromClanId, fromClan, ResourceType.Wood) >= wood,
-                "ClanWorld: insufficient wood"
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Wood) >= wood, "ClanWorld: insufficient wood"
             );
         }
         if (iron > 0) {
             require(
-                _spendableVaultResource(fromClanId, fromClan, ResourceType.Iron) >= iron,
-                "ClanWorld: insufficient iron"
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Iron) >= iron, "ClanWorld: insufficient iron"
             );
         }
         if (wheat > 0) {
@@ -5009,8 +5094,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
         if (fish > 0) {
             require(
-                _spendableVaultResource(fromClanId, fromClan, ResourceType.Fish) >= fish,
-                "ClanWorld: insufficient fish"
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Fish) >= fish, "ClanWorld: insufficient fish"
             );
         }
 
@@ -5026,7 +5110,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             require(_deductVaultResource(fromClanId, fromClan, ResourceType.Iron, iron), "ClanWorld: insufficient iron");
         }
         if (wheat > 0) {
-            require(_deductVaultResource(fromClanId, fromClan, ResourceType.Wheat, wheat), "ClanWorld: insufficient wheat");
+            require(
+                _deductVaultResource(fromClanId, fromClan, ResourceType.Wheat, wheat), "ClanWorld: insufficient wheat"
+            );
         }
         if (fish > 0) {
             require(_deductVaultResource(fromClanId, fromClan, ResourceType.Fish, fish), "ClanWorld: insufficient fish");
