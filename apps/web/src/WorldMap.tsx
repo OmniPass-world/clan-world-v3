@@ -1145,6 +1145,7 @@ export function WorldMap() {
     deathTextures: import('pixi.js').Texture[];
     campTexture: import('pixi.js').Texture | null;
     assetsReady: boolean;
+    isLoading: boolean;
   }>({
     campSprite: null,
     campGlow: null,
@@ -1154,6 +1155,7 @@ export function WorldMap() {
     deathTextures: [],
     campTexture: null,
     assetsReady: false,
+    isLoading: false,
   });
   const banditAnimTickerCbRef = useRef<(() => void) | null>(null);
 
@@ -1251,7 +1253,7 @@ export function WorldMap() {
           // Live synth in computeBanditAnimPhase already ran the death animation.
           // Don't overwrite lastBanditOutcomeRef with the purge tick.
         }
-      } else if (curr.region !== prev.region) {
+      } else if (curr.region !== prev.region && prev.state !== BanditState.Defeated) {
         // Bandit advanced to a new region.
         // Win-with-rampage and no-target-advance are visually different (battle vs
         // walk-through). Since the backend doesn't yet expose a "battle happened"
@@ -1862,6 +1864,7 @@ export function WorldMap() {
         deathTextures: [],
         campTexture: null,
         assetsReady: false,
+        isLoading: false,
       };
       prevBanditRef.current = null;
       lastBanditOutcomeRef.current = null;
@@ -2580,81 +2583,86 @@ export function WorldMap() {
     const layers = layersRef.current;
     if (!layers) return;
     const animState = banditAnimRef.current;
-    if (animState.assetsReady) return;
+    if (animState.assetsReady || animState.isLoading) return;
+    animState.isLoading = true;
 
-    const walkNePaths = [0, 1, 2, 3].map(i => `/sprites/bandit_walking_ne_${i}.png`);
-    const walkSePaths = [0, 1, 2, 3].map(i => `/sprites/bandit_walking_se_${i}.png`);
-    const deathPaths = [0, 1, 2].map(i => `/sprites/bandit_death_${i}.png`);
+    try {
+      const walkNePaths = [0, 1, 2, 3].map(i => `/sprites/bandit_walking_ne_${i}.png`);
+      const walkSePaths = [0, 1, 2, 3].map(i => `/sprites/bandit_walking_se_${i}.png`);
+      const deathPaths = [0, 1, 2].map(i => `/sprites/bandit_death_${i}.png`);
 
-    const tryLoad = async (path: string) => {
-      try {
-        return await Assets.load(path);
-      } catch {
-        return null;
+      const tryLoad = async (path: string) => {
+        try {
+          return await Assets.load(path);
+        } catch {
+          return null;
+        }
+      };
+
+      const [neTex, seTex, deathTex, campTex] = await Promise.all([
+        Promise.all(walkNePaths.map(tryLoad)),
+        Promise.all(walkSePaths.map(tryLoad)),
+        Promise.all(deathPaths.map(tryLoad)),
+        tryLoad('/sprites/bandit_camp.png').then(t => t ?? tryLoad('/sprites/bandit.png')),
+      ]);
+
+      if (isAssetLoadCancelled() || !appRef.current) return;
+
+      const neFiltered = neTex.filter(Boolean) as import('pixi.js').Texture[];
+      const seFiltered = seTex.filter(Boolean) as import('pixi.js').Texture[];
+      const deathFiltered = deathTex.filter(Boolean) as import('pixi.js').Texture[];
+
+      if (neFiltered.length === 0 && seFiltered.length === 0) {
+        // No sprite sheets loaded; phase machine stays disabled.
+        return;
       }
-    };
 
-    const [neTex, seTex, deathTex, campTex] = await Promise.all([
-      Promise.all(walkNePaths.map(tryLoad)),
-      Promise.all(walkSePaths.map(tryLoad)),
-      Promise.all(deathPaths.map(tryLoad)),
-      tryLoad('/sprites/bandit_camp.png').then(t => t ?? tryLoad('/sprites/bandit.png')),
-    ]);
+      const animContainer = banditAnimRef.current;
+      animContainer.walkTextures = { ne: neFiltered, se: seFiltered };
+      animContainer.deathTextures = deathFiltered;
+      animContainer.campTexture = campTex ?? null;
 
-    if (isAssetLoadCancelled() || !appRef.current) return;
-
-    const neFiltered = neTex.filter(Boolean) as import('pixi.js').Texture[];
-    const seFiltered = seTex.filter(Boolean) as import('pixi.js').Texture[];
-    const deathFiltered = deathTex.filter(Boolean) as import('pixi.js').Texture[];
-
-    if (neFiltered.length === 0 && seFiltered.length === 0) {
-      // No sprite sheets loaded; phase machine stays disabled.
-      return;
-    }
-
-    const animContainer = banditAnimRef.current;
-    animContainer.walkTextures = { ne: neFiltered, se: seFiltered };
-    animContainer.deathTextures = deathFiltered;
-    animContainer.campTexture = campTex ?? null;
-
-    // Camp sprite + optional glow.
-    if (campTex) {
-      const campSprite = new Sprite(campTex);
-      campSprite.anchor.set(0.5, 0.85); // anchor near base of tents
-      campSprite.visible = false;
-      attachBanditPointer(campSprite as SelectableTarget);
-      layers.worldDynamic.addChild(campSprite);
-      animContainer.campSprite = campSprite;
-    }
-    const glow = new Graphics();
-    glow.alpha = 0;
-    layers.worldDynamic.addChild(glow);
-    animContainer.campGlow = glow;
-
-    // Pre-create 3 walker sprites + 3 death sprites (max active bandits = 3 per spec).
-    const walkBaseTex = seFiltered[0] ?? neFiltered[0];
-    if (walkBaseTex) {
-      for (let i = 0; i < 3; i++) {
-        const walker = new Sprite(walkBaseTex);
-        walker.anchor.set(0.5, 0.85);
-        walker.visible = false;
-        attachBanditPointer(walker as SelectableTarget);
-        layers.worldDynamic.addChild(walker);
-        animContainer.walkers.push(walker);
+      // Camp sprite + optional glow.
+      if (campTex) {
+        const campSprite = new Sprite(campTex);
+        campSprite.anchor.set(0.5, 0.85); // anchor near base of tents
+        campSprite.visible = false;
+        attachBanditPointer(campSprite as SelectableTarget);
+        layers.worldDynamic.addChild(campSprite);
+        animContainer.campSprite = campSprite;
       }
-    }
-    if (deathFiltered.length > 0) {
-      const deathBase = deathFiltered[0]!;
-      for (let i = 0; i < 3; i++) {
-        const dead = new Sprite(deathBase);
-        dead.anchor.set(0.5, 0.85);
-        dead.visible = false;
-        layers.worldDynamic.addChild(dead);
-        animContainer.deathSprites.push(dead);
-      }
-    }
+      const glow = new Graphics();
+      glow.alpha = 0;
+      layers.worldDynamic.addChild(glow);
+      animContainer.campGlow = glow;
 
-    animContainer.assetsReady = true;
+      // Pre-create 3 walker sprites + 3 death sprites (max active bandits = 3 per spec).
+      const walkBaseTex = seFiltered[0] ?? neFiltered[0];
+      if (walkBaseTex) {
+        for (let i = 0; i < 3; i++) {
+          const walker = new Sprite(walkBaseTex);
+          walker.anchor.set(0.5, 0.85);
+          walker.visible = false;
+          attachBanditPointer(walker as SelectableTarget);
+          layers.worldDynamic.addChild(walker);
+          animContainer.walkers.push(walker);
+        }
+      }
+      if (deathFiltered.length > 0) {
+        const deathBase = deathFiltered[0]!;
+        for (let i = 0; i < 3; i++) {
+          const dead = new Sprite(deathBase);
+          dead.anchor.set(0.5, 0.85);
+          dead.visible = false;
+          layers.worldDynamic.addChild(dead);
+          animContainer.deathSprites.push(dead);
+        }
+      }
+
+      animContainer.assetsReady = true;
+    } finally {
+      animState.isLoading = false;
+    }
   }
 
   // Pick walking direction texture set + horizontal flip for NW/SW.
@@ -2783,7 +2791,7 @@ export function WorldMap() {
         const jitter = worldPaused ? 0 : Math.sin(renderNow / 240 + i * 1.3) * 1.5;
         walker.x = anchor.x + offsetX;
         walker.y = anchor.y + jitter;
-        walker.zIndex = Math.round(walker.y);
+        walker.zIndex = Math.round(anchor.y);
         applyWalkerFrame(walker, standTextures, 0, false, banditScale);
       });
       // Camp glow holds at peak during telegraph — brief crossfade out.
@@ -2855,10 +2863,10 @@ export function WorldMap() {
     }
     // If the target clan has been deleted from the snapshot, use the neutral
     // region anchor rather than visually attributing the battle to another base.
-    targetCenter = targetCenter ?? { x: fromAnchor.x + 40, y: fromAnchor.y + 30 };
+    const layoutScale = layoutRef.current.scale;
+    targetCenter = targetCenter ?? { x: fromAnchor.x + 40 * layoutScale, y: fromAnchor.y + 30 * layoutScale };
 
     const t = phase.battleT;
-    const layoutScale = layoutRef.current.scale;
     const dir = pickWalkDirection(fromAnchor, targetCenter);
     const dirTextures = animState.walkTextures[dir.textures];
 
@@ -2974,7 +2982,7 @@ export function WorldMap() {
           const jitter = Math.sin(renderNow / 200 + i) * 1.5;
           walker.x = targetCenter!.x + offsetX;
           walker.y = targetCenter!.y + 8 * layoutScale + jitter;
-          walker.zIndex = Math.round(walker.y);
+          walker.zIndex = Math.round(targetCenter!.y + 8 * layoutScale);
           applyWalkerFrame(walker, dirTextures, 0, dir.flipX, banditScale); // standing pose
         });
       } else if (t < BATTLE_T_WIN_WALK_END && toAnchor) {
