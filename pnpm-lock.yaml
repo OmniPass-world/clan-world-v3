@@ -29,8 +29,6 @@ importers:
 
   apps/clan-world-mobile: {}
 
-  apps/kickstart-mobile: {}
-
   apps/landing:
     dependencies:
       react:
@@ -22040,7 +22038,7 @@ snapshots:
 
   extension-port-stream@4.2.0(webextension-polyfill@0.12.0):
     dependencies:
-      readable-stream: 3.6.2
+      readable-stream: 4.7.0
       webextension-polyfill: 0.12.0
 
   eyes@0.1.8: {}

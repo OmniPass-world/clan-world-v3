@@ -65,6 +65,13 @@
         background: #0a0a0a;
         overscroll-behavior: none;
         font-family: 'Inter', system-ui, sans-serif;
+        /* PWA safe area: respect TOP (status bar / notch / camera) but allow
+           BOTTOM to bleed into the home-indicator zone. */
+        padding-top: env(safe-area-inset-top);
+        box-sizing: border-box;
+      }
+      #root {
+        height: calc(100vh - env(safe-area-inset-top));
       }
       canvas {
         touch-action: none;
