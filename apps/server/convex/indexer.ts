@@ -617,9 +617,6 @@ export const refreshSnapshot = internalAction({
       args.blockNumber ?? Number(await client.getBlockNumber());
 
     const [worldRaw, market, bandit] = await Promise.all([
-      // getWorldSnapshot may fail on legacy diamonds with older struct shapes
-      // (e.g. backup diamond 0x2709eEB at the time of writing). Fall back to
-      // getWorldState below which has a stable older subset.
       client
         .readContract({
           address,
@@ -646,61 +643,10 @@ export const refreshSnapshot = internalAction({
         .catch(() => undefined),
     ]);
 
-    // Legacy fallback: read getWorldState with a minimal struct shape that
-    // matches both v4 and the older deployed diamond. Only the fields we
-    // actually consume are listed; missing newer fields default to safe
-    // values below.
-    let world = worldRaw as Record<string, unknown> | undefined;
-    if (!world) {
-      const legacy = (await client
-        .readContract({
-          address,
-          abi: [
-            {
-              type: "function",
-              name: "getWorldState",
-              inputs: [],
-              stateMutability: "view",
-              outputs: [
-                {
-                  type: "tuple",
-                  components: [
-                    { name: "currentTick", type: "uint64" },
-                    { name: "seasonStartTick", type: "uint64" },
-                    { name: "seasonEndTick", type: "uint64" },
-                    { name: "seasonFinalized", type: "bool" },
-                    { name: "currentSeasonNumber", type: "uint64" },
-                    { name: "nextHeartbeatAtTick", type: "uint64" },
-                    { name: "nextHeartbeatAtTs", type: "uint64" },
-                    { name: "nextBanditSpawnEligibleTick", type: "uint64" },
-                    { name: "currentBanditSpawnChanceBps", type: "uint16" },
-                    { name: "currentTickSeed", type: "bytes32" },
-                  ],
-                },
-              ],
-            },
-          ] as const,
-          functionName: "getWorldState",
-          blockNumber: pinnedBlockNumber,
-        })
-        .catch(() => undefined)) as Record<string, unknown> | undefined;
-      if (legacy) {
-        world = {
-          ...legacy,
-          // Newer fields not on legacy diamond — safe defaults
-          worldPaused: false,
-          pausedAtTs: 0n,
-          winterActive: false,
-          winterStartsAtTick: 0n,
-          winterEndsAtTick: 0n,
-          activeBanditId: 0,
-          leaderboard: [],
-        };
-      }
-    }
+    const world = worldRaw as Record<string, unknown> | undefined;
     if (!world) {
       console.warn(
-        "[indexer] both getWorldSnapshot and getWorldState failed; skipping refresh",
+        "[indexer] getWorldSnapshot failed; skipping refresh",
       );
       return { tick: 0, clans: 0 };
     }

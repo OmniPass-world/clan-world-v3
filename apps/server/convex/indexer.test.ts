@@ -191,7 +191,9 @@ describe("pollLogs range planning", () => {
     const range = planPollLogRange(null, 20_000n);
 
     expect(range.fromBlock).toBe(12_345n);
-    expect(range.toBlock).toBe(19_995n);
+    // Capped at fromBlock + MAX_LOG_BLOCK_RANGE (9n for Alchemy free tier)
+    // rather than safeLatest (19_995n).
+    expect(range.toBlock).toBe(12_354n);
     expect(range.shouldPoll).toBe(true);
 
     if (previousStartBlock === undefined)
