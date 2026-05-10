@@ -1,7 +1,7 @@
 {
   "name": "@clan-world/mobile",
   "private": true,
-  "version": "2.1.1",
+  "version": "2.2.0",
   "scripts": {
     "build": "sh -c 'ANDROID_HOME=${ANDROID_HOME:-/opt/android-sdk} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME} ./gradlew assembleDebug'",
     "test": "sh -c 'ANDROID_HOME=${ANDROID_HOME:-/opt/android-sdk} ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-$ANDROID_HOME} ./gradlew testDebugUnitTest'",

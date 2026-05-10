@@ -6,6 +6,55 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.2.0] — 2026-05-10
+
+EIP-170 unblock release. Strips unused upkeep event scaffolding from `LibSettlement` to bring `HeartbeatFacet` and `FinalizeSeasonFacet` back under the 24,576-byte runtime limit, restoring the ability to deploy a fresh diamond. **All running deployments should redeploy from this release** — the `0xAd03…` diamond is permanently stuck at 26,265 byte `HeartbeatFacet` and cannot be upgraded to this code.
+
+This release also captures the repo reorganization under the new `clan-world` GitHub org and the operational hardening that landed during the late-night migration sprint.
+
+### Changed (BREAKING for ABI consumers)
+
+- **`LibSettlement` upkeep events stripped** (PR #142): removed 6 events (`ClanEliminated`, `ClanDied`, `ClanStarvationChanged`, `ClanColdShortage`, `WallDegradedByCold`, `ClansmanColdDeath`), the `UpkeepLog` / `UpkeepLogKind` / `ClanDeathReason` types, and 3 helpers (`recordUpkeepLog`, `emitUpkeepLogs`, `deathReasonString`). All were unused by indexers/frontend (verified). HeartbeatFacet **26,265 → 23,938** (638 under EIP-170); FinalizeSeasonFacet **25,704 → 23,368** (1,208 under). All 27 facets now under limit.
+- **Migration impact**: requires fresh diamond deploy. The wall-upgrade-reservation refund fix from `1ef2fd8` is preserved intact. Test `test_settlementUpkeepEmitsWinterColdAndDeathEvents` renamed to `test_settlementUpkeepAppliesWinterColdAndDeathConsequences` and pivoted from event-emission asserts to state asserts.
+
+### Repository reorganization
+
+- **`gold-bridge-monorepo` extracted** to https://github.com/clan-world/gold-bridge-monorepo (MIT). Wormhole NTT bridge moving GOLD between Solana ↔ Base. Standalone repo with full git history preserved via `git subtree split`.
+- **`kickstart-token-tracker` extracted** to https://github.com/clan-world/kickstart-token-tracker (MIT). Public Solana mobile dapp for token launch / tracking. Goodwill release to the EasyA kickstart team.
+- **Renamed v3 → clan-world-game** (this repo) under the `clan-world` GitHub org. Source-available (All Rights Reserved with carveouts), not open source.
+- **Copyright standardized** to `Copyright (c) 2026 Clan World Game` across all repos.
+
+### Operations
+
+- **Diamond migration runbook** (`docs/runbooks/diamond-migration.md`): 281-line procedure for migrating between diamond addresses, including ownership transfer, season finalization, indexer + frontend pointer rotation.
+- **Indexer legacy-ABI fallback** (`apps/server/convex/indexer.ts`): primary `getWorldSnapshot` decode falls back to a minimal `getWorldState` shape when struct decoding fails. Supports running against either the canonical-current diamond OR an older deployed diamond without code fork.
+- **Alchemy free-tier eth_getLogs cap honored** (`MAX_LOG_BLOCK_RANGE: 9_999n → 9n`): default block range now compatible with Alchemy free-tier limits without paid upgrade.
+- **Finalize watcher** (`~/bin/clanworld-finalize-watcher`): tmux companion to heartbeat-loop that detects `currentTick >= seasonEndTick && !seasonFinalized` and calls `finalizeSeason()` automatically. Prevents 6-hourly manual unsticks at season boundaries.
+- **Elder runner** (`~/bin/clanworld-elder-runner`): 180s nudge cadence keeps all 4 elders working continuously with current tick context.
+
+### Frontend
+
+- **iPad PWA install**: `manifest.webmanifest` `start_url=/cockpit`, square Clan World logo as `apple-touch-icon`, full PWA-installable on iOS. Top respects `env(safe-area-inset-top)`; bottom extends full-bleed for fullscreen feel.
+- **Direction B landing page**: redesigned landing pitch.
+- **dev-ui app**: new SPA at https://dev-ui.clan-world.com for raw diamond function calls (transferOwnership, setHeartbeat, finalizeSeason, etc.) — orchestrator escape hatch separate from the gameplay frontend.
+
+### Android cockpit (`apps/clan-world-mobile`)
+
+- **Hearth screen** — live "next in Ns" tick countdown banner; bandit-alert pill; winter-active banner pill; approaching-winter banner.
+- **Bulletin panel** — surfaces slot + tick + tx hash; meta line shows 0g dataHash hint between tick and tx.
+- **Memory row** — source label gains dataHash hint; stamp suffix adds tx hash.
+- **iNFT detail** — TKN line surfaces real 0G dataHash + encryptedKeyHash hint; vault tab matches treasury's 3-color amount palette.
+- **Hall letter card** — surfaces `mostRecentTransferTick` as "Last Move".
+- **Codex** — identity surfaces resolved `.skr` / `.sol` name; device chip shows model + Android version subline.
+- **Sort order** — vault movements + comms sorted newest-first across all 3 call sites.
+- **Cleanup** — dead `AnnotatedString` + `clanDisplayName` + `boldedMeta` imports + `CodexViewModel.disconnect()` removed; `whisperMetaText` lifted to shared `ui/components`.
+
+### Bumped
+
+- All Clan World workspace package versions to `2.2.0`.
+
+---
+
 ## [2.1.1] — 2026-05-03
 
 Demo operations patch for the live Base Sepolia world.
