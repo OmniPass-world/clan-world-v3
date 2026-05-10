@@ -75,7 +75,7 @@ export interface AgentLog {
  */
 export interface BanditState {
   banditId: string;
-  state: 'CAMPING' | 'RESTING' | 'ATTACKING' | 'DEFEATED' | 'ESCAPED';
+  state: 'CAMPING' | 'ATTACKING' | 'DEFEATED';
   currentRegion: string;
   /** Tick at which the troop entered its current state. */
   stateEnteredTick: Tick;

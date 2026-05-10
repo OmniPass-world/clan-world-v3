@@ -2126,6 +2126,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                         }
                         bandit.tickEnteredState = _world.currentTick;
                         bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
+                        emit BanditStateChanged(
+                            banditId, BanditState.Camped, BanditState.Camped, bandit.region, _world.currentTick
+                        );
                     } else {
                         _transitionBanditToAttacking(banditId, targetClanId);
                     }
@@ -2193,18 +2196,14 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     function _resolveAttackingBandits(uint64 closedTick) internal {
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = _banditsByRegion[region];
-            uint256 i = 0;
-            while (i < regionBandits.length) {
-                uint32 banditId = regionBandits[i];
+            uint32[] memory banditIdsToProcess = regionBandits;
+            for (uint256 i = 0; i < banditIdsToProcess.length; i++) {
+                uint32 banditId = banditIdsToProcess[i];
                 BanditTroop storage bandit = _bandits[banditId];
                 bool shouldResolve = bandit.state == BanditState.Attacking && bandit.tickEnteredState == closedTick;
                 if (shouldResolve) {
                     _resolveBanditAttack(banditId, closedTick);
-                    if (_bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) {
-                        continue;
-                    }
                 }
-                i++;
             }
         }
     }
@@ -2237,7 +2236,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return;
         }
         if (targetClan.lastSettledTick < _world.currentTick) {
-            _transitionBanditState(banditId, BanditState.Camped);
+            bandit.state = BanditState.Camped;
+            bandit.tickEnteredState = _world.currentTick;
+            bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
+            emit BanditStateChanged(
+                banditId, BanditState.Attacking, BanditState.Camped, bandit.region, _world.currentTick
+            );
             return;
         }
 

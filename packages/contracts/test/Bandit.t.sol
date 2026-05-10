@@ -193,6 +193,29 @@ contract BanditTest is Test {
         assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS)[0], id, "entered mountain index");
     }
 
+    function test_multipleBanditsSameRegionAttackResolution() public {
+        uint32 id1 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint32 id2 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 200);
+        uint32 id3 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 300);
+
+        _advanceTicks(2);
+        _advanceTicks(ClanWorldConstants.BANDIT_CAMP_TICKS - 1);
+
+        world.transitionBanditToAttacking(id1, 77);
+        world.transitionBanditToAttacking(id2, 77);
+        world.transitionBanditToAttacking(id3, 77);
+
+        _advanceTick();
+
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "all left forest");
+        uint32[] memory mountainBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS);
+        assertEq(mountainBandits.length, 3, "all entered mountains");
+
+        _assertResolvedInMountains(id1, mountainBandits, "id1");
+        _assertResolvedInMountains(id2, mountainBandits, "id2");
+        _assertResolvedInMountains(id3, mountainBandits, "id3");
+    }
+
     function test_steadyStateCycleIs3Ticks() public {
         for (uint256 i = 0; i < 6; i++) {
             _mintClan();
@@ -258,5 +281,22 @@ contract BanditTest is Test {
         forestBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST);
         assertEq(forestBandits.length, 1, "forest count after delete");
         assertEq(forestBandits[0], id2, "remaining forest bandit");
+    }
+
+    function _assertResolvedInMountains(uint32 id, uint32[] memory mountainBandits, string memory label) internal view {
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(uint8(bandit.state), uint8(BanditState.Camped), label);
+        assertEq(bandit.targetClanId, 0, label);
+        assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, label);
+        assertTrue(_containsBandit(mountainBandits, id), label);
+    }
+
+    function _containsBandit(uint32[] memory banditIds, uint32 id) internal pure returns (bool) {
+        for (uint256 i = 0; i < banditIds.length; i++) {
+            if (banditIds[i] == id) {
+                return true;
+            }
+        }
+        return false;
     }
 }
