@@ -3,6 +3,7 @@ pragma solidity ^0.8.34;
 
 import {BanditState, BanditTroop, Clan, ClanState, ClanWorldConstants} from "../../IClanWorld.sol";
 import {LibScoring} from "../../lib/LibScoring.sol";
+import {LibSettlement} from "./LibSettlement.sol";
 import {LibStorage} from "./LibStorage.sol";
 
 library LibBanditLifecycle {
@@ -42,6 +43,7 @@ library LibBanditLifecycle {
                     bandit.state == BanditState.Camped
                         && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS
                 ) {
+                    LibSettlement.eagerSettleBanditCandidateRegion(s, bandit.region);
                     uint32 targetClanId = pickBanditAttackTarget(s, bandit);
                     if (targetClanId == ClanWorldConstants.CLAN_ID_NULL) {
                         if (recordBanditAttackAttempt(s, banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
@@ -240,6 +242,8 @@ library LibBanditLifecycle {
         bandit.region = toRegion;
         s.banditsByRegion[toRegion].push(id);
         emit BanditMoved(id, fromRegion, toRegion, s.world.currentTick);
+
+        LibSettlement.eagerSettleBanditCandidateRegion(s, toRegion);
     }
 
     function nextRampageRegion(uint8 currentRegion) public pure returns (uint8) {
