@@ -2,7 +2,6 @@
 pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
-import {Vm} from "forge-std/Vm.sol";
 import {DiamondSelectors} from "../../script/DiamondSelectors.sol";
 import {Diamond} from "../../src/diamond/Diamond.sol";
 import {ClanWorldDiamondInit} from "../../src/diamond/ClanWorldDiamondInit.sol";
@@ -25,6 +24,7 @@ import {StubPool} from "../../src/StubPool.sol";
 import {
     ActionType,
     Clan,
+    ClanState,
     ClanOrder,
     ClanWorldConstants,
     IClanWorld,
@@ -117,12 +117,6 @@ contract PublicDemoHarnessFacet {
 }
 
 contract PublicDemoBlockersTest is Test {
-    event ClanColdShortage(uint32 indexed clanId, uint64 tick, uint256 woodShort);
-    event WallDegradedByCold(uint32 indexed clanId, uint8 newWallLevel, uint64 tick);
-    event ClansmanColdDeath(uint32 indexed clanId, uint32 csId, uint64 tick);
-    event ClanEliminated(uint32 indexed clanId, uint64 indexed tick);
-    event ClanDied(uint32 indexed clanId, uint64 tick, string reason);
-
     address private elder = address(0xA11CE);
 
     function test_bootstrapSelectorsHideGameplayUntilTreasurySeeded() public {
@@ -148,7 +142,7 @@ contract PublicDemoBlockersTest is Test {
         assertEq(loupe.facetAddress(IClanWorld.settleClan.selector) != address(0), true, "settlement live");
     }
 
-    function test_settlementUpkeepEmitsWinterColdAndDeathEvents() public {
+    function test_settlementUpkeepAppliesWinterColdAndDeathConsequences() public {
         IClanWorld world = _deploySettlementDiamond();
         IPublicDemoHarness harness = IPublicDemoHarness(address(world));
         uint64 winterStart = ClanWorldConstants.WINTER_START_TICK;
@@ -156,33 +150,28 @@ contract PublicDemoBlockersTest is Test {
         uint32 coldShortClan = _mint(world);
         harness.setCurrentTick(winterStart + 1);
         harness.setClanUpkeepState(coldShortClan, winterStart, 1e18, 100e18, 100e18, 0);
-        vm.expectEmit(true, false, false, true, address(world));
-        emit ClanColdShortage(coldShortClan, winterStart, 2e18);
         world.settleClan(coldShortClan);
+        assertEq(world.getClan(coldShortClan).coldDamage, 1, "cold damage increments");
 
         uint32 wallClan = _mint(world);
         harness.setCurrentTick(winterStart + 1);
         harness.setClanWallLevel(wallClan, 2);
         harness.setClanUpkeepState(wallClan, winterStart, 0, 100e18, 100e18, 1);
-        vm.expectEmit(true, false, false, true, address(world));
-        emit WallDegradedByCold(wallClan, 1, winterStart);
         world.settleClan(wallClan);
+        assertEq(world.getClan(wallClan).wallLevel, 1, "wall degraded");
 
         uint32 coldDeathClan = _mint(world);
         harness.setCurrentTick(winterStart + 1);
         harness.setClanUpkeepState(coldDeathClan, winterStart, 0, 100e18, 100e18, 1);
-        vm.recordLogs();
         world.settleClan(coldDeathClan);
-        assertEq(_countLogs(vm.getRecordedLogs(), keccak256("ClansmanColdDeath(uint32,uint32,uint64)")), 1);
+        assertEq(world.getClan(coldDeathClan).livingClansmen, 3, "cold killed one clansman");
 
         uint32 starvedClan = _mint(world);
         harness.setCurrentTick(winterStart + 6);
         harness.setClanUpkeepState(starvedClan, winterStart, 100e18, 0, 0, 0);
-        vm.expectEmit(true, true, false, true, address(world));
-        emit ClanEliminated(starvedClan, winterStart + 5);
-        vm.expectEmit(true, false, false, true, address(world));
-        emit ClanDied(starvedClan, winterStart + 5, "starvation");
         world.settleClan(starvedClan);
+        assertEq(world.getClan(starvedClan).livingClansmen, 0, "starvation killed clansman");
+        assertEq(uint8(world.getClan(starvedClan).clanState), uint8(ClanState.DEAD), "starvation killed clan");
     }
 
     function test_wallUpgradeReservationClearsWhenColdDegradesWallBeforeCompletion() public {
@@ -330,9 +319,4 @@ contract PublicDemoBlockersTest is Test {
         });
     }
 
-    function _countLogs(Vm.Log[] memory logs, bytes32 topic0) private pure returns (uint256 count) {
-        for (uint256 i = 0; i < logs.length; i++) {
-            if (logs[i].topics.length > 0 && logs[i].topics[0] == topic0) count++;
-        }
-    }
 }
