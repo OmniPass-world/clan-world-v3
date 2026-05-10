@@ -609,7 +609,14 @@ interface IClanWorldEvents {
         uint64 atTick
     );
     event ResourcesInjected(
-        uint32 indexed clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish, uint64 atTick
+        uint32 indexed clanId,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint,
+        uint64 atTick
     );
 
     // ----- building -----
@@ -767,7 +774,15 @@ interface IClanWorld is IClanWorldEvents {
     function reviveClansman(uint32 clansmanId) external;
 
     /// @notice Owner-only ops recovery. Adds resources directly to a clan vault.
-    function injectClanResources(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external;
+    function injectClanResources(
+        uint32 clanId,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint
+    ) external;
 
     // -------------------------------------------------------------------------
     // Clan lifecycle

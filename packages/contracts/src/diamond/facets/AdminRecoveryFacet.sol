@@ -13,9 +13,16 @@ contract AdminRecoveryFacet is IClanWorldEvents {
         LibStorage.enterNonReentrant(s);
 
         uint32[] storage clansmanIds = s.clanClansmanIds[clanId];
+        bool anyRevived = false;
         for (uint256 i = 0; i < clansmanIds.length; i++) {
-            (uint32 revivedClanId, bool revived) = LibAdminRecovery.reviveClansman(s, clansmanIds[i]);
-            if (revived) emit ClansmanRevived(revivedClanId, clansmanIds[i], s.world.currentTick);
+            (uint32 revivedClanId, bool revived) = LibAdminRecovery.reviveClansmanForBulk(s, clansmanIds[i]);
+            if (revived) {
+                anyRevived = true;
+                emit ClansmanRevived(revivedClanId, clansmanIds[i], s.world.currentTick);
+            }
+        }
+        if (anyRevived) {
+            s.clans[clanId].lastSettledTick = s.world.currentTick;
         }
 
         LibStorage.exitNonReentrant(s);
@@ -32,13 +39,21 @@ contract AdminRecoveryFacet is IClanWorldEvents {
         LibStorage.exitNonReentrant(s);
     }
 
-    function injectClanResources(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish) external {
+    function injectClanResources(
+        uint32 clanId,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint
+    ) external {
         LibDiamond.enforceIsContractOwner();
         LibStorage.AppStorage storage s = LibStorage.appStorage();
         LibStorage.enterNonReentrant(s);
 
-        if (LibAdminRecovery.injectClanResources(s, clanId, wood, iron, wheat, fish)) {
-            emit ResourcesInjected(clanId, wood, iron, wheat, fish, s.world.currentTick);
+        if (LibAdminRecovery.injectClanResources(s, clanId, wood, iron, wheat, fish, gold, blueprint)) {
+            emit ResourcesInjected(clanId, wood, iron, wheat, fish, gold, blueprint, s.world.currentTick);
         }
 
         LibStorage.exitNonReentrant(s);

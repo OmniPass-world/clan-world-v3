@@ -15,16 +15,43 @@ import {LibOrderUpgrades} from "./LibOrderUpgrades.sol";
 import {LibStorage} from "./LibStorage.sol";
 
 library LibAdminRecovery {
+    error AdminRecoveryClanNotFound(uint32 clanId);
+    error AdminRecoveryClansmanNotFound(uint32 clansmanId);
+
     function reviveClansman(LibStorage.AppStorage storage s, uint32 clansmanId)
         internal
         returns (uint32 clanId, bool revived)
     {
+        return _reviveClansman(s, clansmanId, true, true);
+    }
+
+    function reviveClansmanForBulk(LibStorage.AppStorage storage s, uint32 clansmanId)
+        internal
+        returns (uint32 clanId, bool revived)
+    {
+        return _reviveClansman(s, clansmanId, false, false);
+    }
+
+    function _reviveClansman(
+        LibStorage.AppStorage storage s,
+        uint32 clansmanId,
+        bool resetLastSettledTick,
+        bool revertOnNotFound
+    ) private returns (uint32 clanId, bool revived) {
         Clansman storage cs = s.clansmen[clansmanId];
         clanId = cs.clanId;
-        if (clanId == 0 || cs.clansmanId == 0 || cs.state != ClansmanState.DEAD) return (clanId, false);
+        if (clanId == 0 || cs.clansmanId == 0) {
+            if (revertOnNotFound) revert AdminRecoveryClansmanNotFound(clansmanId);
+            return (clanId, false);
+        }
+
+        if (cs.state != ClansmanState.DEAD) return (clanId, false);
 
         Clan storage clan = s.clans[clanId];
-        if (clan.clanId == 0) return (clanId, false);
+        if (clan.clanId == 0) {
+            if (revertOnNotFound) revert AdminRecoveryClansmanNotFound(clansmanId);
+            return (clanId, false);
+        }
 
         uint8 livingBefore = clan.livingClansmen;
         _clearClansmanRecoveryState(s, clansmanId);
@@ -32,7 +59,11 @@ library LibAdminRecovery {
         cs.state = ClansmanState.WAITING;
         cs.currentRegion = clan.baseRegion;
         cs.cooldownEndsAtTs = 0;
-        cs.lastMissionNonce = s.world.currentTick;
+        if (cs.lastMissionNonce < s.world.currentTick) {
+            cs.lastMissionNonce = s.world.currentTick;
+        } else {
+            cs.lastMissionNonce += 1;
+        }
         cs.carryWood = 0;
         cs.carryIron = 0;
         cs.carryWheat = 0;
@@ -44,6 +75,9 @@ library LibAdminRecovery {
         if (clan.clanState == ClanState.DEAD && livingBefore == 0) {
             clan.clanState = ClanState.ACTIVE;
         }
+        if (resetLastSettledTick) {
+            clan.lastSettledTick = s.world.currentTick;
+        }
 
         return (clanId, true);
     }
@@ -54,15 +88,19 @@ library LibAdminRecovery {
         uint256 wood,
         uint256 iron,
         uint256 wheat,
-        uint256 fish
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint
     ) internal returns (bool injected) {
         Clan storage clan = s.clans[clanId];
-        if (clan.clanId == 0) return false;
+        if (clan.clanId == 0) revert AdminRecoveryClanNotFound(clanId);
 
         clan.vaultWood += wood;
         clan.vaultIron += iron;
         clan.vaultWheat += wheat;
         clan.vaultFish += fish;
+        clan.goldBalance += gold;
+        clan.blueprintBalance += blueprint;
         return true;
     }
 

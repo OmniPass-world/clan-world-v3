@@ -12,9 +12,11 @@ import {DiamondCutFacet} from "../../src/diamond/facets/DiamondCutFacet.sol";
 import {RawClanViewsFacet} from "../../src/diamond/facets/RawClanViewsFacet.sol";
 import {RawTreasuryViewsFacet} from "../../src/diamond/facets/RawTreasuryViewsFacet.sol";
 import {RawWorldViewsFacet} from "../../src/diamond/facets/RawWorldViewsFacet.sol";
+import {SettlementFacet} from "../../src/diamond/facets/SettlementFacet.sol";
 import {SubmitOrdersFacet} from "../../src/diamond/facets/SubmitOrdersFacet.sol";
 import {LibOrderDefenders} from "../../src/diamond/lib/LibOrderDefenders.sol";
 import {LibOrderUpgrades} from "../../src/diamond/lib/LibOrderUpgrades.sol";
+import {LibAdminRecovery} from "../../src/diamond/lib/LibAdminRecovery.sol";
 import {LibStorage} from "../../src/diamond/lib/LibStorage.sol";
 import {
     ActionType,
@@ -29,6 +31,8 @@ import {
 
 interface IAdminRecoveryHarness {
     function setCurrentTick(uint64 tick) external;
+    function setWorldPaused(bool paused) external;
+    function setSingleLivingClanAtTick(uint32 clanId, uint32 livingClansmanId, uint64 lastSettledTick) external;
     function markClansmanDead(uint32 clansmanId) external;
     function markClanDeadFromAllClansmen(uint32 clanId) external;
     function markClanDeadOtherPath(uint32 clanId) external;
@@ -48,6 +52,31 @@ contract AdminRecoveryHarnessFacet {
         s.world.nextHeartbeatAtTick = tick + 1;
         s.world.currentTickSeed = bytes32(uint256(tick));
         s.tickSeeds[tick] = bytes32(uint256(tick));
+    }
+
+    function setWorldPaused(bool paused) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        s.world.worldPaused = paused;
+        s.world.pausedAtTs = paused ? uint64(block.timestamp) : 0;
+    }
+
+    function setSingleLivingClanAtTick(uint32 clanId, uint32 livingClansmanId, uint64 lastSettledTick) external {
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        uint32[] storage ids = s.clanClansmanIds[clanId];
+        for (uint256 i = 0; i < ids.length; i++) {
+            s.clansmen[ids[i]].state = ids[i] == livingClansmanId ? ClansmanState.WAITING : ClansmanState.DEAD;
+        }
+
+        Clan storage clan = s.clans[clanId];
+        clan.clanState = ClanState.ACTIVE;
+        clan.livingClansmen = 1;
+        clan.lastSettledTick = lastSettledTick;
+        clan.starvationStartsAtTick = 0;
+        clan.coldDamage = 0;
+        clan.vaultWood = 0;
+        clan.vaultIron = 0;
+        clan.vaultWheat = 0;
+        clan.vaultFish = 0;
     }
 
     function markClansmanDead(uint32 clansmanId) external {
@@ -179,7 +208,14 @@ contract AdminRecoveryHarnessFacet {
 contract AdminRecoveryFacetTest is Test {
     event ClansmanRevived(uint32 indexed clanId, uint32 indexed clansmanId, uint64 atTick);
     event ResourcesInjected(
-        uint32 indexed clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish, uint64 atTick
+        uint32 indexed clanId,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint,
+        uint64 atTick
     );
 
     IClanWorld private world;
@@ -192,14 +228,15 @@ contract AdminRecoveryFacetTest is Test {
         Diamond diamond = new Diamond(address(this), address(cutFacet));
         ClanWorldDiamondInit init = new ClanWorldDiamondInit();
 
-        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](7);
+        IDiamondCut.FacetCut[] memory cut = new IDiamondCut.FacetCut[](8);
         cut[0] = _facetCut(address(new RawWorldViewsFacet()), DiamondSelectors.rawWorldViewsSelectors());
         cut[1] = _facetCut(address(new RawTreasuryViewsFacet()), DiamondSelectors.rawTreasuryViewsSelectors());
         cut[2] = _facetCut(address(new RawClanViewsFacet()), DiamondSelectors.rawClanViewsSelectors());
         cut[3] = _facetCut(address(new ClanLifecycleFacet()), DiamondSelectors.lifecycleSelectors());
         cut[4] = _facetCut(address(new SubmitOrdersFacet()), DiamondSelectors.submitOrdersSelectors());
         cut[5] = _facetCut(address(new AdminRecoveryFacet()), DiamondSelectors.adminRecoverySelectors());
-        cut[6] = _facetCut(address(new AdminRecoveryHarnessFacet()), _harnessSelectors());
+        cut[6] = _facetCut(address(new SettlementFacet()), DiamondSelectors.settlementSelectors());
+        cut[7] = _facetCut(address(new AdminRecoveryHarnessFacet()), _harnessSelectors());
 
         IDiamondCut(address(diamond)).diamondCut(cut, address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
         world = IClanWorld(address(diamond));
@@ -242,9 +279,46 @@ contract AdminRecoveryFacetTest is Test {
         assertEq(world.getClan(clanId).coldDamage, 0, "cold reset");
     }
 
+    function test_reviveClansman_resetsLastSettledTickPreventingRekill() public {
+        uint32 clanId = _mint();
+        uint32 clansmanId = world.getClanClansmanIds(clanId)[0];
+
+        harness.setCurrentTick(100);
+        harness.setSingleLivingClanAtTick(clanId, clansmanId, 100);
+        harness.markClansmanDead(clansmanId);
+        harness.setCurrentTick(150);
+
+        world.injectClanResources(clanId, 3e18, 0, 3e18, 3e17, 0, 0);
+        world.reviveClansman(clansmanId);
+        world.settleClan(clanId);
+
+        Clan memory clan = world.getClan(clanId);
+        assertEq(uint8(clan.clanState), uint8(ClanState.ACTIVE), "active");
+        assertEq(clan.livingClansmen, 1, "one revived");
+        assertEq(clan.lastSettledTick, 150, "settled tick reset");
+        assertEq(clan.vaultWood, 3e18, "wood intact");
+        assertEq(clan.vaultWheat, 3e18, "wheat intact");
+        assertEq(clan.vaultFish, 3e17, "fish intact");
+    }
+
+    function test_reviveClansman_worksWhenWorldPaused() public {
+        uint32 clanId = _mint();
+        uint32 clansmanId = world.getClanClansmanIds(clanId)[0];
+        harness.markClansmanDead(clansmanId);
+        harness.setWorldPaused(true);
+
+        vm.expectEmit(true, true, false, true);
+        emit ClansmanRevived(clanId, clansmanId, 0);
+        world.reviveClansman(clansmanId);
+
+        assertEq(uint8(world.getClansman(clansmanId).state), uint8(ClansmanState.WAITING), "revived");
+        assertEq(world.getClan(clanId).livingClansmen, 4, "living restored");
+    }
+
     function test_reviveDeadClansmen_revivesDeadClan() public {
         uint32 clanId = _mint();
         uint32[] memory ids = world.getClanClansmanIds(clanId);
+        harness.setCurrentTick(77);
         harness.markClanDeadFromAllClansmen(clanId);
 
         world.reviveDeadClansmen(clanId);
@@ -252,9 +326,26 @@ contract AdminRecoveryFacetTest is Test {
         assertEq(uint8(world.getClan(clanId).clanState), uint8(ClanState.ACTIVE), "active");
         assertEq(world.getClan(clanId).livingClansmen, ids.length, "all living");
         assertEq(world.getClan(clanId).coldDamage, 0, "cold reset");
+        assertEq(world.getClan(clanId).lastSettledTick, 77, "settled tick reset");
         for (uint256 i = 0; i < ids.length; i++) {
             assertEq(uint8(world.getClansman(ids[i]).state), uint8(ClansmanState.WAITING), "revived");
         }
+    }
+
+    function test_reviveDeadClansmen_worksWhenWorldPaused() public {
+        uint32 clanId = _mint();
+        uint32[] memory ids = world.getClanClansmanIds(clanId);
+        harness.markClanDeadFromAllClansmen(clanId);
+        harness.setWorldPaused(true);
+
+        for (uint256 i = 0; i < ids.length; i++) {
+            vm.expectEmit(true, true, false, true);
+            emit ClansmanRevived(clanId, ids[i], 0);
+        }
+        world.reviveDeadClansmen(clanId);
+
+        assertEq(uint8(world.getClan(clanId).clanState), uint8(ClanState.ACTIVE), "active");
+        assertEq(world.getClan(clanId).livingClansmen, ids.length, "all living");
     }
 
     function test_reviveClansman_doesNotReactivateOtherDeathPath() public {
@@ -331,35 +422,80 @@ contract AdminRecoveryFacetTest is Test {
 
         vm.prank(stranger);
         vm.expectRevert();
-        world.injectClanResources(clanId, 1, 2, 3, 4);
+        world.injectClanResources(clanId, 1, 2, 3, 4, 5, 6);
     }
 
-    function test_injectClanResources_addsVaultResourcesForDeadClanAndEmits() public {
+    function test_injectClanResources_revertsForMissingClan() public {
+        vm.expectRevert(abi.encodeWithSelector(LibAdminRecovery.AdminRecoveryClanNotFound.selector, uint32(999)));
+        world.injectClanResources(999, 1, 2, 3, 4, 5, 6);
+    }
+
+    function test_reviveClansman_revertsForMissingClansman() public {
+        vm.expectRevert(abi.encodeWithSelector(LibAdminRecovery.AdminRecoveryClansmanNotFound.selector, uint32(999)));
+        world.reviveClansman(999);
+    }
+
+    function test_injectClanResources_addsAllResourcesForDeadClanAndEmits() public {
         uint32 clanId = _mint();
         harness.markClanDeadFromAllClansmen(clanId);
         Clan memory beforeClan = world.getClan(clanId);
 
         vm.expectEmit(true, false, false, true);
-        emit ResourcesInjected(clanId, 1e18, 2e18, 3e18, 4e18, 0);
-        world.injectClanResources(clanId, 1e18, 2e18, 3e18, 4e18);
+        emit ResourcesInjected(clanId, 1e18, 2e18, 3e18, 4e18, 5e18, 6e18, 0);
+        world.injectClanResources(clanId, 1e18, 2e18, 3e18, 4e18, 5e18, 6e18);
 
         Clan memory afterClan = world.getClan(clanId);
         assertEq(afterClan.vaultWood, beforeClan.vaultWood + 1e18, "wood");
         assertEq(afterClan.vaultIron, beforeClan.vaultIron + 2e18, "iron");
         assertEq(afterClan.vaultWheat, beforeClan.vaultWheat + 3e18, "wheat");
         assertEq(afterClan.vaultFish, beforeClan.vaultFish + 4e18, "fish");
-        assertEq(afterClan.goldBalance, beforeClan.goldBalance, "gold");
-        assertEq(afterClan.blueprintBalance, beforeClan.blueprintBalance, "blueprint");
+        assertEq(afterClan.goldBalance, beforeClan.goldBalance + 5e18, "gold");
+        assertEq(afterClan.blueprintBalance, beforeClan.blueprintBalance + 6e18, "blueprint");
         assertEq(uint8(afterClan.clanState), uint8(ClanState.DEAD), "still dead");
+    }
+
+    function test_injectClanResources_addsGoldAndBlueprintIndependentlyForActiveClan() public {
+        uint32 clanId = _mint();
+        Clan memory beforeClan = world.getClan(clanId);
+
+        vm.expectEmit(true, false, false, true);
+        emit ResourcesInjected(clanId, 0, 0, 0, 0, 7e18, 0, 0);
+        world.injectClanResources(clanId, 0, 0, 0, 0, 7e18, 0);
+
+        vm.expectEmit(true, false, false, true);
+        emit ResourcesInjected(clanId, 0, 0, 0, 0, 0, 8e18, 0);
+        world.injectClanResources(clanId, 0, 0, 0, 0, 0, 8e18);
+
+        Clan memory afterClan = world.getClan(clanId);
+        assertEq(afterClan.goldBalance, beforeClan.goldBalance + 7e18, "gold");
+        assertEq(afterClan.blueprintBalance, beforeClan.blueprintBalance + 8e18, "blueprint");
+        assertEq(uint8(afterClan.clanState), uint8(ClanState.ACTIVE), "still active");
+    }
+
+    function test_injectClanResources_worksWhenWorldPaused() public {
+        uint32 clanId = _mint();
+        harness.setWorldPaused(true);
+
+        vm.expectEmit(true, false, false, true);
+        emit ResourcesInjected(clanId, 1, 2, 3, 4, 5, 6, 0);
+        world.injectClanResources(clanId, 1, 2, 3, 4, 5, 6);
+
+        Clan memory clan = world.getClan(clanId);
+        assertEq(clan.vaultWood, 20e18 + 1, "wood");
+        assertEq(clan.vaultIron, 2, "iron");
+        assertEq(clan.vaultWheat, 20e18 + 3, "wheat");
+        assertEq(clan.vaultFish, 2e18 + 4, "fish");
+        assertEq(clan.goldBalance, 3e18 + 5, "gold");
+        assertEq(clan.blueprintBalance, 6, "blueprint");
     }
 
     function test_injectClanResources_overflowReverts() public {
         uint32 clanId = _mint();
         uint256 max = type(uint256).max;
-        world.injectClanResources(clanId, max - world.getClan(clanId).vaultWood, 0, 0, 0);
+        world.injectClanResources(clanId, max - world.getClan(clanId).vaultWood, 0, 0, 0, 0, 0);
 
         vm.expectRevert();
-        world.injectClanResources(clanId, 1, 0, 0, 0);
+        world.injectClanResources(clanId, 1, 0, 0, 0, 0, 0);
     }
 
     function test_adminRecoverySelectors() public {
@@ -382,17 +518,19 @@ contract AdminRecoveryFacetTest is Test {
     }
 
     function _harnessSelectors() private pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](11);
+        selectors = new bytes4[](13);
         selectors[0] = AdminRecoveryHarnessFacet.setCurrentTick.selector;
-        selectors[1] = AdminRecoveryHarnessFacet.markClansmanDead.selector;
-        selectors[2] = AdminRecoveryHarnessFacet.markClanDeadFromAllClansmen.selector;
-        selectors[3] = AdminRecoveryHarnessFacet.markClanDeadOtherPath.selector;
-        selectors[4] = AdminRecoveryHarnessFacet.dirtyClansmanState.selector;
-        selectors[5] = AdminRecoveryHarnessFacet.setDefenderMission.selector;
-        selectors[6] = AdminRecoveryHarnessFacet.reserveWallUpgrade.selector;
-        selectors[7] = AdminRecoveryHarnessFacet.setScheduledMarketMission.selector;
-        selectors[8] = AdminRecoveryHarnessFacet.pendingWallUpgrades.selector;
-        selectors[9] = AdminRecoveryHarnessFacet.reservedWood.selector;
-        selectors[10] = AdminRecoveryHarnessFacet.reservedIron.selector;
+        selectors[1] = AdminRecoveryHarnessFacet.setWorldPaused.selector;
+        selectors[2] = AdminRecoveryHarnessFacet.setSingleLivingClanAtTick.selector;
+        selectors[3] = AdminRecoveryHarnessFacet.markClansmanDead.selector;
+        selectors[4] = AdminRecoveryHarnessFacet.markClanDeadFromAllClansmen.selector;
+        selectors[5] = AdminRecoveryHarnessFacet.markClanDeadOtherPath.selector;
+        selectors[6] = AdminRecoveryHarnessFacet.dirtyClansmanState.selector;
+        selectors[7] = AdminRecoveryHarnessFacet.setDefenderMission.selector;
+        selectors[8] = AdminRecoveryHarnessFacet.reserveWallUpgrade.selector;
+        selectors[9] = AdminRecoveryHarnessFacet.setScheduledMarketMission.selector;
+        selectors[10] = AdminRecoveryHarnessFacet.pendingWallUpgrades.selector;
+        selectors[11] = AdminRecoveryHarnessFacet.reservedWood.selector;
+        selectors[12] = AdminRecoveryHarnessFacet.reservedIron.selector;
     }
 }

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
+import { BanditState } from '@clan-world/shared/generated/enums';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
 import { useAgentLogs } from './useAgentLogs';
@@ -156,8 +157,7 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
     }
     case 'BanditStateChanged': {
       const newState = safeNum(args.newState, 0);
-      if (newState === 4) {
-        // Attacking
+      if (newState === BanditState.Attacking) {
         return { text: `⚔ Bandits attacking in ${regionName}!`, clanColor: '#b23a48', highlight: true };
       }
       return null;

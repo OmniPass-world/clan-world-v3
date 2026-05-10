@@ -2683,6 +2683,16 @@
           "name": "fish",
           "type": "uint256",
           "internalType": "uint256"
+        },
+        {
+          "name": "gold",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "blueprint",
+          "type": "uint256",
+          "internalType": "uint256"
         }
       ],
       "outputs": [],
@@ -4422,6 +4432,18 @@
         },
         {
           "name": "fish",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "gold",
+          "type": "uint256",
+          "indexed": false,
+          "internalType": "uint256"
+        },
+        {
+          "name": "blueprint",
           "type": "uint256",
           "indexed": false,
           "internalType": "uint256"
