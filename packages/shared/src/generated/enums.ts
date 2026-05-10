@@ -83,10 +83,8 @@ export const BanditState = {
   None: 0,
   Spawned: 1,
   Camped: 2,
-  Resting: 3,
-  Attacking: 4,
-  Defeated: 5,
-  Escaped: 6,
+  Attacking: 3,
+  Defeated: 4,
 } as const;
 export type BanditState = (typeof BanditState)[keyof typeof BanditState];
 

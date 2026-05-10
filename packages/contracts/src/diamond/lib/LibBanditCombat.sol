@@ -102,12 +102,12 @@ library LibBanditCombat {
         uint32 targetClanId = bandit.targetClanId;
         Clan storage targetClan = s.clans[targetClanId];
         if (targetClan.clanId == ClanWorldConstants.CLAN_ID_NULL || targetClan.clanState == ClanState.DEAD) {
-            LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Escaped);
+            LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
             emit BanditEscaped(banditId, closedTick);
             return;
         }
         if (targetClan.lastSettledTick < s.world.currentTick) {
-            LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Resting);
+            LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
             return;
         }
 
@@ -160,7 +160,7 @@ library LibBanditCombat {
         ) {
             LibBanditLifecycle.terminalEscapeBandit(s, banditId, closedTick);
         } else {
-            LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Resting);
+            LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
         }
     }
 
@@ -498,7 +498,9 @@ library LibBanditCombat {
         emit ClanDied(clanId, tick, reason);
     }
 
-    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion) internal {
+    function releaseDefendersForDeadTarget(LibStorage.AppStorage storage s, uint32 deadClanId, uint8 baseRegion)
+        internal
+    {
         for (uint256 i = 0; i < s.allClanIds.length; i++) {
             uint32 defenderClanId = s.allClanIds[i];
             if (defenderClanId == deadClanId) continue;
@@ -507,9 +509,7 @@ library LibBanditCombat {
             for (uint256 j = 0; j < csIds.length; j++) {
                 uint32 clansmanId = csIds[j];
                 Mission storage mission = s.missions[clansmanId];
-                if (
-                    mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
-                ) {
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId) {
                     if (s.clansmanDefendingRegion[clansmanId] == baseRegion) {
                         LibOrderDefenders.clearDefender(s, clansmanId);
                     }
@@ -538,7 +538,7 @@ library LibBanditCombat {
 
                 BanditTroop storage bandit = s.bandits[banditId];
                 if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
-                    LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Escaped);
+                    LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
                     emit BanditEscaped(banditId, tick);
                     emit BanditTargetDied(banditId, deadClanId, tick);
                 }

@@ -552,8 +552,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             fishNeeded = fishNeeded * ClanWorldConstants.WINTER_UPKEEP_MULTIPLIER_BPS / 10000;
         }
 
-        uint256 spendableWheat =
-            _spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clan.clanId], 0);
+        uint256 spendableWheat = _spendableAfterReleasing(clan.vaultWheat, _reservedWheatByClan[clan.clanId], 0);
         bool hadEnoughWheat = spendableWheat >= wheatNeeded;
         bool hadEnoughFish = clan.vaultFish >= fishNeeded;
 
@@ -591,8 +590,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (winter) {
             uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
                 * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
-            uint256 spendableWood =
-                _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], 0);
+            uint256 spendableWood = _spendableAfterReleasing(clan.vaultWood, _reservedWoodByClan[clan.clanId], 0);
             if (spendableWood >= woodNeeded) {
                 clan.vaultWood -= woodNeeded;
             } else {
@@ -760,9 +758,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             for (uint256 j = 0; j < csIds.length; j++) {
                 uint32 clansmanId = csIds[j];
                 Mission storage mission = _missions[clansmanId];
-                if (
-                    mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId
-                ) {
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == deadClanId) {
                     if (_clansmanDefendingRegion[clansmanId] == baseRegion) {
                         _clearDefender(clansmanId);
                     }
@@ -787,7 +783,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
                 BanditTroop storage bandit = _bandits[banditId];
                 if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
-                    _transitionBanditState(banditId, BanditState.Escaped);
+                    _transitionBanditState(banditId, BanditState.Camped);
                     emit BanditEscaped(banditId, tick);
                     emit BanditTargetDied(banditId, deadClanId, tick);
                 }
@@ -1730,10 +1726,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         WithdrawResourcesData memory req = m.withdrawResources;
         if (!_hasWithdrawRequest(req)) return _simulateCompleteMission(cs, m);
 
-        uint256 spendableWood =
-            _spendableAfterReleasing(sim.clan.vaultWood, _reservedWoodByClan[sim.clan.clanId], 0);
-        uint256 spendableIron =
-            _spendableAfterReleasing(sim.clan.vaultIron, _reservedIronByClan[sim.clan.clanId], 0);
+        uint256 spendableWood = _spendableAfterReleasing(sim.clan.vaultWood, _reservedWoodByClan[sim.clan.clanId], 0);
+        uint256 spendableIron = _spendableAfterReleasing(sim.clan.vaultIron, _reservedIronByClan[sim.clan.clanId], 0);
         uint256 spendableWheat = sim.clan.vaultWheat > sim.reservedWheat ? sim.clan.vaultWheat - sim.reservedWheat : 0;
 
         if (
@@ -2011,7 +2005,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
         emit BanditStateChanged(id, oldState, newState, bandit.region, _world.currentTick);
 
-        if (oldState == BanditState.Resting && newState == BanditState.Camped) {
+        if (oldState == BanditState.Attacking && newState == BanditState.Camped) {
             _moveBanditToRampageNextRegion(id);
         }
     }
@@ -2020,35 +2014,20 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (bandit.state == BanditState.Spawned) return _canBanditLeaveSpawned(bandit, newState);
         if (bandit.state == BanditState.Camped) return _canBanditLeaveCamped(bandit, newState);
         if (bandit.state == BanditState.Attacking) return _canBanditLeaveAttacking(newState);
-        if (bandit.state == BanditState.Escaped) return _canBanditLeaveEscaped(newState);
-        if (bandit.state == BanditState.Resting) return _canBanditLeaveResting(bandit, newState);
         return false;
     }
 
     function _canBanditLeaveSpawned(BanditTroop storage bandit, BanditState newState) internal view returns (bool) {
-        return newState == BanditState.Escaped
-            || (newState == BanditState.Camped && _world.currentTick >= bandit.tickEnteredState + 1);
+        return newState == BanditState.Camped && _world.currentTick >= bandit.tickEnteredState + 1;
     }
 
     function _canBanditLeaveCamped(BanditTroop storage bandit, BanditState newState) internal view returns (bool) {
-        return newState == BanditState.Escaped || newState == BanditState.Resting
-            || (newState == BanditState.Attacking
-                && bandit.targetClanId != ClanWorldConstants.CLAN_ID_NULL
-                && _world.currentTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS);
+        return newState == BanditState.Attacking && bandit.targetClanId != ClanWorldConstants.CLAN_ID_NULL
+            && _world.currentTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS;
     }
 
     function _canBanditLeaveAttacking(BanditState newState) internal pure returns (bool) {
-        return newState == BanditState.Defeated || newState == BanditState.Escaped || newState == BanditState.Resting;
-    }
-
-    function _canBanditLeaveEscaped(BanditState newState) internal pure returns (bool) {
-        return newState == BanditState.Resting;
-    }
-
-    function _canBanditLeaveResting(BanditTroop storage bandit, BanditState newState) internal view returns (bool) {
-        return newState == BanditState.Escaped
-            || (newState == BanditState.Camped
-                && _world.currentTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS);
+        return newState == BanditState.Defeated || newState == BanditState.Camped;
     }
 
     function _moveBanditToRampageNextRegion(uint32 id) internal {
@@ -2145,20 +2124,11 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                             _terminalEscapeBandit(banditId, closedTick);
                             continue;
                         }
-                        _transitionBanditState(banditId, BanditState.Resting);
+                        bandit.tickEnteredState = _world.currentTick;
+                        bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
                     } else {
                         _transitionBanditToAttacking(banditId, targetClanId);
                     }
-                } else if (
-                    bandit.state == BanditState.Escaped
-                        && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS
-                ) {
-                    _transitionBanditState(banditId, BanditState.Resting);
-                } else if (
-                    bandit.state == BanditState.Resting
-                        && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS
-                ) {
-                    _transitionBanditState(banditId, BanditState.Camped);
                 }
 
                 if (_bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) {
@@ -2208,7 +2178,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
 
         BanditState oldState = bandit.state;
-        emit BanditStateChanged(banditId, oldState, BanditState.Escaped, bandit.region, closedTick);
+        emit BanditStateChanged(banditId, oldState, BanditState.None, bandit.region, closedTick);
         _burnBanditCarry(banditId);
         emit BanditEscaped(banditId, closedTick);
         _deleteBandit(banditId);
@@ -2253,7 +2223,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint32 targetClanId = bandit.targetClanId;
         Clan storage targetClan = _clans[targetClanId];
         if (targetClan.clanId == ClanWorldConstants.CLAN_ID_NULL || targetClan.clanState == ClanState.DEAD) {
-            _transitionBanditState(banditId, BanditState.Escaped);
+            _transitionBanditState(banditId, BanditState.Camped);
             emit BanditEscaped(banditId, closedTick);
             return;
         }
@@ -2262,12 +2232,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             return;
         }
         if (targetClan.clanState == ClanState.DEAD) {
-            _transitionBanditState(banditId, BanditState.Escaped);
+            _transitionBanditState(banditId, BanditState.Camped);
             emit BanditEscaped(banditId, closedTick);
             return;
         }
         if (targetClan.lastSettledTick < _world.currentTick) {
-            _transitionBanditState(banditId, BanditState.Resting);
+            _transitionBanditState(banditId, BanditState.Camped);
             return;
         }
 
@@ -2327,7 +2297,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             if (_recordBanditAttackAttempt(banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
                 _terminalEscapeBandit(banditId, closedTick);
             } else {
-                _transitionBanditState(banditId, BanditState.Resting);
+                _transitionBanditState(banditId, BanditState.Camped);
             }
         }
     }
@@ -2433,8 +2403,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint32 targetClanId = targetClan.clanId;
         uint256 spendableWood = _spendableAfterReleasing(targetClan.vaultWood, _reservedWoodByClan[targetClanId], 0);
         uint256 spendableIron = _spendableAfterReleasing(targetClan.vaultIron, _reservedIronByClan[targetClanId], 0);
-        uint256 spendableWheat =
-            _spendableAfterReleasing(targetClan.vaultWheat, _reservedWheatByClan[targetClanId], 0);
+        uint256 spendableWheat = _spendableAfterReleasing(targetClan.vaultWheat, _reservedWheatByClan[targetClanId], 0);
 
         stolenWood = _banditStealAmount(spendableWood);
         stolenIron = _banditStealAmount(spendableIron);
@@ -4991,14 +4960,12 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
         if (wood > 0) {
             require(
-                _spendableVaultResource(fromClanId, fromClan, ResourceType.Wood) >= wood,
-                "ClanWorld: insufficient wood"
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Wood) >= wood, "ClanWorld: insufficient wood"
             );
         }
         if (iron > 0) {
             require(
-                _spendableVaultResource(fromClanId, fromClan, ResourceType.Iron) >= iron,
-                "ClanWorld: insufficient iron"
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Iron) >= iron, "ClanWorld: insufficient iron"
             );
         }
         if (wheat > 0) {
@@ -5009,8 +4976,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         }
         if (fish > 0) {
             require(
-                _spendableVaultResource(fromClanId, fromClan, ResourceType.Fish) >= fish,
-                "ClanWorld: insufficient fish"
+                _spendableVaultResource(fromClanId, fromClan, ResourceType.Fish) >= fish, "ClanWorld: insufficient fish"
             );
         }
 
@@ -5026,7 +4992,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             require(_deductVaultResource(fromClanId, fromClan, ResourceType.Iron, iron), "ClanWorld: insufficient iron");
         }
         if (wheat > 0) {
-            require(_deductVaultResource(fromClanId, fromClan, ResourceType.Wheat, wheat), "ClanWorld: insufficient wheat");
+            require(
+                _deductVaultResource(fromClanId, fromClan, ResourceType.Wheat, wheat), "ClanWorld: insufficient wheat"
+            );
         }
         if (fish > 0) {
             require(_deductVaultResource(fromClanId, fromClan, ResourceType.Fish, fish), "ClanWorld: insufficient fish");
@@ -5654,8 +5622,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 nextActionTick = bandit.tickEnteredState + 1;
             } else if (bandit.state == BanditState.Camped) {
                 nextActionTick = bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS;
-            } else if (bandit.state == BanditState.Resting) {
-                nextActionTick = bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS;
             }
             if (bandit.attackAttemptsMade < ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
                 maxAttemptsRemaining = ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS - bandit.attackAttemptsMade;

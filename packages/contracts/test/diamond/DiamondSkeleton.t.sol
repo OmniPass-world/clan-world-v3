@@ -817,7 +817,7 @@ contract DiamondSkeletonTest is Test {
 
         _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
         _assertBanditEq(IClanWorld(address(diamond)).getBandit(diamondBanditId), core.getBandit(coreBanditId));
-        assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Resting));
+        assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Camped));
         assertEq(IClanWorld(address(diamond)).getBandit(diamondBanditId).attackAttemptsMade, 1);
     }
 
@@ -851,7 +851,7 @@ contract DiamondSkeletonTest is Test {
         _assertWorldStateEq(IClanWorld(address(diamond)).getWorldState(), core.getWorldState());
         _assertClanEq(IClanWorld(address(diamond)).getClan(diamondClanId), core.getClan(coreClanId));
         _assertBanditEq(IClanWorld(address(diamond)).getBandit(diamondBanditId), core.getBandit(coreBanditId));
-        assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Resting));
+        assertEq(uint8(IClanWorld(address(diamond)).getBandit(diamondBanditId).state), uint8(BanditState.Camped));
         assertEq(IClanWorld(address(diamond)).getBandit(diamondBanditId).targetClanId, 0);
     }
 
@@ -887,7 +887,7 @@ contract DiamondSkeletonTest is Test {
         assertEq(uint8(IClanWorld(address(diamond)).getClansman(defenderId).state), uint8(ClansmanState.WAITING));
         assertFalse(IClanWorld(address(diamond)).getActiveMission(defenderId).active, "defender mission cleared");
         assertEq(IClanWorld(address(diamond)).getActiveDefenders(targetClanId).length, 0, "defender registry cleared");
-        assertEq(uint8(IClanWorld(address(diamond)).getBandit(banditId).state), uint8(BanditState.Escaped));
+        assertEq(uint8(IClanWorld(address(diamond)).getBandit(banditId).state), uint8(BanditState.Camped));
         assertEq(IClanWorld(address(diamond)).getBandit(banditId).targetClanId, 0, "bandit target cleared");
     }
 

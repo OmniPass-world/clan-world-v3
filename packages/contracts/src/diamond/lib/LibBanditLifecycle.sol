@@ -48,20 +48,11 @@ library LibBanditLifecycle {
                             terminalEscapeBandit(s, banditId, closedTick);
                             continue;
                         }
-                        transitionBanditState(s, banditId, BanditState.Resting);
+                        bandit.tickEnteredState = s.world.currentTick;
+                        bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
                     } else {
                         transitionBanditToAttacking(s, banditId, targetClanId);
                     }
-                } else if (
-                    bandit.state == BanditState.Escaped
-                        && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS
-                ) {
-                    transitionBanditState(s, banditId, BanditState.Resting);
-                } else if (
-                    bandit.state == BanditState.Resting
-                        && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS
-                ) {
-                    transitionBanditState(s, banditId, BanditState.Camped);
                 }
 
                 if (s.bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) continue;
@@ -99,7 +90,7 @@ library LibBanditLifecycle {
 
         emit BanditStateChanged(id, oldState, newState, bandit.region, s.world.currentTick);
 
-        if (oldState == BanditState.Resting && newState == BanditState.Camped) {
+        if (oldState == BanditState.Attacking && newState == BanditState.Camped) {
             moveBanditToRampageNextRegion(s, id);
         }
     }
@@ -110,26 +101,14 @@ library LibBanditLifecycle {
         returns (bool)
     {
         if (bandit.state == BanditState.Spawned) {
-            return newState == BanditState.Escaped
-                || (newState == BanditState.Camped && s.world.currentTick >= bandit.tickEnteredState + 1);
+            return newState == BanditState.Camped && s.world.currentTick >= bandit.tickEnteredState + 1;
         }
         if (bandit.state == BanditState.Attacking) {
-            return
-                newState == BanditState.Defeated || newState == BanditState.Escaped || newState == BanditState.Resting;
-        }
-        if (bandit.state == BanditState.Escaped) {
-            return newState == BanditState.Resting;
-        }
-        if (bandit.state == BanditState.Resting) {
-            return newState == BanditState.Escaped
-                || (newState == BanditState.Camped
-                    && s.world.currentTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_REST_TICKS);
+            return newState == BanditState.Defeated || newState == BanditState.Camped;
         }
         if (bandit.state == BanditState.Camped) {
-            return newState == BanditState.Escaped || newState == BanditState.Resting
-                || (newState == BanditState.Attacking
-                    && bandit.targetClanId != ClanWorldConstants.CLAN_ID_NULL
-                    && s.world.currentTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS);
+            return newState == BanditState.Attacking && bandit.targetClanId != ClanWorldConstants.CLAN_ID_NULL
+                && s.world.currentTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS;
         }
         return false;
     }
@@ -177,7 +156,7 @@ library LibBanditLifecycle {
         }
 
         BanditState oldState = bandit.state;
-        emit BanditStateChanged(banditId, oldState, BanditState.Escaped, bandit.region, closedTick);
+        emit BanditStateChanged(banditId, oldState, BanditState.None, bandit.region, closedTick);
         burnBanditCarry(s, banditId);
         emit BanditEscaped(banditId, closedTick);
         deleteBandit(s, banditId);

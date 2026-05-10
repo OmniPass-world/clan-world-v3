@@ -35,7 +35,6 @@ library ClanWorldConstants {
     // Bandit cadence
     uint64 internal constant BANDIT_COOLDOWN_TICKS = 10;
     uint64 internal constant BANDIT_CAMP_TICKS = 3;
-    uint64 internal constant BANDIT_REST_TICKS = 2;
     uint8 internal constant BANDIT_MAX_ATTACK_ATTEMPTS = 6;
 
     // Clansman cadence
@@ -125,10 +124,8 @@ enum BanditState {
     None,
     Spawned,
     Camped,
-    Resting,
     Attacking,
-    Defeated,
-    Escaped
+    Defeated
 }
 
 enum WheatPlotState {
