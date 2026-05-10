@@ -28,8 +28,11 @@ const baseSepolia = defineChain({
 const MAX_CLANS = 12;
 const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
 const DEFAULT_CONFIRMATION_DEPTH = 5;
-const MAX_LOG_BLOCK_RANGE = 9_999n;
-const DEFAULT_COLD_START_LOOKBACK = 1_000n;
+// Alchemy free tier caps eth_getLogs at 10 blocks. PAYG allows 10K.
+// Default to 9n so we stay under the free-tier cap when running against
+// a non-PAYG RPC (e.g. demo deployment).
+const MAX_LOG_BLOCK_RANGE = 9n;
+const DEFAULT_COLD_START_LOOKBACK = 100n;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
   { id: "mountains", name: "Mountains", ownerClanId: null },
@@ -613,13 +616,18 @@ export const refreshSnapshot = internalAction({
     const blockNumber =
       args.blockNumber ?? Number(await client.getBlockNumber());
 
-    const [world, market, bandit] = await Promise.all([
-      client.readContract({
-        address,
-        abi: CLAN_WORLD_ABI,
-        functionName: "getWorldSnapshot",
-        blockNumber: pinnedBlockNumber,
-      }),
+    const [worldRaw, market, bandit] = await Promise.all([
+      // getWorldSnapshot may fail on legacy diamonds with older struct shapes
+      // (e.g. backup diamond 0x2709eEB at the time of writing). Fall back to
+      // getWorldState below which has a stable older subset.
+      client
+        .readContract({
+          address,
+          abi: CLAN_WORLD_ABI,
+          functionName: "getWorldSnapshot",
+          blockNumber: pinnedBlockNumber,
+        })
+        .catch(() => undefined),
       client
         .readContract({
           address,
@@ -637,6 +645,65 @@ export const refreshSnapshot = internalAction({
         })
         .catch(() => undefined),
     ]);
+
+    // Legacy fallback: read getWorldState with a minimal struct shape that
+    // matches both v4 and the older deployed diamond. Only the fields we
+    // actually consume are listed; missing newer fields default to safe
+    // values below.
+    let world = worldRaw as Record<string, unknown> | undefined;
+    if (!world) {
+      const legacy = (await client
+        .readContract({
+          address,
+          abi: [
+            {
+              type: "function",
+              name: "getWorldState",
+              inputs: [],
+              stateMutability: "view",
+              outputs: [
+                {
+                  type: "tuple",
+                  components: [
+                    { name: "currentTick", type: "uint64" },
+                    { name: "seasonStartTick", type: "uint64" },
+                    { name: "seasonEndTick", type: "uint64" },
+                    { name: "seasonFinalized", type: "bool" },
+                    { name: "currentSeasonNumber", type: "uint64" },
+                    { name: "nextHeartbeatAtTick", type: "uint64" },
+                    { name: "nextHeartbeatAtTs", type: "uint64" },
+                    { name: "nextBanditSpawnEligibleTick", type: "uint64" },
+                    { name: "currentBanditSpawnChanceBps", type: "uint16" },
+                    { name: "currentTickSeed", type: "bytes32" },
+                  ],
+                },
+              ],
+            },
+          ] as const,
+          functionName: "getWorldState",
+          blockNumber: pinnedBlockNumber,
+        })
+        .catch(() => undefined)) as Record<string, unknown> | undefined;
+      if (legacy) {
+        world = {
+          ...legacy,
+          // Newer fields not on legacy diamond — safe defaults
+          worldPaused: false,
+          pausedAtTs: 0n,
+          winterActive: false,
+          winterStartsAtTick: 0n,
+          winterEndsAtTick: 0n,
+          activeBanditId: 0,
+          leaderboard: [],
+        };
+      }
+    }
+    if (!world) {
+      console.warn(
+        "[indexer] both getWorldSnapshot and getWorldState failed; skipping refresh",
+      );
+      return { tick: 0, clans: 0 };
+    }
 
     const clans = await Promise.all(
       Array.from({ length: MAX_CLANS }, async (_, index) => {
