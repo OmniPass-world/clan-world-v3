@@ -82,6 +82,7 @@ library ClanWorldConstants {
     // Bandit combat
     uint16 internal constant BANDIT_BASE_STEAL_BPS = 2000; // 20%
     uint16 internal constant BANDIT_DROP_TO_DEFENDERS_BPS = 5000; // 50%
+    uint256 internal constant MAX_BANDIT_EAGER_SETTLE_GLOBAL_SCAN = 100;
 
     // Region IDs (1-indexed; 0 = NOOP / unset sentinel)
     uint8 internal constant REGION_NOOP = 0;

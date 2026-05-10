@@ -2836,7 +2836,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 inRegionScanCount;
         for (
             uint256 i = 0;
-            i < _allClanIds.length && inRegionScanCount < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION;
+            i < _allClanIds.length && inRegionScanCount < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION
+                && i < ClanWorldConstants.MAX_BANDIT_EAGER_SETTLE_GLOBAL_SCAN;
             i++
         ) {
             uint32 clanId = _allClanIds[i];
@@ -2856,7 +2857,10 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 defendingClanScanCount = defendingClans.length < MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION
             ? defendingClans.length
             : MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION;
-        uint32[] memory defendingClanSnapshot = defendingClans;
+        uint32[] memory defendingClanSnapshot = new uint32[](defendingClanScanCount);
+        for (uint256 k = 0; k < defendingClanScanCount; k++) {
+            defendingClanSnapshot[k] = defendingClans[k];
+        }
         uint256 defendersScanned;
 
         for (uint256 i = 0; i < defendingClanScanCount; i++) {
