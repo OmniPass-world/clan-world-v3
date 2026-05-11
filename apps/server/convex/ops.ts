@@ -54,11 +54,18 @@ export const flushGameState = mutation({
       }
     }
 
+    const complete =
+      totalDeleted < MAX_FLUSH_WRITES &&
+      (await Promise.all(RESET_TABLES.map((table) => ctx.db.query(table).take(1)))).every(
+        (rows) => rows.length === 0,
+      );
+
     return {
       deletedByTable,
       totalDeleted,
       batchSize,
-      complete: totalDeleted === 0,
+      deletedAny: totalDeleted > 0,
+      complete,
     };
   },
 });

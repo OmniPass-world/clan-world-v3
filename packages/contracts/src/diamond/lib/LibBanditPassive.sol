@@ -17,7 +17,6 @@ library LibBanditPassive {
             for (uint256 i = regionBandits.length; i > 0; i--) {
                 uint32 banditId = regionBandits[i - 1];
                 BanditTroop storage bandit = s.bandits[banditId];
-                uint8 regionBefore = bandit.region;
 
                 if (bandit.state == BanditState.Spawned && closedTick > bandit.tickEnteredState) {
                     LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
@@ -46,9 +45,6 @@ library LibBanditPassive {
                         LibBanditLifecycle.transitionBanditToAttacking(s, banditId, targetClanId);
                     }
                 }
-
-                if (s.bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) continue;
-                if (regionBefore != s.bandits[banditId].region) continue;
             }
         }
     }

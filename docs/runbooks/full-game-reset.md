@@ -17,6 +17,7 @@ Record these before touching live state:
 export RPC_URL_PRIMARY="https://base-sepolia.infura.io/v3/<key>"
 export SOLANA_RPC_URL="https://mainnet.helius-rpc.com/?api-key=<key>"
 export DEPLOYER_PRIVATE_KEY="0x..."
+export INDEXER_SECRET="..."
 export WEBHOOK_SHARED_SECRET="..."
 ```
 
@@ -184,16 +185,25 @@ Flush all game/indexer state for the old realm. At minimum clear:
 
 Then trigger one indexer refresh or wait for the first heartbeat webhook.
 
-If the deployed backend includes `ops:flushGameState`, run it repeatedly until `complete` is `true`:
+If the deployed backend includes `ops:flushGameState`, loop it until `complete`
+is `true`, then reset the checkpoint once:
 
 ```bash
-npx convex run ops:flushGameState '{"secret":"'"$INDEXER_SECRET"'","batchSize":500}' --prod
+while true; do
+  out=$(npx convex run ops:flushGameState \
+    '{"secret":"'"$INDEXER_SECRET"'","batchSize":400}' \
+    --prod)
+  echo "$out"
+  echo "$out" | grep -q '"complete": true' && break
+done
+
 npx convex run ops:resetCheckpoint '{"secret":"'"$INDEXER_SECRET"'","lastBlock":'"$INDEXER_START_BLOCK"'}' --prod
 ```
 
-`ops:flushGameState` is capped at 500 rows per table per mutation on purpose,
-to stay inside Convex mutation limits. Expect old append-only views to require
-many passes.
+`ops:flushGameState` is capped at 400 rows per table and 9,000 total deletes
+per mutation on purpose, to stay inside Convex mutation limits. It returns
+`deletedAny` plus `complete`; `complete` can become true on the same call that
+deletes the final rows. Expect old append-only views to require many passes.
 
 If `clanView` has a large historical backlog, use the targeted per-clan purge
 helper in parallel and include all historical clan ids, not only the fresh four:
