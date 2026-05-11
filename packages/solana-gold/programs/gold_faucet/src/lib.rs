@@ -1,3 +1,10 @@
+//! SECURITY-DEMO-POSTURE: ClanWorld v1 demo intentionally ships an uncapped GOLD
+//! faucet. Any signer may call `claim()` repeatedly and mint 100,000 GOLD per call.
+//! Combined with the permissive whisper/doctrine writeback path in
+//! `apps/server/convex/gold.ts`, this means "GOLD is effectively free" is the
+//! accepted v1 posture. Per-recipient cooldowns + EVM↔Solana wallet binding move
+//! to v2.
+
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount};
 

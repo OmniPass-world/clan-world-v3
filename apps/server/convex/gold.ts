@@ -172,6 +172,10 @@ function assertValidClanId(clanId: number) {
 }
 
 async function verifyClanOwnership(ctx: any, clanId: number, owner: string) {
+  // Reserved for v2: once a Solana-pubkey → EVM-owner binding exists
+  // (e.g. SIWS-linked wallet table), call this from the action handlers.
+  // In v1, `clanView.owner` is an EVM hex address from the on-chain `getClanFullView`,
+  // while `args.owner` is a Solana base58 pubkey, so this comparison is unsafe today.
   const clan = await ctx.runQuery(internal.gold.getClanOwner, { clanId });
   if (!clan) throw new Error(`No clanView record for clanId ${clanId}`);
   if (clan.owner !== owner) throw new Error(`owner ${owner} does not own clan ${clanId}`);
@@ -191,6 +195,14 @@ export const getClanOwner = internalQuery({
   },
 });
 
+/**
+ * SECURITY-DEMO-POSTURE: ClanWorld v1 demo accepts that any wallet with 5 GOLD
+ * may write any clan's steering / doctrine. The per-clan ownership boundary moves
+ * to v2 once Solana↔EVM wallet binding ships. The Solana burn already binds
+ * (clanId, body, owner, burnAmount) into the memo for replay protection; we
+ * intentionally do not require owner == clanView.owner because those identifiers
+ * live in different address spaces (Solana base58 vs EVM hex).
+ */
 export const recordWhisperAfterTx = action({
   args: {
     clanId: v.number(),
@@ -205,7 +217,6 @@ export const recordWhisperAfterTx = action({
     const memo = await buildWhisperMemo({ ...args, body });
     const burnAmount = REQUIRED_BURN_AMOUNT;
     await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: args.skipTax, memo });
-    await verifyClanOwnership(ctx, args.clanId, args.owner);
     await ctx.runMutation(internal.gold.commitWhisperAfterTx, {
       clanId: args.clanId,
       body,
@@ -219,6 +230,14 @@ export const recordWhisperAfterTx = action({
   },
 });
 
+/**
+ * SECURITY-DEMO-POSTURE: ClanWorld v1 demo accepts that any wallet with 5 GOLD
+ * may write any clan's steering / doctrine. The per-clan ownership boundary moves
+ * to v2 once Solana↔EVM wallet binding ships. The Solana burn already binds
+ * (clanId, body, owner, burnAmount) into the memo for replay protection; we
+ * intentionally do not require owner == clanView.owner because those identifiers
+ * live in different address spaces (Solana base58 vs EVM hex).
+ */
 export const saveDoctrineAfterTx = action({
   args: {
     clanId: v.number(),
@@ -232,7 +251,6 @@ export const saveDoctrineAfterTx = action({
     const memo = await buildDoctrineMemo(args);
     const burnAmount = REQUIRED_BURN_AMOUNT;
     await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: 0, memo });
-    await verifyClanOwnership(ctx, args.clanId, args.owner);
     await ctx.runMutation(internal.gold.commitDoctrineAfterTx, {
       clanId: args.clanId,
       strategy: args.strategy,
