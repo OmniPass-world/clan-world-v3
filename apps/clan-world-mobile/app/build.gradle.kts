@@ -33,13 +33,26 @@ fun resolveBuildConfigUrl(envName: String, propName: String): String {
   )
 }
 
+fun optionalEnvOrProperty(envName: String, propName: String): String? =
+  System.getenv(envName)?.takeIf { it.isNotBlank() }
+    ?: (project.findProperty(propName) as? String)?.takeIf { it.isNotBlank() }
+
 val mapUrl = resolveBuildConfigUrl("CLAN_WORLD_MAP_URL", "clanWorldMapUrl")
 val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "clanWorldTerminalBaseUrl")
 val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
   .orElse("https://valuable-kudu-985.convex.cloud")
+val clanWorldVersionName = optionalEnvOrProperty("CLAN_WORLD_VERSION_NAME", "clanWorldVersionName")
+  ?: "0.0.0-local"
+val clanWorldVersionCode = optionalEnvOrProperty("CLAN_WORLD_VERSION_CODE", "clanWorldVersionCode")
+  ?.toIntOrNull()
+  ?: 1
 
-// for details — both apps share the same secret names so one CI step can
-// provision both.
+require(clanWorldVersionCode > 0) {
+  "CLAN_WORLD_VERSION_CODE / clanWorldVersionCode must be a positive integer."
+}
+
+// Release signing is required only for release APKs. Debug builds use the
+// normal Android debug key and the `.debug` app id suffix.
 val releaseKeystorePath: String? = System.getenv("RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
 val releaseKeystorePassword: String? = System.getenv("RELEASE_KEYSTORE_PASSWORD")
 val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
@@ -57,8 +70,8 @@ android {
     applicationId = "world.clan.app"
     minSdk = 26
     targetSdk = 35
-    versionCode = 7
-    versionName = "0.1.14"
+    versionCode = clanWorldVersionCode
+    versionName = clanWorldVersionName
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
@@ -78,6 +91,11 @@ android {
 
   buildTypes {
     debug {
+      applicationIdSuffix = ".debug"
+      versionNameSuffix = "-debug"
+    }
+    release {
+      isMinifyEnabled = false
       if (hasStableSigning) {
         signingConfig = signingConfigs.getByName("stable")
       }
@@ -104,6 +122,16 @@ android {
     resources {
       excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+  }
+}
+
+gradle.taskGraph.whenReady {
+  val releaseTaskRequested = allTasks.any { it.name.contains("Release") }
+  if (releaseTaskRequested && !hasStableSigning) {
+    error(
+      "Release APK builds require RELEASE_KEYSTORE_PATH, RELEASE_KEYSTORE_PASSWORD, " +
+        "RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD.",
+    )
   }
 }
 

@@ -38,16 +38,26 @@ The full reasoning is in `/home/claude/.claude/plans/my-purpose-here-is-delightf
 ```sh
 # From the worktree root:
 cd apps/clan-world-mobile
-ANDROID_HOME=/opt/android-sdk ./gradlew assembleDebug
+ANDROID_HOME=/opt/android-sdk \
+  CLAN_WORLD_MAP_URL=https://app.clan-world.com \
+  CLAN_WORLD_TERMINAL_BASE_URL=https://cockpit.clan-world.com \
+  CLAN_WORLD_VERSION_NAME=2.3.3 \
+  CLAN_WORLD_VERSION_CODE=2003003 \
+  ./gradlew assembleDebug
 
 # APK lands at:
 ls app/build/outputs/apk/debug/app-debug.apk
 ```
 
+Release tags build two GitHub release artifacts:
+
+- `clan-world-vX.Y.Z-release.apk` — public app id `world.clan.app`, stable-signed, non-debuggable.
+- `clan-world-vX.Y.Z-debug.apk` — internal app id `world.clan.app.debug`, debuggable, side-by-side installable.
+
 Optionally, point the app at a different Convex deployment:
 
 ```sh
-CLANWORLD_CONVEX_URL=https://your-deploy.convex.cloud ./gradlew assembleDebug
+CLAN_WORLD_CONVEX_URL=https://your-deploy.convex.cloud ./gradlew assembleDebug
 ```
 
 ## Architecture
