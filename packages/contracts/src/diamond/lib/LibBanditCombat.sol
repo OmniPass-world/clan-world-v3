@@ -14,6 +14,7 @@ import {
     Mission
 } from "../../IClanWorld.sol";
 import {LibSettlementMath} from "./LibSettlementMath.sol";
+import {LibBanditCleanup} from "./LibBanditCleanup.sol";
 import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibOrderDefenders} from "./LibOrderDefenders.sol";
 import {LibOrderUpgrades} from "./LibOrderUpgrades.sol";
@@ -162,7 +163,7 @@ library LibBanditCombat {
         } else if (
             LibBanditLifecycle.recordBanditAttackAttempt(s, banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS
         ) {
-            LibBanditLifecycle.terminalEscapeBandit(s, banditId, closedTick);
+            LibBanditCleanup.terminalEscapeBandit(s, banditId, closedTick);
         } else {
             LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
         }
