@@ -21,6 +21,7 @@ import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
 import type * as getSnapshot from "../getSnapshot.js";
+import type * as gold from "../gold.js";
 import type * as goldQuote from "../goldQuote.js";
 import type * as heartbeat from "../heartbeat.js";
 import type * as http from "../http.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   events: typeof events;
   getSnapshot: typeof getSnapshot;
+  gold: typeof gold;
   goldQuote: typeof goldQuote;
   heartbeat: typeof heartbeat;
   http: typeof http;

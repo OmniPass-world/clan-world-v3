@@ -48,6 +48,8 @@ import kotlinx.coroutines.launch
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import world.clan.app.App
 import world.clan.app.R
+import world.clan.app.data.gold.GoldSolanaClient
+import world.clan.app.data.gold.GoldMemo
 import world.clan.app.ui.components.BalanceRow
 import world.clan.app.ui.components.BurnFlash
 import world.clan.app.ui.components.ChatInput
@@ -63,7 +65,7 @@ import world.clan.app.wallet.MwaResult
 private const val WHISPER_COOLDOWN_MS = 10L * 60L * 1000L  // 10 minutes
 private const val WHISPER_BURN = 5L
 private const val SKIP_TAX_PER_MINUTE = 1_000L
-private const val FAUCET_DROP = 10_000L
+private const val FAUCET_DROP = GoldSolanaClient.FAUCET_AMOUNT
 
 /**
  * Slice 4d redesign: LLM-style chat experience for whispering to your
@@ -93,6 +95,12 @@ fun SteeringConsoleScreenRoute(
   val scope = rememberCoroutineScope()
   val view = LocalView.current
 
+  LaunchedEffect(state.clanId) {
+    val owner = app.sessionStore.read()?.solanaPubkeyBase58 ?: return@LaunchedEffect
+    runCatching { app.goldClient.balance(owner) }
+      .onSuccess(vm::setGold)
+  }
+
   SteeringConsole(
     state = state,
     onBack = onBack,
@@ -100,8 +108,10 @@ fun SteeringConsoleScreenRoute(
     onSend = {
       scope.launch {
         vm.setSending(true)
-        val token = app.sessionStore.read()?.mwaAuthToken
-        if (token == null) {
+        val session = app.sessionStore.read()
+        val token = session?.mwaAuthToken
+        val owner = session?.solanaPubkeyBase58
+        if (token == null || owner == null) {
           vm.setError("not signed in.")
           return@launch
         }
@@ -112,15 +122,48 @@ fun SteeringConsoleScreenRoute(
         val fullMinutes = ((cooldownMs + 59_999L) / 60_000L).coerceAtLeast(0L)
         val skipTax = if (cooldownMs > 0L) fullMinutes * SKIP_TAX_PER_MINUTE else 0L
 
-        val msg = "ClanWorld Whisper — clan ${state.clanId}: ${state.draft}".toByteArray()
-        val result = app.mwaClient.signMessage(mwaSender, token, msg)
+        val body = state.draft.trim()
+        val memo = GoldMemo.whisper(
+          clanId = state.clanId,
+          body = body,
+          owner = owner,
+          burnAmount = WHISPER_BURN,
+          skipTax = skipTax,
+        )
+        val tx = runCatching {
+          app.goldClient.buildBurn(
+            ownerBase58 = owner,
+            amount = WHISPER_BURN,
+            skipTax = skipTax,
+            memo = memo,
+          )
+        }.getOrElse {
+          vm.setError(it.message ?: "could not build GOLD burn.")
+          return@launch
+        }
+        val result = app.mwaClient.signAndSendTransaction(mwaSender, token, tx)
         when (result) {
           is MwaResult.Ok -> {
+            runCatching {
+              app.convexClient.recordWhisperAfterGoldTx(
+                clanId = state.clanId,
+                body = body,
+                owner = owner,
+                signature = result.value,
+                skipTax = skipTax,
+              )
+            }.onFailure {
+              vm.setError(it.message ?: "GOLD burned, but Convex did not record the whisper.")
+              return@launch
+            }
+            val sentAt = System.currentTimeMillis()
             vm.confirmSend(
               burnAmount = WHISPER_BURN,
               skipTax = skipTax,
-              sentAt = System.currentTimeMillis(),
+              sentAt = sentAt,
+              signature = result.value,
             )
+            runCatching { app.goldClient.balance(owner) }.onSuccess(vm::setGold)
             // Native polish: confirm haptic on successful seal.
             view.performHapticFeedback(
               if (android.os.Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM
@@ -136,7 +179,7 @@ fun SteeringConsoleScreenRoute(
         }
       }
     },
-    onFaucet = { vm.mintFaucet(FAUCET_DROP) },
+    onFaucet = {},
     onDismissStatus = vm::clearStatus,
   )
 }
@@ -206,7 +249,7 @@ private fun SteeringConsole(
         bouncing = state.goldBouncing,
         faucetCooling = state.faucetCooling,
         faucetDrop = FAUCET_DROP,
-        onFaucet = onFaucet,
+        onFaucet = null,
       )
 
       StatusLine(
@@ -219,6 +262,7 @@ private fun SteeringConsole(
     }
   }
 }
+
 
 @Composable
 private fun BackBar(text: String, onBack: () -> Unit) {

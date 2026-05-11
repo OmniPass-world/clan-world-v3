@@ -26,10 +26,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import world.clan.app.BuildConfig
 import world.clan.app.cockpit.tabs.shared.SectionHeader
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
 import world.clan.app.data.convex.QueryState
+import world.clan.app.data.convex.VaultMovementWire
 import world.clan.app.data.convex.findClan
 import world.clan.app.data.convex.toDomain
 import world.clan.app.data.convex.toResources
@@ -44,7 +46,7 @@ private val GAIN_GREEN = Color(0xFF3A7A3A)
  * Vault tab. Visual port of apps/web/src/components/cockpit/tabs/VaultTab.tsx:
  *  - parchment background, 12dp padding, scrollable
  *  - "RESOURCES" 2-col grid of cards (glyph + label + value + status)
- *  - "ASSET MOVEMENTS" log strip, left-bordered rows (green = gain, red = spend)
+ *  - "ASSET MOVEMENTS" live movement feed from Convex
  *
  * Data is sourced from `StubData` per the plan's deferred data wiring.
  */
@@ -55,14 +57,11 @@ fun VaultTab(elder: Elder, modifier: Modifier = Modifier) {
 
   val resources = when (snapshotState) {
     is QueryState.Live -> snapshotState.data.findClan(elder.clanId)?.toResources()
-      ?: StubData.vaultResources(elder.clanId)
-    else -> StubData.vaultResources(elder.clanId)
+      ?: if (BuildConfig.STUB_FALLBACK_ENABLED) StubData.vaultResources(elder.clanId) else emptyList()
+    else -> if (BuildConfig.STUB_FALLBACK_ENABLED) StubData.vaultResources(elder.clanId) else emptyList()
   }
-  val movements = when (movementsState) {
-    is QueryState.Live -> movementsState.data.map { it.toDomain() }
-    else -> StubData.vaultMovements
-  }
-  val tickLabel = (snapshotState as? QueryState.Live)?.data?.tick?.toInt() ?: StubData.CURRENT_TICK
+  val tickLabel = (snapshotState as? QueryState.Live)?.data?.tick?.toInt()
+    ?: if (BuildConfig.STUB_FALLBACK_ENABLED) StubData.CURRENT_TICK else 0
 
   Column(
     modifier = modifier
@@ -92,12 +91,47 @@ fun VaultTab(elder: Elder, modifier: Modifier = Modifier) {
     }
 
     SectionHeader("ASSET MOVEMENTS")
+    MovementList(movementsState)
+  }
+}
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-      movements.forEach { m ->
-        MovementRow(m)
+@Composable
+private fun MovementList(state: QueryState<List<VaultMovementWire>>) {
+  when (state) {
+    is QueryState.Live -> {
+      val movements = state.data.map { it.toDomain() }
+      if (movements.isEmpty()) {
+        EmptyMovementState("no live asset movements yet")
+      } else {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+          movements.forEach { m -> MovementRow(m) }
+        }
       }
     }
+    QueryState.Loading -> EmptyMovementState("loading asset movements...")
+    QueryState.Stub -> EmptyMovementState("no live asset movements yet")
+    is QueryState.Error -> EmptyMovementState("asset movements unavailable")
+  }
+}
+
+@Composable
+private fun EmptyMovementState(message: String) {
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .background(Color.White.copy(alpha = 0.18f))
+      .border(1.dp, CockpitTokens.Border.ParchmentEdge)
+      .padding(horizontal = 10.dp, vertical = 12.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text(
+      text = message,
+      style = TextStyle(
+        fontFamily = CockpitFonts.JetBrainsMono,
+        fontSize = 10.sp,
+        color = CockpitTokens.TextC.OnParchmentDim,
+      ),
+    )
   }
 }
 

@@ -59,6 +59,8 @@ import kotlinx.coroutines.launch
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import world.clan.app.App
 import world.clan.app.R
+import world.clan.app.data.gold.GoldSolanaClient
+import world.clan.app.data.gold.GoldMemo
 import world.clan.app.ui.components.EmberCta
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.viewmodel.SendPhase
@@ -113,15 +115,49 @@ fun StrategyEditorScreenRoute(
     onCommit = {
       scope.launch {
         vm.setSavePhase(SendPhase.Signing)
-        val token = app.sessionStore.read()?.mwaAuthToken
-        if (token == null) {
+        val session = app.sessionStore.read()
+        val token = session?.mwaAuthToken
+        val owner = session?.solanaPubkeyBase58
+        if (token == null || owner == null) {
           vm.setSavePhase(SendPhase.Failed, "not signed in.")
           return@launch
         }
-        val msg = "ClanWorld Essence — clan ${state.clanId}".toByteArray()
-        val result = app.mwaClient.signMessage(mwaSender, token, msg)
+        val memo = GoldMemo.doctrine(
+          clanId = state.clanId,
+          strategy = state.draftStrategy,
+          notes = state.draftNotes,
+          owner = owner,
+        )
+        val tx = runCatching {
+          app.goldClient.buildBurn(
+            ownerBase58 = owner,
+            amount = GoldSolanaClient.BURN_AMOUNT,
+            memo = memo,
+          )
+        }.getOrElse {
+          vm.setSavePhase(SendPhase.Failed, it.message ?: "could not build GOLD burn.")
+          return@launch
+        }
+        val result = app.mwaClient.signAndSendTransaction(mwaSender, token, tx)
         when (result) {
-          is MwaResult.Ok -> vm.confirmSeal()
+          is MwaResult.Ok -> {
+            runCatching {
+              app.convexClient.saveDoctrineAfterGoldTx(
+                clanId = state.clanId,
+                strategy = state.draftStrategy,
+                notes = state.draftNotes,
+                owner = owner,
+                signature = result.value,
+              )
+            }.onSuccess {
+              vm.confirmSeal(result.value)
+            }.onFailure {
+              vm.setSavePhase(
+                SendPhase.Failed,
+                it.message ?: "GOLD burned, but doctrine was not recorded.",
+              )
+            }
+          }
           is MwaResult.UserDeclined -> vm.setSavePhase(SendPhase.Idle)
           is MwaResult.WalletNotFound ->
             vm.setSavePhase(SendPhase.Failed, "no wallet found on device.")
@@ -202,7 +238,7 @@ private fun StrategyEditor(
         (state.savePhase == SendPhase.Idle || state.savePhase == SendPhase.Failed)
       EmberCta(
         text = when (state.savePhase) {
-          SendPhase.Idle -> if (anyDirty) "Sign to Commit" else "Sealed · No Changes"
+          SendPhase.Idle -> if (anyDirty) "Burn 5 GOLD to Commit" else "Sealed · No Changes"
           SendPhase.Signing -> "Sealing…"
           SendPhase.Queued -> "Sealed ✓"
           SendPhase.Failed -> "Try Again"
@@ -224,6 +260,7 @@ private fun StrategyEditor(
     }
   }
 }
+
 
 // ─────────────────────────────────────────────────────────────────────
 // Sub-composables

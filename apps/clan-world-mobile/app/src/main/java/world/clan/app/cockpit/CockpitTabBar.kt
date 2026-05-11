@@ -32,7 +32,7 @@ private val TABS = listOf(
   TabSpec(TabId.Terminal, "▣", "TERM"),
   TabSpec(TabId.Vault,    "◈", "VAULT"),
   TabSpec(TabId.Clansman, "☗", "CLAN"),
-  TabSpec(TabId.ZeroG,    "◉", "0G"),
+  TabSpec(TabId.ZeroG,    "◉", "NFT"),
   TabSpec(TabId.Comms,    "✉", "COMMS"),
 )
 

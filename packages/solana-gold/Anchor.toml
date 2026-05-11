@@ -1,0 +1,16 @@
+[features]
+seeds = false
+skip-lint = false
+
+[programs.devnet]
+gold_faucet = "aMwXvN227YK14C8eFQzgyk9h7TfkMk1XQkekZXS6WWQ"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "../../keys/solana-devnet-deployer.json"
+
+[scripts]
+test = "cargo test"

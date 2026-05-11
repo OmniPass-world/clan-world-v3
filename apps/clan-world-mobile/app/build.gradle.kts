@@ -41,6 +41,14 @@ val mapUrl = resolveBuildConfigUrl("CLAN_WORLD_MAP_URL", "clanWorldMapUrl")
 val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "clanWorldTerminalBaseUrl")
 val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
   .orElse("https://valuable-kudu-985.convex.cloud")
+val goldRpcUrl = providers.environmentVariable("CLAN_WORLD_GOLD_RPC_URL")
+  .orElse("https://api.devnet.solana.com")
+val goldMint = providers.environmentVariable("CLAN_WORLD_GOLD_MINT")
+  .orElse("FPBZJfEgxdkKEeT8pZhLRPg1NzwhyWJRqPKpzRWZLSAF")
+val goldFaucetProgramId = providers.environmentVariable("CLAN_WORLD_GOLD_FAUCET_PROGRAM_ID")
+  .orElse("aMwXvN227YK14C8eFQzgyk9h7TfkMk1XQkekZXS6WWQ")
+val goldTreasuryOwner = providers.environmentVariable("CLAN_WORLD_GOLD_TREASURY_OWNER")
+  .orElse("5YqhQK4LfJmaaZQLqSEfcJc4ViUQHX15quVCXwNJDFnd")
 val clanWorldVersionName = optionalEnvOrProperty("CLAN_WORLD_VERSION_NAME", "clanWorldVersionName")
   ?: "0.0.0-local"
 val clanWorldVersionCode = optionalEnvOrProperty("CLAN_WORLD_VERSION_CODE", "clanWorldVersionCode")
@@ -78,6 +86,11 @@ android {
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
+    buildConfigField("String", "GOLD_RPC_URL", "\"${goldRpcUrl.get()}\"")
+    buildConfigField("String", "GOLD_MINT", "\"${goldMint.get()}\"")
+    buildConfigField("String", "GOLD_FAUCET_PROGRAM_ID", "\"${goldFaucetProgramId.get()}\"")
+    buildConfigField("String", "GOLD_TREASURY_OWNER", "\"${goldTreasuryOwner.get()}\"")
+    buildConfigField("int", "GOLD_DECIMALS", "0")
     buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
     vectorDrawables { useSupportLibrary = true }
   }
@@ -95,21 +108,23 @@ android {
 
   buildTypes {
     debug {
+      buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "true")
       applicationIdSuffix = ".debug"
       versionNameSuffix = "-debug"
       buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "true")
     }
     release {
+      buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "false")
       buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
+      if (hasStableSigning) {
+        signingConfig = signingConfigs.getByName("stable")
+      }
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(
         getDefaultProguardFile("proguard-android-optimize.txt"),
         "proguard-rules.pro",
       )
-      if (hasStableSigning) {
-        signingConfig = signingConfigs.getByName("stable")
-      }
     }
   }
 
@@ -182,6 +197,7 @@ dependencies {
 
   // ── WebView (cockpit's MapWebView + slice 2 cockpit URL surface) ─────
   implementation("androidx.webkit:webkit:1.12.1")
+  implementation("androidx.browser:browser:1.8.0")
 
   // ── Coroutines ───────────────────────────────────────────────────────
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
@@ -205,6 +221,7 @@ dependencies {
   // 8.7.3 / compileSdk 35. The 2.0.x line is API-identical for our usage
   // (verified against the v2.0.5 + v2.0.7 tags).
   implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.7")
+  implementation("com.solanamobile:web3-solana-jvm:0.3.0-beta4")
 
   // ── Tests ────────────────────────────────────────────────────────────
   testImplementation("junit:junit:4.13.2")

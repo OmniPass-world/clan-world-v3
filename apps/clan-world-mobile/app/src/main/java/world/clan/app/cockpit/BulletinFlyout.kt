@@ -39,6 +39,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import world.clan.app.BuildConfig
 import world.clan.app.data.ELDERS
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
@@ -252,7 +253,7 @@ private fun ClanBulletinCard(elder: Elder, modifier: Modifier = Modifier) {
   val live = useBulletins(elder.clanId)
   val posts = when (live) {
     is QueryState.Live -> live.data.map { it.toPublicPost() }
-    else -> StubData.publicBulletins(elder.clanId)
+    else -> if (BuildConfig.STUB_FALLBACK_ENABLED) StubData.publicBulletins(elder.clanId) else emptyList()
   }
   val currentTick = posts.maxOfOrNull { it.tick } ?: StubData.CURRENT_TICK
   val visible = posts.filter { (currentTick - it.tick) <= StubData.VISIBLE_TICKS }
