@@ -780,8 +780,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         // Uses caller-provided tick for replay-determinism; matches closedTick from heartbeat context.
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = _banditsByRegion[region];
-            for (uint256 i = 0; i < regionBandits.length; i++) {
-                uint32 banditId = regionBandits[i];
+            for (uint256 i = regionBandits.length; i > 0; i--) {
+                uint32 banditId = regionBandits[i - 1];
                 if (banditId == excludedBanditId) continue;
 
                 BanditTroop storage bandit = _bandits[banditId];
@@ -2109,9 +2109,8 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         require(_world.currentTick == closedTick, "ClanWorld: bandit advance tick mismatch");
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
             uint32[] storage regionBandits = _banditsByRegion[region];
-            uint256 i = 0;
-            while (i < regionBandits.length) {
-                uint32 banditId = regionBandits[i];
+            for (uint256 i = regionBandits.length; i > 0; i--) {
+                uint32 banditId = regionBandits[i - 1];
                 BanditTroop storage bandit = _bandits[banditId];
                 uint8 regionBefore = bandit.region;
                 if (bandit.state == BanditState.Spawned && closedTick > bandit.tickEnteredState) {
@@ -2121,6 +2120,9 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                         && closedTick >= bandit.tickEnteredState + ClanWorldConstants.BANDIT_CAMP_TICKS
                 ) {
                     _eagerSettleBanditCandidateRegion(bandit.region);
+                    if (_bandits[banditId].id == ClanWorldConstants.BANDIT_ID_NULL) {
+                        continue;
+                    }
                     uint32 targetClanId = _pickBanditAttackTarget(bandit);
                     if (targetClanId == ClanWorldConstants.CLAN_ID_NULL) {
                         if (_recordBanditAttackAttempt(banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS) {
@@ -2129,6 +2131,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                         }
                         bandit.tickEnteredState = _world.currentTick;
                         bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
+                        _moveBanditToRampageNextRegion(banditId);
                         emit BanditStateChanged(
                             banditId, BanditState.Camped, BanditState.Camped, bandit.region, _world.currentTick
                         );
@@ -2143,7 +2146,6 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 if (regionBefore != _bandits[banditId].region) {
                     continue;
                 }
-                i++;
             }
         }
     }
@@ -2834,11 +2836,13 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
     }
 
     function _eagerSettleBanditCandidateRegion(uint8 region) internal {
-        uint256 clanScanCount = _allClanIds.length < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION
-            ? _allClanIds.length
-            : MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION;
-
-        for (uint256 i = 0; i < clanScanCount; i++) {
+        uint256 inRegionScanCount;
+        for (
+            uint256 i = 0;
+            i < _allClanIds.length && inRegionScanCount < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION
+                && i < ClanWorldConstants.MAX_BANDIT_EAGER_SETTLE_GLOBAL_SCAN;
+            i++
+        ) {
             uint32 clanId = _allClanIds[i];
             Clan storage clan = _clans[clanId];
             if (clan.clanState == ClanState.DEAD || clan.baseRegion != region) {
@@ -2847,6 +2851,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
 
             _settleClan(clanId);
             _eagerSettleActiveDefendersForBase(clanId, region);
+            inRegionScanCount++;
         }
     }
 
@@ -2855,10 +2860,14 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         uint256 defendingClanScanCount = defendingClans.length < MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION
             ? defendingClans.length
             : MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION;
+        uint32[] memory defendingClanSnapshot = new uint32[](defendingClanScanCount);
+        for (uint256 k = 0; k < defendingClanScanCount; k++) {
+            defendingClanSnapshot[k] = defendingClans[k];
+        }
         uint256 defendersScanned;
 
         for (uint256 i = 0; i < defendingClanScanCount; i++) {
-            uint32 defenderClanId = defendingClans[i];
+            uint32 defenderClanId = defendingClanSnapshot[i];
             uint32[] storage clansmanIds = _clanClansmanIds[defenderClanId];
 
             for (
@@ -2869,6 +2878,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
                 defendersScanned += 1;
                 Mission storage mission = _missions[clansmanIds[j]];
                 if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    _settleClan(defenderClanId);
                     break;
                 }
             }

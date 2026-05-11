@@ -17,7 +17,6 @@ import {
 } from "../../IClanWorld.sol";
 import {RNG} from "../../lib/RNG.sol";
 import {LibBanditCombat} from "./LibBanditCombat.sol";
-import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibGameRules} from "./LibGameRules.sol";
 import {LibOrderDefenders} from "./LibOrderDefenders.sol";
 import {LibStorage} from "./LibStorage.sol";
@@ -27,7 +26,11 @@ import {LibSettlementMath} from "./LibSettlementMath.sol";
 library LibSettlement {
     uint8 internal constant WALL_MAX_LEVEL = 5;
     uint8 internal constant BASE_MAX_LEVEL = 5;
+    uint256 internal constant MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION = 12;
+    uint256 internal constant MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION = 12;
+    uint256 internal constant MAX_BANDIT_EAGER_SETTLE_DEFENDER_SCAN_PER_REGION = 48;
 
+    event ClanSettled(uint32 indexed clanId, uint64 tick);
     event MissionCompleted(uint32 indexed clanId, uint32 indexed clansmanId, uint64 missionNonce, ActionType action);
     event WorkerArrived(uint32 indexed clanId, uint32 indexed clansmanId, uint8 region, uint64 tick);
     event ResourcesGathered(
@@ -100,6 +103,72 @@ library LibSettlement {
         uint256 reservedIron;
         uint256 reservedWheat;
         uint256 reservedBlueprint;
+    }
+
+    function eagerSettleBanditCandidateRegion(LibStorage.AppStorage storage s, uint8 region) internal {
+        uint256 inRegionScanCount;
+        for (
+            uint256 i = 0;
+            i < s.allClanIds.length && inRegionScanCount < MAX_BANDIT_EAGER_SETTLE_BASE_SCAN_PER_REGION
+                && i < ClanWorldConstants.MAX_BANDIT_EAGER_SETTLE_GLOBAL_SCAN;
+            i++
+        ) {
+            uint32 clanId = s.allClanIds[i];
+            Clan storage clan = s.clans[clanId];
+            if (clan.clanState == ClanState.DEAD || clan.baseRegion != region) {
+                continue;
+            }
+
+            settleClanForBanditCandidate(s, clanId);
+            eagerSettleActiveDefendersForBase(s, clanId, region);
+            inRegionScanCount++;
+        }
+    }
+
+    function settleClanForBanditCandidate(LibStorage.AppStorage storage s, uint32 clanId) private {
+        if (s.clans[clanId].clanId == ClanWorldConstants.CLAN_ID_NULL) return;
+        if (s.clans[clanId].clanState == ClanState.DEAD) return;
+        if (s.clans[clanId].lastSettledTick >= s.world.currentTick) return;
+
+        SettlementSimulation memory sim = simulateToTick(s, clanId, s.world.currentTick);
+        commitSimulation(s, sim);
+        emit ClanSettled(clanId, s.clans[clanId].lastSettledTick);
+    }
+
+    function eagerSettleActiveDefendersForBase(LibStorage.AppStorage storage s, uint32 targetClanId, uint8 region)
+        private
+    {
+        uint32[] storage defendingClans = s.defendingClansByRegion[region];
+        uint256 defendingClanScanCount = defendingClans.length < MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION
+            ? defendingClans.length
+            : MAX_BANDIT_EAGER_SETTLE_DEFENDING_CLANS_PER_REGION;
+        uint32[] memory defendingClanSnapshot = new uint32[](defendingClanScanCount);
+        for (uint256 k = 0; k < defendingClanScanCount; k++) {
+            defendingClanSnapshot[k] = defendingClans[k];
+        }
+        uint256 defendersScanned;
+
+        for (uint256 i = 0; i < defendingClanScanCount; i++) {
+            uint32 defenderClanId = defendingClanSnapshot[i];
+            uint32[] storage clansmanIds = s.clanClansmanIds[defenderClanId];
+
+            for (
+                uint256 j = 0;
+                j < clansmanIds.length && defendersScanned < MAX_BANDIT_EAGER_SETTLE_DEFENDER_SCAN_PER_REGION;
+                j++
+            ) {
+                defendersScanned += 1;
+                Mission storage mission = s.missions[clansmanIds[j]];
+                if (mission.active && mission.action == ActionType.DefendBase && mission.targetClanId == targetClanId) {
+                    settleClanForBanditCandidate(s, defenderClanId);
+                    break;
+                }
+            }
+
+            if (defendersScanned >= MAX_BANDIT_EAGER_SETTLE_DEFENDER_SCAN_PER_REGION) {
+                break;
+            }
+        }
     }
 
     function loadSimulation(LibStorage.AppStorage storage s, uint32 clanId)
@@ -322,8 +391,7 @@ library LibSettlement {
         if (winter) {
             uint256 woodNeeded = ClanWorldConstants.WINTER_WOOD_BURN_PER_BASE + uint256(livingBeforeStarvation)
                 * ClanWorldConstants.WINTER_WOOD_BURN_PER_CLANSMAN;
-            uint256 spendableWood =
-                LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, sim.reservedWood, 0);
+            uint256 spendableWood = LibSettlementMath.spendableAfterReleasing(sim.clan.vaultWood, sim.reservedWood, 0);
             if (spendableWood >= woodNeeded) {
                 sim.clan.vaultWood -= woodNeeded;
             } else {
@@ -403,7 +471,10 @@ library LibSettlement {
         }
     }
 
-    function killNextClansmanFromStarvation(LibStorage.AppStorage storage s, SettlementSimulation memory sim) internal view {
+    function killNextClansmanFromStarvation(LibStorage.AppStorage storage s, SettlementSimulation memory sim)
+        internal
+        view
+    {
         if (sim.clan.livingClansmen == 0) return;
 
         for (uint256 i = 0; i < sim.clansmen.length; i++) {
@@ -613,7 +684,16 @@ library LibSettlement {
             sim.clan.goldBalance += goldBonus;
         }
         recordSettlementLog(
-            sim, SettlementLogKind.ResourcesGathered, cs.clansmanId, ActionType.MineIron, 0, amount, 0, 0, goldBonus, tick
+            sim,
+            SettlementLogKind.ResourcesGathered,
+            cs.clansmanId,
+            ActionType.MineIron,
+            0,
+            amount,
+            0,
+            0,
+            goldBonus,
+            tick
         );
 
         if (cs.carryIron >= ClanWorldConstants.IRON_CAP) {

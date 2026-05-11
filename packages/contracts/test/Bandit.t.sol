@@ -3,7 +3,14 @@ pragma solidity ^0.8.34;
 
 import {Test} from "forge-std/Test.sol";
 import {ClanWorld} from "../src/ClanWorld.sol";
-import {ActiveBanditView, ClanWorldConstants, BanditState, BanditTroop, WorldState} from "../src/IClanWorld.sol";
+import {
+    ActiveBanditView,
+    ClanWorldConstants,
+    BanditState,
+    BanditTroop,
+    ClanState,
+    WorldState
+} from "../src/IClanWorld.sol";
 
 contract BanditHarness is ClanWorld {
     function spawnBandit(uint8 region, uint32 strength) external returns (uint32) {
@@ -16,6 +23,12 @@ contract BanditHarness is ClanWorld {
 
     function transitionBanditToAttacking(uint32 id, uint32 targetClanId) external {
         _transitionBanditToAttacking(id, targetClanId);
+    }
+
+    function setClanBaseAndLivingForTest(uint32 clanId, uint8 baseRegion, uint8 livingClansmen) external {
+        _clans[clanId].baseRegion = baseRegion;
+        _clans[clanId].livingClansmen = livingClansmen;
+        _clans[clanId].clanState = ClanState.ACTIVE;
     }
 }
 
@@ -216,6 +229,154 @@ contract BanditTest is Test {
         _assertResolvedInMountains(id3, mountainBandits, "id3");
     }
 
+    function test_noTargetAdvancesToNextRegion() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(uint8(bandit.state), uint8(BanditState.Camped), "still camped");
+        assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, "advanced to next region");
+        assertEq(bandit.attackAttemptsMade, 1, "no-target attempt counted");
+        assertEq(bandit.tickEnteredState, spawnedAt + 4, "camp timer reset");
+        assertEq(bandit.targetClanId, 0, "target remains clear");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "left forest index");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS)[0], id, "entered mountain index");
+    }
+
+    function test_noTargetCounterPersistsAcrossRegions() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "first no-target move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 1, "first no-target counted");
+
+        _closeTick(spawnedAt + 7);
+
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(bandit.region, ClanWorldConstants.REGION_EAST_FARMS, "second no-target move");
+        assertEq(bandit.attackAttemptsMade, 2, "counter persisted");
+        assertEq(bandit.tickEnteredState, spawnedAt + 7, "second camp timer reset");
+    }
+
+    function test_terminalEscapeAfterSixNoTargetRegionAdvances() public {
+        uint32 id = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_MOUNTAINS, "first move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 1, "first attempt");
+
+        _closeTick(spawnedAt + 7);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_FARMS, "second move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 2, "second attempt");
+
+        _closeTick(spawnedAt + 10);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_EAST_DOCKS, "third move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 3, "third attempt");
+
+        _closeTick(spawnedAt + 13);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_WEST_DOCKS, "fourth move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 4, "fourth attempt");
+
+        _closeTick(spawnedAt + 16);
+        assertEq(world.getBandit(id).region, ClanWorldConstants.REGION_WEST_FARMS, "fifth move");
+        assertEq(world.getBandit(id).attackAttemptsMade, 5, "fifth attempt");
+
+        _closeTick(spawnedAt + 19);
+
+        BanditTroop memory deletedBandit = world.getBandit(id);
+        assertEq(deletedBandit.id, 0, "bandit deleted at no-target cap");
+        assertEq(uint8(deletedBandit.state), uint8(BanditState.None), "terminal escape removed troop");
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_WEST_FARMS).length, 0, "removed from final region");
+    }
+
+    function test_mixedFailedAttackAndNoTargetTerminalEscape() public {
+        uint32 clanId = _mintClan();
+
+        uint32 noTargetTerminalId = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 11);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 4);
+        _closeTick(spawnedAt + 4);
+        assertEq(world.getBandit(noTargetTerminalId).attackAttemptsMade, 1, "failed attack counted");
+        assertEq(world.getBandit(noTargetTerminalId).region, ClanWorldConstants.REGION_MOUNTAINS, "failed attack moved");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 0);
+        _closeTick(spawnedAt + 7);
+        assertEq(world.getBandit(noTargetTerminalId).attackAttemptsMade, 2, "no-target counted");
+        assertEq(world.getBandit(noTargetTerminalId).region, ClanWorldConstants.REGION_EAST_FARMS, "no-target moved");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_EAST_FARMS, 4);
+        _closeTick(spawnedAt + 10);
+        assertEq(world.getBandit(noTargetTerminalId).attackAttemptsMade, 3, "second failed attack counted");
+        assertEq(
+            world.getBandit(noTargetTerminalId).region, ClanWorldConstants.REGION_EAST_DOCKS, "second failed moved"
+        );
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 0);
+        _closeTick(spawnedAt + 13);
+        assertEq(world.getBandit(noTargetTerminalId).attackAttemptsMade, 4, "second no-target counted");
+        assertEq(
+            world.getBandit(noTargetTerminalId).region, ClanWorldConstants.REGION_WEST_DOCKS, "second no-target moved"
+        );
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_WEST_DOCKS, 4);
+        _closeTick(spawnedAt + 16);
+        assertEq(world.getBandit(noTargetTerminalId).attackAttemptsMade, 5, "third failed attack counted");
+        assertEq(world.getBandit(noTargetTerminalId).region, ClanWorldConstants.REGION_WEST_FARMS, "third failed moved");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 0);
+        _closeTick(spawnedAt + 19);
+        assertEq(world.getBandit(noTargetTerminalId).id, 0, "sixth mixed attempt terminal escaped on no-target");
+
+        uint32 failedAttackTerminalId = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 11);
+        spawnedAt = world.getWorldState().currentTick;
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 0);
+        _closeTick(spawnedAt + 4);
+        assertEq(world.getBandit(failedAttackTerminalId).attackAttemptsMade, 1, "initial no-target counted");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_MOUNTAINS, 4);
+        _closeTick(spawnedAt + 7);
+        assertEq(world.getBandit(failedAttackTerminalId).attackAttemptsMade, 2, "initial failed attack counted");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 0);
+        _closeTick(spawnedAt + 10);
+        assertEq(world.getBandit(failedAttackTerminalId).attackAttemptsMade, 3, "middle no-target counted");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_EAST_DOCKS, 4);
+        _closeTick(spawnedAt + 13);
+        assertEq(world.getBandit(failedAttackTerminalId).attackAttemptsMade, 4, "middle failed attack counted");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_FOREST, 0);
+        _closeTick(spawnedAt + 16);
+        assertEq(world.getBandit(failedAttackTerminalId).attackAttemptsMade, 5, "final no-target counted");
+
+        world.setClanBaseAndLivingForTest(clanId, ClanWorldConstants.REGION_WEST_FARMS, 4);
+        _closeTick(spawnedAt + 19);
+        assertEq(world.getBandit(failedAttackTerminalId).id, 0, "sixth mixed attempt terminal escaped on failed attack");
+    }
+
+    function test_multipleBanditsSameRegionNoTargetAdvance() public {
+        uint32 id1 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 100);
+        uint32 id2 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 200);
+        uint32 id3 = world.spawnBandit(ClanWorldConstants.REGION_FOREST, 300);
+        uint64 spawnedAt = world.getWorldState().currentTick;
+
+        _closeTick(spawnedAt + 4);
+
+        assertEq(world.getBanditsInRegion(ClanWorldConstants.REGION_FOREST).length, 0, "all left forest");
+        uint32[] memory mountainBandits = world.getBanditsInRegion(ClanWorldConstants.REGION_MOUNTAINS);
+        assertEq(mountainBandits.length, 3, "all entered mountains");
+
+        _assertNoTargetAdvancedToMountains(id1, mountainBandits, "id1");
+        _assertNoTargetAdvancedToMountains(id2, mountainBandits, "id2");
+        _assertNoTargetAdvancedToMountains(id3, mountainBandits, "id3");
+    }
+
     function test_steadyStateCycleIs3Ticks() public {
         for (uint256 i = 0; i < 6; i++) {
             _mintClan();
@@ -288,6 +449,18 @@ contract BanditTest is Test {
         assertEq(uint8(bandit.state), uint8(BanditState.Camped), label);
         assertEq(bandit.targetClanId, 0, label);
         assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, label);
+        assertTrue(_containsBandit(mountainBandits, id), label);
+    }
+
+    function _assertNoTargetAdvancedToMountains(uint32 id, uint32[] memory mountainBandits, string memory label)
+        internal
+        view
+    {
+        BanditTroop memory bandit = world.getBandit(id);
+        assertEq(uint8(bandit.state), uint8(BanditState.Camped), label);
+        assertEq(bandit.targetClanId, 0, label);
+        assertEq(bandit.region, ClanWorldConstants.REGION_MOUNTAINS, label);
+        assertEq(bandit.attackAttemptsMade, 1, label);
         assertTrue(_containsBandit(mountainBandits, id), label);
     }
 
