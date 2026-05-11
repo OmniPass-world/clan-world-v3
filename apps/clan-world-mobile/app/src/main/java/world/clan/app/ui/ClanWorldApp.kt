@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -53,6 +54,7 @@ import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.viewmodel.ClanWorldViewModelFactory
 import world.clan.app.viewmodel.ConnectUiState
 import world.clan.app.viewmodel.ConnectViewModel
+import world.clan.app.viewmodel.HearthViewModel
 import world.clan.app.wallet.WalletIdentity
 
 object Routes {
@@ -63,7 +65,7 @@ object Routes {
   const val Codex = "codex"
   const val InftDetail = "inft/{clanId}"
   const val BazaarInftDetail = "bazaarInft/{clanId}"
-  const val Whispers = "whispers/{clanId}"
+  const val Whispers = "whispers/{clanId}?strategy={strategy}"
   const val SteeringConsole = "steer/{clanId}"
   const val StrategyEditor = "strategy/{clanId}"
   const val Treasury = "treasury/{clanId}"
@@ -75,7 +77,7 @@ object Routes {
   const val OwnerComingSoon = "ownerComingSoon/{clanId}"
   fun inftDetail(clanId: Int) = "inft/$clanId"
   fun bazaarInftDetail(clanId: Int) = "bazaarInft/$clanId"
-  fun whispers(clanId: Int) = "whispers/$clanId"
+  fun whispers(clanId: Int, strategy: Boolean = true) = "whispers/$clanId?strategy=$strategy"
   fun steer(clanId: Int) = "steer/$clanId"
   fun strategy(clanId: Int) = "strategy/$clanId"
   fun treasury(clanId: Int) = "treasury/$clanId"
@@ -421,7 +423,7 @@ fun ClanWorldApp(
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
-              onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
+              onOpenInbox = { nav.navigate(Routes.whispers(clanId, strategy = false)) },
               onOpenTreasury = { nav.navigate(Routes.treasury(clanId)) },
               isBazaar = true,
               mwaSender = mwaSender,
@@ -469,18 +471,26 @@ fun ClanWorldApp(
           // ── Whispers inbox (deep route from InftDetail Whispers tab) ────
           composable(
             route = Routes.Whispers,
-            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            arguments = listOf(
+              navArgument("clanId") { type = NavType.IntType },
+              navArgument("strategy") {
+                type = NavType.BoolType
+                defaultValue = true
+              },
+            ),
             enterTransition = { detailEnter() },
             popExitTransition = { detailPopExit() },
             exitTransition = { tabExit() },
           ) { entry ->
             val clanId = entry.arguments?.getInt("clanId") ?: 1
+            val strategyEnabled = entry.arguments?.getBoolean("strategy") ?: true
             world.clan.app.ui.screens.WhispersScreenRoute(
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
               onCompose = { nav.navigate(Routes.steer(clanId)) },
               onStrategy = { nav.navigate(Routes.strategy(clanId)) },
+              strategyEnabled = strategyEnabled,
             )
           }
 
@@ -609,6 +619,12 @@ fun ClanWorldApp(
             exitTransition = { tabExit() },
           ) { entry ->
             val clanId = entry.arguments?.getInt("clanId") ?: 1
+            val canEditStrategy = clanId in (HearthViewModel.LINKED_CLAN_IDS +
+              app.sessionStore.getOwnedClanIdsExtra())
+            if (!canEditStrategy) {
+              LaunchedEffect(clanId) { nav.popBackStack() }
+              return@composable
+            }
             world.clan.app.ui.screens.StrategyEditorScreenRoute(
               app = app,
               mwaSender = mwaSender,

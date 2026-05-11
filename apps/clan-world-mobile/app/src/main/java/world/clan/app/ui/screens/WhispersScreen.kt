@@ -54,6 +54,7 @@ fun WhispersScreenRoute(
   onBack: () -> Unit,
   onCompose: () -> Unit = {},
   onStrategy: () -> Unit = {},
+  strategyEnabled: Boolean = true,
 ) {
   val vm: WhispersViewModel = viewModel(factory = WhispersViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
@@ -65,6 +66,7 @@ fun WhispersScreenRoute(
     onCompose = onCompose,
     onRefresh = vm::refresh,
     onStrategy = onStrategy,
+    strategyEnabled = strategyEnabled,
   )
 }
 
@@ -77,6 +79,7 @@ private fun WhispersScreen(
   onCompose: () -> Unit = {},
   onRefresh: () -> Unit = {},
   onStrategy: () -> Unit = {},
+  strategyEnabled: Boolean = true,
 ) {
   // Selected tab — Tab 1 (Strategy & Notes) fires onStrategy callback to navigate
   // to StrategyEditorScreen rather than embedding it inline. Tab state is local;
@@ -88,8 +91,9 @@ private fun WhispersScreen(
 
     InboxTabs(
       selected = selectedTab,
+      strategyEnabled = strategyEnabled,
       onSelect = { idx ->
-        if (idx == 1) {
+        if (idx == 1 && strategyEnabled) {
           onStrategy()
         } else {
           selectedTab = idx
@@ -192,8 +196,12 @@ private fun InboxBackBar(clanId: Int, onBack: () -> Unit) {
 }
 
 @Composable
-private fun InboxTabs(selected: Int, onSelect: (Int) -> Unit) {
-  val tabs = listOf("WHISPERS", "STRATEGY & NOTES")
+private fun InboxTabs(
+  selected: Int,
+  strategyEnabled: Boolean,
+  onSelect: (Int) -> Unit,
+) {
+  val tabs = if (strategyEnabled) listOf("WHISPERS", "STRATEGY & NOTES") else listOf("WHISPERS")
   val parchment = ClanWorldTheme.colors.parchment
   val warmDim = ClanWorldTheme.colors.warmDim
   TabRow(

@@ -112,6 +112,10 @@ class ConnectViewModel(
     _state.value = ConnectUiState()
   }
 
+  private fun clearWalletNameCache() {
+    walletNameCache?.clear()
+  }
+
   private fun handle(result: MwaResult<world.clan.app.wallet.MwaSession>) {
     when (result) {
       is MwaResult.Ok -> {
@@ -149,6 +153,7 @@ class ConnectViewModel(
         // bounce") forever.
         val wasVerifying = _state.value.pendingVerification
         sessionStore.clear()
+        clearWalletNameCache()
         _state.update {
           it.copy(
             phase = ConnectUiState.Phase.Idle,
@@ -174,6 +179,7 @@ class ConnectViewModel(
         // the wallet has rejected. A real network/IPC error will simply
         // result in a fresh authorize on the user's next tap.
         sessionStore.clear()
+        clearWalletNameCache()
         _state.update {
           it.copy(
             phase = ConnectUiState.Phase.Error,
@@ -198,7 +204,11 @@ class ConnectViewModel(
     viewModelScope.launch {
       runCatching {
         val identity = WalletNameService.resolve(session)
-        cache[session.solanaPubkeyBase58] = identity
+        val isStillCurrent = _state.value.solanaPubkeyBase58 == session.solanaPubkeyBase58 &&
+          sessionStore.read()?.solanaPubkeyBase58 == session.solanaPubkeyBase58
+        if (isStillCurrent) {
+          cache[session.solanaPubkeyBase58] = identity
+        }
       }
       // Resolution failures are silent — the synchronous fallback path
       // in WalletIdentity.fromSession() still renders the pill from
