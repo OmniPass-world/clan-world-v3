@@ -88,6 +88,7 @@ install:
 	    mkdir -p $(DEST)/elder-$$n/.claude; \
 	    mkdir -p $(DEST)/elder-$$n/state/plugin-cache; \
 	    mkdir -p $(DEST)/elder-$$n/state/outbox; \
+	    ln -sf $(DEST)/.claude/hooks $(DEST)/elder-$$n/.claude/hooks; \
 	    rm -f $(DEST)/elder-$$n/.claude/settings.json \
 	          $(DEST)/elder-$$n/.claude/settings.local.json; \
 	    if [ ! -e $(DEST)/elder-$$n/.claude/.credentials.json ]; then \

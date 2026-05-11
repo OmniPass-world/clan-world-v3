@@ -17,7 +17,7 @@
     ]
   },
   "permissions": {
-    "defaultMode": "dontAsk",
+    "defaultMode": "default",
     "allow": [
       "mcp__elder__*",
       "Bash(elder *)",

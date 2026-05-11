@@ -2286,26 +2286,20 @@ export function WorldMap() {
     };
   }
 
-  // Bandit camp sits in the region's polygon at the point farthest from all bases
-  // anchored there. Avoids the visual collision where camp + base both render at
-  // the region center. Falls back to the region anchor when the region has no
-  // bases (no behavior change). Computed in REF coords for layout stability.
+  // Bandit camp sits in the region's polygon at the point farthest from the
+  // region-center base anchor. Current base rendering anchors every clan base
+  // at clan.homeRegion's region coords; if bases gain per-clan offsets later,
+  // this should use those stored base coords instead.
   function projectedBanditCampAnchor(regionKey: string): Point2 | null {
     const region = REGIONS.find(r => r.id === regionKey);
     if (!region) return null;
     const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
 
-    const seen = new Set<string>();
-    const basePositions: Array<[number, number]> = [];
-    for (const entry of drawnRef.current.bases) {
-      if (entry.clan.homeRegion !== regionKey) continue;
-      const bx = region.nx * REF_W;
-      const by = region.ny * REF_H;
-      const key = `${bx},${by}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      basePositions.push([bx, by]);
-    }
+    const basePositions: Array<[number, number]> = drawnRef.current.bases.some(
+      entry => entry.clan.homeRegion === regionKey,
+    )
+      ? [[region.nx * REF_W, region.ny * REF_H]]
+      : [];
 
     if (basePositions.length === 0) {
       return {

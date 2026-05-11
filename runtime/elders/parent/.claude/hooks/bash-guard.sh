@@ -8,12 +8,19 @@ deny() {
 }
 
 input="$(cat)"
-tool_name="$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null || true)"
-command_text="$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null || true)"
+if ! command -v jq >/dev/null 2>&1; then
+  deny "jq is required for the Elder bash guard"
+fi
+
+tool_name="$(jq -re '.tool_name' <<<"$input" 2>/dev/null)" \
+  || deny "could not parse hook input (missing or invalid .tool_name)"
 
 if [[ "$tool_name" != "Bash" ]]; then
   exit 0
 fi
+
+command_text="$(jq -re '.tool_input.command' <<<"$input" 2>/dev/null)" \
+  || deny "could not parse hook input (missing or invalid .tool_input.command)"
 
 if [[ -z "$command_text" ]]; then
   deny "missing Bash command in hook input"
@@ -96,7 +103,7 @@ case "$ns" in
     ;;
   world)
     [[ "$sub" == "snapshot" ]] || deny "only elder world snapshot is allowed"
-    [[ "$argc" -eq 3 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder world snapshot arguments"
+    [[ "$argc" -eq 3 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^(--help|-h)$ ) ]] || deny "invalid elder world snapshot arguments"
     ;;
   clan)
     case "$sub" in
@@ -128,12 +135,12 @@ case "$ns" in
       recall)
         [[ "$argc" -eq 4 ]] || deny "invalid elder memory recall arguments"
         third="$(arg 3)"
-        [[ "$third" =~ ^--help|-h$ ]] || is_safe_atom "$third" || deny "memory key contains unsafe characters"
+        [[ "$third" =~ ^(--help|-h)$ ]] || is_safe_atom "$third" || deny "memory key contains unsafe characters"
         ;;
       save)
-        [[ "$argc" -ge 5 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder memory save arguments"
+        [[ "$argc" -ge 5 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^(--help|-h)$ ) ]] || deny "invalid elder memory save arguments"
         third="$(arg 3)"
-        [[ "$third" =~ ^--help|-h$ ]] || is_safe_atom "$third" || deny "memory key contains unsafe characters"
+        [[ "$third" =~ ^(--help|-h)$ ]] || is_safe_atom "$third" || deny "memory key contains unsafe characters"
         ;;
       --help|-h)
         [[ "$argc" -eq 3 ]] || deny "invalid elder memory help arguments"
@@ -146,12 +153,12 @@ case "$ns" in
   peer)
     case "$sub" in
       inbox)
-        [[ "$argc" -eq 3 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder peer inbox arguments"
+        [[ "$argc" -eq 3 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^(--help|-h)$ ) ]] || deny "invalid elder peer inbox arguments"
         ;;
       whisper)
-        [[ "$argc" -ge 5 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder peer whisper arguments"
+        [[ "$argc" -ge 5 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^(--help|-h)$ ) ]] || deny "invalid elder peer whisper arguments"
         third="$(arg 3)"
-        [[ "$third" =~ ^--help|-h$ ]] || is_int "$third" || deny "peer whisper recipient must be numeric"
+        [[ "$third" =~ ^(--help|-h)$ ]] || is_int "$third" || deny "peer whisper recipient must be numeric"
         ;;
       --help|-h)
         [[ "$argc" -eq 3 ]] || deny "invalid elder peer help arguments"
@@ -175,7 +182,7 @@ case "$ns" in
     esac
     ;;
   ack-clear|rules)
-    [[ "$argc" -eq 2 || ( "$argc" -eq 3 && "$(arg 2)" =~ ^--help|-h$ ) ]] || deny "invalid elder $ns arguments"
+    [[ "$argc" -eq 2 || ( "$argc" -eq 3 && "$(arg 2)" =~ ^(--help|-h)$ ) ]] || deny "invalid elder $ns arguments"
     ;;
   *)
     deny "unsupported elder command"

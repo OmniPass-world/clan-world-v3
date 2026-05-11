@@ -192,15 +192,12 @@ class MwaClient(
     }
     val msg = result.message.lowercase() + " " + (result.e.message?.lowercase().orEmpty())
     return when {
-      "declin" in msg ||
-        "cancel" in msg ||
-        "user did not approve" in msg ||
-        "user_canceled" in msg -> MwaResult.UserDeclined
       // Wallet (e.g. Phantom on mainnet) refused because the dApp asked for
       // a different cluster. Surfacing as a distinct result lets the UI show
       // a clear in-app message instead of the raw wallet dialog. The match
       // is intentionally narrow — generic "network request failed" plumbing
-      // errors must continue to fall through to the Error branch.
+      // errors must continue to fall through to the Error branch. Keep this
+      // before user-cancel matching because wallet text may include both.
       "network mismatch" in msg ||
         "wrong network" in msg ||
         "cluster mismatch" in msg ||
@@ -208,6 +205,10 @@ class MwaClient(
         "invalid cluster" in msg ||
         "switch to the correct network" in msg ||
         "incorrect network" in msg -> MwaResult.WrongNetwork
+      "declin" in msg ||
+        "cancel" in msg ||
+        "user did not approve" in msg ||
+        "user_canceled" in msg -> MwaResult.UserDeclined
       else -> MwaResult.Error(result.e)
     }
   }

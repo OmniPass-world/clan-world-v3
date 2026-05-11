@@ -26,7 +26,7 @@ state, submit orders, post bulletins, send whispers, and persist memory.
 
 - `src/cli.ts` — CLI entry point. Argv parsing is hand-rolled (no `commander`, keep deps minimal).
 - `src/mcp.ts` — MCP stdio server. Keep tool handlers aligned with CLI behavior.
-- `package.json` — declares `bin: { elder: "./dist/cli.js" }`. Run `pnpm --filter @clan-world/agents build` then `pnpm link --global` to use.
+- `package.json` — declares bin entries `elder` (`./bin/elder`) and `elder-mcp` (`./bin/elder-mcp`). Run `pnpm --filter @clan-world/agents build` then `pnpm link --global` to use.
 
 ## Local conventions
 

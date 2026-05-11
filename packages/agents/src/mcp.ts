@@ -316,7 +316,8 @@ async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1]?.endsWith('/mcp.ts')) {
+const argv1 = process.argv[1] ?? '';
+if (argv1.endsWith('/mcp.ts') || argv1.endsWith('/mcp.js') || argv1.endsWith('/elder-mcp')) {
   main().catch(err => {
     process.stderr.write(`elder-mcp: fatal: ${String(err)}\n`);
     process.exit(1);
