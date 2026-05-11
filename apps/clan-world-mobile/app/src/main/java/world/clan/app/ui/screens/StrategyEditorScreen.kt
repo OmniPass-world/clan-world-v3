@@ -425,7 +425,7 @@ private fun StatusLine(
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .height(18.dp)
+      .heightIn(min = 18.dp)
       .clickable(enabled = errorMsg != null || successMsg != null) { onDismiss() },
     contentAlignment = Alignment.CenterStart,
   ) {
@@ -438,6 +438,7 @@ private fun StatusLine(
         text = "✕  ${errorMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.danger,
+        maxLines = Int.MAX_VALUE,
       )
     }
     AnimatedVisibility(
@@ -449,6 +450,7 @@ private fun StatusLine(
         text = "✓  ${successMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.success,
+        maxLines = Int.MAX_VALUE,
       )
     }
   }

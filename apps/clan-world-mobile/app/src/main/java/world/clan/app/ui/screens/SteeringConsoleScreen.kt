@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -427,7 +428,7 @@ private fun StatusLine(
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .height(18.dp)
+      .heightIn(min = 18.dp)
       .clickable(enabled = errorMsg != null || successMsg != null) { onDismiss() },
     contentAlignment = Alignment.CenterStart,
   ) {
@@ -440,6 +441,7 @@ private fun StatusLine(
         text = "✕  ${errorMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.danger,
+        maxLines = Int.MAX_VALUE,
       )
     }
     AnimatedVisibility(
@@ -451,6 +453,7 @@ private fun StatusLine(
         text = "✓  ${successMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.success,
+        maxLines = Int.MAX_VALUE,
       )
     }
   }
