@@ -3,16 +3,13 @@ pragma solidity ^0.8.34;
 
 import {BanditState, BanditTroop, ClanWorldConstants} from "../../IClanWorld.sol";
 import {LibBanditCleanup} from "./LibBanditCleanup.sol";
+import {LibBanditEvents} from "./LibBanditEvents.sol";
 import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibBanditTargets} from "./LibBanditTargets.sol";
 import {LibSettlement} from "./LibSettlement.sol";
 import {LibStorage} from "./LibStorage.sol";
 
 library LibBanditPassive {
-    event BanditStateChanged(
-        uint32 indexed banditId, BanditState oldState, BanditState newState, uint8 region, uint64 atTick
-    );
-
     function advancePassiveBanditStates(LibStorage.AppStorage storage s, uint64 closedTick) public {
         require(s.world.currentTick == closedTick, "ClanWorld: bandit advance tick mismatch");
         for (uint8 region = ClanWorldConstants.REGION_FOREST; region <= ClanWorldConstants.REGION_DEEP_SEA; region++) {
@@ -42,7 +39,7 @@ library LibBanditPassive {
                         bandit.tickEnteredState = s.world.currentTick;
                         bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
                         LibBanditCleanup.moveBanditToRampageNextRegion(s, banditId);
-                        emit BanditStateChanged(
+                        LibBanditEvents.emitBanditStateChanged(
                             banditId, BanditState.Camped, BanditState.Camped, bandit.region, s.world.currentTick
                         );
                     } else {

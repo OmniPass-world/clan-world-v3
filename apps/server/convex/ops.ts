@@ -26,6 +26,8 @@ const RESET_TABLES = [
   "humanSteeringMessages",
 ] as const;
 
+const MAX_FLUSH_WRITES = 9000;
+
 export const flushGameState = mutation({
   args: {
     secret: v.string(),
@@ -34,12 +36,17 @@ export const flushGameState = mutation({
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
 
-    const batchSize = Math.max(1, Math.min(args.batchSize ?? 100, 500));
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 100, 400));
     const deletedByTable: Record<string, number> = {};
     let totalDeleted = 0;
 
     for (const table of RESET_TABLES) {
-      const rows = await ctx.db.query(table).take(batchSize);
+      if (totalDeleted >= MAX_FLUSH_WRITES) {
+        break;
+      }
+
+      const remainingWrites = MAX_FLUSH_WRITES - totalDeleted;
+      const rows = await ctx.db.query(table).take(Math.min(batchSize, remainingWrites));
       deletedByTable[table] = rows.length;
       totalDeleted += rows.length;
       for (const row of rows) {

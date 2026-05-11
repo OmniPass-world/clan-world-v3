@@ -2,13 +2,11 @@
 pragma solidity ^0.8.34;
 
 import {BanditState, BanditTroop, ClanWorldConstants} from "../../IClanWorld.sol";
+import {LibBanditEvents} from "./LibBanditEvents.sol";
 import {LibSettlement} from "./LibSettlement.sol";
 import {LibStorage} from "./LibStorage.sol";
 
 library LibBanditCleanup {
-    event BanditStateChanged(
-        uint32 indexed banditId, BanditState oldState, BanditState newState, uint8 region, uint64 atTick
-    );
     event BanditMoved(uint32 indexed banditId, uint8 fromRegion, uint8 toRegion, uint64 atTick);
     event BanditEscaped(uint32 indexed banditId, uint64 atTick);
     event LootDistributed(
@@ -33,7 +31,7 @@ library LibBanditCleanup {
         }
 
         BanditState oldState = bandit.state;
-        emit BanditStateChanged(banditId, oldState, BanditState.None, bandit.region, closedTick);
+        LibBanditEvents.emitBanditStateChanged(banditId, oldState, BanditState.None, bandit.region, closedTick);
         burnBanditCarry(s, banditId);
         emit BanditEscaped(banditId, closedTick);
         deleteBandit(s, banditId);
@@ -61,14 +59,7 @@ library LibBanditCleanup {
     function deleteBandit(LibStorage.AppStorage storage s, uint32 id) public {
         BanditTroop storage bandit = s.bandits[id];
         uint8 region = bandit.region;
-        uint32[] storage regionBandits = s.banditsByRegion[region];
-        for (uint256 i = 0; i < regionBandits.length; i++) {
-            if (regionBandits[i] == id) {
-                regionBandits[i] = regionBandits[regionBandits.length - 1];
-                regionBandits.pop();
-                break;
-            }
-        }
+        removeBanditFromRegion(s, id, region);
 
         delete s.bandits[id];
         if (s.activeBanditCount > 0) {
@@ -101,14 +92,7 @@ library LibBanditCleanup {
         uint8 toRegion = nextRampageRegion(fromRegion);
         if (fromRegion == toRegion) return;
 
-        uint32[] storage fromBandits = s.banditsByRegion[fromRegion];
-        for (uint256 i = 0; i < fromBandits.length; i++) {
-            if (fromBandits[i] == id) {
-                fromBandits[i] = fromBandits[fromBandits.length - 1];
-                fromBandits.pop();
-                break;
-            }
-        }
+        removeBanditFromRegion(s, id, fromRegion);
 
         bandit.region = toRegion;
         s.banditsByRegion[toRegion].push(id);
@@ -124,5 +108,16 @@ library LibBanditCleanup {
         if (currentRegion == ClanWorldConstants.REGION_EAST_DOCKS) return ClanWorldConstants.REGION_WEST_DOCKS;
         if (currentRegion == ClanWorldConstants.REGION_WEST_DOCKS) return ClanWorldConstants.REGION_WEST_FARMS;
         return ClanWorldConstants.REGION_FOREST;
+    }
+
+    function removeBanditFromRegion(LibStorage.AppStorage storage s, uint32 id, uint8 region) private {
+        uint32[] storage regionBandits = s.banditsByRegion[region];
+        for (uint256 i = 0; i < regionBandits.length; i++) {
+            if (regionBandits[i] == id) {
+                regionBandits[i] = regionBandits[regionBandits.length - 1];
+                regionBandits.pop();
+                break;
+            }
+        }
     }
 }

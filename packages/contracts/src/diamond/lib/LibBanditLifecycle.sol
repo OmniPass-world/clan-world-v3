@@ -3,13 +3,10 @@ pragma solidity ^0.8.34;
 
 import {BanditState, BanditTroop, ClanWorldConstants} from "../../IClanWorld.sol";
 import {LibBanditCleanup} from "./LibBanditCleanup.sol";
+import {LibBanditEvents} from "./LibBanditEvents.sol";
 import {LibStorage} from "./LibStorage.sol";
 
 library LibBanditLifecycle {
-    event BanditStateChanged(
-        uint32 indexed banditId, BanditState oldState, BanditState newState, uint8 region, uint64 atTick
-    );
-
     function transitionBanditToAttacking(LibStorage.AppStorage storage s, uint32 id, uint32 targetClanId) public {
         require(targetClanId != ClanWorldConstants.CLAN_ID_NULL, "ClanWorld: invalid bandit target");
         s.bandits[id].targetClanId = targetClanId;
@@ -25,7 +22,7 @@ library LibBanditLifecycle {
         require(isValidBanditTransition(s, bandit, newState), "ClanWorld: invalid bandit transition");
 
         if (newState == BanditState.Defeated) {
-            emit BanditStateChanged(id, oldState, newState, bandit.region, s.world.currentTick);
+            LibBanditEvents.emitBanditStateChanged(id, oldState, newState, bandit.region, s.world.currentTick);
             LibBanditCleanup.deleteBandit(s, id);
             return;
         }
@@ -36,7 +33,7 @@ library LibBanditLifecycle {
             bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
         }
 
-        emit BanditStateChanged(id, oldState, newState, bandit.region, s.world.currentTick);
+        LibBanditEvents.emitBanditStateChanged(id, oldState, newState, bandit.region, s.world.currentTick);
 
         if (oldState == BanditState.Attacking && newState == BanditState.Camped) {
             LibBanditCleanup.moveBanditToRampageNextRegion(s, id);
