@@ -122,8 +122,8 @@ fun CockpitScreen(
           activeClanId = activeClanId,
           onToggle = { collapsed = !collapsed },
           modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 12.dp),
+            .align(Alignment.BottomEnd)
+            .padding(end = 12.dp, bottom = 12.dp),
         )
       }
 
