@@ -3,6 +3,7 @@ pragma solidity ^0.8.34;
 
 import {IDiamondLoupe} from "../src/diamond/IDiamondLoupe.sol";
 import {IClanWorld} from "../src/IClanWorld.sol";
+import {AdminRecoveryFacet} from "../src/diamond/facets/AdminRecoveryFacet.sol";
 import {HeartbeatConfigFacet} from "../src/diamond/facets/HeartbeatConfigFacet.sol";
 import {HeartbeatFacet} from "../src/diamond/facets/HeartbeatFacet.sol";
 import {OwnershipFacet} from "../src/diamond/facets/OwnershipFacet.sol";
@@ -42,6 +43,13 @@ library DiamondSelectors {
     function seasonSelectors() internal pure returns (bytes4[] memory selectors) {
         selectors = new bytes4[](1);
         selectors[0] = IClanWorld.finalizeSeason.selector;
+    }
+
+    function adminRecoverySelectors() internal pure returns (bytes4[] memory selectors) {
+        selectors = new bytes4[](3);
+        selectors[0] = AdminRecoveryFacet.reviveDeadClansmen.selector;
+        selectors[1] = AdminRecoveryFacet.reviveClansman.selector;
+        selectors[2] = AdminRecoveryFacet.injectClanResources.selector;
     }
 
     function ownershipFacetSelectors() internal pure returns (bytes4[] memory selectors) {

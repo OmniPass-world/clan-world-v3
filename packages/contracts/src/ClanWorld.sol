@@ -67,6 +67,9 @@ struct StoredWorldState {
 ///         deposit, wheat harvest, travel, NOOP bypass, order validation, market execution,
 ///         and Phase 9 bandit spawn/attack/resolution.
 contract ClanWorld is IClanWorld, ReentrancyGuard {
+    error AdminRecoveryClanNotFound(uint32 clanId);
+    error AdminRecoveryClansmanNotFound(uint32 clansmanId);
+
     // =========================================================================
     // STORAGE
     // =========================================================================
@@ -3038,6 +3041,51 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         return _world.worldPaused;
     }
 
+    function reviveDeadClansmen(uint32 clanId) external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        uint32[] storage clansmanIds = _clanClansmanIds[clanId];
+        bool anyRevived = false;
+        for (uint256 i = 0; i < clansmanIds.length; i++) {
+            (uint32 revivedClanId, bool revived) = _reviveClansman(clansmanIds[i], false, false);
+            if (revived) {
+                anyRevived = true;
+                emit ClansmanRevived(revivedClanId, clansmanIds[i], _world.currentTick);
+            }
+        }
+        if (anyRevived) {
+            _clans[clanId].lastSettledTick = _world.currentTick;
+        }
+    }
+
+    function reviveClansman(uint32 clansmanId) external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        (uint32 clanId, bool revived) = _reviveClansman(clansmanId, true, true);
+        if (revived) emit ClansmanRevived(clanId, clansmanId, _world.currentTick);
+    }
+
+    function injectClanResources(
+        uint32 clanId,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint
+    ) external override nonReentrant {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        Clan storage clan = _clans[clanId];
+        if (clan.clanId == ClanWorldConstants.CLAN_ID_NULL) revert AdminRecoveryClanNotFound(clanId);
+
+        clan.vaultWood += wood;
+        clan.vaultIron += iron;
+        clan.vaultWheat += wheat;
+        clan.vaultFish += fish;
+        clan.goldBalance += gold;
+        clan.blueprintBalance += blueprint;
+
+        emit ResourcesInjected(clanId, wood, iron, wheat, fish, gold, blueprint, _world.currentTick);
+    }
+
     /// @dev Resolve world events for the tick that was just closed.
     ///      Uses closedTick+1 as the equivalent of the old `newTick` for transition checks.
     function _resolveWorldEvents(uint64 closedTick) internal {
@@ -4634,6 +4682,83 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
             _refundBaseUpgradeReservation(clansmanId);
         } else if (action == ActionType.UpgradeMonument) {
             _refundMonumentUpgradeReservation(clansmanId);
+        }
+    }
+
+    function _reviveClansman(uint32 clansmanId, bool resetLastSettledTick, bool revertOnNotFound)
+        internal
+        returns (uint32 clanId, bool revived)
+    {
+        Clansman storage cs = _clansmen[clansmanId];
+        clanId = cs.clanId;
+        if (clanId == ClanWorldConstants.CLAN_ID_NULL || cs.clansmanId == 0) {
+            if (revertOnNotFound) revert AdminRecoveryClansmanNotFound(clansmanId);
+            return (clanId, false);
+        }
+
+        if (cs.state != ClansmanState.DEAD) {
+            return (clanId, false);
+        }
+
+        Clan storage clan = _clans[clanId];
+        if (clan.clanId == ClanWorldConstants.CLAN_ID_NULL) {
+            if (revertOnNotFound) revert AdminRecoveryClansmanNotFound(clansmanId);
+            return (clanId, false);
+        }
+
+        uint8 livingBefore = clan.livingClansmen;
+        _clearClansmanRecoveryState(clansmanId);
+
+        cs.state = ClansmanState.WAITING;
+        cs.currentRegion = clan.baseRegion;
+        cs.cooldownEndsAtTs = 0;
+        if (cs.lastMissionNonce < _world.currentTick) {
+            cs.lastMissionNonce = _world.currentTick;
+        } else {
+            cs.lastMissionNonce += 1;
+        }
+        cs.carryWood = 0;
+        cs.carryIron = 0;
+        cs.carryWheat = 0;
+        cs.carryFish = 0;
+
+        clan.livingClansmen = livingBefore + 1;
+        if (clan.clanState == ClanState.DEAD && livingBefore == 0) {
+            clan.clanState = ClanState.ACTIVE;
+            clan.coldDamage = 0;
+            clan.starvationStartsAtTick = 0;
+        }
+        if (resetLastSettledTick) {
+            clan.lastSettledTick = _world.currentTick;
+        }
+
+        return (clanId, true);
+    }
+
+    function _clearClansmanRecoveryState(uint32 clansmanId) internal {
+        Mission memory mission = _missions[clansmanId];
+
+        _clearDefender(clansmanId);
+        _refundUpgradeReservation(clansmanId, mission.action);
+
+        if (mission.active && (mission.action == ActionType.MarketBuy || mission.action == ActionType.MarketSell)) {
+            _purgeScheduledMarketActions(clansmanId, mission.settlesAtTick);
+        }
+
+        delete _marketMissionCommitSequence[clansmanId];
+        delete _missions[clansmanId];
+    }
+
+    function _purgeScheduledMarketActions(uint32 clansmanId, uint64 tick) internal {
+        ScheduledMarketAction[] storage actions = _scheduledMarketActions[tick];
+        uint256 i = 0;
+        while (i < actions.length) {
+            if (actions[i].clansmanId == clansmanId) {
+                actions[i] = actions[actions.length - 1];
+                actions.pop();
+            } else {
+                i++;
+            }
         }
     }
 

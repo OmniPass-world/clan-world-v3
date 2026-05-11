@@ -11,6 +11,7 @@
     "gen:contract-abi": "node scripts/gen-contract-abi.mjs",
     "gen:constants": "node scripts/gen-constants.mjs",
     "gen:enums": "node scripts/gen-enums.mjs",
+    "check:abi": "pnpm --dir packages/contracts run check:abi && pnpm test:chainclient-abi",
     "lint": "turbo run lint",
     "test:chainclient-abi": "node scripts/gen-chainclient-abi.mjs --check",
     "test:abi-parity": "node packages/shared/scripts/check-chain-abi-parity.mjs",

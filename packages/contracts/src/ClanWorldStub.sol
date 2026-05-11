@@ -126,6 +126,39 @@ contract ClanWorldStub is IClanWorld {
         return _world.worldPaused;
     }
 
+    function reviveDeadClansmen(uint32 clanId) external override {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        // stub: no clansman state lookup
+        emit ClansmanRevived(clanId, 0, _world.currentTick);
+    }
+
+    function reviveClansman(uint32 clansmanId) external override {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        // stub: no state lookup
+        emit ClansmanRevived(0, clansmanId, _world.currentTick);
+    }
+
+    function injectClanResources(
+        uint32 clanId,
+        uint256 wood,
+        uint256 iron,
+        uint256 wheat,
+        uint256 fish,
+        uint256 gold,
+        uint256 blueprint
+    ) external override {
+        require(msg.sender == _treasury.treasuryOwner, "ClanWorld: not owner");
+        Clan storage clan = _clans[clanId];
+        if (clan.clanId == 0) return;
+        clan.vaultWood += wood;
+        clan.vaultIron += iron;
+        clan.vaultWheat += wheat;
+        clan.vaultFish += fish;
+        clan.goldBalance += gold;
+        clan.blueprintBalance += blueprint;
+        emit ResourcesInjected(clanId, wood, iron, wheat, fish, gold, blueprint, _world.currentTick);
+    }
+
     // -------------------------------------------------------------------------
     // Clan lifecycle
     // -------------------------------------------------------------------------
