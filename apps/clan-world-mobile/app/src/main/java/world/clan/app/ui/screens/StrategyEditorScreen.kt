@@ -66,6 +66,7 @@ import world.clan.app.viewmodel.StrategyEditorUiState
 import world.clan.app.viewmodel.StrategyEditorViewModel
 import world.clan.app.viewmodel.StrategyEditorViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
 
 private const val STRATEGY_LIMIT = 800
@@ -124,6 +125,8 @@ fun StrategyEditorScreenRoute(
           is MwaResult.UserDeclined -> vm.setSavePhase(SendPhase.Idle)
           is MwaResult.WalletNotFound ->
             vm.setSavePhase(SendPhase.Failed, "no wallet found on device.")
+          is MwaResult.WalletNotAllowed ->
+            vm.setSavePhase(SendPhase.Failed, FakeWalletPolicy.BLOCKED_MESSAGE)
           is MwaResult.Error ->
             vm.setSavePhase(SendPhase.Failed, result.cause.message ?: "the wallet refused the seal.")
         }

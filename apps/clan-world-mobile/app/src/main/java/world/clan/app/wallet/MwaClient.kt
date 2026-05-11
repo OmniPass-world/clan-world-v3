@@ -6,6 +6,7 @@ import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import world.clan.app.BuildConfig
 
 /** Result of a connect / reauthorize call. */
 data class MwaSession(
@@ -19,12 +20,13 @@ sealed class MwaResult<out T> {
   data class Ok<T>(val value: T) : MwaResult<T>()
   data object UserDeclined : MwaResult<Nothing>()
   data object WalletNotFound : MwaResult<Nothing>()
+  data object WalletNotAllowed : MwaResult<Nothing>()
   data class Error(val cause: Throwable) : MwaResult<Nothing>()
 }
 
 /**
  * Thin wrapper around the Solana Mobile Wallet Adapter Kotlin client
- * (`com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.1.0`).
+ * (`com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.7`).
  *
  * Slice 2A — replaces the slice 1 stub with real authorize/reauthorize/
  * disconnect calls. signMessage is wired but unused; slice 2 (full) will
@@ -100,8 +102,17 @@ class MwaClient(
   ): MwaResult<ByteArray> {
     val a = adapter().apply { this.authToken = authToken }
     val result: TransactionResult<ByteArray> = a.transact(sender) { authResult ->
-      val pubkey = authResult.accounts.first().publicKey
-      val signed = signMessagesDetached(arrayOf(message), arrayOf(pubkey))
+      if (
+        FakeWalletPolicy.shouldBlock(
+          allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
+          walletUriBase = authResult.walletUriBase?.toString(),
+        )
+      ) {
+        throw FakeWalletBlockedException()
+      }
+      val account = authResult.accounts.firstOrNull()
+        ?: error("MWA returned no authorized account")
+      val signed = signMessagesDetached(arrayOf(message), arrayOf(account.publicKey))
       signed.messages.first().signatures.first()
     }
     return when (result) {
@@ -124,14 +135,22 @@ class MwaClient(
       if (account == null) {
         MwaResult.Error(IllegalStateException("MWA returned no authorized account"))
       } else {
-        MwaResult.Ok(
-          MwaSession(
-            solanaPubkeyBase58 = Base58.encode(account.publicKey),
-            authToken = auth.authToken,
-            walletUriBase = auth.walletUriBase?.toString(),
-            walletLabel = account.accountLabel,
-          ),
+        val session = MwaSession(
+          solanaPubkeyBase58 = Base58.encode(account.publicKey),
+          authToken = auth.authToken,
+          walletUriBase = auth.walletUriBase?.toString(),
+          walletLabel = account.accountLabel,
         )
+        if (
+          FakeWalletPolicy.shouldBlock(
+            allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
+            walletUriBase = session.walletUriBase,
+          )
+        ) {
+          MwaResult.WalletNotAllowed
+        } else {
+          MwaResult.Ok(session)
+        }
       }
     }
     is TransactionResult.NoWalletFound -> MwaResult.WalletNotFound
@@ -139,6 +158,9 @@ class MwaClient(
   }
 
   private fun <T> classifyFailure(result: TransactionResult.Failure<T>): MwaResult<Nothing> {
+    if (result.e is FakeWalletBlockedException) {
+      return MwaResult.WalletNotAllowed
+    }
     val msg = result.message.lowercase() + " " + (result.e.message?.lowercase().orEmpty())
     return if (
       "declin" in msg ||

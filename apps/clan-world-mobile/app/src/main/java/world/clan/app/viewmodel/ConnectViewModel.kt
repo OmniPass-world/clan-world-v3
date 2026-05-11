@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import world.clan.app.data.LineageStore
 import world.clan.app.data.Session
 import world.clan.app.data.SessionStore
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaClient
 import world.clan.app.wallet.MwaResult
 import world.clan.app.wallet.WalletIdentity
@@ -174,6 +175,18 @@ class ConnectViewModel(
             errorMessage = "No MWA-compatible Solana wallet installed.",
           )
         }
+      MwaResult.WalletNotAllowed -> {
+        sessionStore.clear()
+        clearWalletNameCache()
+        _state.update {
+          it.copy(
+            phase = ConnectUiState.Phase.Error,
+            solanaPubkeyBase58 = null,
+            pendingVerification = false,
+            errorMessage = FakeWalletPolicy.BLOCKED_MESSAGE,
+          )
+        }
+      }
       is MwaResult.Error -> {
         // Same rationale as UserDeclined: clear so we never retry a token
         // the wallet has rejected. A real network/IPC error will simply

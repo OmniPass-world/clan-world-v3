@@ -70,6 +70,7 @@ import world.clan.app.viewmodel.Harness
 import world.clan.app.viewmodel.SendPhase
 import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.viewmodel.clanTagline
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
 
 @Composable
@@ -114,6 +115,8 @@ fun ForgeScreenRoute(
           is MwaResult.UserDeclined -> vm.setMintPhase(SendPhase.Idle)
           is MwaResult.WalletNotFound ->
             vm.setMintPhase(SendPhase.Failed, "no wallet found on device.")
+          is MwaResult.WalletNotAllowed ->
+            vm.setMintPhase(SendPhase.Failed, FakeWalletPolicy.BLOCKED_MESSAGE)
           is MwaResult.Error ->
             vm.setMintPhase(SendPhase.Failed, r.cause.message ?: "the wallet refused the seal.")
         }
