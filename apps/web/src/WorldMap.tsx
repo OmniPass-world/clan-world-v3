@@ -2286,6 +2286,78 @@ export function WorldMap() {
     };
   }
 
+  // Bandit camp sits in the region's polygon at the point farthest from all bases
+  // anchored there. Avoids the visual collision where camp + base both render at
+  // the region center. Falls back to the region anchor when the region has no
+  // bases (no behavior change). Computed in REF coords for layout stability.
+  function projectedBanditCampAnchor(regionKey: string): Point2 | null {
+    const region = REGIONS.find(r => r.id === regionKey);
+    if (!region) return null;
+    const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
+
+    const seen = new Set<string>();
+    const basePositions: Array<[number, number]> = [];
+    for (const entry of drawnRef.current.bases) {
+      if (entry.clan.homeRegion !== regionKey) continue;
+      const bx = region.nx * REF_W;
+      const by = region.ny * REF_H;
+      const key = `${bx},${by}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      basePositions.push([bx, by]);
+    }
+
+    if (basePositions.length === 0) {
+      return {
+        x: offsetX + region.nx * REF_W * scaleX,
+        y: offsetY + region.ny * REF_H * scaleY,
+      };
+    }
+
+    const xs = region.polygon.map(([x]) => x);
+    const ys = region.polygon.map(([, y]) => y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    // Margin keeps the camp visually inside the region rather than hugging the boundary.
+    const insetX = (maxX - minX) * 0.08;
+    const insetY = (maxY - minY) * 0.08;
+    const sampleMinX = minX + insetX;
+    const sampleMaxX = maxX - insetX;
+    const sampleMinY = minY + insetY;
+    const sampleMaxY = maxY - insetY;
+
+    const STEPS = 6;
+    let bestX = region.nx * REF_W;
+    let bestY = region.ny * REF_H;
+    let bestMinDistSq = -Infinity;
+    for (let i = 0; i <= STEPS; i++) {
+      for (let j = 0; j <= STEPS; j++) {
+        const x = sampleMinX + ((sampleMaxX - sampleMinX) * i) / STEPS;
+        const y = sampleMinY + ((sampleMaxY - sampleMinY) * j) / STEPS;
+        if (!pointInPolygon(x, y, region.polygon)) continue;
+        let minDistSq = Infinity;
+        for (const [bx, by] of basePositions) {
+          const dx = x - bx;
+          const dy = y - by;
+          const d = dx * dx + dy * dy;
+          if (d < minDistSq) minDistSq = d;
+        }
+        if (minDistSq > bestMinDistSq) {
+          bestMinDistSq = minDistSq;
+          bestX = x;
+          bestY = y;
+        }
+      }
+    }
+
+    return {
+      x: offsetX + bestX * scaleX,
+      y: offsetY + bestY * scaleY,
+    };
+  }
+
   function routeControlPoints(route: TravelRoute) {
     const from = projectedRegionAnchor(route.fromRegionKey);
     const to = projectedRegionAnchor(route.toRegionKey);
@@ -2758,7 +2830,7 @@ export function WorldMap() {
     const deathScale = BANDIT_SPRITE_DEATH_SCALE * layoutScale;
 
     if (phase.kind === 'camp_idle') {
-      const anchor = projectedRegionAnchor(phase.regionKey);
+      const anchor = projectedBanditCampAnchor(phase.regionKey);
       if (!anchor) return;
       if (animState.campSprite) {
         animState.campSprite.visible = true;
@@ -2778,7 +2850,7 @@ export function WorldMap() {
     }
 
     if (phase.kind === 'camp_telegraph') {
-      const anchor = projectedRegionAnchor(phase.regionKey);
+      const anchor = projectedBanditCampAnchor(phase.regionKey);
       if (!anchor) return;
       // Three standing bandits with phase-offset jitter (sin ±1px).
       const standTextures = animState.walkTextures.se.length > 0
@@ -2811,8 +2883,8 @@ export function WorldMap() {
     }
 
     if (phase.kind === 'no_battle_advance') {
-      const from = projectedRegionAnchor(phase.fromRegionKey);
-      const to = projectedRegionAnchor(phase.toRegionKey);
+      const from = projectedBanditCampAnchor(phase.fromRegionKey);
+      const to = projectedBanditCampAnchor(phase.toRegionKey);
       if (!from || !to) return;
       const dir = pickWalkDirection(from, to);
       const dirTextures = animState.walkTextures[dir.textures];
@@ -2841,7 +2913,7 @@ export function WorldMap() {
   ) {
     const animState = banditAnimRef.current;
     const drawn = drawnRef.current;
-    const fromAnchor = projectedRegionAnchor(phase.regionKey);
+    const fromAnchor = projectedBanditCampAnchor(phase.regionKey);
     if (!fromAnchor) return;
 
     // Locate the old-region target base. Won outcomes still battle at the
@@ -2970,7 +3042,7 @@ export function WorldMap() {
       // 18.5–25.5s: walk to next region.
       // 25.5+: render new camp at toRegion (handled by phase becoming camp_idle once snapshot updates).
       const toRegionKey = REGION_KEY_BY_CHAIN_ID[phase.outcome.toRegion];
-      const toAnchor = toRegionKey ? projectedRegionAnchor(toRegionKey) : null;
+      const toAnchor = toRegionKey ? projectedBanditCampAnchor(toRegionKey) : null;
 
       if (t < BATTLE_T_WIN_CLUSTER_END) {
         // Cluster pause near target base.
