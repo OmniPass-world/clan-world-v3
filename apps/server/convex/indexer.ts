@@ -420,6 +420,24 @@ export const commitSnapshot = internalMutation({
     const now = Date.now();
     const world = snapshot.world;
     const tick = asNumber(world.currentTick);
+    const previousWorldSnapshot = await ctx.db
+      .query("worldSnapshot")
+      .order("desc")
+      .first();
+    const previousTick = asNumber(previousWorldSnapshot?.tick, -1);
+    const previousBlock = asNumber(previousWorldSnapshot?.lastUpdatedBlock, -1);
+    const incomingBlock = snapshot.blockNumber ?? -1;
+    if (
+      previousWorldSnapshot &&
+      (tick < previousTick ||
+        (tick === previousTick && incomingBlock <= previousBlock))
+    ) {
+      return {
+        tick: previousTick,
+        clans: snapshot.clans.length,
+        skipped: "stale-snapshot",
+      };
+    }
 
     if (snapshot.market) {
       const market = snapshot.market;
@@ -547,10 +565,6 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(Boolean) as LegacyClanView[],
     );
-    const previousWorldSnapshot = await ctx.db
-      .query("worldSnapshot")
-      .order("desc")
-      .first();
     const tickEpochStartedAt =
       previousWorldSnapshot?.tick === tick
         ? previousWorldSnapshot.tickEpochStartedAt

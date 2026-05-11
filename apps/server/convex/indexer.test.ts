@@ -421,4 +421,35 @@ describe("legacy snapshot backfill", () => {
 
     now.mockRestore();
   });
+
+  it("skips stale same-tick snapshot refreshes from older blocks", async () => {
+    const { db, tables } = createDb({
+      worldSnapshot: [
+        {
+          _id: "worldSnapshot:0",
+          _creationTime: 0,
+          tick: 12,
+          lastUpdatedBlock: 100,
+          tickEpochStartedAt: 1_000,
+          tickEpochDurationMs: 60_000,
+          clans: [{ id: "current" }],
+        },
+      ],
+    });
+
+    const result = await (commitSnapshot as any)._handler(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 99,
+          world: { currentTick: 12 },
+          clans: [],
+        },
+      },
+    );
+
+    expect(result.skipped).toBe("stale-snapshot");
+    expect(tables.worldSnapshot?.[0]?.lastUpdatedBlock).toBe(100);
+    expect(tables.worldSnapshot?.[0]?.clans).toEqual([{ id: "current" }]);
+  });
 });

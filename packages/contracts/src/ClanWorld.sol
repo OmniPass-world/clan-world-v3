@@ -2442,7 +2442,7 @@ contract ClanWorld is IClanWorld, ReentrancyGuard {
         if (nDefenders == 1) {
             return loot;
         }
-        return ((loot / RESOURCE_UNIT) / nDefenders) * RESOURCE_UNIT;
+        return loot / nDefenders;
     }
 
     function _addClansmanCarryCapped(uint256 currentCarry, uint256 amount, uint256 carryCap)

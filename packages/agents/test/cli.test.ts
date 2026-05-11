@@ -101,7 +101,7 @@ describe('clan view', () => {
   it('returns ClanFullView with correct clan name', async () => {
     const out = await runCommand('clan', 'view', ['1'], deps, {}, tmpDir);
     const parsed = JSON.parse(out) as ClanFullView;
-    expect(parsed.clan.name).toBe('Wolfclan');
+    expect(parsed.clan.name).toBe('chain-1');
     expect(parsed.clan.id).toBe('1');
   });
 

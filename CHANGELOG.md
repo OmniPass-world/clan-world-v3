@@ -6,6 +6,106 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.3.2] — 2026-05-11
+
+Android demo polish release. Ships the PR #221 mobile demo improvements on top of `v2.3.1`: cooldown messages now wrap instead of clipping, Whispers gains a Strategy & Notes path for owned sigils, and the wallet pill now attempts real `.sol` primary-domain resolution instead of showing the old mock identity.
+
+### Added — Android demo features (PR #221)
+
+- **Whispers tabs**: `WhispersScreen` now has `WHISPERS` and `STRATEGY & NOTES` tabs. Owned sigils navigate to the existing strategy editor from the new tab; Bazaar preview sigils keep strategy editing disabled.
+- **Wallet name cascade**: the mobile wallet pill now resolves identity as `.skr` (deferred follow-up) → `.sol` SNS primary domain → wallet label → truncated pubkey.
+- **SNS parser tests**: unit coverage for primary-domain response parsing, missing names, nulls, malformed JSON, and already-suffixed `.sol` handles.
+
+### Fixed
+
+- **Cooldown/status visibility**: Steering and Strategy status lines use a minimum height so longer cooldown, error, and success text can wrap instead of being clipped.
+- **Real `.sol` lookup**: replaced the dead Bonfida reverse endpoint with the SNS primary-domain API (`/v2/user/fav-domains/{pubkey}`) and parse the pubkey-keyed response shape.
+- **Wallet-name race guard**: async resolver results only write to the session cache when the resolved pubkey is still the connected wallet, preventing stale writes after disconnect or failed reauth.
+- **Strategy route guard**: direct `strategy/{clanId}` navigation now defensively requires an owned clan (`LINKED_CLAN_IDS` plus hired/forged extras).
+
+### Validation
+
+- `apps/clan-world-mobile :app:testDebugUnitTest`
+- `apps/clan-world-mobile :app:assembleDebug`
+- PR check `chainclient-abi`
+
+---
+
+## [2.3.1] — 2026-05-10
+
+Consensus fix-round from the `v2.3.0` multi-review pass.
+
+### Fixed
+
+- **Indexer resilience**: added regression coverage and tightened Convex indexer behavior around post-release event/snapshot decoding.
+- **Bandit combat math**: added focused diamond coverage for the consensus review findings.
+- **Adapter/test alignment**: updated shared chain/iNFT adapter expectations and related tests after the `v2.3.0` ABI and constant changes.
+- **Frontend cleanup**: removed a stale event ticker field after the bandit animation release.
+
+---
+
+## [2.3.0] — 2026-05-10 (late-night)
+
+Bandit lifecycle redesign + AdminRecoveryFacet + bandit attack animation kit. This release tightens the bandit attack cadence from a 7-state machine (Spawned/Camped/Resting/Attacking/Defeated/Escaped/None) down to a clean 5-state machine (None/Spawned/Camped/Attacking/Defeated), ships an owner-only ops-recovery facet for reviving dead clans and topping up vault resources, and lands a 60s-per-tick combat animation pipeline with sprite-based bandits walking-circling-flashing-dying. The android app gains MWA wallet stability fixes plus Convex serialization compatibility.
+
+**Migration impact**: requires fresh diamond deploy. The `BanditState` enum integer values shifted (Resting + Escaped removed; Attacking moved 4→3; Defeated 5→4). Indexer + frontend code that referenced the old integers was migrated or removed.
+
+### Added — AdminRecoveryFacet (PR #149)
+
+Owner-only operational recovery surface on the diamond. Three selectors, gated by `LibDiamond.enforceIsContractOwner()`:
+- `reviveClansman(uint32 clansmanId)` — single-target revive. Resets state to `WAITING`, region to clan base, carry slots to 0, `activeMission` cleared, `lastMissionNonce` monotonically bumped, stale scheduled-market actions purged. Reverts on unknown clansmanId.
+- `reviveDeadClansmen(uint32 clanId)` — bulk revive everyone dead in the clan. Same per-clansman cleanup. Resets clan-level `coldDamage` and `starvationStartsAtTick` ONLY on DEAD→ACTIVE transition (preserves in-progress starvation in active clans).
+- `injectClanResources(uint32 clanId, uint256 wood, uint256 iron, uint256 wheat, uint256 fish, uint256 gold, uint256 blueprint)` — admin top-up. Works on ANY clan state. Decoupled from revival semantics; pure additive vault deposit.
+
+Both functions are pause-allowlist (work during emergency `worldPaused`) and emit `ClansmanRevived` / `ResourcesInjected` events for indexer attribution. `AdminRecoveryFacet` runtime: 6,498 bytes. Add-only DiamondCut migration script ships in `script/UpgradeAdminRecoveryFacet.s.sol`.
+
+### Changed — bandit 3-tick attack cycle (PR #148, BREAKING for ABI consumers)
+
+`BanditState` enum reduced from 7 states to 5. Removed: `Resting` (was 3), `Escaped` (was 6). Result: `None=0, Spawned=1, Camped=2, Attacking=3, Defeated=4`.
+
+- **3-tick steady-state cadence**: bandit spawns directly into `Camped` (1 tick was previously a separate `Spawned` book-keeping state, now collapsed). Camped for 3 ticks. End of the 3rd tick: `Camped → Attacking → outcome` resolves in a single heartbeat. No post-attack `Resting`/`Escaped` recovery — bandit either dies (`Defeated`) or rampage-moves to the next region and starts another 3-tick camp.
+- **No-target advance** (PR #151): if a bandit's 3-tick camp expires in a region with no eligible target (no settled clans), the bandit now ADVANCES to the next region instead of retrying in place. Same 6-attempt total cap; bandit visits up to 6 regions before terminal escape.
+- **Targeting** still selects the highest-resource clan base in the bandit's current region; ties resolved deterministically. Eager-settlement of candidate region before target pick ensures fairness across clans with pending end-of-tick deposits.
+
+Test coverage: 19/19 Bandit.t.sol + 23/23 BanditAttackResolution.t.sol.
+
+### Added — Bandit attack animation kit (PR #150)
+
+Full 60s-per-tick combat choreography in the Pixi-rendered web frontend (`apps/web/src/WorldMap.tsx`):
+- **Camp idle (T0–T2.83)**: bandit camp sprite at region centroid with red-glow ramp.
+- **Camp telegraph (T2.83–T3.0)**: camp morphs to 3 standing bandits with sin-jitter anticipation.
+- **T4 battle (60s)**: post-resolution, full sequence based on outcome derived from snapshot diff:
+  - **Defeat**: 7s walk to base → 7.5s circle into whirlwind → 1s flash + thrown-back impulse → 2s 3-frame death animation (back-flash → face-flash → tombstone-flash) → 8s tombstone fade. Region clears.
+  - **Win**: converge + base-shake + cluster pause → 7s walk to next region (or off-map at 6 attempts) → 35s glow camp in destination.
+  - **No-target advance**: bandits walk from old region to new without battle.
+  - **Terminal escape**: walk off map edge.
+- Pause-aware rendering: all motion (orbit/jitter/flicker) freezes when `worldPaused=true`.
+- Pause-resilient diff: `prevBanditRef` + `lastBanditOutcomeRef` reconstruct the outcome from snapshot transitions; mid-tick reload recovers correctly.
+- Sprite kit: hand-drawn 4-frame NE walk + horizontally-mirrored NW, top-row of provided 8-sprite SE walk + mirror SW, 3-frame death sequence, camp sprite. All live under `apps/web/public/sprites/`.
+
+### Fixed — android wallet + Convex serialization (PR #144)
+
+- **MWA owner-side crash** fix on landing wallet connect flow + version bumped to 0.1.14.
+- **iconUri must be relative** for MWA — stray full-path ember dot in title removed.
+- **ClanSummary integer fields** now tolerate Convex's stringified-decimal serialization (`String → Long.toIntFlexible()` path).
+- **TreasuryViewModelFactory** added; `lineageStore` plumbed through `CodexViewModel`.
+- **WATCH DEMO buttons** wired to the youtube submission video on the landing page.
+
+### Operations
+
+- **Bandit no-target eager-settle DoS hardening**: outer scan loop in `eagerSettleBanditCandidateRegion` now bounded by `MAX_BANDIT_EAGER_SETTLE_GLOBAL_SCAN = 100` to prevent runaway gas costs as clan count grows. `defendingClanSnapshot` storage→memory copy switched from full-array assignment to manual fixed-size loop bounded by `defendingClanScanCount` (max 12). Mirrored in diamond `LibSettlement` and monolith `ClanWorld.sol`.
+- **Iterator safety in advancePassiveBanditStates**: switched to backward iteration (`for (i = length; i > 0; i--)`) so mid-loop bandit removals from eager-settle combat resolution don't skip pending bandits.
+- **Heartbeat cadence**: documented canonical defaults — on-chain `HEARTBEAT_INTERVAL_SECONDS = 58s` guard, loop fire every 61s (3s slack to absorb RPC latency).
+- **Elder runner v2** (Convex tick-driven): polls `getSnapshot:getSnapshot` every 5s, fires elders on tick change with 2s stagger. Replaces 180s nudge cadence.
+- **Fresh-VPS bootstrap runbook** (`docs/runbooks/fresh-vps-bootstrap.md`, PR #145): 632-line cold-start procedure for a clean infrastructure deployment.
+- **Indexer legacy `getWorldState` fallback removed** (PR #147): canonical-current diamond is the only decode path. Closes `currentSeasonNumber: null` cosmetic bug.
+
+### Repository hygiene (PR #143)
+
+- Stale `kickstart-mobile` references purged after the kickstart-token-tracker extraction.
+
+---
+
 ## [2.2.0] — 2026-05-10
 
 EIP-170 unblock release. Strips unused upkeep event scaffolding from `LibSettlement` to bring `HeartbeatFacet` and `FinalizeSeasonFacet` back under the 24,576-byte runtime limit, restoring the ability to deploy a fresh diamond. **All running deployments should redeploy from this release** — the `0xAd03…` diamond is permanently stuck at 26,265 byte `HeartbeatFacet` and cannot be upgraded to this code.

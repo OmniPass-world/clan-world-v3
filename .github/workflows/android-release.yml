@@ -1,9 +1,7 @@
-# NOTE: this workflow currently builds an UNSIGNED debug APK
-# (`assembleDebug`), not a signed release artifact. The job name reflects that
-# so the GitHub UI doesn't imply a signed Play-Store-ready build is being cut.
-# When release signing is provisioned, switch to `assembleRelease` + signing
-# config and rename this back to "Android Release".
-name: Android Internal Build (Debug APK)
+# Builds the public release APK and a separate internal debug APK. The release
+# APK keeps the public package id (`world.clan.app`); debug uses
+# `world.clan.app.debug` so it can be installed beside release builds.
+name: Android APK Release
 
 on:
   push:
@@ -22,7 +20,7 @@ permissions:
   attestations: write
 
 jobs:
-  build-debug-apks:
+  build-apks:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,46 +40,76 @@ jobs:
           else
             version="${GITHUB_REF_NAME}"
           fi
+          semver="${version#v}"
+          if ! [[ "$semver" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error ::Android APK versions must be semver tags like v2.3.2; got '${version}'."
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "$semver"
+          major=$((10#$major))
+          minor=$((10#$minor))
+          patch=$((10#$patch))
+          if [ "$minor" -ge 1000 ] || [ "$patch" -ge 1000 ]; then
+            echo "::error ::Android APK version minor and patch must be below 1000 to avoid versionCode collisions; got '${semver}'."
+            exit 1
+          fi
+          version_code=$((major * 1000000 + minor * 1000 + patch))
+          if [ "$version_code" -gt 2100000000 ]; then
+            echo "::error ::Android APK versionCode must be <= 2100000000; got '${version_code}' from '${semver}'."
+            exit 1
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${semver}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"
 
       - name: Decode signing keystore
         id: keystore
         run: |
+          if [ -z "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
+            echo "::error ::RELEASE_KEYSTORE_BASE64 is required to build the public release APK."
+            exit 1
+          fi
           path="$RUNNER_TEMP/release.keystore"
           echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 --decode > "$path"
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
-      - name: Build Clan World APK
+      - name: Build Clan World APKs
         id: build-clan-world
-        continue-on-error: true
         working-directory: apps/clan-world-mobile
         env:
           # build.gradle.kts now refuses to fall back to a hardcoded URL —
           # promote these to actual repo secrets when prod URLs change.
           CLAN_WORLD_MAP_URL: ${{ secrets.CLAN_WORLD_MAP_URL || 'https://app.clan-world.com' }}
           CLAN_WORLD_TERMINAL_BASE_URL: ${{ secrets.CLAN_WORLD_TERMINAL_BASE_URL || 'https://cockpit.clan-world.com' }}
+          CLAN_WORLD_VERSION_NAME: ${{ steps.release.outputs.version_name }}
+          CLAN_WORLD_VERSION_CODE: ${{ steps.release.outputs.version_code }}
           RELEASE_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleRelease assembleDebug
 
       - name: Prepare release assets
         id: prepare-assets
         run: |
           mkdir -p release-assets
-          # continue-on-error on the build step means a failed build leaves
-          # no APK at the expected path, so we test before copying.
+          if [ -f apps/clan-world-mobile/app/build/outputs/apk/release/app-release.apk ]; then
+            cp apps/clan-world-mobile/app/build/outputs/apk/release/app-release.apk \
+              "release-assets/clan-world-${{ steps.release.outputs.version }}-release.apk"
+          else
+            echo "::error ::Clan World release APK missing — nothing to release."
+            exit 1
+          fi
           if [ -f apps/clan-world-mobile/app/build/outputs/apk/debug/app-debug.apk ]; then
             cp apps/clan-world-mobile/app/build/outputs/apk/debug/app-debug.apk \
               "release-assets/clan-world-${{ steps.release.outputs.version }}-debug.apk"
           else
-            echo "::error ::Clan World APK missing — nothing to release."
+            echo "::error ::Clan World debug APK missing — nothing to release."
             exit 1
           fi
           cd release-assets
           sha256sum *.apk > SHA256SUMS.txt
-          echo "::notice ::Shipping clan-world APK in release ${{ steps.release.outputs.version }}."
+          echo "::notice ::Shipping clan-world release and debug APKs in ${{ steps.release.outputs.version }}."
 
       - name: Attest APK build provenance
         continue-on-error: true
