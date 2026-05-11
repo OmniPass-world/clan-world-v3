@@ -144,4 +144,39 @@ class ConvexJsonNumberTest {
     assertEquals(JsonNull, element.jsonObject["missing"])
     assertEquals(0L, element.jsonObject["count"]!!.jsonPrimitive.longOrNull)
   }
+
+  @Test
+  fun normalizePreservesExponentNotation() {
+    // Exponent literals (`1e2`) could be whole-numbered but the matcher only
+    // accepts `<digits>.0` to avoid Double precision collapse on 1e308.
+    // Convex never emits this shape today; the assertion locks behaviour so
+    // a future regex broadening can't accidentally suck in exponents.
+    val raw = """{"a":1e2,"b":1.5e2,"c":2E1}"""
+    val element = json.parseToJsonElement(raw).normalizeConvexNumbers()
+    assertEquals("1e2", element.jsonObject["a"]!!.jsonPrimitive.content)
+    assertEquals("1.5e2", element.jsonObject["b"]!!.jsonPrimitive.content)
+    assertEquals("2E1", element.jsonObject["c"]!!.jsonPrimitive.content)
+  }
+
+  @Test
+  fun normalizeHandlesNegativeWholeNumbers() {
+    val raw = """{"delta":-42.0,"zero":-0.0}"""
+    val element = json.parseToJsonElement(raw).normalizeConvexNumbers()
+    assertEquals(-42L, element.jsonObject["delta"]!!.jsonPrimitive.longOrNull)
+    assertEquals(0L, element.jsonObject["zero"]!!.jsonPrimitive.longOrNull)
+  }
+
+  @Test
+  fun normalizeLeavesOutOfLongRangeAlone() {
+    // 1e20 exceeds Long.MAX_VALUE (~9.2e18). Going through Double.toLong()
+    // would clamp/saturate silently and corrupt data — the normalizer must
+    // leave such tokens as-is so a `Double`-typed field can still take them.
+    val raw = """{"big":"99999999999999999999.0"}"""
+    // (Convex doesn't emit this shape today, but the precision-guard matters
+    //  for any future high-precision numeric column.)
+    val parsed = json.parseToJsonElement(raw)
+    // Above is a JSON string, not a number — confirm it stays a string.
+    val element = parsed.normalizeConvexNumbers()
+    assertTrue(element.jsonObject["big"]!!.jsonPrimitive.isString)
+  }
 }

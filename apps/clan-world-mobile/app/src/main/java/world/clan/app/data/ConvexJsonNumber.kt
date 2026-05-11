@@ -4,7 +4,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.doubleOrNull
 
 /**
  * Convex's JSON output renders ALL numeric fields as floats — e.g. an
@@ -17,6 +16,13 @@ import kotlinx.serialization.json.doubleOrNull
  * rewrites every whole-number Double primitive (e.g. `1.0` → `1`) so the
  * default `Long`/`Int` decoders accept it. Fractional values are passed
  * through untouched so `Double`-typed fields still decode correctly.
+ *
+ * The matcher is intentionally string-based — going through Double would
+ * silently collapse 64-bit integers > 2^53 (e.g. timestamps in
+ * nanoseconds) since `asLong.toDouble() == d` is still true after the
+ * binary64 precision floor. We only rewrite tokens of the literal shape
+ * `<digits>.0` (optionally signed), which is exactly the shape Convex
+ * emits for v.number()-typed integer columns.
  */
 internal fun JsonElement.normalizeConvexNumbers(): JsonElement = when (this) {
   is JsonObject -> JsonObject(mapValues { (_, v) -> v.normalizeConvexNumbers() })
@@ -24,13 +30,15 @@ internal fun JsonElement.normalizeConvexNumbers(): JsonElement = when (this) {
   is JsonPrimitive -> if (isString) this else coerceWholeDouble(this)
 }
 
+private val WHOLE_DOUBLE = Regex("""^-?\d+\.0+$""")
+
 private fun coerceWholeDouble(p: JsonPrimitive): JsonPrimitive {
-  val d = p.doubleOrNull ?: return p
-  // Skip ints already-encoded as ints; only rewrite when source has a '.'.
-  if ('.' !in p.content && 'e' !in p.content && 'E' !in p.content) return p
-  // NaN / Infinity are not whole numbers — leave alone (will fail Long parse
-  // later if a Long field is hit, but that's a true data error).
-  if (!d.isFinite()) return p
-  val asLong = d.toLong()
-  return if (asLong.toDouble() == d) JsonPrimitive(asLong) else p
+  val s = p.content
+  // Bare integers, exponents, NaN/Infinity, fractional digits — all left alone.
+  if (!WHOLE_DOUBLE.matches(s)) return p
+  // Strip the trailing `.0`(s) and let the standard Long parser bound-check.
+  // Outside Long range → fall back to the original token so a Double-typed
+  // field can still decode it.
+  val asLong = s.substringBefore('.').toLongOrNull() ?: return p
+  return JsonPrimitive(asLong)
 }

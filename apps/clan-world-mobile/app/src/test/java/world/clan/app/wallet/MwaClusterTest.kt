@@ -2,6 +2,7 @@ package world.clan.app.wallet
 
 import com.solana.mobilewalletadapter.clientlib.Solana
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 /**
@@ -10,25 +11,27 @@ import org.junit.Test
  * prompt) do so against the correct network instead of producing a raw
  * "Network mismatch — mainnet vs devnet" dialog mid-mint.
  *
- * This is a contract test against the Solana Mobile SDK's [Solana] object —
- * it documents the cluster identifier we depend on and traps any future
- * SDK upgrade that renames the field or constant.
+ * Pinning [ClanWorldMwaCluster] (which both [world.clan.app.wallet.MwaClient]
+ * and [world.clan.app.owner.Mwa] read from) traps any accidental
+ * Mainnet/Testnet swap. Pinning the underlying SDK identifiers also traps
+ * an SDK upgrade that renames the constants.
  */
 class MwaClusterTest {
 
   @Test
-  fun solanaDevnetIdentifierMatchesMwaSpec() {
-    // The MWA wallet identifies the requested network via these two fields.
-    // The combined CAIP-2-style identifier is "solana:devnet".
-    assertEquals("solana", Solana.Devnet.name)
-    assertEquals("devnet", Solana.Devnet.cluster)
+  fun clanWorldClusterIsDevnet() {
+    // The single source of truth every MWA call site uses. If someone ever
+    // points this at Solana.Mainnet again, mint flow regresses to the
+    // network-mismatch dialog Liam reported in v2.4.0.
+    assertSame(Solana.Devnet, ClanWorldMwaCluster)
+    assertEquals("solana", ClanWorldMwaCluster.name)
+    assertEquals("devnet", ClanWorldMwaCluster.cluster)
   }
 
   @Test
   fun solanaMainnetIsNotDevnet() {
-    // Sanity guard — if someone ever swaps Solana.Devnet for Solana.Mainnet
-    // in MwaClient again, the cluster identifier will silently match the
-    // wallet's default and the mismatch dialog will return.
+    // Sanity guard against an SDK rename that could make Mainnet alias
+    // back onto Devnet (extremely unlikely but cheap to assert).
     assertEquals("mainnet", Solana.Mainnet.cluster)
   }
 }
