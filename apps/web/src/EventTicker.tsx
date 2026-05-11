@@ -2,6 +2,7 @@ import { useMemo, useRef, useEffect, useState } from 'react';
 import { BanditState } from '@clan-world/shared/generated/enums';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
+import type { Doc } from '../../server/convex/_generated/dataModel';
 import { useAgentLogs } from './useAgentLogs';
 import { DEMO_MODE } from './config/env';
 
@@ -59,16 +60,7 @@ function slotColor(clanId: number): string {
 
 // ---- Chain event → ticker string -----------------------------------------------
 
-type ChainEvent = {
-  _id: string;
-  eventName: string;
-  tick?: number;
-  clanId?: number;
-  banditId?: number;
-  args: unknown;
-  blockNumber: number;
-  logIndex: number;
-};
+type ChainEvent = Doc<'chainEvents'>;
 
 function safeNum(v: unknown, fallback = 0): number {
   if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
@@ -297,7 +289,7 @@ const SCROLL_PX_PER_SEC = 48;
 
 export function EventTicker() {
   const agentLogs = useAgentLogs();
-  const rawChainEvents = useQuery(api.events.getRecentChainEvents) as ChainEvent[] | undefined;
+  const rawChainEvents = useQuery(api.events.getRecentChainEvents);
 
   const entries = useMemo<TickerEntry[]>(() => {
     if (!DEMO_MODE && rawChainEvents && rawChainEvents.length > 0) {

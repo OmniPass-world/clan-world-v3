@@ -14,8 +14,10 @@ import {
   type Abi,
   type Hex,
   type Log,
+  type ParseEventLogsReturnType,
 } from "viem";
 import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import type { Doc } from "./_generated/dataModel";
 
 const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
 const baseSepolia = defineChain({
@@ -69,6 +71,18 @@ type SnapshotPayload = {
   clans: Record<string, unknown>[];
 };
 
+type ParsedClanWorldLog = ParseEventLogsReturnType<
+  typeof CLAN_WORLD_ABI,
+  undefined,
+  false
+>[number];
+
+type LegacyClanView = Partial<Doc<"clanView">> &
+  Pick<Doc<"clanView">, "clanId">;
+
+const isPresent = <T>(value: T | null | undefined): value is T =>
+  value !== null && value !== undefined;
+
 export function bigintSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.map(bigintSafe);
@@ -88,7 +102,7 @@ export function decodeClanWorldLogs(
     abi: CLAN_WORLD_ABI,
     logs: [...logs],
     strict: false,
-  }).map((event) => ({
+  }).map((event: ParsedClanWorldLog) => ({
     eventName: event.eventName,
     args: bigintSafe(event.args ?? {}) as Record<string, unknown>,
     address: event.address,
@@ -230,23 +244,6 @@ export function planPollLogRange(
     shouldPoll: fromBlock <= safeLatest,
   };
 }
-
-type LegacyClanView = {
-  clanId: number;
-  owner?: string;
-  baseRegion?: number;
-  baseLevel?: number;
-  wallLevel?: number;
-  monumentLevel?: number;
-  livingClansmen?: number;
-  goldBalance?: string;
-  blueprintBalance?: string;
-  vaultWood?: string;
-  vaultIron?: string;
-  vaultWheat?: string;
-  vaultFish?: string;
-  clansmen?: unknown[];
-};
 
 export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
   clanViews
@@ -583,7 +580,7 @@ export const commitSnapshot = internalMutation({
       ),
     );
     const legacyClans = legacyClansFromClanViews(
-      latestClanViews.filter(Boolean) as LegacyClanView[],
+      latestClanViews.filter(isPresent),
     );
     const tickEpochStartedAt =
       previousWorldSnapshot?.tick === tick
