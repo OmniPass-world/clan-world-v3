@@ -569,6 +569,41 @@ type CombatTrigger = {
   liveMode: boolean;
 };
 
+// ---- Bandit attack animation (docs/planning/bandit-animation-impl-plan.md)
+// Phase machine derives current animation from the live snapshot + a snapshot-diff
+// "lastOutcome" memo. T3 last 10s = telegraph. T4 = full battle / advance / escape.
+
+type BanditDiffOutcome =
+  | { type: 'defeated'; resolvedTick: number; fromRegion: number }
+  | { type: 'won'; resolvedTick: number; fromRegion: number; toRegion: number; targetClanId: string | null }
+  | { type: 'no_battle_advance'; resolvedTick: number; fromRegion: number; toRegion: number };
+
+type BanditAnimPhase =
+  | { kind: 'hidden' }
+  | { kind: 'camp_idle'; regionKey: string; glowAlpha: number }
+  | { kind: 'camp_telegraph'; regionKey: string; telegraphProgress: number }
+  | { kind: 'battle'; regionKey: string; targetClanId: string | null; outcome: BanditDiffOutcome; battleT: number }
+  | { kind: 'no_battle_advance'; fromRegionKey: string; toRegionKey: string; traversalT: number };
+
+// 8 FPS frame indexer for 4-frame walk cycles.
+const BANDIT_WALK_FRAME_MS = 1000 / 8;
+
+// Telegraph window: last ~17% of the 3-tick camp (≈10s of a 60s tick).
+const TELEGRAPH_PROGRESS_THRESHOLD = 2.83;
+const TELEGRAPH_DURATION_TICKS = 0.17;
+
+// Battle phase sub-windows (fractions of a 60s tick = battleT 0..1).
+const BATTLE_T_MARCH_END = 7 / 60;        // 0..7s march
+const BATTLE_T_CIRCLE_END = 14.5 / 60;    // 7..14.5s circle
+const BATTLE_T_FLASH_END = 15.5 / 60;     // 14.5..15.5s flash + launch
+const BATTLE_T_DEATH_END = 17.5 / 60;     // 15.5..17.5s death frames (defeat path)
+const BATTLE_T_FADE_END = 25.5 / 60;      // 17.5..25.5s tombstone fade (defeat) / cluster + walk (win)
+const BATTLE_T_WIN_CLUSTER_END = 18.5 / 60; // 17..18.5s cluster pause (win)
+const BATTLE_T_WIN_WALK_END = 25.5 / 60;  // 18.5..25.5s walk to next region (win)
+
+const BANDIT_SPRITE_SCALE = 0.12; // 384x512 (SE) → ~46x61 at scale 0.12, close to clansman
+const BANDIT_SPRITE_DEATH_SCALE = 0.10;
+
 const TRAVEL_DOT_RADIUS = 4; // 8px diameter — slightly bigger so it reads in the demo
 const TRAVEL_FADE_OUT_MS = 1200; // longer linger at destination
 const TRAVEL_DEST_LINGER_MS = 2500; // hold at destination at full alpha before fading
@@ -839,6 +874,92 @@ function easeInOutQuad(t: number) {
   return t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
 }
 
+// Pure: derive bandit animation phase from snapshot + diff outcome + currentTickFloat.
+// See docs/planning/bandit-animation-impl-plan.md §"Animation phase from currentTickFloat".
+export function computeBanditAnimPhase(
+  bandit: SnapshotBandit | null,
+  lastOutcome: BanditDiffOutcome | null,
+  currentTickFloat: number,
+  regionKeyByChainId: Record<number, string>,
+): BanditAnimPhase {
+  // T4 outcome animations win over the freshly updated live bandit row. Without
+  // this priority, a won bandit immediately appears Camped in the destination
+  // region and skips the battle / walk-out sequence.
+  if (lastOutcome) {
+    const battleT = currentTickFloat - lastOutcome.resolvedTick;
+    if (battleT >= 0 && battleT < BATTLE_T_FADE_END) {
+      if (lastOutcome.type === 'no_battle_advance') {
+        const fromRegionKey = regionKeyByChainId[lastOutcome.fromRegion];
+        const toRegionKey = regionKeyByChainId[lastOutcome.toRegion];
+        if (!fromRegionKey || !toRegionKey) return { kind: 'hidden' };
+        return {
+          kind: 'no_battle_advance',
+          fromRegionKey,
+          toRegionKey,
+          traversalT: clamp01(battleT / BATTLE_T_FADE_END),
+        };
+      }
+
+      const fromRegionKey = regionKeyByChainId[lastOutcome.fromRegion];
+      if (!fromRegionKey) return { kind: 'hidden' };
+      return {
+        kind: 'battle',
+        regionKey: fromRegionKey,
+        targetClanId: lastOutcome.type === 'won' ? lastOutcome.targetClanId : null,
+        outcome: lastOutcome,
+        battleT,
+      };
+    }
+  }
+
+  // Active "live" bandit on chain.
+  if (bandit) {
+    const ticksInState = currentTickFloat - bandit.stateEnteredTick;
+    const regionKey = regionKeyByChainId[bandit.region];
+    if (!regionKey) return { kind: 'hidden' };
+
+    if (bandit.state === BanditState.Camped) {
+      if (ticksInState < TELEGRAPH_PROGRESS_THRESHOLD) {
+        const glowAlpha = clamp01(ticksInState / 3);
+        return { kind: 'camp_idle', regionKey, glowAlpha };
+      }
+      const tProg = clamp01((ticksInState - TELEGRAPH_PROGRESS_THRESHOLD) / TELEGRAPH_DURATION_TICKS);
+      return { kind: 'camp_telegraph', regionKey, telegraphProgress: tProg };
+    }
+
+    if (bandit.state === BanditState.Spawned) {
+      // Newly spawned: render as camp idle while glow fades in.
+      const glowAlpha = clamp01(ticksInState);
+      return { kind: 'camp_idle', regionKey, glowAlpha };
+    }
+
+    if (bandit.state === BanditState.Attacking) {
+      // Should be transient; if a fresh outcome exists it was consumed by the
+      // priority window above. Without one, hold the fully telegraphed camp.
+      return { kind: 'camp_telegraph', regionKey, telegraphProgress: 1 };
+    }
+
+    if (bandit.state === BanditState.Defeated) {
+      const battleT = currentTickFloat - bandit.stateEnteredTick;
+      if (battleT < 0 || battleT >= BATTLE_T_FADE_END) return { kind: 'hidden' };
+      const outcome: BanditDiffOutcome = {
+        type: 'defeated',
+        resolvedTick: bandit.stateEnteredTick,
+        fromRegion: bandit.region,
+      };
+      return {
+        kind: 'battle',
+        regionKey,
+        targetClanId: bandit.projectedTargetClanId > 0 ? String(bandit.projectedTargetClanId) : null,
+        outcome,
+        battleT,
+      };
+    }
+  }
+
+  return { kind: 'hidden' };
+}
+
 function getDayNightFrame(progress01: number): DayNightKeyframe {
   const wrapped = ((progress01 % 1) + 1) % 1;
   for (let i = 0; i < DAYNIGHT_PHASES.length - 1; i++) {
@@ -1007,6 +1128,37 @@ export function WorldMap() {
   const burstTickerCbRef = useRef<(() => void) | null>(null);
   const seenBurstLogIdsRef = useRef<Set<string>>(new Set());
 
+  // Bandit attack animation (docs/planning/bandit-animation-impl-plan.md).
+  // Snapshot-diff tracking: derive last resolution outcome on every snapshot tick.
+  // Known cold-start gap: if the page reloads during the T4 resolution window,
+  // prevBanditRef starts empty and we cannot reconstruct lastBanditOutcomeRef
+  // from the current snapshot alone. Persist a compact lastResolution row in
+  // Convex before attempting to replay mid-battle after reload.
+  const prevBanditRef = useRef<SnapshotBandit | null>(null);
+  const lastBanditOutcomeRef = useRef<BanditDiffOutcome | null>(null);
+  const banditAnimRef = useRef<{
+    campSprite: Sprite | null;
+    campGlow: Graphics | null;
+    walkers: Sprite[];
+    deathSprites: Sprite[];
+    walkTextures: { ne: import('pixi.js').Texture[]; se: import('pixi.js').Texture[] };
+    deathTextures: import('pixi.js').Texture[];
+    campTexture: import('pixi.js').Texture | null;
+    assetsReady: boolean;
+    isLoading: boolean;
+  }>({
+    campSprite: null,
+    campGlow: null,
+    walkers: [],
+    deathSprites: [],
+    walkTextures: { ne: [], se: [] },
+    deathTextures: [],
+    campTexture: null,
+    assetsReady: false,
+    isLoading: false,
+  });
+  const banditAnimTickerCbRef = useRef<(() => void) | null>(null);
+
   const [pixiReady, setPixiReady] = useState(false);
   const [pixiInitError, setPixiInitError] = useState<Error | null>(null);
   const [webglLost, setWebglLost] = useState(false);
@@ -1064,6 +1216,77 @@ export function WorldMap() {
     const rawTick = snapshot?.tick;
     if (typeof rawTick === 'number' && Number.isFinite(rawTick)) {
       tickClockRef.current = { tick: rawTick, seenAtMs: Date.now() };
+    }
+  }, [snapshot]);
+
+  // Snapshot-diff: derive bandit resolution outcome the moment the chain transitions
+  // out of Camped. See docs/planning/bandit-animation-impl-plan.md §"Snapshot diff
+  // tracking". The lag-by-one-tick design is required because resource deposits
+  // settle end-of-tick BEFORE bandit resolution, so frontend cannot pre-compute
+  // the winner — we observe the closure and derive outcome from the diff.
+  useEffect(() => {
+    const prev = prevBanditRef.current;
+    const curr = (snapshot?.bandit ?? null) as SnapshotBandit | null;
+    const tick = snapshot?.tick;
+
+    const wasResolutionCandidate =
+      !!prev && (
+        (prev.state === BanditState.Camped && prev.nextActionTick <= (tick ?? -Infinity))
+        || prev.state === BanditState.Attacking
+        || prev.state === BanditState.Defeated
+      );
+
+    if (typeof tick === 'number' && wasResolutionCandidate && prev) {
+      // The resolution tick has closed (or already passed). Diff prev vs curr.
+      if (!curr) {
+        if (prev.state !== BanditState.Defeated) {
+          // Bandit removed entirely.
+          // Backend snapshots do not expose attackAttemptsMade yet, so we cannot
+          // discriminate terminal no-target escape from defeat. Prefer defeated
+          // until a compact lastResolution snapshot field is available.
+          lastBanditOutcomeRef.current = {
+            type: 'defeated',
+            resolvedTick: tick,
+            fromRegion: prev.region,
+          };
+        } else {
+          // Live synth in computeBanditAnimPhase already ran the death animation.
+          // Don't overwrite lastBanditOutcomeRef with the purge tick.
+        }
+      } else if (curr.region !== prev.region && prev.state !== BanditState.Defeated) {
+        // Bandit advanced to a new region.
+        // Win-with-rampage and no-target-advance are visually different (battle vs
+        // walk-through). Since the backend doesn't yet expose a "battle happened"
+        // flag in the snapshot, we default to 'won' (battle path) — the snapshot
+        // shape carries projectedTargetClanId on the prev bandit; if it was set
+        // but the prev region had no defenders we lean toward no_battle_advance.
+        // First-pass heuristic: if prev.projectedTargetClanId was 0/undefined,
+        // treat as no_battle_advance.
+        const hadTarget = typeof prev.projectedTargetClanId === 'number' && prev.projectedTargetClanId > 0;
+        lastBanditOutcomeRef.current = hadTarget
+          ? {
+            type: 'won',
+            resolvedTick: tick,
+            fromRegion: prev.region,
+            toRegion: curr.region,
+            targetClanId: String(prev.projectedTargetClanId),
+          }
+          : {
+            type: 'no_battle_advance',
+            resolvedTick: tick,
+            fromRegion: prev.region,
+            toRegion: curr.region,
+          };
+      } else if (curr.region === prev.region && curr.stateEnteredTick > prev.stateEnteredTick) {
+        // Same region, new state-enter tick: legacy "retry in place" — snapshot diff
+        // semantically the same as no resolution (just a counter bump). Skip outcome.
+      }
+    }
+
+    prevBanditRef.current = curr;
+    const existing = lastBanditOutcomeRef.current;
+    if (existing && (currentTickFloat() - existing.resolvedTick) >= BATTLE_T_FADE_END) {
+      lastBanditOutcomeRef.current = null;
     }
   }, [snapshot]);
 
@@ -1553,6 +1776,15 @@ export function WorldMap() {
         combatTickerCbRef.current = combatCb;
         app.ticker.add(combatCb);
 
+        // Bandit attack animation ticker (docs/planning/bandit-animation-impl-plan.md).
+        // Drives the phase machine: camp_idle / camp_telegraph / battle / advance / escape.
+        // Runs after combatCb so DEMO mode's vignette gets first-write to combatDim/Flash.
+        const banditAnimCb = () => {
+          updateBanditAnimation();
+        };
+        banditAnimTickerCbRef.current = banditAnimCb;
+        app.ticker.add(banditAnimCb);
+
         // Pixel burst ticker — animates flying pixels for deposit/trade events.
         const burstCb = () => {
           const particles = burstParticlesRef.current;
@@ -1600,6 +1832,7 @@ export function WorldMap() {
       if (a && zonePulseCbRef.current) a.ticker.remove(zonePulseCbRef.current);
       if (a && dayNightTickerCbRef.current) a.ticker.remove(dayNightTickerCbRef.current);
       if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
+      if (a && banditAnimTickerCbRef.current) a.ticker.remove(banditAnimTickerCbRef.current);
       if (a && burstTickerCbRef.current) a.ticker.remove(burstTickerCbRef.current);
       if (pixiCanvas && canvasClickHandler) pixiCanvas.removeEventListener('click', canvasClickHandler);
       finishCombatVignette(true);
@@ -1618,6 +1851,23 @@ export function WorldMap() {
       zonePulseCbRef.current = null;
       dayNightTickerCbRef.current = null;
       combatTickerCbRef.current = null;
+      banditAnimTickerCbRef.current = null;
+      // Reset bandit animation state — sprite refs survive Pixi destroy via
+      // child-tree cleanup, but we need to clear the cached state so the next
+      // mount re-loads textures fresh.
+      banditAnimRef.current = {
+        campSprite: null,
+        campGlow: null,
+        walkers: [],
+        deathSprites: [],
+        walkTextures: { ne: [], se: [] },
+        deathTextures: [],
+        campTexture: null,
+        assetsReady: false,
+        isLoading: false,
+      };
+      prevBanditRef.current = null;
+      lastBanditOutcomeRef.current = null;
       burstTickerCbRef.current = null;
       burstParticlesRef.current = [];
       seenBurstLogIdsRef.current.clear();
@@ -2270,51 +2520,507 @@ export function WorldMap() {
   function createBanditVisuals(isAssetLoadCancelled: () => boolean) {
     const drawn = drawnRef.current;
     const layers = layersRef.current;
-    if (!layers || drawn.banditIcon || drawn.banditCountdown) return;
+    if (!layers) return;
 
-    // Bandit indicator (style/bandit-archetype-sprites): stylized hooded silhouette.
-    // Pixi loads /sprites/bandit.png async; we keep a Graphics fallback (red ring + "!")
-    // visible during the load and as a safety net if the asset 404s.
-    const banditIcon = new Graphics();
-    banditIcon.eventMode = 'static';
-    banditIcon.cursor = 'pointer';
-    banditIcon.on('pointertap', (event) => {
-      event.stopPropagation();
-      selectTarget(banditIcon as SelectableTarget, 0xffe9b8);
-      setSelectedClanId(null);
-    });
-    layers.worldDynamic.addChild(banditIcon);
-    const countdown = new Text({
-      text: '',
-      style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
-    });
-    countdown.anchor.set(0, 0.5);
-    layers.inWorldEffects.addChild(countdown);
-    drawn.banditIcon = banditIcon;
-    drawn.banditCountdown = countdown;
-
-    Assets.load(BANDIT_ANIMATION_META.fallbackAsset)
-      .then((texture) => {
-        const cancelled = isAssetLoadCancelled();
-        if (cancelled || !appRef.current) return;
-        const sprite = new Sprite(texture);
-        sprite.anchor.set(0.5, 0.5);
-        sprite.alpha = 0;
-        sprite.eventMode = 'static';
-        sprite.cursor = 'pointer';
-        sprite.on('pointertap', (event) => {
-          event.stopPropagation();
-          selectTarget(sprite as SelectableTarget, 0xffe9b8);
-          setSelectedClanId(null);
-        });
-        layers.worldDynamic.addChild(sprite);
-        drawn.banditSprite = sprite;
-        if (combatVignetteRef.current) return;
-        redrawBandit();
-      })
-      .catch(() => {
-        // Keep fallback ring visible.
+    const attachBanditPointer = (target: SelectableTarget) => {
+      target.eventMode = 'static';
+      target.cursor = 'pointer';
+      target.on('pointertap', (event) => {
+        event.stopPropagation();
+        selectTarget(target, 0xffe9b8);
+        setSelectedClanId(null);
       });
+    };
+
+    if (DEMO_MODE && !drawn.banditIcon && !drawn.banditCountdown) {
+      // Bandit indicator (style/bandit-archetype-sprites): stylized hooded silhouette.
+      // Pixi loads /sprites/bandit.png async; we keep a Graphics fallback (red ring + "!")
+      // visible during the load and as a safety net if the asset 404s.
+      const banditIcon = new Graphics();
+      attachBanditPointer(banditIcon as SelectableTarget);
+      layers.worldDynamic.addChild(banditIcon);
+      const countdown = new Text({
+        text: '',
+        style: { fill: 0xffe9b8, fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold' },
+      });
+      countdown.anchor.set(0, 0.5);
+      layers.inWorldEffects.addChild(countdown);
+      drawn.banditIcon = banditIcon;
+      drawn.banditCountdown = countdown;
+
+      Assets.load(BANDIT_ANIMATION_META.fallbackAsset)
+        .then((texture) => {
+          const cancelled = isAssetLoadCancelled();
+          if (cancelled || !appRef.current) return;
+          const sprite = new Sprite(texture);
+          sprite.anchor.set(0.5, 0.5);
+          sprite.alpha = 0;
+          attachBanditPointer(sprite as SelectableTarget);
+          layers.worldDynamic.addChild(sprite);
+          drawn.banditSprite = sprite;
+          if (combatVignetteRef.current) return;
+          redrawBandit();
+        })
+        .catch(() => {
+          // Keep fallback ring visible.
+        });
+    }
+
+    // Load the new bandit animation kit (4-frame walks NE/SE, 3-frame death,
+    // optional camp). Asset failures fall back to the legacy bandit.png path
+    // so the world still renders something.
+    void loadBanditAnimAssets(isAssetLoadCancelled, attachBanditPointer);
+  }
+
+  // Asset prep: load all per-frame walk + death sprites for the phase machine.
+  // NW/SW directions are derived at runtime via sprite.scale.x = -1.
+  // Camp (bandit_camp.png) is opportunistic — if missing, we fall back to
+  // /sprites/bandit.png so camp_idle still renders.
+  async function loadBanditAnimAssets(
+    isAssetLoadCancelled: () => boolean,
+    attachBanditPointer: (target: SelectableTarget) => void,
+  ) {
+    const layers = layersRef.current;
+    if (!layers) return;
+    const animState = banditAnimRef.current;
+    if (animState.assetsReady || animState.isLoading) return;
+    animState.isLoading = true;
+
+    try {
+      const walkNePaths = [0, 1, 2, 3].map(i => `/sprites/bandit_walking_ne_${i}.png`);
+      const walkSePaths = [0, 1, 2, 3].map(i => `/sprites/bandit_walking_se_${i}.png`);
+      const deathPaths = [0, 1, 2].map(i => `/sprites/bandit_death_${i}.png`);
+
+      const tryLoad = async (path: string) => {
+        try {
+          return await Assets.load(path);
+        } catch {
+          return null;
+        }
+      };
+
+      const [neTex, seTex, deathTex, campTex] = await Promise.all([
+        Promise.all(walkNePaths.map(tryLoad)),
+        Promise.all(walkSePaths.map(tryLoad)),
+        Promise.all(deathPaths.map(tryLoad)),
+        tryLoad('/sprites/bandit_camp.png').then(t => t ?? tryLoad('/sprites/bandit.png')),
+      ]);
+
+      if (isAssetLoadCancelled() || !appRef.current) return;
+
+      const neFiltered = neTex.filter(Boolean) as import('pixi.js').Texture[];
+      const seFiltered = seTex.filter(Boolean) as import('pixi.js').Texture[];
+      const deathFiltered = deathTex.filter(Boolean) as import('pixi.js').Texture[];
+
+      if (neFiltered.length === 0 && seFiltered.length === 0) {
+        // No sprite sheets loaded; phase machine stays disabled.
+        return;
+      }
+
+      const animContainer = banditAnimRef.current;
+      animContainer.walkTextures = { ne: neFiltered, se: seFiltered };
+      animContainer.deathTextures = deathFiltered;
+      animContainer.campTexture = campTex ?? null;
+
+      // Camp sprite + optional glow.
+      if (campTex) {
+        const campSprite = new Sprite(campTex);
+        campSprite.anchor.set(0.5, 0.85); // anchor near base of tents
+        campSprite.visible = false;
+        attachBanditPointer(campSprite as SelectableTarget);
+        layers.worldDynamic.addChild(campSprite);
+        animContainer.campSprite = campSprite;
+      }
+      const glow = new Graphics();
+      glow.alpha = 0;
+      layers.worldDynamic.addChild(glow);
+      animContainer.campGlow = glow;
+
+      // Pre-create 3 walker sprites + 3 death sprites (max active bandits = 3 per spec).
+      const walkBaseTex = seFiltered[0] ?? neFiltered[0];
+      if (walkBaseTex) {
+        for (let i = 0; i < 3; i++) {
+          const walker = new Sprite(walkBaseTex);
+          walker.anchor.set(0.5, 0.85);
+          walker.visible = false;
+          attachBanditPointer(walker as SelectableTarget);
+          layers.worldDynamic.addChild(walker);
+          animContainer.walkers.push(walker);
+        }
+      }
+      if (deathFiltered.length > 0) {
+        const deathBase = deathFiltered[0]!;
+        for (let i = 0; i < 3; i++) {
+          const dead = new Sprite(deathBase);
+          dead.anchor.set(0.5, 0.85);
+          dead.visible = false;
+          layers.worldDynamic.addChild(dead);
+          animContainer.deathSprites.push(dead);
+        }
+      }
+
+      animContainer.assetsReady = true;
+    } finally {
+      animState.isLoading = false;
+    }
+  }
+
+  // Pick walking direction texture set + horizontal flip for NW/SW.
+  function pickWalkDirection(from: { x: number; y: number }, to: { x: number; y: number }) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    // Up-ish vs down-ish based on dy.
+    const goingUp = dy < 0;
+    const goingRight = dx >= 0;
+    if (goingUp) {
+      // NE textures cover going up-right; flip for NW (up-left).
+      return { textures: 'ne' as const, flipX: !goingRight };
+    }
+    // SE textures cover going down-right; flip for SW (down-left).
+    return { textures: 'se' as const, flipX: !goingRight };
+  }
+
+  // Apply scale + frame to a walker sprite.
+  function applyWalkerFrame(
+    walker: Sprite,
+    textures: import('pixi.js').Texture[],
+    frameIdx: number,
+    flipX: boolean,
+    scale: number,
+  ) {
+    if (textures.length === 0) return;
+    const t = textures[frameIdx % textures.length] ?? textures[0]!;
+    walker.texture = t;
+    walker.scale.set(flipX ? -scale : scale, scale);
+  }
+
+  // Apply death frame index to a sprite.
+  function applyDeathFrame(sprite: Sprite, textures: import('pixi.js').Texture[], frameIdx: number, scale: number) {
+    if (textures.length === 0) return;
+    const idx = Math.min(textures.length - 1, Math.max(0, frameIdx));
+    const t = textures[idx] ?? textures[0]!;
+    sprite.texture = t;
+    sprite.scale.set(scale, scale);
+  }
+
+  // Render dispatch — called from the bandit-anim ticker every frame.
+  function updateBanditAnimation() {
+    const animState = banditAnimRef.current;
+    if (!animState.assetsReady) return;
+
+    const hideBanditAnimSprites = () => {
+      if (animState.campSprite) animState.campSprite.visible = false;
+      if (animState.campGlow) animState.campGlow.alpha = 0;
+      animState.walkers.forEach(w => { w.visible = false; });
+      animState.deathSprites.forEach(d => { d.visible = false; });
+    };
+
+    // Yield to the existing combat vignette (DEMO mode) so we don't double-render.
+    if (combatVignetteRef.current) {
+      hideBanditAnimSprites();
+      return;
+    }
+
+    // DEMO_MODE keeps the legacy redrawBandit + combat-vignette path intact;
+    // the new phase machine activates only with a live snapshot.
+    if (DEMO_MODE) {
+      hideBanditAnimSprites();
+      return;
+    }
+
+    const snap = snapshotRef.current;
+    const tickFloat = currentTickFloat();
+    const liveBanditTyped = (snap?.bandit ?? null) as SnapshotBandit | null;
+    const phase = computeBanditAnimPhase(
+      liveBanditTyped,
+      lastBanditOutcomeRef.current,
+      tickFloat,
+      REGION_KEY_BY_CHAIN_ID,
+    );
+
+    // TODO(backend): worldPaused is not currently in worldSnapshot schema.
+    // Plumb through apps/server/convex/getSnapshot.ts when adding pause support.
+    // Until then, this branch is dormant and animations advance during pause.
+    const worldPaused = ((snap as any)?.worldPaused ?? false) === true;
+
+    // Hide everything by default, then enable per-phase.
+    hideBanditAnimSprites();
+
+    if (phase.kind === 'hidden') {
+      return;
+    }
+
+    const now = Date.now();
+    const renderNow = worldPaused ? tickClockRef.current.seenAtMs : now;
+    const walkFrameIdx = Math.floor(renderNow / BANDIT_WALK_FRAME_MS) % 4;
+    const layoutScale = layoutRef.current.scale;
+    const banditScale = BANDIT_SPRITE_SCALE * layoutScale;
+    const deathScale = BANDIT_SPRITE_DEATH_SCALE * layoutScale;
+
+    if (phase.kind === 'camp_idle') {
+      const anchor = projectedRegionAnchor(phase.regionKey);
+      if (!anchor) return;
+      if (animState.campSprite) {
+        animState.campSprite.visible = true;
+        animState.campSprite.x = anchor.x;
+        animState.campSprite.y = anchor.y;
+        animState.campSprite.scale.set(banditScale * 1.6); // camp is bigger than a single bandit
+        animState.campSprite.zIndex = Math.round(anchor.y);
+      }
+      if (animState.campGlow) {
+        animState.campGlow.clear();
+        animState.campGlow.circle(anchor.x, anchor.y - 6 * layoutScale, 28 * layoutScale);
+        animState.campGlow.fill({ color: 0xcc1122, alpha: 0.55 });
+        animState.campGlow.alpha = phase.glowAlpha * 0.85;
+        animState.campGlow.zIndex = Math.round(anchor.y) - 1;
+      }
+      return;
+    }
+
+    if (phase.kind === 'camp_telegraph') {
+      const anchor = projectedRegionAnchor(phase.regionKey);
+      if (!anchor) return;
+      // Three standing bandits with phase-offset jitter (sin ±1px).
+      const standTextures = animState.walkTextures.se.length > 0
+        ? animState.walkTextures.se
+        : animState.walkTextures.ne;
+      animState.walkers.forEach((walker, i) => {
+        if (i >= 3) return;
+        walker.visible = true;
+        const offsetX = (i - 1) * 18 * layoutScale; // -18, 0, +18
+        const jitter = worldPaused ? 0 : Math.sin(renderNow / 240 + i * 1.3) * 1.5;
+        walker.x = anchor.x + offsetX;
+        walker.y = anchor.y + jitter;
+        walker.zIndex = Math.round(anchor.y);
+        applyWalkerFrame(walker, standTextures, 0, false, banditScale);
+      });
+      // Camp glow holds at peak during telegraph — brief crossfade out.
+      if (animState.campGlow) {
+        animState.campGlow.clear();
+        animState.campGlow.circle(anchor.x, anchor.y - 6 * layoutScale, 28 * layoutScale);
+        animState.campGlow.fill({ color: 0xcc1122, alpha: 0.55 });
+        animState.campGlow.alpha = (1 - phase.telegraphProgress) * 0.85;
+        animState.campGlow.zIndex = Math.round(anchor.y) - 1;
+      }
+      return;
+    }
+
+    if (phase.kind === 'battle') {
+      renderBattlePhase(phase, walkFrameIdx, banditScale, deathScale, renderNow);
+      return;
+    }
+
+    if (phase.kind === 'no_battle_advance') {
+      const from = projectedRegionAnchor(phase.fromRegionKey);
+      const to = projectedRegionAnchor(phase.toRegionKey);
+      if (!from || !to) return;
+      const dir = pickWalkDirection(from, to);
+      const dirTextures = animState.walkTextures[dir.textures];
+      animState.walkers.forEach((walker, i) => {
+        if (i >= 3) return;
+        walker.visible = true;
+        const t = phase.traversalT;
+        const lateral = (i - 1) * 14 * layoutScale;
+        walker.x = lerp(from.x, to.x, t) + lateral * (1 - t);
+        walker.y = lerp(from.y, to.y, t);
+        walker.zIndex = Math.round(walker.y);
+        applyWalkerFrame(walker, dirTextures, walkFrameIdx + i, dir.flipX, banditScale);
+      });
+      return;
+    }
+
+  }
+
+  // Battle phase — common opening (march + circle + flash) then outcome branch.
+  function renderBattlePhase(
+    phase: { kind: 'battle'; regionKey: string; targetClanId: string | null; outcome: BanditDiffOutcome; battleT: number },
+    walkFrameIdx: number,
+    banditScale: number,
+    deathScale: number,
+    renderNow: number,
+  ) {
+    const animState = banditAnimRef.current;
+    const drawn = drawnRef.current;
+    const fromAnchor = projectedRegionAnchor(phase.regionKey);
+    if (!fromAnchor) return;
+
+    // Locate the old-region target base. Won outcomes still battle at the
+    // defeated base before walking to the destination region.
+    let targetCenter: { x: number; y: number } | null = null;
+    const targetClanId = phase.outcome.type === 'won' ? phase.outcome.targetClanId : phase.targetClanId;
+    if (targetClanId) {
+      const targetClanNum = Number(targetClanId);
+      const targetBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey && b.clan.id === targetClanId)
+        ?? drawn.bases.find(b => (
+          b.clan.homeRegion === phase.regionKey
+          && Number.isFinite(targetClanNum)
+          && Number(b.clan.id) === targetClanNum
+        ))
+        ?? drawn.bases.find(b => b.clan.id === targetClanId);
+      if (targetBase) {
+        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 * layoutRef.current.scale };
+      }
+    }
+    // If the target clan has been deleted from the snapshot, use the neutral
+    // region anchor rather than visually attributing the battle to another base.
+    const layoutScale = layoutRef.current.scale;
+    targetCenter = targetCenter ?? { x: fromAnchor.x + 40 * layoutScale, y: fromAnchor.y + 30 * layoutScale };
+
+    const t = phase.battleT;
+    const dir = pickWalkDirection(fromAnchor, targetCenter);
+    const dirTextures = animState.walkTextures[dir.textures];
+
+    // 0–7s: march toward target.
+    if (t < BATTLE_T_MARCH_END) {
+      const marchT = clamp01(t / BATTLE_T_MARCH_END);
+      animState.walkers.forEach((walker, i) => {
+        if (i >= 3) return;
+        walker.visible = true;
+        walker.alpha = 1;
+        const lateral = (i - 1) * 14 * layoutScale;
+        walker.x = lerp(fromAnchor.x, targetCenter!.x, easeInOutQuad(marchT)) + lateral * (1 - marchT);
+        walker.y = lerp(fromAnchor.y, targetCenter!.y, easeInOutQuad(marchT));
+        walker.zIndex = Math.round(walker.y);
+        applyWalkerFrame(walker, dirTextures, walkFrameIdx + i, dir.flipX, banditScale);
+      });
+      return;
+    }
+
+    // 7–14.5s: circle + accelerate (whirlwind).
+    if (t < BATTLE_T_CIRCLE_END) {
+      const circleT = clamp01((t - BATTLE_T_MARCH_END) / (BATTLE_T_CIRCLE_END - BATTLE_T_MARCH_END));
+      const radius = 38 * layoutScale * (1 - circleT * 0.4);
+      const angSpeed = 1.6 + circleT * 4.2; // radians/sec
+      const baseAng = renderNow * 0.001 * angSpeed;
+      animState.walkers.forEach((walker, i) => {
+        if (i >= 3) return;
+        walker.visible = true;
+        walker.alpha = 1;
+        const ang = baseAng + (i * Math.PI * 2 / 3);
+        walker.x = targetCenter!.x + Math.cos(ang) * radius;
+        walker.y = targetCenter!.y + Math.sin(ang) * radius * 0.55;
+        walker.zIndex = Math.round(walker.y);
+        // Direction flips as they orbit — quick pick based on tangent.
+        const tangentX = -Math.sin(ang);
+        const tangentDir = pickWalkDirection({ x: 0, y: 0 }, { x: tangentX, y: -1 });
+        const orbitTextures = animState.walkTextures[tangentDir.textures];
+        applyWalkerFrame(walker, orbitTextures, walkFrameIdx + i, tangentDir.flipX, banditScale);
+      });
+      return;
+    }
+
+    // 14.5–15.5s: flash + launch impulse.
+    if (t < BATTLE_T_FLASH_END) {
+      const flashT = clamp01((t - BATTLE_T_CIRCLE_END) / (BATTLE_T_FLASH_END - BATTLE_T_CIRCLE_END));
+      const launchT = Math.max(0, (flashT - 0.5) * 2);
+      const launchDist = 60 * layoutScale * launchT;
+      animState.walkers.forEach((walker, i) => {
+        if (i >= 3) return;
+        walker.visible = true;
+        walker.alpha = 1;
+        const ang = (i * Math.PI * 2 / 3);
+        walker.x = targetCenter!.x + Math.cos(ang) * launchDist;
+        walker.y = targetCenter!.y + Math.sin(ang) * launchDist * 0.6;
+        walker.zIndex = Math.round(walker.y);
+        applyWalkerFrame(walker, dirTextures, walkFrameIdx + i, dir.flipX, banditScale);
+      });
+      return;
+    }
+
+    // Past flash — outcome branch.
+    if (phase.outcome.type === 'defeated') {
+      // 15.5–17.5s: 3-frame death sequence per bandit (independent flicker).
+      // 17.5–25.5s: tombstone fade.
+      // 25.5+: hidden.
+      if (t < BATTLE_T_FADE_END) {
+        const isDeathPhase = t < BATTLE_T_DEATH_END;
+        const fadeT = isDeathPhase
+          ? 0
+          : clamp01((t - BATTLE_T_DEATH_END) / (BATTLE_T_FADE_END - BATTLE_T_DEATH_END));
+        const deathPhaseT = clamp01((t - BATTLE_T_FLASH_END) / (BATTLE_T_DEATH_END - BATTLE_T_FLASH_END));
+        // Each frame is ~0.5s of the 2s window; flicker x2 per frame at high frequency.
+        // frame 0 (back): 0–0.25 (frame in)
+        // frame 1 (face-down): 0.25–0.5
+        // frame 2 (tombstone): 0.5–1.0 hold
+        const deathFrameIdx =
+          deathPhaseT < 0.25 ? 0
+            : deathPhaseT < 0.5 ? 1
+              : 2;
+        // Flicker: square wave at 8Hz.
+        const flickerOn = Math.floor(renderNow / 125) % 2 === 0;
+        animState.deathSprites.forEach((dead, i) => {
+          if (i >= 3) return;
+          dead.visible = true;
+          dead.alpha = (1 - fadeT) * (flickerOn ? 1 : 0.55);
+          const ang = (i * Math.PI * 2 / 3);
+          const radius = 50 * layoutScale;
+          dead.x = targetCenter!.x + Math.cos(ang) * radius;
+          dead.y = targetCenter!.y + Math.sin(ang) * radius * 0.6;
+          dead.zIndex = Math.round(dead.y);
+          applyDeathFrame(dead, animState.deathTextures, deathFrameIdx, deathScale);
+        });
+      }
+      // After fade end, container will be hidden by next frame (phase becomes 'hidden').
+      return;
+    }
+
+    if (phase.outcome.type === 'won') {
+      // 14.5/15.5–17s: cluster on base (after flash).
+      // 17–18.5s: cluster pause.
+      // 18.5–25.5s: walk to next region.
+      // 25.5+: render new camp at toRegion (handled by phase becoming camp_idle once snapshot updates).
+      const toRegionKey = REGION_KEY_BY_CHAIN_ID[phase.outcome.toRegion];
+      const toAnchor = toRegionKey ? projectedRegionAnchor(toRegionKey) : null;
+
+      if (t < BATTLE_T_WIN_CLUSTER_END) {
+        // Cluster pause near target base.
+        animState.walkers.forEach((walker, i) => {
+          if (i >= 3) return;
+          walker.visible = true;
+          walker.alpha = 1;
+          const offsetX = (i - 1) * 14 * layoutScale;
+          const jitter = Math.sin(renderNow / 200 + i) * 1.5;
+          walker.x = targetCenter!.x + offsetX;
+          walker.y = targetCenter!.y + 8 * layoutScale + jitter;
+          walker.zIndex = Math.round(targetCenter!.y + 8 * layoutScale);
+          applyWalkerFrame(walker, dirTextures, 0, dir.flipX, banditScale); // standing pose
+        });
+      } else if (t < BATTLE_T_WIN_WALK_END && toAnchor) {
+        // Walk to next region.
+        const walkT = clamp01((t - BATTLE_T_WIN_CLUSTER_END) / (BATTLE_T_WIN_WALK_END - BATTLE_T_WIN_CLUSTER_END));
+        const walkDir = pickWalkDirection(targetCenter!, toAnchor);
+        const walkTextures = animState.walkTextures[walkDir.textures];
+        animState.walkers.forEach((walker, i) => {
+          if (i >= 3) return;
+          walker.visible = true;
+          walker.alpha = 1;
+          const lateral = (i - 1) * 14 * layoutScale;
+          walker.x = lerp(targetCenter!.x, toAnchor.x, easeInOutQuad(walkT)) + lateral * (1 - walkT);
+          walker.y = lerp(targetCenter!.y, toAnchor.y, easeInOutQuad(walkT));
+          walker.zIndex = Math.round(walker.y);
+          applyWalkerFrame(walker, walkTextures, walkFrameIdx + i, walkDir.flipX, banditScale);
+        });
+      } else if (toAnchor) {
+        // After walk: hold a glowing camp at destination until snapshot updates.
+        if (animState.campSprite) {
+          animState.campSprite.visible = true;
+          animState.campSprite.x = toAnchor.x;
+          animState.campSprite.y = toAnchor.y;
+          animState.campSprite.scale.set(banditScale * 1.6);
+          animState.campSprite.zIndex = Math.round(toAnchor.y);
+        }
+        if (animState.campGlow) {
+          animState.campGlow.clear();
+          animState.campGlow.circle(toAnchor.x, toAnchor.y - 6 * layoutScale, 28 * layoutScale);
+          animState.campGlow.fill({ color: 0xcc1122, alpha: 0.55 });
+          animState.campGlow.alpha = clamp01((t - BATTLE_T_WIN_WALK_END) / 0.05) * 0.85;
+          animState.campGlow.zIndex = Math.round(toAnchor.y) - 1;
+        }
+      }
+      return;
+    }
+
+    // no_battle_advance is handled at the top-level phase dispatcher.
   }
 
   function buildScene(isAssetLoadCancelled: () => boolean) {
@@ -2447,7 +3153,7 @@ export function WorldMap() {
     }
 
     const layers = layersRef.current;
-    if (layers) {
+    if (layers && DEMO_MODE) {
       layers.combatDim.clear();
       layers.combatDim.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
       layers.combatDim.fill({ color: COMBAT_DIM_TINT, alpha: 1 });
@@ -2623,7 +3329,7 @@ export function WorldMap() {
       // doesn't snap the reparented bandit back to home anchor mid-
       // choreography (opus 4.7 r4 LOW). The vignette ticker self-corrects
       // on the next frame anyway, but a one-frame snap is visible.
-      if (!combatVignetteRef.current) redrawBandit();
+      if (DEMO_MODE && !combatVignetteRef.current) redrawBandit();
     } // end clan base relayout block
   }
 
@@ -2637,6 +3343,26 @@ export function WorldMap() {
     const sprite = drawn.banditSprite;
     const text = drawn.banditCountdown;
     if (!icon || !text) return;
+
+    // Live-mode (non-DEMO) defers to the new bandit-attack phase machine
+    // (docs/planning/bandit-animation-impl-plan.md). The phase machine owns
+    // the camp/walking/battle/death rendering through its own container.
+    // The legacy red ring + bandit silhouette + "Nt" countdown are no longer
+    // shown in production — they'd render on top of the phase sprites.
+    // DEMO_MODE keeps the legacy flow intact so the existing combat vignette
+    // still triggers on `?combat=success`.
+    if (!DEMO_MODE) {
+      icon.clear();
+      icon.visible = false;
+      icon.alpha = 0;
+      if (sprite) {
+        sprite.visible = false;
+        sprite.alpha = 0;
+      }
+      text.visible = false;
+      return;
+    }
+
     if (!visibleBandit || !visibleBandit.regionKey) {
       icon.clear();
       icon.visible = false;
@@ -2788,6 +3514,7 @@ export function WorldMap() {
   }
 
   function startCombatVignette(trigger?: CombatTrigger): boolean {
+    if (!DEMO_MODE) return false;
     const layers = layersRef.current;
     if (!layers) return false;
     const drawn = drawnRef.current;
@@ -2941,6 +3668,7 @@ export function WorldMap() {
   }
 
   function updateCombatVignette() {
+    if (!DEMO_MODE) return;
     const pendingTrigger = pendingCombatTriggerRef.current;
     if (pendingTrigger && !combatVignetteRef.current) {
       if (startCombatVignette(pendingTrigger)) {
@@ -3101,7 +3829,7 @@ export function WorldMap() {
 	}
 
   useEffect(() => {
-    if (DEMO_MODE || !rawChainEvents || rawChainEvents.length === 0) return;
+    if (!DEMO_MODE || !rawChainEvents || rawChainEvents.length === 0) return;
     const seen = seenCombatEventKeysRef.current;
     const now = Date.now();
     const sorted = rawChainEvents
@@ -3145,7 +3873,7 @@ export function WorldMap() {
   // bandit sprite's x/y/zIndex back to the region anchor, snapping the bandit
   // out of mid-flight choreography (claude r3 MUST #1).
   useEffect(() => {
-    if (!pixiReady) return;
+    if (!pixiReady || !DEMO_MODE) return;
     if (combatVignetteRef.current) return;
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3164,7 +3892,7 @@ export function WorldMap() {
 
   // Pulse the bandit icon when the raid is imminent or attacking.
   useEffect(() => {
-    if (!pixiReady) return;
+    if (!pixiReady || !DEMO_MODE) return;
     const app = appRef.current;
     if (!app) return;
 
