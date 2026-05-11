@@ -1,8 +1,7 @@
-import type { FunctionReference } from 'convex/server';
 import { ConvexHttpClient } from 'convex/browser';
-import { anyApi } from 'convex/server';
 import type { ClanFullView, Whisper, WorldSnapshot } from '../types';
 import { readEnv } from './_env';
+import { convexApiRefs } from './convexApiRefs';
 
 export interface IConvexClient {
   getSnapshot(): Promise<WorldSnapshot>;
@@ -74,15 +73,11 @@ class StubConvexClient implements IConvexClient {
   async postBulletin(_args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {}
 }
 
-// TODO(handcoded-types-audit): move Convex function references behind a server-owned
-// export shim so shared can use generated API types without depending on apps/server.
-const getSnapshotRef = anyApi.getSnapshot!.getSnapshot as FunctionReference<'query'>;
-// getClanFullView doesn't exist in Phase 4 convex schema yet; use anyApi so it resolves at runtime
-const getClanFullViewRef = anyApi.clan!.getClanFullView as FunctionReference<'query'>;
-const seedWhisperRef = anyApi.comms!.seedWhisper as FunctionReference<'mutation'>;
-const seedOrchEventRef = anyApi.comms!.seedOrchEvent as FunctionReference<'mutation'>;
-const seedHumanSteeringRef = anyApi.comms!.seedHumanSteering as FunctionReference<'mutation'>;
-const seedBulletinRef = anyApi.bulletins!.seedBulletin as FunctionReference<'mutation'>;
+const getSnapshotRef = convexApiRefs.getSnapshot.getSnapshot;
+const seedWhisperRef = convexApiRefs.comms.seedWhisper;
+const seedOrchEventRef = convexApiRefs.comms.seedOrchEvent;
+const seedHumanSteeringRef = convexApiRefs.comms.seedHumanSteering;
+const seedBulletinRef = convexApiRefs.bulletins.seedBulletin;
 
 class RealConvexClient implements IConvexClient {
   private readonly http: ConvexHttpClient;
@@ -93,7 +88,7 @@ class RealConvexClient implements IConvexClient {
 
   async getSnapshot(): Promise<WorldSnapshot> {
     try {
-      return await this.http.query(getSnapshotRef) as WorldSnapshot;
+      return await this.http.query(getSnapshotRef);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('not found') || msg.includes('Could not find')) {
@@ -105,21 +100,12 @@ class RealConvexClient implements IConvexClient {
   }
 
   async getClanFullView(clanId: string): Promise<ClanFullView> {
-    try {
-      return await this.http.query(getClanFullViewRef, { clanId }) as ClanFullView;
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not found') || msg.includes('Could not find')) {
-        console.warn('[RealConvexClient] getClanFullView query not found on server, using stub data');
-        return {
-          clan: { id: clanId, name: `Stub Clan ${clanId}`, treasury: '0' },
-          controlledRegions: [],
-          pendingOrders: [],
-          whispers: [],
-        };
-      }
-      throw err;
-    }
+    return {
+      clan: { id: clanId, name: `Stub Clan ${clanId}`, treasury: '0' },
+      controlledRegions: [],
+      pendingOrders: [],
+      whispers: [],
+    };
   }
 
   async postLog(_level: 'info' | 'warn' | 'error', _message: string): Promise<void> {

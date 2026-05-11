@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import world.clan.app.R
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.wallet.WalletIdentity
+import java.text.NumberFormat
 
 /**
  * Pill displayed in the [CrownHeader]. Tap to open a dropdown with
@@ -61,6 +64,9 @@ import world.clan.app.wallet.WalletIdentity
 @OptIn(ExperimentalFoundationApi::class)
 fun WalletPill(
   identity: WalletIdentity,
+  goldBalance: Long?,
+  onMintGold: () -> Unit,
+  onViewWallet: () -> Unit,
   onDisconnect: () -> Unit,
   modifier: Modifier = Modifier,
 ) {
@@ -204,6 +210,57 @@ fun WalletPill(
         .border(1.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(6.dp)),
       offset = androidx.compose.ui.unit.DpOffset(x = 0.dp, y = 6.dp),
     ) {
+      Row(
+        modifier = Modifier
+          .widthIn(min = 190.dp)
+          .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+      ) {
+        Text(
+          text = "GOLD",
+          style = ClanWorldTheme.type.monoMicro,
+          color = ClanWorldTheme.colors.warmDim,
+        )
+        Text(
+          text = goldBalance?.let { "${it.formatThousands()} g" } ?: "LOADING",
+          style = ClanWorldTheme.type.monoData,
+          color = ClanWorldTheme.colors.goldBright,
+        )
+      }
+      Box(
+        modifier = Modifier
+          .width(190.dp)
+          .height(1.dp)
+          .padding(horizontal = 12.dp)
+          .border(0.5.dp, ClanWorldTheme.colors.hairline, RoundedCornerShape(999.dp)),
+      )
+      DropdownMenuItem(
+        text = {
+          Text(
+            text = "MINT 100K GOLD",
+            style = ClanWorldTheme.type.monoMicro,
+            color = ClanWorldTheme.colors.rune,
+          )
+        },
+        onClick = {
+          menuOpen = false
+          onMintGold()
+        },
+      )
+      DropdownMenuItem(
+        text = {
+          Text(
+            text = "VIEW WALLET",
+            style = ClanWorldTheme.type.monoMicro,
+            color = ClanWorldTheme.colors.warm,
+          )
+        },
+        onClick = {
+          menuOpen = false
+          onViewWallet()
+        },
+      )
       DropdownMenuItem(
         text = {
           Text(
@@ -219,6 +276,10 @@ fun WalletPill(
       )
     }
   }
+}
+
+private fun Long.formatThousands(): String {
+  return NumberFormat.getIntegerInstance().format(this)
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -14,8 +14,11 @@ import {
   type Abi,
   type Hex,
   type Log,
+  type ParseEventLogsReturnType,
 } from "viem";
 import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import type { Doc } from "./_generated/dataModel";
+import { resetLocked } from "./resetLock";
 
 const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
 const baseSepolia = defineChain({
@@ -65,6 +68,18 @@ type SnapshotPayload = {
   clans: Record<string, unknown>[];
 };
 
+type ParsedClanWorldLog = ParseEventLogsReturnType<
+  typeof CLAN_WORLD_ABI,
+  undefined,
+  false
+>[number];
+
+type LegacyClanView = Partial<Doc<"clanView">> &
+  Pick<Doc<"clanView">, "clanId">;
+
+const isPresent = <T>(value: T | null | undefined): value is T =>
+  value !== null && value !== undefined;
+
 export function bigintSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
   if (Array.isArray(value)) return value.map(bigintSafe);
@@ -84,7 +99,7 @@ export function decodeClanWorldLogs(
     abi: CLAN_WORLD_ABI,
     logs: [...logs],
     strict: false,
-  }).map((event) => ({
+  }).map((event: ParsedClanWorldLog) => ({
     eventName: event.eventName,
     args: bigintSafe(event.args ?? {}) as Record<string, unknown>,
     address: event.address,
@@ -227,23 +242,6 @@ export function planPollLogRange(
   };
 }
 
-type LegacyClanView = {
-  clanId: number;
-  owner?: string;
-  baseRegion?: number;
-  baseLevel?: number;
-  wallLevel?: number;
-  monumentLevel?: number;
-  livingClansmen?: number;
-  goldBalance?: string;
-  blueprintBalance?: string;
-  vaultWood?: string;
-  vaultIron?: string;
-  vaultWheat?: string;
-  vaultFish?: string;
-  clansmen?: unknown[];
-};
-
 export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
   clanViews
     .filter((view) => view.clanId > 0)
@@ -297,6 +295,14 @@ export const ingestEvents = internalMutation({
     advanceCheckpoint: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (resetLocked()) {
+      return {
+        inserted: 0,
+        skipped: args.events.length,
+        resetLocked: true,
+      };
+    }
+
     let inserted = 0;
     for (const raw of args.events as ParsedIndexerEvent[]) {
       const logIndex = raw.logIndex ?? 0;
@@ -416,6 +422,14 @@ export const commitSnapshot = internalMutation({
     snapshot: snapshotValidator,
   },
   handler: async (ctx, args) => {
+    if (resetLocked()) {
+      return {
+        tick: 0,
+        clans: 0,
+        skipped: "reset-locked",
+      };
+    }
+
     const snapshot = args.snapshot as SnapshotPayload;
     const now = Date.now();
     const world = snapshot.world;
@@ -563,7 +577,7 @@ export const commitSnapshot = internalMutation({
       ),
     );
     const legacyClans = legacyClansFromClanViews(
-      latestClanViews.filter(Boolean) as LegacyClanView[],
+      latestClanViews.filter(isPresent),
     );
     const tickEpochStartedAt =
       previousWorldSnapshot?.tick === tick
@@ -623,6 +637,10 @@ export const refreshSnapshot = internalAction({
     blockNumber: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<unknown> => {
+    if (resetLocked()) {
+      return { skipped: true, resetLocked: true };
+    }
+
     const client = createClient();
     const address = engineAddress();
     const pinnedBlockNumber =
@@ -665,9 +683,21 @@ export const refreshSnapshot = internalAction({
       return { tick: 0, clans: 0 };
     }
 
+    const clanIdsRaw = await client
+      .readContract({
+        address,
+        abi: CLAN_WORLD_ABI,
+        functionName: "getClanIds",
+        blockNumber: pinnedBlockNumber,
+      })
+      .catch(() => undefined);
+    const clanIds =
+      Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
+        ? clanIdsRaw.map((id) => asNumber(id)).filter((id) => id > 0)
+        : Array.from({ length: MAX_CLANS }, (_, index) => index + 1);
+
     const clans = await Promise.all(
-      Array.from({ length: MAX_CLANS }, async (_, index) => {
-        const clanId = index + 1;
+      clanIds.map(async (clanId) => {
         return client
           .readContract({
             address,
@@ -696,6 +726,10 @@ export const refreshSnapshot = internalAction({
 export const pollLogs = internalAction({
   args: {},
   handler: async (ctx): Promise<unknown> => {
+    if (resetLocked()) {
+      return { inserted: 0, skipped: true, resetLocked: true };
+    }
+
     const client = createClient();
     const address = engineAddress();
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {

@@ -6,6 +6,41 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.4.0] — 2026-05-11
+
+GOLD-token-gated writes, real Android Mobile Wallet Adapter flows, a Solana GOLD faucet program, and Bandit Solidity library split. Closes the largest remaining gap between the demo build and a production-ready paywall: every whisper and doctrine write is now anchored to an on-chain GOLD burn verified server-side before the message is recorded. The Android app ships its first real MWA transaction flow. `ClanWorld.sol` no longer breaches EIP-170 on bandit-heavy deploys.
+
+### Added
+
+- **GOLD-gated whisper writes** (`recordWhisperAfterTx`): new Convex action verifies an on-chain Solana GOLD burn (5 GOLD per write) via `fetchParsedTransaction` (5 retries, 2s timeout + exponential backoff) before recording. Idempotent on retry — duplicate signatures return `{ok: true, alreadyRecorded: true}` via `goldTxReceipts.by_signature`. Refuses writes when `worldSnapshot` is empty (post-reset window) and rejects writes to unminted clans via `clanView` existence check.
+- **GOLD-gated doctrine saves** (`saveDoctrineAfterTx`): same burn-verify + idempotency guarantees as whispers. Both actions are guarded by `CLANWORLD_RESET_LOCK` env var; a DRY helper for the reset-lock check lives at `apps/server/convex/resetLock.ts`.
+- **Android MWA real Solana flows** (`GoldSolanaClient.kt`): replaced stub wallet with real Mobile Wallet Adapter integration. Steering Console and Strategy Editor screens now issue a burn-GOLD-then-record transaction sequence. `FakeWalletPolicy` blocks the fake wallet in release builds (permitted in debug). `FakeWalletPolicyTest.kt` covers the policy logic.
+- **Solana GOLD faucet program** (`packages/solana-gold/programs/gold_faucet/`): Anchor program that mints 100K GOLD to the caller's ATA on each `claim()`. Intentionally uncapped for v1 demo accessibility (SECURITY-DEMO-POSTURE documented in source). Devnet deploy runbook at `packages/solana-gold/scripts/README.md`.
+- **Full game reset ops** (`apps/server/convex/ops.ts`): `flushGameState` mutation gated on `INDEXER_SECRET`. Reset runbook at `docs/runbooks/full-game-reset.md`.
+
+### Changed
+
+- **Bandit Solidity library split** (BREAKING for diamond deployers): extracted bandit lifecycle logic from monolithic `ClanWorld.sol` into five focused libraries to stay under the EIP-170 24,576-byte bytecode limit — `LibBanditCleanup`, `LibBanditCombat`, `LibBanditEvents`, `LibBanditPassive`, `LibBanditTargets`. Events centralized in `LibBanditEvents` (`BanditStateChanged`, `BanditEscaped`, `LootDistributed`) with helper emitters. Topic hashes are unchanged — existing indexer ABI parsing is unaffected.
+- **Indexer `clanIds` source**: `ingestEvents`, `commitSnapshot`, `refreshSnapshot`, and `pollLogs` now pull the canonical clan list from a `getClanIds()` chain call instead of iterating `1..MAX_CLANS`. Removes the hardcoded upper-bound assumption as clan count grows.
+- **Indexer reset-lock awareness**: all four indexer writers respect `CLANWORLD_RESET_LOCK` and skip processing during the post-reset window.
+
+### Fixed
+
+- **`GoldSolanaClient.balance()` missing-ATA guard**: returns `0L` instead of throwing when the GOLD token account does not yet exist for a wallet.
+- **Airdrop confirmation race**: airdrop flow now awaits signature confirmation before proceeding to claim, eliminating a timing race on devnet.
+- **Hand-coded type drift** (`EventTicker.tsx`): `ChainEvent` is now derived directly from `Doc<'chainEvents'>` rather than a hand-rolled parallel type. Removed a typed reference to the nonexistent `convexApiRefs.clan.getClanFullView`.
+- **Spread-order trap in commit mutations**: corrected object spread ordering that could silently shadow fields during snapshot commits.
+- **`clanId` range and existence checks**: both GOLD-tx actions validate that the target `clanId` is within range and corresponds to a minted clan before writing.
+
+### Validation
+
+- `apps/clan-world-mobile :app:testDebugUnitTest` (includes `FakeWalletPolicyTest`)
+- `packages/solana-gold` Anchor build + devnet deploy smoke
+- Convex GOLD-tx action integration tests (idempotency, empty-snapshot rejection, unminted-clan rejection)
+- PR check `chainclient-abi`
+
+---
+
 ## [2.3.2] — 2026-05-11
 
 Android demo polish release. Ships the PR #221 mobile demo improvements on top of `v2.3.1`: cooldown messages now wrap instead of clipping, Whispers gains a Strategy & Notes path for owned sigils, and the wallet pill now attempts real `.sol` primary-domain resolution instead of showing the old mock identity.

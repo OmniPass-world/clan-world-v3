@@ -188,6 +188,16 @@ export default defineSchema({
     usdPrice: v.number(),
     observedAt: v.number(),
   }).index("by_token_observed", ["tokenMint", "observedAt"]),
+  goldTxReceipts: defineTable({
+    signature: v.string(),
+    owner: v.string(),
+    clanId: v.number(),
+    action: v.union(v.literal("whisper"), v.literal("doctrine")),
+    burnAmount: v.number(),
+    skipTax: v.number(),
+    memo: v.string(),
+    observedAt: v.number(),
+  }).index("by_signature", ["signature"]),
   kickstartTokens: defineTable({
     tokenMint: v.string(),
     poolAddress: v.string(),
@@ -321,6 +331,7 @@ export default defineSchema({
     body: v.string(),
     /** Wallet/owner address of the sender (when known). */
     sentBy: v.optional(v.string()),
+    txHash: v.optional(v.string()),
     timestamp: v.number(),
   })
     .index("by_target_clan", ["targetClanId", "tick"])

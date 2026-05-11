@@ -14,6 +14,8 @@ import {
     Mission
 } from "../../IClanWorld.sol";
 import {LibSettlementMath} from "./LibSettlementMath.sol";
+import {LibBanditCleanup} from "./LibBanditCleanup.sol";
+import {LibBanditEvents} from "./LibBanditEvents.sol";
 import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
 import {LibOrderDefenders} from "./LibOrderDefenders.sol";
 import {LibOrderUpgrades} from "./LibOrderUpgrades.sol";
@@ -42,28 +44,10 @@ library LibBanditCombat {
         uint64 atTick
     );
     event BanditDefeated(uint32 indexed banditId, uint32 indexed targetClanId, uint64 atTick);
-    event BanditEscaped(uint32 indexed banditId, uint64 atTick);
-    event BanditStateChanged(
-        uint32 indexed banditId, BanditState oldState, BanditState newState, uint8 region, uint64 atTick
-    );
     event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
     event WallDamagedByBandit(uint32 indexed clanId, uint8 newLevel, uint32 indexed banditId);
     event ClansmanKilledByBandit(uint32 indexed clanId, uint32 indexed clansmanId, uint32 indexed banditId);
     event BlueprintEarned(uint32 indexed clanId, uint32 indexed banditId, uint256 amount, uint64 tick);
-    event LootDistributed(
-        uint32 indexed banditId,
-        uint32[] clanIdsRewarded,
-        uint256 perClanWood,
-        uint256 perClanWheat,
-        uint256 perClanFish,
-        uint256 perClanIron,
-        uint256 perClanGold,
-        uint256 burnedWood,
-        uint256 burnedWheat,
-        uint256 burnedFish,
-        uint256 burnedIron,
-        uint256 burnedGold
-    );
     event LootDistributedToDefender(
         uint32 indexed banditId,
         uint32 indexed clanId,
@@ -102,14 +86,14 @@ library LibBanditCombat {
         Clan storage targetClan = s.clans[targetClanId];
         if (targetClan.clanId == ClanWorldConstants.CLAN_ID_NULL || targetClan.clanState == ClanState.DEAD) {
             LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
-            emit BanditEscaped(banditId, closedTick);
+            LibBanditEvents.emitBanditEscaped(banditId, closedTick);
             return;
         }
         if (targetClan.lastSettledTick < s.world.currentTick) {
             bandit.state = BanditState.Camped;
             bandit.tickEnteredState = s.world.currentTick;
             bandit.targetClanId = ClanWorldConstants.CLAN_ID_NULL;
-            emit BanditStateChanged(
+            LibBanditEvents.emitBanditStateChanged(
                 banditId, BanditState.Attacking, BanditState.Camped, bandit.region, s.world.currentTick
             );
             return;
@@ -162,7 +146,7 @@ library LibBanditCombat {
         } else if (
             LibBanditLifecycle.recordBanditAttackAttempt(s, banditId) >= ClanWorldConstants.BANDIT_MAX_ATTACK_ATTEMPTS
         ) {
-            LibBanditLifecycle.terminalEscapeBandit(s, banditId, closedTick);
+            LibBanditCleanup.terminalEscapeBandit(s, banditId, closedTick);
         } else {
             LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
         }
@@ -399,7 +383,7 @@ library LibBanditCombat {
             }
         }
 
-        emit LootDistributed(
+        LibBanditEvents.emitLootDistributed(
             banditId,
             rewardedClanIds,
             perWood,
@@ -543,7 +527,7 @@ library LibBanditCombat {
                 BanditTroop storage bandit = s.bandits[banditId];
                 if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
                     LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
-                    emit BanditEscaped(banditId, tick);
+                    LibBanditEvents.emitBanditEscaped(banditId, tick);
                     emit BanditTargetDied(banditId, deadClanId, tick);
                 }
             }

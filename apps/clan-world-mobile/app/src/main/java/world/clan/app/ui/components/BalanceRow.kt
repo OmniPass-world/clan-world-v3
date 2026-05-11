@@ -38,7 +38,7 @@ fun BalanceRow(
   bouncing: Boolean,
   faucetCooling: Boolean,
   faucetDrop: Long,
-  onFaucet: () -> Unit,
+  onFaucet: (() -> Unit)?,
   modifier: Modifier = Modifier,
 ) {
   // Bounce animation on faucet drop.
@@ -87,11 +87,13 @@ fun BalanceRow(
       )
     }
 
-    DevnetFaucetButton(
-      faucetDrop = faucetDrop,
-      cooling = faucetCooling,
-      onClick = onFaucet,
-    )
+    if (onFaucet != null) {
+      DevnetFaucetButton(
+        faucetDrop = faucetDrop,
+        cooling = faucetCooling,
+        onClick = onFaucet,
+      )
+    }
   }
 }
 

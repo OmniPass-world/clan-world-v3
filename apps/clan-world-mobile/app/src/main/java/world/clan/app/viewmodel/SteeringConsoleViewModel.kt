@@ -51,7 +51,7 @@ data class SteeringConsoleUiState(
   val feed: List<FeedItem> = emptyList(),
   /** Wall-clock ms when the last whisper was sent. -1 if no sends yet. */
   val lastSentAt: Long = -1L,
-  /** User's GOLD balance (mocked for slice 4d — real chain integration later). */
+  /** User's on-chain GOLD balance, whole token units. */
   val gold: Long = INITIAL_GOLD,
   val sentCount: Int = 0,
   /** Wall-clock ms — drives BurnFlash mount via key-change. */
@@ -121,12 +121,16 @@ class SteeringConsoleViewModel(
     _state.update { it.copy(sending = sending) }
   }
 
+  fun setGold(balance: Long) {
+    _state.update { it.copy(gold = balance.coerceAtLeast(0L)) }
+  }
+
   fun setError(msg: String?) {
     _state.update { it.copy(sending = false, errorMessage = msg) }
   }
 
-  /** Optimistic update after the wallet seal succeeds. */
-  fun confirmSend(burnAmount: Long, skipTax: Long, sentAt: Long) {
+  /** Optimistic update after the wallet tx and Convex write succeed. */
+  fun confirmSend(burnAmount: Long, skipTax: Long, sentAt: Long, signature: String) {
     val body = _state.value.draft.trim()
     if (body.isEmpty()) return
     val total = burnAmount + skipTax
@@ -142,9 +146,9 @@ class SteeringConsoleViewModel(
         lastBurnAt = sentAt,
         lastBurnAmount = burnAmount,
         statusBody = if (skipTax > 0L)
-          "whisper sealed · $burnAmount burned · $skipTax g → treasury"
+          "whisper sealed · $burnAmount burned · $skipTax g → treasury · ${signature.take(6)}…"
         else
-          "whisper sealed · $burnAmount g burned",
+          "whisper sealed · $burnAmount g burned · ${signature.take(6)}…",
         errorMessage = null,
       )
     }

@@ -70,9 +70,50 @@ class ClanWorldConvexClient(private val convexUrl: String) {
       put("clanId", clanId); put("limit", limit)
     })
 
+  suspend fun recordWhisperAfterGoldTx(
+    clanId: Int,
+    body: String,
+    owner: String,
+    signature: String,
+    skipTax: Long,
+  ) {
+    callAction<JsonObject>("gold:recordWhisperAfterTx", buildJsonObject {
+      put("clanId", clanId)
+      put("body", body)
+      put("owner", owner)
+      put("signature", signature)
+      put("skipTax", skipTax)
+    })
+  }
+
+  suspend fun saveDoctrineAfterGoldTx(
+    clanId: Int,
+    strategy: String,
+    notes: String,
+    owner: String,
+    signature: String,
+  ) {
+    callAction<JsonObject>("gold:saveDoctrineAfterTx", buildJsonObject {
+      put("clanId", clanId)
+      put("strategy", strategy)
+      put("notes", notes)
+      put("owner", owner)
+      put("signature", signature)
+    })
+  }
+
   // ── Internals ──────────────────────────────────────────────────────────
 
   private suspend inline fun <reified T> callQuery(path: String, args: JsonObject): T =
+    callConvex("query", path, args)
+
+  private suspend inline fun <reified T> callMutation(path: String, args: JsonObject): T =
+    callConvex("mutation", path, args)
+
+  private suspend inline fun <reified T> callAction(path: String, args: JsonObject): T =
+    callConvex("action", path, args)
+
+  private suspend inline fun <reified T> callConvex(kind: String, path: String, args: JsonObject): T =
     withContext(Dispatchers.IO) {
       val payload = buildJsonObject {
         put("path", path)
@@ -81,7 +122,7 @@ class ClanWorldConvexClient(private val convexUrl: String) {
       }.toString()
 
       val req = Request.Builder()
-        .url("${convexUrl.trimEnd('/')}/api/query")
+        .url("${convexUrl.trimEnd('/')}/api/$kind")
         .post(payload.toRequestBody(mediaType))
         .build()
 

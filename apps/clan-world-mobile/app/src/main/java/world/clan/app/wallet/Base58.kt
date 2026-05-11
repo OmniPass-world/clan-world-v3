@@ -28,6 +28,27 @@ object Base58 {
     return String(encoded, outIdx, encoded.size - outIdx)
   }
 
+  fun decode(value: String): ByteArray {
+    if (value.isEmpty()) return byteArrayOf()
+    var bytes = byteArrayOf(0)
+    value.forEach { c ->
+      val digit = ALPHABET.indexOf(c)
+      require(digit >= 0) { "Invalid base58 character: $c" }
+      var carry = digit
+      for (i in bytes.indices.reversed()) {
+        carry += (bytes[i].toInt() and 0xff) * 58
+        bytes[i] = carry.toByte()
+        carry = carry ushr 8
+      }
+      while (carry > 0) {
+        bytes = byteArrayOf((carry and 0xff).toByte()) + bytes
+        carry = carry ushr 8
+      }
+    }
+    val leadingZeros = value.takeWhile { it == ALPHABET[0] }.length
+    return ByteArray(leadingZeros) + bytes.dropWhile { it.toInt() == 0 }.toByteArray()
+  }
+
   /** Divides number (in `number` from `firstDigit` onwards) by 58, returns the remainder. */
   private fun divmod58(number: ByteArray, firstDigit: Int): Byte {
     var remainder = 0

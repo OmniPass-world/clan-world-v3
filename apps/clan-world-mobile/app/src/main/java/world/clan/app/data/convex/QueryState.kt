@@ -1,16 +1,16 @@
 package world.clan.app.data.convex
 
 /**
- * Per-query lifecycle state. Mirrors the web cockpit's "stub fallback when
- * the live query is undefined OR returns empty" pattern (see useSafeQuery
- * in apps/web/src/hooks/useSafeQuery.ts).
+ * Per-query lifecycle state. Debug builds keep the old cockpit demo fallback;
+ * release builds surface empty/error live states so shipped APKs never show
+ * fake backend rows.
  *
  *  - [Loading] — first poll hasn't returned yet.
- *  - [Live]    — poll succeeded with a non-empty payload; render this.
- *  - [Stub]    — poll succeeded but returned an empty list (cold backend
- *                / nothing to show yet); render the StubData fallback.
- *  - [Error]   — poll failed (transport, decode, non-success status).
- *                Render the StubData fallback so the cockpit stays usable.
+ *  - [Live]    — poll succeeded; render this, even when the payload is empty.
+ *  - [Stub]    — debug builds only: poll returned empty or failed; render the
+ *                StubData fallback so the cockpit stays usable while hacking.
+ *  - [Error]   — release builds: poll failed (transport, decode,
+ *                non-success status); render an empty/error live state.
  */
 sealed interface QueryState<out T> {
   data object Loading : QueryState<Nothing>

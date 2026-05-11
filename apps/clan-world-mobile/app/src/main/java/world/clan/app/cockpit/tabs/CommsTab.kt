@@ -36,7 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import world.clan.app.cockpit.tabs.shared.SectionHeader
+import world.clan.app.BuildConfig
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
 import world.clan.app.data.convex.QueryState
@@ -162,12 +162,36 @@ private fun ToggleButton(label: String, sub: String, active: Boolean, onClick: (
 @Composable
 private fun AxlList(elder: Elder) {
   val live = useCombinedComms(elder.clanId)
-  val lines = when (live) {
-    is QueryState.Live -> live.data.map { it.toDomain() }
-    else -> StubData.commsLines(elder.clanId)
-  }
-  lines.forEach { line ->
-    CommsBubble(line, myClanId = elder.clanId)
+  when (live) {
+    is QueryState.Live -> {
+      val lines = live.data.map { it.toDomain() }
+      if (lines.isEmpty()) {
+        EmptyCommsState("no live private comms yet")
+      } else {
+        lines.forEach { line ->
+          CommsBubble(line, myClanId = elder.clanId)
+        }
+      }
+    }
+    QueryState.Loading -> {
+      if (BuildConfig.STUB_FALLBACK_ENABLED) {
+        StubData.commsLines(elder.clanId).forEach { line ->
+          CommsBubble(line, myClanId = elder.clanId)
+        }
+      } else {
+        EmptyCommsState("loading private comms...")
+      }
+    }
+    QueryState.Stub -> {
+      if (BuildConfig.STUB_FALLBACK_ENABLED) {
+        StubData.commsLines(elder.clanId).forEach { line ->
+          CommsBubble(line, myClanId = elder.clanId)
+        }
+      } else {
+        EmptyCommsState("no live private comms yet")
+      }
+    }
+    is QueryState.Error -> EmptyCommsState("private comms unavailable")
   }
 }
 
@@ -341,7 +365,30 @@ private fun BulletinView(elder: Elder) {
   val live = useBulletins(elder.clanId)
   val posts = when (live) {
     is QueryState.Live -> live.data.map { it.toPublicPost() }
-    else -> StubData.publicBulletins(elder.clanId)
+    QueryState.Loading -> {
+      if (BuildConfig.STUB_FALLBACK_ENABLED) {
+        StubData.publicBulletins(elder.clanId)
+      } else {
+        EmptyCommsState("loading public bulletins...")
+        return
+      }
+    }
+    QueryState.Stub -> {
+      if (BuildConfig.STUB_FALLBACK_ENABLED) {
+        StubData.publicBulletins(elder.clanId)
+      } else {
+        EmptyCommsState("no live public bulletins yet")
+        return
+      }
+    }
+    is QueryState.Error -> {
+      EmptyCommsState("public bulletins unavailable")
+      return
+    }
+  }
+  if (posts.isEmpty()) {
+    EmptyCommsState("no live public bulletins yet")
+    return
   }
   val currentTick = posts.maxOfOrNull { it.tick } ?: StubData.CURRENT_TICK
   val visible = posts.filter { (currentTick - it.tick) <= StubData.VISIBLE_TICKS }
@@ -415,6 +462,28 @@ private fun BulletinPostRow(post: StubData.BulletinPost, accent: Color, hidden: 
         ),
       )
     }
+  }
+}
+
+@Composable
+private fun EmptyCommsState(message: String) {
+  Box(
+    modifier = Modifier
+      .fillMaxWidth()
+      .background(Color.White.copy(alpha = 0.18f))
+      .border(1.dp, CockpitTokens.Border.ParchmentEdge)
+      .padding(horizontal = 10.dp, vertical = 12.dp),
+    contentAlignment = Alignment.Center,
+  ) {
+    Text(
+      text = message,
+      style = TextStyle(
+        fontFamily = CockpitFonts.JetBrainsMono,
+        fontSize = 10.sp,
+        color = CockpitTokens.TextC.OnParchmentDim,
+      ),
+      textAlign = TextAlign.Center,
+    )
   }
 }
 

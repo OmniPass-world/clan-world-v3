@@ -145,6 +145,8 @@ dist
 **/.gradle/
 **/local.properties
 **/build/
+**/target/
+keys/
 *.apk
 # JVM heap dumps (gradle daemon can drop these on OOM)
 *.hprof
