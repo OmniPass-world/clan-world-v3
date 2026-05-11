@@ -3,7 +3,7 @@ pragma solidity ^0.8.34;
 
 import {ClanState} from "../../IClanWorld.sol";
 import {LibBanditCombat} from "./LibBanditCombat.sol";
-import {LibBanditLifecycle} from "./LibBanditLifecycle.sol";
+import {LibBanditPassive} from "./LibBanditPassive.sol";
 import {LibBanditSpawning} from "./LibBanditSpawning.sol";
 import {LibGameRules} from "./LibGameRules.sol";
 import {LibOrderMarket} from "./LibOrderMarket.sol";
@@ -43,7 +43,7 @@ library LibHeartbeat {
         }
 
         LibOrderMarket.executeScheduledMarketActions(s, closedTick);
-        LibBanditLifecycle.advancePassiveBanditStates(s, closedTick);
+        LibBanditPassive.advancePassiveBanditStates(s, closedTick);
         LibBanditCombat.resolveAttackingBandits(s, closedTick);
         LibBanditSpawning.evaluateBanditSpawns(s, closedTickSeed);
         LibWorldEvents.resolveWorldEvents(s, closedTick);
