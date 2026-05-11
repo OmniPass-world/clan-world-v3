@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 import readline from 'node:readline';
 import type { ClanOrder } from '@clan-world/shared';
-import { createChainClient, createConvexClient, type IChainClient, type IConvexClient } from '@clan-world/shared/adapters';
-import { getElderN, readMemory, writeMemory, inboxFile, ackFile, UsageError } from './cli.js';
-import fs from 'node:fs';
+import {
+  createChainClient,
+  createConvexClient,
+  type IChainClient,
+  type IConvexClient,
+  validateSubmitOrderPayload,
+} from '@clan-world/shared/adapters';
+import { getElderN, memoryFile, inboxFile, ackFile, UsageError, runCommand } from './cli.js';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
 type JsonRpcRequest = {
@@ -25,6 +31,8 @@ export type ElderToolDeps = {
 
 const text = (value: string): ToolResult => ({ content: [{ type: 'text', text: value }] });
 const jsonText = (value: unknown): ToolResult => text(JSON.stringify(value, null, 2));
+const errorText = (value: string): ToolResult => ({ isError: true, content: [{ type: 'text', text: value }] });
+const RESTRICTED_FILE_MODE = 0o600;
 
 function asRecord(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -58,6 +66,40 @@ function assertOwnClanId(clanId: string | undefined, env: Record<string, string 
   return resolved;
 }
 
+function isEnoent(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && 'code' in err && (err as { code?: unknown }).code === 'ENOENT';
+}
+
+async function readMemoryAsync(n: number, base?: string): Promise<Record<string, string>> {
+  const file = memoryFile(n, base);
+  try {
+    return JSON.parse(await fs.readFile(file, 'utf8')) as Record<string, string>;
+  } catch (err) {
+    if (isEnoent(err)) return {};
+    if (err instanceof SyntaxError) throw new UsageError(`elder: failed to parse memory file '${file}': ${err.message}`);
+    throw err;
+  }
+}
+
+async function writeRestrictedFileAtomic(file: string, data: string): Promise<void> {
+  const dir = path.dirname(file);
+  await fs.mkdir(dir, { recursive: true });
+  const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`);
+  try {
+    await fs.writeFile(tmp, data, { encoding: 'utf8', mode: RESTRICTED_FILE_MODE });
+    await fs.chmod(tmp, RESTRICTED_FILE_MODE);
+    await fs.rename(tmp, file);
+    await fs.chmod(file, RESTRICTED_FILE_MODE);
+  } catch (err) {
+    await fs.unlink(tmp).catch(() => {});
+    throw err;
+  }
+}
+
+async function writeMemoryAsync(n: number, data: Record<string, string>, base?: string): Promise<void> {
+  await writeRestrictedFileAtomic(memoryFile(n, base), JSON.stringify(data, null, 2) + '\n');
+}
+
 export async function callElderTool(name: string, args: unknown, deps: ElderToolDeps): Promise<ToolResult> {
   const env = deps.env ?? process.env;
   const parsed = asRecord(args);
@@ -75,7 +117,11 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
     const clanId = assertOwnClanId(stringArg(parsed, 'clanId'), env);
     const orders = parsed.orders;
     if (!Array.isArray(orders)) throw new UsageError('orders array is required');
-    return jsonText(await deps.chain.submitOrders(clanId, orders as ClanOrder[]));
+    const submitterClanId = Number(clanId);
+    if (!Number.isInteger(submitterClanId)) throw new UsageError('clanId must be numeric');
+    const clanOrders = orders as ClanOrder[];
+    for (const order of clanOrders) validateSubmitOrderPayload(order, submitterClanId);
+    return jsonText(await deps.chain.submitOrders(clanId, clanOrders));
   }
 
   if (name === 'post_bulletin') {
@@ -88,7 +134,7 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
 
   if (name === 'memory_recall') {
     const key = requireBody(parsed, 'key');
-    const mem = readMemory(getElderN(env), deps.homeBase);
+    const mem = await readMemoryAsync(getElderN(env), deps.homeBase);
     return text(mem[key] ?? `no memory for ${key}`);
   }
 
@@ -96,40 +142,40 @@ export async function callElderTool(name: string, args: unknown, deps: ElderTool
     const key = requireBody(parsed, 'key');
     const value = requireBody(parsed, 'value');
     const elder = getElderN(env);
-    const mem = readMemory(elder, deps.homeBase);
+    const mem = await readMemoryAsync(elder, deps.homeBase);
     mem[key] = value;
-    writeMemory(elder, mem, deps.homeBase);
+    await writeMemoryAsync(elder, mem, deps.homeBase);
     return text(`saved ${key}`);
   }
 
   if (name === 'peer_inbox') {
     const file = inboxFile(getElderN(env), deps.homeBase);
-    if (!fs.existsSync(file)) return text('inbox empty');
-    const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean);
+    let raw: string;
+    try {
+      raw = await fs.readFile(file, 'utf8');
+    } catch (err) {
+      if (isEnoent(err)) return text('inbox empty');
+      throw err;
+    }
+    const lines = raw.split('\n').filter(Boolean);
     return text(lines.length === 0 ? 'inbox empty' : lines.join('\n'));
   }
 
   if (name === 'peer_whisper') {
     const toClanId = requireBody(parsed, 'toClanId');
     const body = requireBody(parsed);
-    return text(await import('./cli.js').then(({ runCommand }) =>
-      runCommand('peer', 'whisper', [toClanId, body], deps, env, deps.homeBase),
-    ).then(out => out.trim()));
+    return text((await runCommand('peer', 'whisper', [toClanId, body], deps, env, deps.homeBase)).trim());
   }
 
   if (name === 'ack_clear') {
     const elder = getElderN(env);
     const file = ackFile(elder, deps.homeBase);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, new Date().toISOString() + '\n', { encoding: 'utf8', mode: 0o600 });
-    fs.chmodSync(file, 0o600);
+    await writeRestrictedFileAtomic(file, new Date().toISOString() + '\n');
     return text('ack cleared');
   }
 
   if (name === 'rules') {
-    return text(await import('./cli.js').then(({ runCommand }) =>
-      runCommand('rules', undefined, [], deps, env, deps.homeBase),
-    ));
+    return text(await runCommand('rules', undefined, [], deps, env, deps.homeBase));
   }
 
   throw new UsageError(`unknown elder MCP tool: ${name}`);
@@ -216,7 +262,7 @@ function writeError(id: JsonRpcRequest['id'], code: number, message: string): vo
   process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } }) + '\n');
 }
 
-async function handleRequest(request: JsonRpcRequest): Promise<void> {
+export async function handleRequest(request: JsonRpcRequest, deps: ElderToolDeps): Promise<void> {
   const id = request.id ?? null;
   if (request.method === 'initialize') {
     writeResponse(id, {
@@ -237,9 +283,16 @@ async function handleRequest(request: JsonRpcRequest): Promise<void> {
   if (request.method === 'tools/call') {
     const params = asRecord(request.params);
     const name = stringArg(params, 'name');
-    if (!name) throw new UsageError('tools/call requires name');
-    const deps = { convex: createConvexClient(), chain: createChainClient() };
-    writeResponse(id, await callElderTool(name, params.arguments, deps));
+    if (!name) {
+      writeResponse(id, errorText('tools/call requires name'));
+      return;
+    }
+    try {
+      writeResponse(id, await callElderTool(name, params.arguments, deps));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      writeResponse(id, errorText(message));
+    }
     return;
   }
 
@@ -248,16 +301,15 @@ async function handleRequest(request: JsonRpcRequest): Promise<void> {
 
 async function main(): Promise<void> {
   const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  const deps = { convex: createConvexClient(), chain: createChainClient() };
   for await (const line of rl) {
     if (!line.trim()) continue;
-    let request: JsonRpcRequest;
+    let request: JsonRpcRequest | undefined;
     try {
       request = JSON.parse(line) as JsonRpcRequest;
-      await handleRequest(request);
+      await handleRequest(request, deps);
     } catch (err) {
-      const id = (() => {
-        try { return (JSON.parse(line) as JsonRpcRequest).id ?? null; } catch { return null; }
-      })();
+      const id = request?.id ?? null;
       const message = err instanceof Error ? err.message : String(err);
       writeError(id, -32000, message);
     }

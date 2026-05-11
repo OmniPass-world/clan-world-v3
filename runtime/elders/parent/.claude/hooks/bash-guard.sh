@@ -29,6 +29,10 @@ for forbidden in '&&' '||' ';;' ';' '|' '>' '<' '`' '$(' '$[' '${' '*' '?' '[' '
   fi
 done
 
+if [[ "$command_text" =~ \$[A-Za-z_0-9] ]]; then
+  deny "shell variable expansion is not allowed"
+fi
+
 argv_json="$(
   python3 - "$command_text" <<'PY'
 import json
@@ -97,7 +101,7 @@ case "$ns" in
   clan)
     case "$sub" in
       view)
-        [[ "$argc" -eq 4 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder clan view arguments"
+        [[ "$argc" -eq 4 ]] || deny "invalid elder clan view arguments"
         third="$(arg 3)"
         if [[ "$third" != "--help" && "$third" != "-h" ]]; then
           is_int "$third" || deny "clan id must be numeric"
@@ -105,7 +109,7 @@ case "$ns" in
         fi
         ;;
       submit-orders)
-        [[ "$argc" -eq 4 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder clan submit-orders arguments"
+        [[ "$argc" -eq 4 ]] || deny "invalid elder clan submit-orders arguments"
         third="$(arg 3)"
         if [[ "$third" != "--help" && "$third" != "-h" ]]; then
           is_tmp_order_path "$third" || deny "orders file must be /tmp/elder-$ELDER_N/*.json"
@@ -122,7 +126,7 @@ case "$ns" in
   memory)
     case "$sub" in
       recall)
-        [[ "$argc" -eq 4 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder memory recall arguments"
+        [[ "$argc" -eq 4 ]] || deny "invalid elder memory recall arguments"
         third="$(arg 3)"
         [[ "$third" =~ ^--help|-h$ ]] || is_safe_atom "$third" || deny "memory key contains unsafe characters"
         ;;
@@ -160,7 +164,7 @@ case "$ns" in
   bulletin)
     case "$sub" in
       post)
-        [[ "$argc" -ge 4 || ( "$argc" -eq 4 && "$(arg 3)" =~ ^--help|-h$ ) ]] || deny "invalid elder bulletin post arguments"
+        [[ "$argc" -ge 4 ]] || deny "invalid elder bulletin post arguments"
         ;;
       --help|-h)
         [[ "$argc" -eq 3 ]] || deny "invalid elder bulletin help arguments"
