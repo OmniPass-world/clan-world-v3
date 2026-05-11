@@ -185,9 +185,19 @@ fun ClanWorldApp(
   val startDestination = if (connectState.phase == ConnectUiState.Phase.Connected)
     Routes.Hearth else Routes.Connect
 
+  // Identity is the resolved wallet name + label, cascading through
+  // `.skr` → `.sol` → wallet-label → truncated pubkey. The resolved
+  // identity lives in `app.walletNameCache` (populated by
+  // ConnectViewModel after authorize). Until resolution lands we fall
+  // back to `WalletIdentity.fromSession` which renders label/pubkey.
+  // Reading the snapshot map inside derivedStateOf re-runs the
+  // derivation when the cache updates → wallet pill recomposes.
   val identity: WalletIdentity? by remember(connectState.solanaPubkeyBase58) {
     derivedStateOf {
-      WalletIdentity.fromSession(app.sessionStore.read())
+      val pubkey = connectState.solanaPubkeyBase58
+        ?: return@derivedStateOf WalletIdentity.fromSession(app.sessionStore.read())
+      app.walletNameCache[pubkey]
+        ?: WalletIdentity.fromSession(app.sessionStore.read())
     }
   }
 

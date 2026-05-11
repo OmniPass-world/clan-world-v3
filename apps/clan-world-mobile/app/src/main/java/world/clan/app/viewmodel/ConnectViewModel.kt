@@ -13,6 +13,8 @@ import world.clan.app.data.Session
 import world.clan.app.data.SessionStore
 import world.clan.app.wallet.MwaClient
 import world.clan.app.wallet.MwaResult
+import world.clan.app.wallet.WalletIdentity
+import world.clan.app.wallet.WalletNameService
 
 data class ConnectUiState(
   val phase: Phase = Phase.Idle,
@@ -50,10 +52,27 @@ class ConnectViewModel(
   private val mwa: MwaClient,
   private val sessionStore: SessionStore,
   private val lineageStore: LineageStore? = null,
+  /**
+   * Session-lifetime cache of resolved wallet identities. Populated
+   * here in [handle] after a successful authorize. Null in tests that
+   * don't exercise the resolver path.
+   */
+  private val walletNameCache: MutableMap<String, WalletIdentity>? = null,
 ) : ViewModel() {
 
   private val _state = MutableStateFlow(initialState())
   val state: StateFlow<ConnectUiState> = _state.asStateFlow()
+
+  init {
+    // Cold-launch path: if a fresh session is already trusted, kick off
+    // wallet-name resolution so the pill shows the resolved name without
+    // requiring a manual reconnect. Stale sessions skip this — the
+    // reauthorize flow will populate the cache via [handle].
+    val cached = sessionStore.read()
+    if (cached != null && _state.value.phase == ConnectUiState.Phase.Connected) {
+      resolveWalletName(cached)
+    }
+  }
 
   private fun initialState(): ConnectUiState {
     val s = sessionStore.read() ?: return ConnectUiState()
@@ -87,6 +106,9 @@ class ConnectViewModel(
     // it on disconnect so the next-connected wallet doesn't see the
     // previous wallet's owner-action history.
     lineageStore?.clear()
+    // Drop any resolved wallet-name entries so a new wallet does not
+    // inherit a stale `.sol`/`.skr` handle from a prior pubkey.
+    walletNameCache?.clear()
     _state.value = ConnectUiState()
   }
 
@@ -95,15 +117,14 @@ class ConnectViewModel(
       is MwaResult.Ok -> {
         val s = result.value
         val existing = sessionStore.read()
-        sessionStore.save(
-          Session(
-            solanaPubkeyBase58 = s.solanaPubkeyBase58,
-            mwaAuthToken = s.authToken,
-            walletLabel = s.walletLabel,
-            selectedClanId = existing?.selectedClanId,
-            lastConnectAtEpochMs = System.currentTimeMillis(),
-          ),
+        val savedSession = Session(
+          solanaPubkeyBase58 = s.solanaPubkeyBase58,
+          mwaAuthToken = s.authToken,
+          walletLabel = s.walletLabel,
+          selectedClanId = existing?.selectedClanId,
+          lastConnectAtEpochMs = System.currentTimeMillis(),
         )
+        sessionStore.save(savedSession)
         _state.update {
           it.copy(
             phase = ConnectUiState.Phase.Connected,
@@ -112,6 +133,11 @@ class ConnectViewModel(
             errorMessage = null,
           )
         }
+        // Kick off wallet-name resolution (.skr → .sol → fallback).
+        // Fire-and-forget: a slow Bonfida response must not delay the
+        // route flip to Hearth. The cache write triggers Compose
+        // recomposition of the wallet pill via mutableStateMapOf.
+        resolveWalletName(savedSession)
       }
       MwaResult.UserDeclined -> {
         // Any failed authorize/reauthorize invalidates the stored session.
@@ -157,6 +183,26 @@ class ConnectViewModel(
           )
         }
       }
+    }
+  }
+
+  /**
+   * Async wallet-name lookup. Cascades `.skr` → `.sol` → fallback per
+   * [WalletNameService.resolve], then writes the result to
+   * [walletNameCache] so the Compose snapshot map triggers a wallet
+   * pill recomposition. Swallows all failures — the cascade ALWAYS
+   * yields a valid identity (truncated pubkey is the floor).
+   */
+  private fun resolveWalletName(session: Session) {
+    val cache = walletNameCache ?: return
+    viewModelScope.launch {
+      runCatching {
+        val identity = WalletNameService.resolve(session)
+        cache[session.solanaPubkeyBase58] = identity
+      }
+      // Resolution failures are silent — the synchronous fallback path
+      // in WalletIdentity.fromSession() still renders the pill from
+      // wallet label + truncated pubkey.
     }
   }
 

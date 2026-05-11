@@ -11,9 +11,11 @@ import world.clan.app.data.Session
  *   3. wallet label     (e.g. Phantom's account nickname like "Trading")
  *   4. truncated pubkey (e.g. "9pK4 · 7vQy")
  *
- * In slice 2A the .skr/.sol names are still mocked; the wallet label now
- * comes through from real MWA. Slice 2 (full) will replace the mock with
- * a Solana RPC + SNS lookup.
+ * Name resolution is async — see [WalletNameService]. [fromSession]
+ * produces a fallback identity with `skrName = solName = null`, suitable
+ * for synchronous initial render. [App.walletNameCache] holds the fully
+ * resolved identity, written by [ConnectViewModel] after a successful
+ * authorize. The cache is keyed by base58 pubkey.
  */
 data class WalletIdentity(
   val pubkeyBase58: String,
@@ -47,34 +49,20 @@ data class WalletIdentity(
 
   companion object {
     /**
-     * Build a WalletIdentity from a persisted Session, applying the
-     * slice-1 mock name resolver. Returns null when no session exists.
+     * Build a fallback WalletIdentity from a persisted Session.
+     * `.skr` and `.sol` names are left null — real resolution is async
+     * and happens via [WalletNameService.resolve], driven by
+     * [world.clan.app.viewmodel.ConnectViewModel] on successful
+     * authorize. Returns null when no session exists.
      */
     fun fromSession(session: Session?): WalletIdentity? {
       val s = session ?: return null
       return WalletIdentity(
         pubkeyBase58 = s.solanaPubkeyBase58,
-        skrName = mockSkr(s.solanaPubkeyBase58),
-        solName = mockSol(s.solanaPubkeyBase58),
+        skrName = null,
+        solName = null,
         walletLabel = s.walletLabel,
       )
-    }
-
-    /**
-     * Mock .skr resolver. Returns a deterministic name for the slice-1
-     * demo wallet (so users see the rotating glow), null otherwise.
-     */
-    private fun mockSkr(pubkey: String): String? {
-      // Slice 2 (full) replaces this with a real SNS reverse-record lookup
-      // for the .skr TLD. Until then: a deterministic demo handle so the
-      // glowing-border state exercises in user testing.
-      return "elderkeep.skr"
-    }
-
-    private fun mockSol(pubkey: String): String? {
-      // No mock — when .skr is null, the wallet label (or truncated
-      // pubkey) is what the pill shows.
-      return null
     }
   }
 }
