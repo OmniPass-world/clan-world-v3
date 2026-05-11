@@ -27,6 +27,7 @@
 REPO_DIR     := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 ELDER_DIR    := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 DEST         ?= $(HOME)/clan-world
+CLAN_WORLD_REPO ?= $(HOME)/code/clan-world/clan-world-game
 ELDER_NUMBERS := 1 2 3 4
 SYSTEMD_USER_DIR := $(HOME)/.config/systemd/user
 
@@ -64,10 +65,13 @@ help:
 install:
 	@echo "=== installing elder harness to $(DEST) ==="
 	@mkdir -p "$(DEST)"/.claude/skills
+	@mkdir -p "$(DEST)"/.claude/hooks
 	@mkdir -p "$(DEST)"/bin
 	@cp -p "$(REPO_DIR)"/parent/AGENTS.md "$(DEST)"/AGENTS.md
 	@ln -sf AGENTS.md $(DEST)/CLAUDE.md
 	@cp -p "$(REPO_DIR)"/parent/.claude/settings.json "$(DEST)"/.claude/settings.json
+	@cp -p "$(REPO_DIR)"/parent/.claude/hooks/bash-guard.sh "$(DEST)"/.claude/hooks/bash-guard.sh
+	@chmod +x "$(DEST)"/.claude/hooks/bash-guard.sh
 	@for skill in cleared-context-start elder-base-context final-tick-continuity \
 	              uniswap-arb-camping uniswap-market-overview \
 	              uniswap-sell-immediate uniswap-sell-scheduled; do \
@@ -84,6 +88,9 @@ install:
 	    mkdir -p $(DEST)/elder-$$n/.claude; \
 	    mkdir -p $(DEST)/elder-$$n/state/plugin-cache; \
 	    mkdir -p $(DEST)/elder-$$n/state/outbox; \
+	    ln -sf $(DEST)/.claude/hooks $(DEST)/elder-$$n/.claude/hooks; \
+	    rm -f $(DEST)/elder-$$n/.claude/settings.json \
+	          $(DEST)/elder-$$n/.claude/settings.local.json; \
 	    if [ ! -e $(DEST)/elder-$$n/.claude/.credentials.json ]; then \
 	        ln -sf $(HOME)/.claude/.credentials.json \
 	               $(DEST)/elder-$$n/.claude/.credentials.json; \
@@ -93,6 +100,10 @@ install:
 	        $(REPO_DIR)/template/run.sh.template \
 	        > $(DEST)/elder-$$n/run.sh; \
 	    chmod +x $(DEST)/elder-$$n/run.sh; \
+	    sed -e 's#{{ELDER_NUMBER}}#'"$$n"'#g' \
+	        -e 's#{{CLAN_WORLD_REPO}}#$(CLAN_WORLD_REPO)#g' \
+	        $(REPO_DIR)/template/.mcp.json.template \
+	        > $(DEST)/elder-$$n/.mcp.json; \
 	    if [ ! -f $(DEST)/elder-$$n/.claude/CLAUDE.md ]; then \
 	        cp -p $(REPO_DIR)/personalities/elder-$$n.md \
 	              $(DEST)/elder-$$n/.claude/CLAUDE.md; \

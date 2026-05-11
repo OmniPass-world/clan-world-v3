@@ -9,6 +9,7 @@ set -euo pipefail
 ELDER_NUMBER={{ELDER_NUMBER}}
 AGENT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUNTIME_DIR="$(cd "$AGENT_DIR/.." && pwd)"
+export CLAN_WORLD_REPO="${CLAN_WORLD_REPO:-$HOME/code/clan-world/clan-world-game}"
 
 # === Core config — shared Claude config dir for all Elders ===
 # NEVER use ANTHROPIC_API_KEY, NEVER use --bare (forces API key).
@@ -24,7 +25,7 @@ export IS_DEMO=1
 if [ -f "${CLAN_WORLD_REPO:-$HOME/code/clan-world}/.env.local" ]; then
   set -a
   # shellcheck disable=SC1091
-  source "${CLAN_WORLD_REPO:-$HOME/code/clan-world}/.env.local"
+  source "$CLAN_WORLD_REPO/.env.local"
   set +a
 fi
 if [ -f "$AGENT_DIR/.env" ]; then
@@ -38,7 +39,7 @@ fi
 # Run once during agent setup if not already present:
 mkdir -p "$CLAUDE_CONFIG_DIR"
 if [ ! -e "$CLAUDE_CONFIG_DIR/.credentials.json" ]; then
-  cp -p ~/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true
+  ln -sf ~/.claude/.credentials.json "$CLAUDE_CONFIG_DIR/.credentials.json" || true
 fi
 
 # === Plugin isolation (Telegram unused for Elders, but isolation matters) ===
@@ -74,7 +75,4 @@ echo "[$AGENT_NAME] Starting... model=$ANTHROPIC_MODEL $(date '+%Y-%m-%d %H:%M:%
 
 # Elders don't need the Telegram plugin (no inbound Telegram), so omit --channels.
 # The runner injects situation blocks via tmux send-keys directly to this REPL.
-exec claude \
-  --config-dir "$CLAUDE_CONFIG_DIR" \
-  --append-system-prompt "You are a Clan World Elder. Have access to `date` and `elder` bash commands. You are running on Elder $." \
-  "$@"
+exec claude "$@"

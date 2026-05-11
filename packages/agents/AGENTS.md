@@ -1,10 +1,13 @@
 # packages/agents — AGENTS.md
 
-The `elder` CLI toolbelt. Installed as a `bin` from this package; Elder Claude Code sessions invoke it via Bash tool calls to read game state, submit orders, send whispers.
+The `elder` CLI toolbelt plus `elder-mcp` stdio server. Installed as `bin`
+entries from this package; Elder Claude Code sessions invoke them to read game
+state, submit orders, post bulletins, send whispers, and persist memory.
 
 ## What this package does
 
 - Provides the `elder` CLI executable (mapped via `package.json` `"bin"`).
+- Provides the `elder-mcp` stdio MCP server for structured JSON calls.
 - Wraps `IChainClient` and `IConvexClient` adapter calls in stable shell commands an Elder can invoke without thinking about RPC endpoints, contract addresses, or Convex deployment IDs.
 - Returns JSON on stdout (Elders parse it); writes diagnostics to stderr.
 
@@ -17,11 +20,13 @@ The `elder` CLI toolbelt. Installed as a `bin` from this package; Elder Claude C
 - `elder clan submit-orders <clanId> <ordersJsonFile>` — submit pending orders
 - `elder whisper send <fromClan> <toClan> <text>` — send a whisper
 - `elder whisper inbox <clanId>` — list unread whispers
+- `elder bulletin post <text>` — post a public bulletin
 
 ## Key files
 
-- `src/cli.ts` — entry point. Argv parsing is hand-rolled (no `commander`, keep deps minimal).
-- `package.json` — declares `bin: { elder: "./dist/cli.js" }`. Run `pnpm --filter @clan-world/agents build` then `pnpm link --global` to use.
+- `src/cli.ts` — CLI entry point. Argv parsing is hand-rolled (no `commander`, keep deps minimal).
+- `src/mcp.ts` — MCP stdio server. Keep tool handlers aligned with CLI behavior.
+- `package.json` — declares bin entries `elder` (`./bin/elder`) and `elder-mcp` (`./bin/elder-mcp`). Run `pnpm --filter @clan-world/agents build` then `pnpm link --global` to use.
 
 ## Local conventions
 

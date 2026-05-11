@@ -241,6 +241,32 @@ describe('peer inbox', () => {
 });
 
 // ---------------------------------------------------------------------------
+// bulletin post
+// ---------------------------------------------------------------------------
+
+describe('bulletin post', () => {
+  it('posts a public bulletin for ELDER_N using current snapshot tick as slot', async () => {
+    const posted: Array<{ clanId: number; slot: number; body: string }> = [];
+    deps.convex = makeConvex({
+      async postBulletin(args) {
+        posted.push(args);
+      },
+    });
+
+    const out = await runCommand('bulletin', 'post', ['defense', 'alliance', 'forming'], deps, { ELDER_N: '3' }, tmpDir);
+
+    expect(out).toBe('bulletin posted\n');
+    expect(posted).toEqual([{ clanId: 3, slot: 7, body: 'defense alliance forming' }]);
+  });
+
+  it('throws UsageError when bulletin body is missing', async () => {
+    await expect(
+      runCommand('bulletin', 'post', [], deps, { ELDER_N: '3' }, tmpDir),
+    ).rejects.toBeInstanceOf(UsageError);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ack-clear
 // ---------------------------------------------------------------------------
 
@@ -355,6 +381,12 @@ describe('resolveHelp', () => {
     const out = resolveHelp(['peer', 'whisper', '--help']);
     expect(out).toBeDefined();
     expect(out).toContain('elder peer whisper');
+  });
+
+  it('returns bulletin-post help for `bulletin post --help`', () => {
+    const out = resolveHelp(['bulletin', 'post', '--help']);
+    expect(out).toBeDefined();
+    expect(out).toContain('elder bulletin post');
   });
 
   it('returns memory-save help for `memory save --help`', () => {

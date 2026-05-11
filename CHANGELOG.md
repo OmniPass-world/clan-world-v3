@@ -6,6 +6,47 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.4.1] — 2026-05-11
+
+Patch release. Fixes two Android regressions introduced in v2.4.0 (Convex float serialization crash on Hearth home screen; wrong-network dialog on GOLD mint), corrects bandit camp sprite positioning on the web client, tightens the Elder runtime security surface, and ships a round of Elder MCP reliability improvements.
+
+### Fixed
+
+- **Android: Hearth home screen crash on integer fields** (PR #231, fixes #229): Convex serializes integer-typed fields as JSON floats (e.g. `1.0`); `kotlinx.serialization` rejected these, producing a raw decode error on screen. New `ConvexJsonNumber.normalizeConvexNumbers()` walks the `JsonElement` tree and rewrites float-formatted integers to `Long` via string parse, preserving values above 2^53.
+- **Android: GOLD mint wrong-network dialog** (PR #231, fixes #229): The MWA session did not declare `solana:devnet`, causing a network-mismatch rejection on mint. New `ClanWorldMwaCluster` constant is the single source of truth for the devnet cluster reference; `MwaClient.kt` and `owner/Mwa.kt` both derive from it. A new `MwaResult.WrongNetwork` classifier surfaces a clear error message across the six UI call sites instead of a silent failure.
+- **Web: bandit camp glow renders under clan base sprites** (PR #230, fixes #228): Both camp and base sprites were anchored at region center, causing the camp glow to be obscured. New `projectedBanditCampAnchor()` samples a 7×7 grid inside each region polygon and selects the point that maximises minimum distance to the region's bases (currently all anchored at region center; the function is structured to use per-base coordinates once they exist).
+- **Android MWA wrong-network classifier ordering** (PR #236 super-swarm): `classifyFailure` matched the `"cancel"` substring before `"cluster mismatch"`, so a wallet message like `"network mismatch; user cancel"` could misroute to `MwaResult.UserDeclined` and clear the session. The order is now flipped so wrong-network text wins; a comment documents the precedence.
+- **Android: cockpit collapse button alignment** (PR #234, fixes #233): The bottom-overlay collapse pill was anchored at `BottomCenter`, visually competing with the centered `PageIndicatorOverlay` dots. Moved to `BottomEnd` with right padding; indicator dots remain centered.
+
+### Security
+
+- **Elder `bash-guard.sh`: bare variable expansion blocked** (PR #232): The guard previously intercepted `${...}` and `$(...)` constructs but not bare `$VAR` expansion. A crafted Elder peer-whisper invocation could have caused the shell to expand a secret variable before the `elder` CLI received it. The guard now rejects bare `$VAR` patterns in addition to the existing checks. A new `packages/agents/test/bashGuard.test.ts` spawns real bash against the guard to verify all three forms are blocked end-to-end.
+- **Elder bash-guard wire-up gap closed** (PR #236 super-swarm): The Makefile installed `bash-guard.sh` to the shared parent directory but each elder ran with its own `CLAUDE_CONFIG_DIR=elder-N/.claude` — the hook reference resolved to a path the Makefile never created, so the guard was silently inactive at runtime. The install step now symlinks the shared hooks directory into each per-elder Claude config.
+- **Elder bash-guard fail-closed on parse errors**: The guard previously used `jq … || true`, which fell through to `tool_name=""` when `jq` was missing or the hook input was malformed. The empty `tool_name` was treated as "not Bash" and exited 0, allowing arbitrary commands. The guard now explicitly fails closed when `jq` is unavailable, when JSON parsing fails, or when the command string cannot be extracted.
+- **Elder bash-guard `^(--help|-h)$` regex anchored**: Help-branch alternation was unanchored (`^--help|-h$`), so `--help-anything` matched. Tightened across six sites; existing valid invocations still resolve.
+- **Elder Claude Code `defaultMode: "dontAsk"` replaced with `default`**: `dontAsk` is not a documented permission mode and resolved as undefined behaviour; reverting to `default` (combined with `skipAutoPermissionPrompt: true` in headless mode) yields the intended "allow-list governs, deny everything else without prompting" semantics.
+
+### Changed
+
+- **Elder MCP tool errors return structured responses** (PR #232): Tool call failures now return `{isError: true, content: [...]}` per the MCP spec instead of opaque JSON-RPC errors, so Elders receive the actual error text in their tool result.
+- **Elder MCP JSON-RPC parse failure uses outer-scope request id** (PR #232): Error path now defaults to the outer-scope request `id` (falling back to `null` on parse failure) per the JSON-RPC spec, rather than always emitting `null`.
+
+### Infrastructure
+
+- **Elder Convex + Chain client construction hoisted** (PR #232): Both clients are constructed once in `main()` and passed through a deps object, removing repeated instantiation on every MCP tool call.
+- **Elder MCP filesystem ops converted to atomic async writes** (PR #232): `peer_inbox` memory and ack writes now use `fs.promises` with a tmp-file-then-rename pattern, eliminating TOCTOU races and unblocking the serial stdio MCP loop.
+- **Elder MCP `submit_orders` payload validation** (PR #232): Each order is now validated via the existing `validateSubmitOrderPayload` helper instead of a blind cast to `ClanOrder[]`.
+- **Elder MCP: removed redundant dynamic imports** (PR #232): Dropped inline `import('./cli.js')` calls that were duplicating module loading on each tool invocation.
+
+### Validation
+
+- `apps/clan-world-mobile :app:testDebugUnitTest` (includes MWA cluster + integer normalizer tests)
+- `packages/agents/test/bashGuard.test.ts` — shell smoke suite
+- Web client visual regression: bandit camp anchor positioning
+- PR checks `chainclient-abi`
+
+---
+
 ## [2.4.0] — 2026-05-11
 
 GOLD-token-gated writes, real Android Mobile Wallet Adapter flows, a Solana GOLD faucet program, and Bandit Solidity library split. Closes the largest remaining gap between the demo build and a production-ready paywall: every whisper and doctrine write is now anchored to an on-chain GOLD burn verified server-side before the message is recorded. The Android app ships its first real MWA transaction flow. `ClanWorld.sol` no longer breaches EIP-170 on bandit-heavy deploys.

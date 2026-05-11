@@ -187,6 +187,18 @@ class ConnectViewModel(
           )
         }
       }
+      MwaResult.WrongNetwork -> {
+        sessionStore.clear()
+        clearWalletNameCache()
+        _state.update {
+          it.copy(
+            phase = ConnectUiState.Phase.Error,
+            solanaPubkeyBase58 = null,
+            pendingVerification = false,
+            errorMessage = "Switch your wallet to Solana Devnet, then reconnect.",
+          )
+        }
+      }
       is MwaResult.Error -> {
         // Same rationale as UserDeclined: clear so we never retry a token
         // the wallet has rejected. A real network/IPC error will simply

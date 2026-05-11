@@ -13,9 +13,9 @@ When you (an Elder) wake up with cleared context — usually after a `/clear` re
 
 2. **Your personality overlay** — `$CLAUDE_CONFIG_DIR/CLAUDE.md` (your per-Elder file). Confirms your archetype, clan name, history, and strategy seed.
 
-3. **Your private directive** — `agent-directive.secret.md` in your agent dir. Loads private long-term goals + grudges + trust scores not visible to other clans.
+3. **Your strategic memory** — use `elder memory recall <topic>` for private long-term goals, grudges, and trust scores. Do not read `agent-directive.secret.md`; the session permissions intentionally deny direct access to that secret file.
 
-4. **Your consolidated memory** — `elder memory recall <topic>` for relevant topics from prior sessions. Topics depend on what the situation block surfaces. Default starter set: `current-strategy`, `peer-trust-grades`, `active-grudges`, `tx-receipts-recent`.
+4. **Your consolidated memory** — continue with `elder memory recall <topic>` for any additional topics from prior sessions. Topics depend on what the situation block surfaces. Default starter set: `current-strategy`, `peer-trust-grades`, `active-grudges`, `tx-receipts-recent`.
 
 5. **Current world state** — `elder world snapshot` (cheap; reads from Convex indexer cache).
 

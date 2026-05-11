@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+# Resolve symlinks to find the real script directory (POSIX portable).
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+  LINK="$(readlink "$SCRIPT")"
+  case "$LINK" in
+    /*) SCRIPT="$LINK" ;;
+    *)  SCRIPT="$(dirname "$SCRIPT")/$LINK" ;;
+  esac
+done
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+
+TSX="${SCRIPT_DIR}/../node_modules/.bin/tsx"
+if [ ! -x "$TSX" ]; then
+  TSX="$(command -v tsx 2>/dev/null || echo tsx)"
+fi
+exec "$TSX" "${SCRIPT_DIR}/../src/mcp.ts" "$@"
