@@ -2,7 +2,7 @@
 // This seeder is called manually via `pnpm convex run mock:seedMockState`.
 // Nothing reads MOCK_MODE at runtime yet — it's a placeholder toggle for Wave 1.
 
-import { mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 
 const MOCK_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: "clan-iron" },
@@ -22,7 +22,7 @@ const MOCK_CLANS = [
   { id: "clan-storm", name: "Storm Riders", treasury: "250000000000000000000" },
 ];
 
-export const seedMockState = mutation({
+export const seedMockState = internalMutation({
   handler: async (ctx) => {
     // Insert mock snapshot
     await ctx.db.insert("worldSnapshot", {

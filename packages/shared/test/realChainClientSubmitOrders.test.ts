@@ -87,7 +87,9 @@ describe('RealChainClient.submitOrders order field mapping', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.CLAN_WORLD_USE_STUB_CHAIN = 'false';
+    process.env.CLAN_WORLD_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000def';
     process.env.DEPLOYER_PRIVATE_KEY = '11'.repeat(32);
+    process.env.ALLOW_DEPLOYER_KEY_FALLBACK = 'true';
     process.env.CLAN_WORLD_LENS_ADDRESS = '0x0000000000000000000000000000000000000abc';
     delete process.env.ELDER_WALLET_KEY_PATH;
   });

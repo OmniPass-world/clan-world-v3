@@ -3464,14 +3464,14 @@ contract ClanWorldTest is Test {
     }
 
     function test_season_transition() public {
-        // Advance SEASON_DURATION_TICKS heartbeats to cross season boundary
+        // Advance to the season boundary; the season number waits for finalization.
         for (uint256 i = 0; i < ClanWorldConstants.SEASON_DURATION_TICKS; i++) {
             vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
             world.heartbeat();
         }
         WorldState memory ws = world.getWorldState();
         assertEq(ws.currentSeasonNumber, 1, "season waits for finalization");
-        assertEq(ws.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS - 1, "tick freezes before season boundary");
+        assertEq(ws.currentTick, ClanWorldConstants.SEASON_DURATION_TICKS, "tick reaches season boundary");
         assertEq(ws.seasonStartTick, 0);
         assertEq(ws.seasonEndTick, ClanWorldConstants.SEASON_DURATION_TICKS);
 

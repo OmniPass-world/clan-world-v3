@@ -1,4 +1,4 @@
-import { query, mutation } from "./_generated/server";
+import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const getRecentLogs = query({
@@ -7,7 +7,7 @@ export const getRecentLogs = query({
   },
 });
 
-export const postLog = mutation({
+export const postLog = internalMutation({
   args: {
     level: v.union(v.literal("info"), v.literal("warn"), v.literal("error")),
     message: v.string(),

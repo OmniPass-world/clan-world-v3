@@ -16,7 +16,7 @@ contract SeasonFinalizedAbiHarness is ClanWorld {
 contract SeasonFinalizedAbiTest is Test {
     function test_seasonFinalizedTopicMatchesThreeArgumentAbi() public {
         SeasonFinalizedAbiHarness world = new SeasonFinalizedAbiHarness();
-        world.setCurrentTick(ClanWorldConstants.SEASON_DURATION_TICKS - 1);
+        world.setCurrentTick(ClanWorldConstants.SEASON_DURATION_TICKS);
 
         bytes32 expectedTopic = keccak256("SeasonFinalized(uint64,uint32[],uint256[])");
         vm.recordLogs();

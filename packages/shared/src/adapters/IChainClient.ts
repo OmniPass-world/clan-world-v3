@@ -4086,13 +4086,14 @@ class RealChainClient implements IChainClient {
         ? fallback([http(primaryRpc), http(fallbackRpc)])
         : http(primaryRpc ?? fallbackRpc);
 
-    const configuredContractAddress = readEnv('CLAN_WORLD_CONTRACT_ADDRESS');
+    const configuredContractAddress = readEnv('CLAN_WORLD_CONTRACT_ADDRESS')?.trim();
     const configuredLensAddress = readEnv('CLAN_WORLD_LENS_ADDRESS');
-    this.contractAddress = (
-      configuredContractAddress && configuredContractAddress.trim()
-        ? configuredContractAddress
-        : DEFAULT_CONTRACT_ADDRESS
-    ) as `0x${string}`;
+    if (!configuredContractAddress) {
+      throw new Error(
+        'CLAN_WORLD_CONTRACT_ADDRESS env var is required; no fallback allowed in production code paths',
+      );
+    }
+    this.contractAddress = configuredContractAddress as `0x${string}`;
     this.lensAddress = (
       configuredLensAddress && configuredLensAddress.trim()
         ? configuredLensAddress
@@ -4185,7 +4186,7 @@ class RealChainClient implements IChainClient {
           err.code === 'ENOENT'
         ) {
           throw new Error(
-            `ELDER_WALLET_KEY_PATH file not found at ${keyPath}; either set DEPLOYER_PRIVATE_KEY env var or provide a key file`,
+            `ELDER_WALLET_KEY_PATH file not found at ${keyPath}`,
           );
         }
         const msg = err instanceof Error ? err.message : String(err);
@@ -4194,10 +4195,13 @@ class RealChainClient implements IChainClient {
         );
       }
     } else {
-      const fallbackKey = readEnv('DEPLOYER_PRIVATE_KEY');
+      const allowFallback = readEnv('ALLOW_DEPLOYER_KEY_FALLBACK') === 'true';
+      const fallbackKey = allowFallback
+        ? readEnv('DEPLOYER_PRIVATE_KEY')
+        : undefined;
       if (fallbackKey) {
         console.warn(
-          '[RealChainClient] ELDER_WALLET_KEY_PATH not set; falling back to DEPLOYER_PRIVATE_KEY (deprecated)',
+          '[RealChainClient] ALLOW_DEPLOYER_KEY_FALLBACK=true; using DEPLOYER_PRIVATE_KEY for elder writes',
         );
         pk = fallbackKey;
         pkSource = 'DEPLOYER_PRIVATE_KEY env var';
@@ -4205,7 +4209,7 @@ class RealChainClient implements IChainClient {
     }
     if (!pk)
       throw new Error(
-        'Neither ELDER_WALLET_KEY_PATH nor DEPLOYER_PRIVATE_KEY is set',
+        'ELDER_WALLET_KEY_PATH is required for submitOrders; set ALLOW_DEPLOYER_KEY_FALLBACK=true only for explicit test-only deployer fallback',
       );
 
     // Normalize: add 0x prefix if missing
