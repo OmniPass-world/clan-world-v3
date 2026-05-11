@@ -56,6 +56,34 @@ export const flushGameState = mutation({
   },
 });
 
+export const flushClanViewForClan = mutation({
+  args: {
+    secret: v.string(),
+    clanId: v.number(),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    requireIndexerSecret(args.secret);
+
+    const batchSize = Math.max(1, Math.min(args.batchSize ?? 100, 500));
+    const rows = await ctx.db
+      .query("clanView")
+      .withIndex("by_clanId", (q) => q.eq("clanId", args.clanId))
+      .take(batchSize);
+
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+    }
+
+    return {
+      clanId: args.clanId,
+      deleted: rows.length,
+      batchSize,
+      complete: rows.length === 0,
+    };
+  },
+});
+
 export const resetCheckpoint = mutation({
   args: {
     secret: v.string(),

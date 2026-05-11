@@ -45,6 +45,10 @@ const LEGACY_REGIONS = [
 ];
 const indexerApi = (internal as any).indexer;
 
+function resetLocked(): boolean {
+  return process.env.CLANWORLD_RESET_LOCK === "true";
+}
+
 type ParsedIndexerEvent = {
   eventName: string;
   args: Record<string, unknown>;
@@ -297,6 +301,14 @@ export const ingestEvents = internalMutation({
     advanceCheckpoint: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    if (resetLocked()) {
+      return {
+        inserted: 0,
+        skipped: args.events.length,
+        resetLocked: true,
+      };
+    }
+
     let inserted = 0;
     for (const raw of args.events as ParsedIndexerEvent[]) {
       const logIndex = raw.logIndex ?? 0;
@@ -416,6 +428,14 @@ export const commitSnapshot = internalMutation({
     snapshot: snapshotValidator,
   },
   handler: async (ctx, args) => {
+    if (resetLocked()) {
+      return {
+        tick: 0,
+        clans: 0,
+        skipped: "reset-locked",
+      };
+    }
+
     const snapshot = args.snapshot as SnapshotPayload;
     const now = Date.now();
     const world = snapshot.world;
@@ -623,6 +643,10 @@ export const refreshSnapshot = internalAction({
     blockNumber: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<unknown> => {
+    if (resetLocked()) {
+      return { skipped: true, resetLocked: true };
+    }
+
     const client = createClient();
     const address = engineAddress();
     const pinnedBlockNumber =
@@ -665,9 +689,21 @@ export const refreshSnapshot = internalAction({
       return { tick: 0, clans: 0 };
     }
 
+    const clanIdsRaw = await client
+      .readContract({
+        address,
+        abi: CLAN_WORLD_ABI,
+        functionName: "getClanIds",
+        blockNumber: pinnedBlockNumber,
+      })
+      .catch(() => undefined);
+    const clanIds =
+      Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
+        ? clanIdsRaw.map((id) => asNumber(id)).filter((id) => id > 0)
+        : Array.from({ length: MAX_CLANS }, (_, index) => index + 1);
+
     const clans = await Promise.all(
-      Array.from({ length: MAX_CLANS }, async (_, index) => {
-        const clanId = index + 1;
+      clanIds.map(async (clanId) => {
         return client
           .readContract({
             address,
@@ -696,6 +732,10 @@ export const refreshSnapshot = internalAction({
 export const pollLogs = internalAction({
   args: {},
   handler: async (ctx): Promise<unknown> => {
+    if (resetLocked()) {
+      return { inserted: 0, skipped: true, resetLocked: true };
+    }
+
     const client = createClient();
     const address = engineAddress();
     const checkpoint = (await ctx.runQuery(indexerApi.readCheckpoint, {})) as {

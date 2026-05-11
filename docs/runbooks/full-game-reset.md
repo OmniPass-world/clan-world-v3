@@ -62,6 +62,15 @@ forge script script/Deploy.s.sol \
   --slow
 ```
 
+Before broadcasting, check deployable bytecode sizes. `--disable-code-size-limit`
+only helps local simulation; Base Sepolia still rejects oversized deployed
+libraries/facets under EIP-170.
+
+```bash
+cd packages/contracts
+forge build --sizes
+```
+
 Save:
 
 - Diamond address
@@ -112,7 +121,9 @@ Commit any generated ABI/type changes before redeploying the app.
 
 ## 5. Reconfigure And Flush Convex
 
-Set Convex production env values together:
+Set Convex env values together. Use `--prod` only for the production
+deployment; for the current V3 dev deployment (`valuable-kudu-985`), omit
+`--prod`.
 
 ```bash
 cd apps/server
@@ -121,8 +132,9 @@ npx convex env set SOLANA_RPC_URL "$SOLANA_RPC_URL" --prod
 npx convex env set CLAN_WORLD_CONTRACT_ADDRESS "$CLAN_WORLD_CONTRACT_ADDRESS" --prod
 npx convex env set CLAN_WORLD_LENS_ADDRESS "$CLAN_WORLD_LENS_ADDRESS" --prod
 npx convex env set INDEXER_START_BLOCK "$INDEXER_START_BLOCK" --prod
-npx convex env set CLANWORLD_USE_REAL_INDEXER true --prod
+npx convex env set CLANWORLD_USE_REAL_INDEXER false --prod
 npx convex env set CLANWORLD_USE_FAKE_HEARTBEAT false --prod
+npx convex env set CLANWORLD_RESET_LOCK true --prod
 npx convex env set WEBHOOK_SHARED_SECRET "$WEBHOOK_SHARED_SECRET" --prod
 npx convex deploy --prod
 ```
@@ -158,6 +170,35 @@ If the deployed backend includes `ops:flushGameState`, run it repeatedly until `
 ```bash
 npx convex run ops:flushGameState '{"secret":"'"$INDEXER_SECRET"'","batchSize":500}' --prod
 npx convex run ops:resetCheckpoint '{"secret":"'"$INDEXER_SECRET"'","lastBlock":'"$INDEXER_START_BLOCK"'}' --prod
+```
+
+If `clanView` has a large historical backlog, use the targeted per-clan purge
+helper in parallel and include all historical clan ids, not only the fresh four:
+
+```bash
+for clan_id in 1 2 3 4 5 6 7 8; do
+  (
+    while true; do
+      out=$(npx convex run ops:flushClanViewForClan \
+        '{"secret":"'"$INDEXER_SECRET"'","clanId":'"$clan_id"',"batchSize":500}' \
+        --prod)
+      echo "$out"
+      echo "$out" | grep -q '"complete": true' && break
+    done
+  ) &
+done
+wait
+```
+
+After the flush is complete, reset the checkpoint, unlock the indexer, redeploy
+functions so crons are registered with the final env, and force one snapshot:
+
+```bash
+npx convex run ops:resetCheckpoint '{"secret":"'"$INDEXER_SECRET"'","lastBlock":'"$INDEXER_START_BLOCK"'}' --prod
+npx convex env set CLANWORLD_USE_REAL_INDEXER true --prod
+npx convex env set CLANWORLD_RESET_LOCK false --prod
+npx convex deploy --prod
+npx convex run indexer:refreshSnapshot '{}' --prod
 ```
 
 ## 6. Mint Four Clans
