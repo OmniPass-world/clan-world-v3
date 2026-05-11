@@ -36,6 +36,8 @@ type RpcResponse = {
   result?: unknown;
 };
 
+type GoldCommitResult = { ok: true; alreadyRecorded?: true };
+
 type CryptoLike = {
   subtle: {
     digest(algorithm: string, data: Uint8Array): Promise<ArrayBuffer>;
@@ -281,7 +283,7 @@ export const recordWhisperAfterTx = action({
     signature: v.string(),
     skipTax: v.number(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<GoldCommitResult> => {
     if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
     await verifyClanExists(ctx, args.clanId);
     const body = args.body.trim();
@@ -297,7 +299,7 @@ export const recordWhisperAfterTx = action({
       skipTax: args.skipTax,
       memo,
     });
-    return result ?? { ok: true };
+    return result ?? ({ ok: true } as const);
   },
 });
 
@@ -317,7 +319,7 @@ export const saveDoctrineAfterTx = action({
     owner: v.string(),
     signature: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<GoldCommitResult> => {
     if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
     await verifyClanExists(ctx, args.clanId);
     const memo = await buildDoctrineMemo(args);
@@ -332,7 +334,7 @@ export const saveDoctrineAfterTx = action({
       burnAmount,
       memo,
     });
-    return result ?? { ok: true };
+    return result ?? ({ ok: true } as const);
   },
 });
 
@@ -346,7 +348,7 @@ export const commitWhisperAfterTx = internalMutation({
     skipTax: v.number(),
     memo: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<GoldCommitResult> => {
     if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
     await verifyClanExistsInMutation(ctx, args.clanId);
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
@@ -375,7 +377,7 @@ export const commitDoctrineAfterTx = internalMutation({
     burnAmount: v.number(),
     memo: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<GoldCommitResult> => {
     if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
     await verifyClanExistsInMutation(ctx, args.clanId);
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
