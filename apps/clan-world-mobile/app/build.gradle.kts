@@ -78,7 +78,7 @@ android {
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
-    buildConfigField("Boolean", "ALLOW_FAKE_WALLETS", "false")
+    buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
     vectorDrawables { useSupportLibrary = true }
   }
 
@@ -97,10 +97,10 @@ android {
     debug {
       applicationIdSuffix = ".debug"
       versionNameSuffix = "-debug"
-      buildConfigField("Boolean", "ALLOW_FAKE_WALLETS", "true")
+      buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "true")
     }
     release {
-      buildConfigField("Boolean", "ALLOW_FAKE_WALLETS", "false")
+      buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(

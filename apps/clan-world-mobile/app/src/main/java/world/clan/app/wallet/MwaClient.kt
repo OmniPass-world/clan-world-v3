@@ -102,26 +102,21 @@ class MwaClient(
   ): MwaResult<ByteArray> {
     val a = adapter().apply { this.authToken = authToken }
     val result: TransactionResult<ByteArray> = a.transact(sender) { authResult ->
-      val pubkey = authResult.accounts.first().publicKey
-      val signed = signMessagesDetached(arrayOf(message), arrayOf(pubkey))
+      if (
+        FakeWalletPolicy.shouldBlock(
+          allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
+          walletUriBase = authResult.walletUriBase?.toString(),
+        )
+      ) {
+        throw FakeWalletBlockedException()
+      }
+      val account = authResult.accounts.firstOrNull()
+        ?: error("MWA returned no authorized account")
+      val signed = signMessagesDetached(arrayOf(message), arrayOf(account.publicKey))
       signed.messages.first().signatures.first()
     }
     return when (result) {
-      is TransactionResult.Success -> {
-        val auth = result.authResult
-        val account = auth.accounts.firstOrNull()
-        if (
-          FakeWalletPolicy.shouldBlock(
-            allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
-            walletUriBase = auth.walletUriBase?.toString(),
-            walletLabel = account?.accountLabel,
-          )
-        ) {
-          MwaResult.WalletNotAllowed
-        } else {
-          MwaResult.Ok(result.payload)
-        }
-      }
+      is TransactionResult.Success -> MwaResult.Ok(result.payload)
       is TransactionResult.NoWalletFound -> MwaResult.WalletNotFound
       is TransactionResult.Failure -> classifyFailure(result)
     }
@@ -150,9 +145,12 @@ class MwaClient(
           FakeWalletPolicy.shouldBlock(
             allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
             walletUriBase = session.walletUriBase,
-            walletLabel = session.walletLabel,
           )
-        ) MwaResult.WalletNotAllowed else MwaResult.Ok(session)
+        ) {
+          MwaResult.WalletNotAllowed
+        } else {
+          MwaResult.Ok(session)
+        }
       }
     }
     is TransactionResult.NoWalletFound -> MwaResult.WalletNotFound
@@ -160,6 +158,9 @@ class MwaClient(
   }
 
   private fun <T> classifyFailure(result: TransactionResult.Failure<T>): MwaResult<Nothing> {
+    if (result.e is FakeWalletBlockedException) {
+      return MwaResult.WalletNotAllowed
+    }
     val msg = result.message.lowercase() + " " + (result.e.message?.lowercase().orEmpty())
     return if (
       "declin" in msg ||

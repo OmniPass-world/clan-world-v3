@@ -8,6 +8,7 @@ import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import world.clan.app.BuildConfig
 import world.clan.app.data.Elder
+import world.clan.app.wallet.FakeWalletBlockedException
 import world.clan.app.wallet.FakeWalletPolicy
 
 /**
@@ -50,6 +51,14 @@ object Mwa {
       .toByteArray(Charsets.UTF_8)
 
     val outcome: TransactionResult<ByteArray> = mwa.transact(sender) { authResult ->
+      if (
+        FakeWalletPolicy.shouldBlock(
+          allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
+          walletUriBase = authResult.walletUriBase?.toString(),
+        )
+      ) {
+        throw FakeWalletBlockedException()
+      }
       val account = authResult.accounts.firstOrNull()
         ?: error("No account returned from wallet authorization")
       val signed = signMessagesDetached(
@@ -62,23 +71,16 @@ object Mwa {
     }
 
     return when (outcome) {
-      is TransactionResult.Success -> {
-        val auth = outcome.authResult
-        val account = auth.accounts.firstOrNull()
-        if (
-          FakeWalletPolicy.shouldBlock(
-            allowFakeWallets = BuildConfig.ALLOW_FAKE_WALLETS,
-            walletUriBase = auth.walletUriBase?.toString(),
-            walletLabel = account?.accountLabel,
-          )
-        ) {
-          SignInResult.Failed(FakeWalletPolicy.BLOCKED_MESSAGE)
-        } else {
-          SignInResult.Success
-        }
-      }
+      is TransactionResult.Success -> SignInResult.Success
       is TransactionResult.NoWalletFound   -> SignInResult.Failed("No Solana wallet found")
-      is TransactionResult.Failure         -> SignInResult.Failed(outcome.e.message ?: "Sign-in failed")
+      is TransactionResult.Failure         -> {
+        val message = if (outcome.e is FakeWalletBlockedException) {
+          FakeWalletPolicy.BLOCKED_MESSAGE
+        } else {
+          outcome.e.message ?: "Sign-in failed"
+        }
+        SignInResult.Failed(message)
+      }
     }
   }
 }

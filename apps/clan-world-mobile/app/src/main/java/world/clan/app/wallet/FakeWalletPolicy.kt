@@ -1,5 +1,9 @@
 package world.clan.app.wallet
 
+import java.util.Locale
+
+internal class FakeWalletBlockedException : RuntimeException(FakeWalletPolicy.BLOCKED_MESSAGE)
+
 object FakeWalletPolicy {
   const val BLOCKED_MESSAGE =
     "Test wallet is not supported in release builds. Choose Phantom, Solflare, or Seed Vault Wallet."
@@ -9,19 +13,18 @@ object FakeWalletPolicy {
   fun shouldBlock(
     allowFakeWallets: Boolean,
     walletUriBase: String?,
-    walletLabel: String?,
   ): Boolean {
     if (allowFakeWallets) return false
-    return isFakeWallet(walletUriBase, walletLabel)
+    return isFakeWallet(walletUriBase)
   }
 
-  fun isFakeWallet(walletUriBase: String?, walletLabel: String?): Boolean =
-    listOfNotNull(walletUriBase, walletLabel)
+  fun isFakeWallet(walletUriBase: String?): Boolean =
+    listOfNotNull(walletUriBase)
       .map(::normalize)
       .any { value ->
         value.contains("fakewallet") || value.contains("fakerwallet")
       }
 
   private fun normalize(value: String): String =
-    value.lowercase().filter(Char::isLetterOrDigit)
+    value.lowercase(Locale.ROOT).filter(Char::isLetterOrDigit)
 }

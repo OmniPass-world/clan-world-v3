@@ -6,34 +6,31 @@ import org.junit.Test
 
 class FakeWalletPolicyTest {
   @Test
-  fun releaseBlocksFakeWalletLabels() {
-    assertTrue(
-      FakeWalletPolicy.shouldBlock(
-        allowFakeWallets = false,
-        walletUriBase = null,
-        walletLabel = "Fake Wallet app",
-      ),
-    )
-  }
-
-  @Test
   fun releaseBlocksFakeWalletUris() {
     assertTrue(
       FakeWalletPolicy.shouldBlock(
         allowFakeWallets = false,
         walletUriBase = "solana-wallet://com.solana.mobilewalletadapter.fakewallet",
-        walletLabel = "Test account",
       ),
     )
   }
 
   @Test
-  fun releaseBlocksFakerWalletSpelling() {
+  fun releaseBlocksFakerWalletUriSpelling() {
     assertTrue(
       FakeWalletPolicy.shouldBlock(
         allowFakeWallets = false,
-        walletUriBase = null,
-        walletLabel = "Faker Wallet",
+        walletUriBase = "solana-wallet://com.solana.mobilewalletadapter.fakerwallet",
+      ),
+    )
+  }
+
+  @Test
+  fun releaseNormalizesWalletUriBeforeMatching() {
+    assertTrue(
+      FakeWalletPolicy.shouldBlock(
+        allowFakeWallets = false,
+        walletUriBase = "solana-wallet://Fake-Wallet",
       ),
     )
   }
@@ -44,14 +41,18 @@ class FakeWalletPolicyTest {
       FakeWalletPolicy.shouldBlock(
         allowFakeWallets = false,
         walletUriBase = "phantom://wallet",
-        walletLabel = "Phantom",
       ),
     )
     assertFalse(
       FakeWalletPolicy.shouldBlock(
         allowFakeWallets = false,
         walletUriBase = "solflare://wallet",
-        walletLabel = "Solflare",
+      ),
+    )
+    assertFalse(
+      FakeWalletPolicy.shouldBlock(
+        allowFakeWallets = false,
+        walletUriBase = null,
       ),
     )
   }
@@ -62,7 +63,6 @@ class FakeWalletPolicyTest {
       FakeWalletPolicy.shouldBlock(
         allowFakeWallets = true,
         walletUriBase = "solana-wallet://fakewallet",
-        walletLabel = "Fake Wallet",
       ),
     )
   }
