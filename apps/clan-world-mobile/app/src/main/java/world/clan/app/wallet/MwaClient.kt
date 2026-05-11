@@ -23,6 +23,7 @@ sealed class MwaResult<out T> {
   data object UserDeclined : MwaResult<Nothing>()
   data object WalletNotFound : MwaResult<Nothing>()
   data object WalletNotAllowed : MwaResult<Nothing>()
+  data object WrongNetwork : MwaResult<Nothing>()
   data class Error(val cause: Throwable) : MwaResult<Nothing>()
 }
 
@@ -190,15 +191,18 @@ class MwaClient(
       return MwaResult.WalletNotAllowed
     }
     val msg = result.message.lowercase() + " " + (result.e.message?.lowercase().orEmpty())
-    return if (
+    return when {
       "declin" in msg ||
-      "cancel" in msg ||
-      "user did not approve" in msg ||
-      "user_canceled" in msg
-    ) {
-      MwaResult.UserDeclined
-    } else {
-      MwaResult.Error(result.e)
+        "cancel" in msg ||
+        "user did not approve" in msg ||
+        "user_canceled" in msg -> MwaResult.UserDeclined
+      // Wallet (e.g. Phantom on mainnet) refused because the dApp asked for
+      // a different cluster. Surfacing as a distinct result lets the UI show
+      // a clear in-app message instead of the raw wallet dialog.
+      "network mismatch" in msg ||
+        ("network" in msg && ("switch" in msg || "wrong" in msg)) ||
+        ("cluster" in msg && "mismatch" in msg) -> MwaResult.WrongNetwork
+      else -> MwaResult.Error(result.e)
     }
   }
 }

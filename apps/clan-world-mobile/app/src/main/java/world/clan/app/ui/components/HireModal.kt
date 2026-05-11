@@ -137,6 +137,10 @@ fun HireModal(
                   state.value = HireState.Failed
                   errorMessage.value = FakeWalletPolicy.BLOCKED_MESSAGE
                 }
+                is MwaResult.WrongNetwork -> {
+                  state.value = HireState.Failed
+                  errorMessage.value = "switch your wallet to Solana Devnet, then try again."
+                }
                 is MwaResult.Error -> {
                   state.value = HireState.Failed
                   errorMessage.value = result.cause.message ?: "the wallet refused the seal."

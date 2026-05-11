@@ -45,7 +45,7 @@ object Mwa {
     elder: Elder,
   ): SignInResult {
     val mwa = MobileWalletAdapter(connectionIdentity = identity)
-    mwa.blockchain = Solana.Mainnet
+    mwa.blockchain = Solana.Devnet
 
     val message = ("Sign in as Ælder of ${elder.name} (clan ${elder.clanId})")
       .toByteArray(Charsets.UTF_8)

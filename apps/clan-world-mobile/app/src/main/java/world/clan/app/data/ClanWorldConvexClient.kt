@@ -139,7 +139,8 @@ class ClanWorldConvexClient(private val convexUrl: String) {
       }
       val value = root["value"]
         ?: throw ConvexException("Convex $path returned no `value`: $body")
-      runCatching { json.decodeFromJsonElement<T>(value) }
+      val normalized = value.normalizeConvexNumbers()
+      runCatching { json.decodeFromJsonElement<T>(normalized) }
         .getOrElse {
           throw ConvexException(
             "Could not decode $path response into ${T::class.simpleName}: $body",
