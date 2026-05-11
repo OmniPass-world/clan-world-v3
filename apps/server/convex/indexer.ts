@@ -18,6 +18,7 @@ import {
 } from "viem";
 import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
 import type { Doc } from "./_generated/dataModel";
+import { resetLocked } from "./resetLock";
 
 const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
 const baseSepolia = defineChain({
@@ -46,10 +47,6 @@ const LEGACY_REGIONS = [
   { id: "deep-sea", name: "Deep Sea", ownerClanId: null },
 ];
 const indexerApi = (internal as any).indexer;
-
-function resetLocked(): boolean {
-  return process.env.CLANWORLD_RESET_LOCK === "true";
-}
 
 type ParsedIndexerEvent = {
   eventName: string;

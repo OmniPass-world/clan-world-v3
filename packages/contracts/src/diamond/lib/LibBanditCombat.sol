@@ -44,25 +44,10 @@ library LibBanditCombat {
         uint64 atTick
     );
     event BanditDefeated(uint32 indexed banditId, uint32 indexed targetClanId, uint64 atTick);
-    event BanditEscaped(uint32 indexed banditId, uint64 atTick);
     event BanditTargetDied(uint32 indexed banditId, uint32 indexed deadClanId, uint64 tick);
     event WallDamagedByBandit(uint32 indexed clanId, uint8 newLevel, uint32 indexed banditId);
     event ClansmanKilledByBandit(uint32 indexed clanId, uint32 indexed clansmanId, uint32 indexed banditId);
     event BlueprintEarned(uint32 indexed clanId, uint32 indexed banditId, uint256 amount, uint64 tick);
-    event LootDistributed(
-        uint32 indexed banditId,
-        uint32[] clanIdsRewarded,
-        uint256 perClanWood,
-        uint256 perClanWheat,
-        uint256 perClanFish,
-        uint256 perClanIron,
-        uint256 perClanGold,
-        uint256 burnedWood,
-        uint256 burnedWheat,
-        uint256 burnedFish,
-        uint256 burnedIron,
-        uint256 burnedGold
-    );
     event LootDistributedToDefender(
         uint32 indexed banditId,
         uint32 indexed clanId,
@@ -101,7 +86,7 @@ library LibBanditCombat {
         Clan storage targetClan = s.clans[targetClanId];
         if (targetClan.clanId == ClanWorldConstants.CLAN_ID_NULL || targetClan.clanState == ClanState.DEAD) {
             LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
-            emit BanditEscaped(banditId, closedTick);
+            LibBanditEvents.emitBanditEscaped(banditId, closedTick);
             return;
         }
         if (targetClan.lastSettledTick < s.world.currentTick) {
@@ -398,7 +383,7 @@ library LibBanditCombat {
             }
         }
 
-        emit LootDistributed(
+        LibBanditEvents.emitLootDistributed(
             banditId,
             rewardedClanIds,
             perWood,
@@ -542,7 +527,7 @@ library LibBanditCombat {
                 BanditTroop storage bandit = s.bandits[banditId];
                 if (bandit.state == BanditState.Attacking && bandit.targetClanId == deadClanId) {
                     LibBanditLifecycle.transitionBanditState(s, banditId, BanditState.Camped);
-                    emit BanditEscaped(banditId, tick);
+                    LibBanditEvents.emitBanditEscaped(banditId, tick);
                     emit BanditTargetDied(banditId, deadClanId, tick);
                 }
             }

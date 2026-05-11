@@ -8,21 +8,6 @@ import {LibStorage} from "./LibStorage.sol";
 
 library LibBanditCleanup {
     event BanditMoved(uint32 indexed banditId, uint8 fromRegion, uint8 toRegion, uint64 atTick);
-    event BanditEscaped(uint32 indexed banditId, uint64 atTick);
-    event LootDistributed(
-        uint32 indexed banditId,
-        uint32[] rewardedClanIds,
-        uint256 woodPerClan,
-        uint256 wheatPerClan,
-        uint256 fishPerClan,
-        uint256 ironPerClan,
-        uint256 goldPerClan,
-        uint256 woodRemainder,
-        uint256 wheatRemainder,
-        uint256 fishRemainder,
-        uint256 ironRemainder,
-        uint256 goldRemainder
-    );
 
     function terminalEscapeBandit(LibStorage.AppStorage storage s, uint32 banditId, uint64 closedTick) public {
         BanditTroop storage bandit = s.bandits[banditId];
@@ -33,14 +18,14 @@ library LibBanditCleanup {
         BanditState oldState = bandit.state;
         LibBanditEvents.emitBanditStateChanged(banditId, oldState, BanditState.None, bandit.region, closedTick);
         burnBanditCarry(s, banditId);
-        emit BanditEscaped(banditId, closedTick);
+        LibBanditEvents.emitBanditEscaped(banditId, closedTick);
         deleteBandit(s, banditId);
     }
 
     function burnBanditCarry(LibStorage.AppStorage storage s, uint32 banditId) public {
         BanditTroop storage bandit = s.bandits[banditId];
         uint32[] memory rewardedClanIds = new uint32[](0);
-        emit LootDistributed(
+        LibBanditEvents.emitLootDistributed(
             banditId,
             rewardedClanIds,
             0,

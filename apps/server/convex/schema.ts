@@ -331,6 +331,7 @@ export default defineSchema({
     body: v.string(),
     /** Wallet/owner address of the sender (when known). */
     sentBy: v.optional(v.string()),
+    txHash: v.optional(v.string()),
     timestamp: v.number(),
   })
     .index("by_target_clan", ["targetClanId", "tick"])

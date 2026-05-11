@@ -1,6 +1,7 @@
 import { action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { resetLocked } from "./resetLock";
 
 const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -224,6 +225,22 @@ function assertValidClanId(clanId: number) {
   }
 }
 
+async function verifyClanExists(ctx: any, clanId: number) {
+  assertValidClanId(clanId);
+  const clan = await ctx.runQuery(internal.gold.getClanOwner, { clanId });
+  if (!clan) throw new Error(`Invalid clanId ${clanId} — clan does not exist (post-reset?)`);
+}
+
+async function verifyClanExistsInMutation(ctx: any, clanId: number) {
+  assertValidClanId(clanId);
+  const clan = await ctx.db
+    .query("clanView")
+    .withIndex("by_clanId", (q: any) => q.eq("clanId", clanId))
+    .order("desc")
+    .first();
+  if (!clan) throw new Error(`Invalid clanId ${clanId} — clan does not exist (post-reset?)`);
+}
+
 async function verifyClanOwnership(ctx: any, clanId: number, owner: string) {
   // Reserved for v2: once a Solana-pubkey → EVM-owner binding exists
   // (e.g. SIWS-linked wallet table), call this from the action handlers.
@@ -265,12 +282,13 @@ export const recordWhisperAfterTx = action({
     skipTax: v.number(),
   },
   handler: async (ctx, args) => {
-    assertValidClanId(args.clanId);
+    if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
+    await verifyClanExists(ctx, args.clanId);
     const body = args.body.trim();
     const memo = await buildWhisperMemo({ ...args, body });
     const burnAmount = REQUIRED_BURN_AMOUNT;
     await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: args.skipTax, memo });
-    await ctx.runMutation(internal.gold.commitWhisperAfterTx, {
+    const result = await ctx.runMutation(internal.gold.commitWhisperAfterTx, {
       clanId: args.clanId,
       body,
       owner: args.owner,
@@ -279,7 +297,7 @@ export const recordWhisperAfterTx = action({
       skipTax: args.skipTax,
       memo,
     });
-    return { ok: true };
+    return result ?? { ok: true };
   },
 });
 
@@ -300,11 +318,12 @@ export const saveDoctrineAfterTx = action({
     signature: v.string(),
   },
   handler: async (ctx, args) => {
-    assertValidClanId(args.clanId);
+    if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
+    await verifyClanExists(ctx, args.clanId);
     const memo = await buildDoctrineMemo(args);
     const burnAmount = REQUIRED_BURN_AMOUNT;
     await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: 0, memo });
-    await ctx.runMutation(internal.gold.commitDoctrineAfterTx, {
+    const result = await ctx.runMutation(internal.gold.commitDoctrineAfterTx, {
       clanId: args.clanId,
       strategy: args.strategy,
       notes: args.notes,
@@ -313,7 +332,7 @@ export const saveDoctrineAfterTx = action({
       burnAmount,
       memo,
     });
-    return { ok: true };
+    return result ?? { ok: true };
   },
 });
 
@@ -328,15 +347,21 @@ export const commitWhisperAfterTx = internalMutation({
     memo: v.string(),
   },
   handler: async (ctx, args) => {
-    await insertReceipt(ctx, { ...args, action: "whisper" as const });
+    if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
+    await verifyClanExistsInMutation(ctx, args.clanId);
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
+    if (!snap) throw new Error("World snapshot is not ready — burn refunded once reset completes");
+    const receipt = await insertReceipt(ctx, { ...args, action: "whisper" as const });
+    if (receipt.alreadyRecorded) return { ok: true, alreadyRecorded: true };
     await ctx.db.insert("humanSteeringMessages", {
-      tick: snap?.tick ?? 0,
+      tick: snap.tick,
       targetClanId: args.clanId,
       body: args.body,
       sentBy: args.owner,
+      txHash: args.signature,
       timestamp: Date.now(),
     });
+    return { ok: true };
   },
 });
 
@@ -351,18 +376,23 @@ export const commitDoctrineAfterTx = internalMutation({
     memo: v.string(),
   },
   handler: async (ctx, args) => {
-    await insertReceipt(ctx, { ...args, skipTax: 0, action: "doctrine" as const });
+    if (resetLocked()) throw new Error("Game reset in progress — please retry in a few moments");
+    await verifyClanExistsInMutation(ctx, args.clanId);
+    const snap = await ctx.db.query("worldSnapshot").order("desc").first();
+    if (!snap) throw new Error("World snapshot is not ready — burn refunded once reset completes");
+    const receipt = await insertReceipt(ctx, { ...args, skipTax: 0, action: "doctrine" as const });
+    if (receipt.alreadyRecorded) return { ok: true, alreadyRecorded: true };
     await upsertMemory(ctx, args.clanId, "active-strategy", args.strategy, args.signature);
     await upsertMemory(ctx, args.clanId, "owner_notes", args.notes, args.signature);
-    const snap = await ctx.db.query("worldSnapshot").order("desc").first();
     await ctx.db.insert("memoryEvents", {
-      tick: snap?.tick ?? 0,
+      tick: snap.tick,
       clanId: args.clanId,
       op: "write",
       key: "doctrine",
       note: `owner doctrine update · ${args.signature.slice(0, 8)}`,
       timestamp: Date.now(),
     });
+    return { ok: true };
   },
 });
 
@@ -376,14 +406,80 @@ async function insertReceipt(
     burnAmount: number;
     skipTax: number;
     memo: string;
+    body?: string;
   },
 ) {
   const existing = await ctx.db
     .query("goldTxReceipts")
     .withIndex("by_signature", (q: any) => q.eq("signature", args.signature))
     .first();
-  if (existing) throw new Error("GOLD transaction was already used");
-  await ctx.db.insert("goldTxReceipts", { ...args, observedAt: Date.now() });
+  if (existing) {
+    if (!receiptMatches(existing, args)) {
+      throw new Error("GOLD transaction was already used");
+    }
+    if (await correspondingWriteExists(ctx, args)) {
+      return { alreadyRecorded: true };
+    }
+    return { alreadyRecorded: false };
+  }
+  await ctx.db.insert("goldTxReceipts", {
+    signature: args.signature,
+    owner: args.owner,
+    clanId: args.clanId,
+    action: args.action,
+    burnAmount: args.burnAmount,
+    skipTax: args.skipTax,
+    memo: args.memo,
+    observedAt: Date.now(),
+  });
+  return { alreadyRecorded: false };
+}
+
+function receiptMatches(existing: any, args: {
+  signature: string;
+  owner: string;
+  clanId: number;
+  action: "whisper" | "doctrine";
+  burnAmount: number;
+  skipTax: number;
+  memo: string;
+}) {
+  return existing.owner === args.owner &&
+    existing.clanId === args.clanId &&
+    existing.action === args.action &&
+    existing.burnAmount === args.burnAmount &&
+    existing.skipTax === args.skipTax &&
+    existing.memo === args.memo;
+}
+
+async function correspondingWriteExists(
+  ctx: any,
+  args: {
+    signature: string;
+    owner: string;
+    clanId: number;
+    action: "whisper" | "doctrine";
+    body?: string;
+  },
+) {
+  if (args.action === "whisper") {
+    const message = await ctx.db
+      .query("humanSteeringMessages")
+      .withIndex("by_target_clan", (q: any) => q.eq("targetClanId", args.clanId))
+      .filter((q: any) => q.eq(q.field("txHash"), args.signature))
+      .first();
+    return Boolean(message);
+  }
+
+  const activeStrategy = await ctx.db
+    .query("memoryEntries")
+    .withIndex("by_clan_key", (q: any) => q.eq("clanId", args.clanId).eq("key", "active-strategy"))
+    .first();
+  const ownerNotes = await ctx.db
+    .query("memoryEntries")
+    .withIndex("by_clan_key", (q: any) => q.eq("clanId", args.clanId).eq("key", "owner_notes"))
+    .first();
+  return activeStrategy?.txHash === args.signature && ownerNotes?.txHash === args.signature;
 }
 
 async function upsertMemory(

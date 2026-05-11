@@ -7,8 +7,30 @@ import {
   hasSkipTaxTransfer,
   sha256Hex,
 } from "./gold";
+import { resetLocked } from "./resetLock";
 
 describe("GOLD tx verification helpers", () => {
+  const originalResetLock = process.env.CLANWORLD_RESET_LOCK;
+
+  afterEach(() => {
+    if (originalResetLock === undefined) {
+      delete process.env.CLANWORLD_RESET_LOCK;
+    } else {
+      process.env.CLANWORLD_RESET_LOCK = originalResetLock;
+    }
+  });
+
+  it("honors CLANWORLD_RESET_LOCK only when explicitly true", () => {
+    delete process.env.CLANWORLD_RESET_LOCK;
+    expect(resetLocked()).toBe(false);
+
+    process.env.CLANWORLD_RESET_LOCK = "false";
+    expect(resetLocked()).toBe(false);
+
+    process.env.CLANWORLD_RESET_LOCK = "true";
+    expect(resetLocked()).toBe(true);
+  });
+
   it("derives canonical whisper memos from trimmed body and required burn", async () => {
     expect(await buildWhisperMemo({
       clanId: 3,
