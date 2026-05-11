@@ -6,6 +6,44 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.3.2] — 2026-05-11
+
+Android demo polish release. Ships the PR #221 mobile demo improvements on top of `v2.3.1`: cooldown messages now wrap instead of clipping, Whispers gains a Strategy & Notes path for owned sigils, and the wallet pill now attempts real `.sol` primary-domain resolution instead of showing the old mock identity.
+
+### Added — Android demo features (PR #221)
+
+- **Whispers tabs**: `WhispersScreen` now has `WHISPERS` and `STRATEGY & NOTES` tabs. Owned sigils navigate to the existing strategy editor from the new tab; Bazaar preview sigils keep strategy editing disabled.
+- **Wallet name cascade**: the mobile wallet pill now resolves identity as `.skr` (deferred follow-up) → `.sol` SNS primary domain → wallet label → truncated pubkey.
+- **SNS parser tests**: unit coverage for primary-domain response parsing, missing names, nulls, malformed JSON, and already-suffixed `.sol` handles.
+
+### Fixed
+
+- **Cooldown/status visibility**: Steering and Strategy status lines use a minimum height so longer cooldown, error, and success text can wrap instead of being clipped.
+- **Real `.sol` lookup**: replaced the dead Bonfida reverse endpoint with the SNS primary-domain API (`/v2/user/fav-domains/{pubkey}`) and parse the pubkey-keyed response shape.
+- **Wallet-name race guard**: async resolver results only write to the session cache when the resolved pubkey is still the connected wallet, preventing stale writes after disconnect or failed reauth.
+- **Strategy route guard**: direct `strategy/{clanId}` navigation now defensively requires an owned clan (`LINKED_CLAN_IDS` plus hired/forged extras).
+
+### Validation
+
+- `apps/clan-world-mobile :app:testDebugUnitTest`
+- `apps/clan-world-mobile :app:assembleDebug`
+- PR check `chainclient-abi`
+
+---
+
+## [2.3.1] — 2026-05-10
+
+Consensus fix-round from the `v2.3.0` multi-review pass.
+
+### Fixed
+
+- **Indexer resilience**: added regression coverage and tightened Convex indexer behavior around post-release event/snapshot decoding.
+- **Bandit combat math**: added focused diamond coverage for the consensus review findings.
+- **Adapter/test alignment**: updated shared chain/iNFT adapter expectations and related tests after the `v2.3.0` ABI and constant changes.
+- **Frontend cleanup**: removed a stale event ticker field after the bandit animation release.
+
+---
+
 ## [2.3.0] — 2026-05-10 (late-night)
 
 Bandit lifecycle redesign + AdminRecoveryFacet + bandit attack animation kit. This release tightens the bandit attack cadence from a 7-state machine (Spawned/Camped/Resting/Attacking/Defeated/Escaped/None) down to a clean 5-state machine (None/Spawned/Camped/Attacking/Defeated), ships an owner-only ops-recovery facet for reviving dead clans and topping up vault resources, and lands a 60s-per-tick combat animation pipeline with sprite-based bandits walking-circling-flashing-dying. The android app gains MWA wallet stability fixes plus Convex serialization compatibility.
