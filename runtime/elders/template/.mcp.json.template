@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "elder": {
+      "command": "{{CLAN_WORLD_REPO}}/packages/agents/bin/elder-mcp",
+      "env": {
+        "ELDER_N": "{{ELDER_NUMBER}}",
+        "TZ": "America/New_York"
+      }
+    }
+  }
+}
