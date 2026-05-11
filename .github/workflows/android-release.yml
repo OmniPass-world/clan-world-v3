@@ -41,12 +41,23 @@ jobs:
             version="${GITHUB_REF_NAME}"
           fi
           semver="${version#v}"
-          if ! [[ "$semver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if ! [[ "$semver" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "::error ::Android APK versions must be semver tags like v2.3.2; got '${version}'."
             exit 1
           fi
           IFS=. read -r major minor patch <<< "$semver"
+          major=$((10#$major))
+          minor=$((10#$minor))
+          patch=$((10#$patch))
+          if [ "$minor" -ge 1000 ] || [ "$patch" -ge 1000 ]; then
+            echo "::error ::Android APK version minor and patch must be below 1000 to avoid versionCode collisions; got '${semver}'."
+            exit 1
+          fi
           version_code=$((major * 1000000 + minor * 1000 + patch))
+          if [ "$version_code" -gt 2100000000 ]; then
+            echo "::error ::Android APK versionCode must be <= 2100000000; got '${version_code}' from '${semver}'."
+            exit 1
+          fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "version_name=${semver}" >> "$GITHUB_OUTPUT"
           echo "version_code=${version_code}" >> "$GITHUB_OUTPUT"

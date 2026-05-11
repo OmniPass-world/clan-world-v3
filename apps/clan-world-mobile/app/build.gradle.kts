@@ -44,7 +44,10 @@ val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
 val clanWorldVersionName = optionalEnvOrProperty("CLAN_WORLD_VERSION_NAME", "clanWorldVersionName")
   ?: "0.0.0-local"
 val clanWorldVersionCode = optionalEnvOrProperty("CLAN_WORLD_VERSION_CODE", "clanWorldVersionCode")
-  ?.toIntOrNull()
+  ?.let { value ->
+    value.toIntOrNull()
+      ?: error("CLAN_WORLD_VERSION_CODE / clanWorldVersionCode must be a valid integer, but found: '$value'.")
+  }
   ?: 1
 
 require(clanWorldVersionCode > 0) {
@@ -95,7 +98,12 @@ android {
       versionNameSuffix = "-debug"
     }
     release {
-      isMinifyEnabled = false
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro",
+      )
       if (hasStableSigning) {
         signingConfig = signingConfigs.getByName("stable")
       }
@@ -126,7 +134,15 @@ android {
 }
 
 gradle.taskGraph.whenReady {
-  val releaseTaskRequested = allTasks.any { it.name.contains("Release") }
+  val releaseTaskRequested = gradle.startParameter.taskNames.any { requested ->
+    val name = requested.substringAfterLast(":")
+    name == "assemble" ||
+      name == "build" ||
+      name == "assembleRelease" ||
+      name == "bundleRelease" ||
+      name == "installRelease" ||
+      name == "packageRelease"
+  }
   if (releaseTaskRequested && !hasStableSigning) {
     error(
       "Release APK builds require RELEASE_KEYSTORE_PATH, RELEASE_KEYSTORE_PASSWORD, " +
