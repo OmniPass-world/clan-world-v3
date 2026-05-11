@@ -3,26 +3,12 @@
   "env": {
     "TZ": "America/New_York"
   },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash \"$CLAUDE_CONFIG_DIR/hooks/bash-guard.sh\""
-          }
-        ]
-      }
-    ]
-  },
   "permissions": {
     "defaultMode": "default",
     "allow": [
       "mcp__elder__*",
       "Bash(elder *)",
       "Bash(date)",
-      "Read(//home/claude/clan-world/.claude/skills/**)",
       "Read(//tmp/elder-*/**)",
       "Write(//tmp/elder-*/**)",
       "Edit(//tmp/elder-*/**)"
@@ -34,11 +20,6 @@
       "Read(//home/claude/clan-world/elder-*/.env)",
       "Read(//home/claude/clan-world/elder-*/agent-directive.secret.md)",
       "Read(//home/claude/clan-world/elder-*/.claude/**)",
-      "Bash(cat *)",
-      "Bash(tee *)",
-      "Bash(echo *)",
-      "Bash(ls *)",
-      "Bash(mkdir *)",
       "Bash(python*)",
       "Bash(node *)",
       "Bash(curl *)",

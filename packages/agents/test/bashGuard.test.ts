@@ -6,8 +6,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const guardPath = path.join(repoRoot, 'runtime/elders/parent/.claude/hooks/bash-guard.sh');
 const bashBin = '/usr/bin/bash';
+const guardPath = path.join(
+  repoRoot,
+  'runtime/elders/plugins/clan-world-elder/hooks/bash-guard.sh',
+);
 
 function runGuardInput(input: string, env: NodeJS.ProcessEnv = {}) {
   return spawnSync(bashBin, [guardPath], {
@@ -64,39 +67,30 @@ describe('Elder bash guard', () => {
     expect(out.stderr).toContain('shell variable expansion is not allowed');
   });
 
-  it('installs the bash guard hook into each per-elder config dir', () => {
+  it('installs the shared Elder plugin instead of standalone hook and MCP files', () => {
     const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'clan-world-elders-'));
     const source = fs.mkdtempSync(path.join(os.tmpdir(), 'clan-world-elder-src-'));
     try {
-      fs.mkdirSync(path.join(source, 'parent/.claude/hooks'), { recursive: true });
+      fs.mkdirSync(path.join(source, 'parent/.claude'), { recursive: true });
       fs.mkdirSync(path.join(source, 'ttyd'), { recursive: true });
       fs.mkdirSync(path.join(source, 'bin'), { recursive: true });
       fs.mkdirSync(path.join(source, 'template'), { recursive: true });
       fs.mkdirSync(path.join(source, 'personalities'), { recursive: true });
-      fs.writeFileSync(path.join(source, 'parent/AGENTS.md'), '# Test elder parent\n');
+      fs.writeFileSync(path.join(source, 'parent/.claude/CLAUDE.md'), '# Test elder parent\n');
       fs.copyFileSync(
         path.join(repoRoot, 'runtime/elders/parent/.claude/settings.json'),
         path.join(source, 'parent/.claude/settings.json'),
       );
-      fs.copyFileSync(guardPath, path.join(source, 'parent/.claude/hooks/bash-guard.sh'));
-      for (const skill of [
-        'cleared-context-start',
-        'elder-base-context',
-        'final-tick-continuity',
-        'uniswap-arb-camping',
-        'uniswap-market-overview',
-        'uniswap-sell-immediate',
-        'uniswap-sell-scheduled',
-      ]) {
-        fs.mkdirSync(path.join(source, 'parent/.claude/skills', skill), { recursive: true });
-        fs.writeFileSync(path.join(source, 'parent/.claude/skills', skill, 'SKILL.md'), `# ${skill}\n`);
-      }
+      fs.cpSync(
+        path.join(repoRoot, 'runtime/elders/plugins/clan-world-elder'),
+        path.join(source, 'plugins/clan-world-elder'),
+        { recursive: true },
+      );
       fs.writeFileSync(path.join(source, 'ttyd/index.html'), '<!doctype html>\n');
       fs.writeFileSync(path.join(source, 'Makefile'), '# test\n');
       fs.writeFileSync(path.join(source, 'aliases.sh'), '# test\n');
       fs.writeFileSync(path.join(source, 'bin/elder-inject-startup.sh'), '#!/usr/bin/env bash\n');
       fs.writeFileSync(path.join(source, 'template/run.sh.template'), '#!/usr/bin/env bash\n');
-      fs.writeFileSync(path.join(source, 'template/.mcp.json.template'), '{}\n');
       fs.writeFileSync(path.join(source, 'personalities/elder-1.md'), '# Elder 1\n');
 
       const out = spawnSync('make', [
@@ -113,8 +107,11 @@ describe('Elder bash guard', () => {
       });
 
       expect(out.status, out.stderr || out.stdout).toBe(0);
-      const installedGuard = path.join(dest, 'elder-1/.claude/hooks/bash-guard.sh');
+      const installedGuard = path.join(dest, 'plugins/clan-world-elder/hooks/bash-guard.sh');
       expect(fs.statSync(installedGuard).isFile()).toBe(true);
+      expect(fs.statSync(path.join(dest, 'plugins/clan-world-elder/.mcp.json')).isFile()).toBe(true);
+      expect(fs.existsSync(path.join(dest, 'elder-1/.mcp.json'))).toBe(false);
+      expect(fs.existsSync(path.join(dest, '.claude/hooks'))).toBe(false);
     } finally {
       fs.rmSync(dest, { recursive: true, force: true });
       fs.rmSync(source, { recursive: true, force: true });

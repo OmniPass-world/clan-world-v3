@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CLAN_WORLD_REPO="${CLAN_WORLD_REPO:-$HOME/code/clan-world/clan-world-game}"
+exec "$CLAN_WORLD_REPO/packages/agents/bin/elder-mcp" "$@"

@@ -1,0 +1,8 @@
+{
+  "name": "clan-world-elder",
+  "description": "Shared ClanWorld Elder skills, MCP tools, and Bash guard.",
+  "version": "1.0.0",
+  "author": {
+    "name": "ClanWorld"
+  }
+}
