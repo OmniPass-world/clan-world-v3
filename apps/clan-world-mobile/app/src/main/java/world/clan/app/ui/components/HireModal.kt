@@ -44,6 +44,7 @@ import world.clan.app.ui.theme.Ink3
 import world.clan.app.ui.theme.clanColor
 import world.clan.app.ui.theme.clanGlyphRes
 import world.clan.app.viewmodel.clanDisplayName
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
 
 /**
@@ -131,6 +132,10 @@ fun HireModal(
                 }
                 is MwaResult.UserDeclined -> {
                   state.value = HireState.Idle
+                }
+                is MwaResult.WalletNotAllowed -> {
+                  state.value = HireState.Failed
+                  errorMessage.value = FakeWalletPolicy.BLOCKED_MESSAGE
                 }
                 is MwaResult.Error -> {
                   state.value = HireState.Failed

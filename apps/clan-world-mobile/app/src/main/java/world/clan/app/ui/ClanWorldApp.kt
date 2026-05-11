@@ -74,7 +74,7 @@ object Routes {
   const val Codex = "codex"
   const val InftDetail = "inft/{clanId}"
   const val BazaarInftDetail = "bazaarInft/{clanId}"
-  const val Whispers = "whispers/{clanId}"
+  const val Whispers = "whispers/{clanId}?strategy={strategy}"
   const val SteeringConsole = "steer/{clanId}"
   const val StrategyEditor = "strategy/{clanId}"
   const val Treasury = "treasury/{clanId}"
@@ -86,7 +86,7 @@ object Routes {
   const val OwnerComingSoon = "ownerComingSoon/{clanId}"
   fun inftDetail(clanId: Int) = "inft/$clanId"
   fun bazaarInftDetail(clanId: Int) = "bazaarInft/$clanId"
-  fun whispers(clanId: Int) = "whispers/$clanId"
+  fun whispers(clanId: Int, strategy: Boolean = true) = "whispers/$clanId?strategy=$strategy"
   fun steer(clanId: Int) = "steer/$clanId"
   fun strategy(clanId: Int) = "strategy/$clanId"
   fun treasury(clanId: Int) = "treasury/$clanId"
@@ -196,9 +196,19 @@ fun ClanWorldApp(
   val startDestination = if (connectState.phase == ConnectUiState.Phase.Connected)
     Routes.Hearth else Routes.Connect
 
+  // Identity is the resolved wallet name + label, cascading through
+  // `.skr` → `.sol` → wallet-label → truncated pubkey. The resolved
+  // identity lives in `app.walletNameCache` (populated by
+  // ConnectViewModel after authorize). Until resolution lands we fall
+  // back to `WalletIdentity.fromSession` which renders label/pubkey.
+  // Reading the snapshot map inside derivedStateOf re-runs the
+  // derivation when the cache updates → wallet pill recomposes.
   val identity: WalletIdentity? by remember(connectState.solanaPubkeyBase58) {
     derivedStateOf {
-      WalletIdentity.fromSession(app.sessionStore.read())
+      val pubkey = connectState.solanaPubkeyBase58
+        ?: return@derivedStateOf WalletIdentity.fromSession(app.sessionStore.read())
+      app.walletNameCache[pubkey]
+        ?: WalletIdentity.fromSession(app.sessionStore.read())
     }
   }
   var goldBalance by remember { mutableStateOf<Long?>(null) }
@@ -265,6 +275,8 @@ fun ClanWorldApp(
           Toast.makeText(hostActivity, "Faucet cancelled.", Toast.LENGTH_SHORT).show()
         is MwaResult.WalletNotFound ->
           Toast.makeText(hostActivity, "No wallet found on device.", Toast.LENGTH_LONG).show()
+        is MwaResult.WalletNotAllowed ->
+          Toast.makeText(hostActivity, "Demo wallets are blocked in this build.", Toast.LENGTH_LONG).show()
         is MwaResult.Error ->
           Toast.makeText(hostActivity, result.cause.message ?: "Faucet tx failed.", Toast.LENGTH_LONG).show()
       }
@@ -485,7 +497,7 @@ fun ClanWorldApp(
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
-              onOpenInbox = { nav.navigate(Routes.whispers(clanId)) },
+              onOpenInbox = { nav.navigate(Routes.whispers(clanId, strategy = false)) },
               onOpenTreasury = { nav.navigate(Routes.treasury(clanId)) },
               isBazaar = true,
               mwaSender = mwaSender,
@@ -533,17 +545,26 @@ fun ClanWorldApp(
           // ── Whispers inbox (deep route from InftDetail Whispers tab) ────
           composable(
             route = Routes.Whispers,
-            arguments = listOf(navArgument("clanId") { type = NavType.IntType }),
+            arguments = listOf(
+              navArgument("clanId") { type = NavType.IntType },
+              navArgument("strategy") {
+                type = NavType.BoolType
+                defaultValue = true
+              },
+            ),
             enterTransition = { detailEnter() },
             popExitTransition = { detailPopExit() },
             exitTransition = { tabExit() },
           ) { entry ->
             val clanId = entry.arguments?.getInt("clanId") ?: 1
+            val strategyEnabled = entry.arguments?.getBoolean("strategy") ?: true
             world.clan.app.ui.screens.WhispersScreenRoute(
               app = app,
               clanId = clanId,
               onBack = { nav.popBackStack() },
               onCompose = { nav.navigate(Routes.steer(clanId)) },
+              onStrategy = { nav.navigate(Routes.strategy(clanId)) },
+              strategyEnabled = strategyEnabled,
             )
           }
 
@@ -672,6 +693,12 @@ fun ClanWorldApp(
             exitTransition = { tabExit() },
           ) { entry ->
             val clanId = entry.arguments?.getInt("clanId") ?: 1
+            val canEditStrategy = clanId in (HearthViewModel.LINKED_CLAN_IDS +
+              app.sessionStore.getOwnedClanIdsExtra())
+            if (!canEditStrategy) {
+              LaunchedEffect(clanId) { nav.popBackStack() }
+              return@composable
+            }
             world.clan.app.ui.screens.StrategyEditorScreenRoute(
               app = app,
               mwaSender = mwaSender,

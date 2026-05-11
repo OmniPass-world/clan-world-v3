@@ -33,6 +33,10 @@ fun resolveBuildConfigUrl(envName: String, propName: String): String {
   )
 }
 
+fun optionalEnvOrProperty(envName: String, propName: String): String? =
+  System.getenv(envName)?.takeIf { it.isNotBlank() }
+    ?: (project.findProperty(propName) as? String)?.takeIf { it.isNotBlank() }
+
 val mapUrl = resolveBuildConfigUrl("CLAN_WORLD_MAP_URL", "clanWorldMapUrl")
 val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "clanWorldTerminalBaseUrl")
 val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
@@ -45,9 +49,21 @@ val goldFaucetProgramId = providers.environmentVariable("CLAN_WORLD_GOLD_FAUCET_
   .orElse("11111111111111111111111111111111")
 val goldTreasuryOwner = providers.environmentVariable("CLAN_WORLD_GOLD_TREASURY_OWNER")
   .orElse("11111111111111111111111111111111")
+val clanWorldVersionName = optionalEnvOrProperty("CLAN_WORLD_VERSION_NAME", "clanWorldVersionName")
+  ?: "0.0.0-local"
+val clanWorldVersionCode = optionalEnvOrProperty("CLAN_WORLD_VERSION_CODE", "clanWorldVersionCode")
+  ?.let { value ->
+    value.toIntOrNull()
+      ?: error("CLAN_WORLD_VERSION_CODE / clanWorldVersionCode must be a valid integer, but found: '$value'.")
+  }
+  ?: 1
 
-// for details — both apps share the same secret names so one CI step can
-// provision both.
+require(clanWorldVersionCode > 0) {
+  "CLAN_WORLD_VERSION_CODE / clanWorldVersionCode must be a positive integer."
+}
+
+// Release signing is required only for release APKs. Debug builds use the
+// normal Android debug key and the `.debug` app id suffix.
 val releaseKeystorePath: String? = System.getenv("RELEASE_KEYSTORE_PATH")?.takeIf { it.isNotBlank() }
 val releaseKeystorePassword: String? = System.getenv("RELEASE_KEYSTORE_PASSWORD")
 val releaseKeyAlias: String? = System.getenv("RELEASE_KEY_ALIAS")
@@ -65,8 +81,8 @@ android {
     applicationId = "world.clan.app"
     minSdk = 26
     targetSdk = 35
-    versionCode = 7
-    versionName = "0.1.14"
+    versionCode = clanWorldVersionCode
+    versionName = clanWorldVersionName
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
@@ -75,6 +91,7 @@ android {
     buildConfigField("String", "GOLD_FAUCET_PROGRAM_ID", "\"${goldFaucetProgramId.get()}\"")
     buildConfigField("String", "GOLD_TREASURY_OWNER", "\"${goldTreasuryOwner.get()}\"")
     buildConfigField("int", "GOLD_DECIMALS", "0")
+    buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
     vectorDrawables { useSupportLibrary = true }
   }
 
@@ -92,12 +109,22 @@ android {
   buildTypes {
     debug {
       buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "true")
+      applicationIdSuffix = ".debug"
+      versionNameSuffix = "-debug"
+      buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "true")
       if (hasStableSigning) {
         signingConfig = signingConfigs.getByName("stable")
       }
     }
     release {
       buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "false")
+      buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
+      isMinifyEnabled = true
+      isShrinkResources = true
+      proguardFiles(
+        getDefaultProguardFile("proguard-android-optimize.txt"),
+        "proguard-rules.pro",
+      )
     }
   }
 
@@ -121,6 +148,24 @@ android {
     resources {
       excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+  }
+}
+
+gradle.taskGraph.whenReady {
+  val releaseTaskRequested = gradle.startParameter.taskNames.any { requested ->
+    val name = requested.substringAfterLast(":")
+    name == "assemble" ||
+      name == "build" ||
+      name == "assembleRelease" ||
+      name == "bundleRelease" ||
+      name == "installRelease" ||
+      name == "packageRelease"
+  }
+  if (releaseTaskRequested && !hasStableSigning) {
+    error(
+      "Release APK builds require RELEASE_KEYSTORE_PATH, RELEASE_KEYSTORE_PASSWORD, " +
+        "RELEASE_KEY_ALIAS, and RELEASE_KEY_PASSWORD.",
+    )
   }
 }
 

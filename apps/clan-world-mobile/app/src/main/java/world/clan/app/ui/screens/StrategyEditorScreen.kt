@@ -67,6 +67,7 @@ import world.clan.app.viewmodel.StrategyEditorUiState
 import world.clan.app.viewmodel.StrategyEditorViewModel
 import world.clan.app.viewmodel.StrategyEditorViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
 import java.security.MessageDigest
 
@@ -158,6 +159,8 @@ fun StrategyEditorScreenRoute(
           is MwaResult.UserDeclined -> vm.setSavePhase(SendPhase.Idle)
           is MwaResult.WalletNotFound ->
             vm.setSavePhase(SendPhase.Failed, "no wallet found on device.")
+          is MwaResult.WalletNotAllowed ->
+            vm.setSavePhase(SendPhase.Failed, FakeWalletPolicy.BLOCKED_MESSAGE)
           is MwaResult.Error ->
             vm.setSavePhase(SendPhase.Failed, result.cause.message ?: "the wallet refused the seal.")
         }
@@ -464,7 +467,7 @@ private fun StatusLine(
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .height(18.dp)
+      .heightIn(min = 18.dp)
       .clickable(enabled = errorMsg != null || successMsg != null) { onDismiss() },
     contentAlignment = Alignment.CenterStart,
   ) {
@@ -477,6 +480,7 @@ private fun StatusLine(
         text = "✕  ${errorMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.danger,
+        maxLines = Int.MAX_VALUE,
       )
     }
     AnimatedVisibility(
@@ -488,6 +492,7 @@ private fun StatusLine(
         text = "✓  ${successMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.success,
+        maxLines = Int.MAX_VALUE,
       )
     }
   }

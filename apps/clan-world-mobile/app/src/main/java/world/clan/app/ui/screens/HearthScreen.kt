@@ -26,8 +26,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -286,12 +290,12 @@ private fun HearthBanner(
           Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("TICK", style = ClanWorldTheme.type.monoMicro, color = gold)
             if (nextTickAtEpochMs != null) {
-              val countdownMs by androidx.compose.runtime.produceState(
-                initialValue = (nextTickAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L),
-                key1 = nextTickAtEpochMs,
-              ) {
+              var countdownMs by remember(nextTickAtEpochMs) {
+                mutableStateOf((nextTickAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L))
+              }
+              LaunchedEffect(nextTickAtEpochMs) {
                 while (true) {
-                  value = (nextTickAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L)
+                  countdownMs = (nextTickAtEpochMs - System.currentTimeMillis()).coerceAtLeast(0L)
                   kotlinx.coroutines.delay(1000L)
                 }
               }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -57,6 +58,7 @@ import world.clan.app.viewmodel.SteeringConsoleUiState
 import world.clan.app.viewmodel.SteeringConsoleViewModel
 import world.clan.app.viewmodel.SteeringConsoleViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
 import java.security.MessageDigest
 
@@ -165,6 +167,7 @@ fun SteeringConsoleScreenRoute(
           }
           is MwaResult.UserDeclined -> vm.setSending(false)
           is MwaResult.WalletNotFound -> vm.setError("no wallet found on device.")
+          is MwaResult.WalletNotAllowed -> vm.setError(FakeWalletPolicy.BLOCKED_MESSAGE)
           is MwaResult.Error -> vm.setError(
             result.cause.message ?: "the wallet refused the seal.",
           )
@@ -470,7 +473,7 @@ private fun StatusLine(
   Box(
     modifier = Modifier
       .fillMaxWidth()
-      .height(18.dp)
+      .heightIn(min = 18.dp)
       .clickable(enabled = errorMsg != null || successMsg != null) { onDismiss() },
     contentAlignment = Alignment.CenterStart,
   ) {
@@ -483,6 +486,7 @@ private fun StatusLine(
         text = "✕  ${errorMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.danger,
+        maxLines = Int.MAX_VALUE,
       )
     }
     AnimatedVisibility(
@@ -494,6 +498,7 @@ private fun StatusLine(
         text = "✓  ${successMsg ?: ""}",
         style = ClanWorldTheme.type.monoNano,
         color = ClanWorldTheme.colors.success,
+        maxLines = Int.MAX_VALUE,
       )
     }
   }
