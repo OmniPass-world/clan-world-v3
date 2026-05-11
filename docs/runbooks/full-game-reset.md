@@ -30,6 +30,9 @@ The active reset on 2026-05-11 used Infura for Base Sepolia and Helius for Solan
 4. Check deployer and elder wallet balances on Base Sepolia.
 5. Confirm Convex deployment slug and app URLs.
 6. Save the current active diamond, lens, deploy block, and git commit in the reset notes.
+7. Confirm whether the live Elder Claude Code sessions have account capacity.
+   If they are at the monthly usage limit, pause the game loop after reset and
+   run only the read-only terminals until capacity resets.
 
 ## 1. Stop Live Writers
 
@@ -44,6 +47,17 @@ for n in 1 2 3 4; do
   tmux kill-session -t "elder-$n" 2>/dev/null || true
   tmux kill-session -t "clanworld-elder-$n" 2>/dev/null || true
 done
+```
+
+Disable Convex cron writers before flushing or waiting. Deploy the functions
+after changing these envs so cron registration reflects the paused state:
+
+```bash
+cd apps/server
+npx convex env set CLANWORLD_USE_REAL_INDEXER false --prod
+npx convex env set CLANWORLD_USE_FAKE_HEARTBEAT false --prod
+npx convex env set CLANWORLD_RESET_LOCK true --prod
+npx convex deploy --prod
 ```
 
 Wait at least 60 seconds after stopping heartbeat before deploying, so any in-flight nonce settles.
@@ -80,6 +94,11 @@ Save:
 - Facet addresses
 
 Then run the same deploy command again for the backup diamond and save the same values. Do not point Convex or the frontend at the backup unless the active diamond fails.
+
+Learning from the 2026-05-11 reset: the deploy blocker was
+`LibBanditLifecycle`, not the diamond proxy. It exceeded EIP-170 as a deployed
+library. Split oversized libraries/facets before broadcasting; do not rely on
+`--disable-code-size-limit`.
 
 ## 3. Wire Local Env
 
@@ -172,6 +191,10 @@ npx convex run ops:flushGameState '{"secret":"'"$INDEXER_SECRET"'","batchSize":5
 npx convex run ops:resetCheckpoint '{"secret":"'"$INDEXER_SECRET"'","lastBlock":'"$INDEXER_START_BLOCK"'}' --prod
 ```
 
+`ops:flushGameState` is capped at 500 rows per table per mutation on purpose,
+to stay inside Convex mutation limits. Expect old append-only views to require
+many passes.
+
 If `clanView` has a large historical backlog, use the targeted per-clan purge
 helper in parallel and include all historical clan ids, not only the fresh four:
 
@@ -200,6 +223,10 @@ npx convex env set CLANWORLD_RESET_LOCK false --prod
 npx convex deploy --prod
 npx convex run indexer:refreshSnapshot '{}' --prod
 ```
+
+If `indexer:refreshSnapshot` times out in `commitSnapshot`, check whether it is
+probing stale clan ids. The 2026-05-11 reset fixed this by reading
+`getClanIds()` first and refreshing only live clans.
 
 ## 6. Mint Four Clans
 
@@ -242,15 +269,103 @@ tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
 
 Restart runner and four Elder sessions using the current package scripts or host wrappers. Confirm each new process reads the new `.env.local` / elder `.env` values.
 
-For TTYD or any service binding a port, resolve the current worktree port first:
+For TTYD in the public cockpit, match Caddy, not only `port-for`. As of the
+2026-05-11 host config, `https://cockpit.clan-world.com/elder-N-tty/` proxies
+to:
+
+| Elder | Public path | Local upstream |
+|---|---|---|
+| 1 | `/elder-1-tty/` | `127.0.0.1:38790` |
+| 2 | `/elder-2-tty/` | `127.0.0.1:38791` |
+| 3 | `/elder-3-tty/` | `127.0.0.1:38792` |
+| 4 | `/elder-4-tty/` | `127.0.0.1:38793` |
+
+Start read-only terminal mirrors:
 
 ```bash
-PORT=$(port-for clan-world-ttyd)
+for n in 1 2 3 4; do
+  tmux has-session -t "elder-$n" 2>/dev/null ||
+    tmux new-session -d -s "elder-$n" -c "$HOME/clan-world/elder-$n" './run.sh'
+
+  tmux kill-session -t "ttyd-elder-$n" 2>/dev/null || true
+  port=$((38789+n))
+  tmux new-session -d -s "ttyd-elder-$n" \
+    "/home/claude/bin/ttyd -p $port \
+      -I /home/claude/clan-world/ttyd/index.html \
+      -t fontSize=11 -t cursorStyle=bar \
+      tmux attach-session -t elder-$n \
+      2>&1 | tee -a /tmp/clanworld-ttyd-elder-$n.log"
+done
 ```
 
-Then start the service with that port.
+Verify both local Caddy and public Cloudflare routes. A direct TTYD `200` is
+not enough if Caddy points at a different port.
+
+```bash
+ss -ltnp | grep -E '3879[0-3]'
+for path in elder-1-tty elder-2-tty elder-3-tty elder-4-tty; do
+  curl -I -H 'Host: cockpit.clan-world.com' "http://127.0.0.1:18080/$path/"
+  curl -I "https://cockpit.clan-world.com/$path/"
+done
+```
+
+If public cockpit returns `502 Bad Gateway`, inspect Caddy logs. The common
+reset failure is `dial tcp 127.0.0.1:3879N: connect: connection refused`,
+which means TTYD is either down or listening on the wrong port.
 
 Clear old runner/Elder inbox artifacts before the first tick if they contain stale situation blocks, old diamond addresses, or old clan IDs.
+
+## 7.5. Pause And Unpause
+
+Use pause mode when contracts/Convex are reset but Elder Claude sessions cannot
+act yet, such as a monthly usage-limit window. This freezes writers while still
+allowing read-only cockpit terminals.
+
+Pause game advancement and Convex writers:
+
+```bash
+tmux kill-session -t clanworld-heartbeat 2>/dev/null || true
+tmux kill-session -t clanworld-runner 2>/dev/null || true
+
+cd apps/server
+npx convex env set CLANWORLD_USE_REAL_INDEXER false --prod
+npx convex env set CLANWORLD_USE_FAKE_HEARTBEAT false --prod
+npx convex env set CLANWORLD_RESET_LOCK true --prod
+npx convex deploy --prod
+```
+
+Optional hard pause of terminals too:
+
+```bash
+for n in 1 2 3 4; do
+  tmux kill-session -t "ttyd-elder-$n" 2>/dev/null || true
+  tmux kill-session -t "elder-$n" 2>/dev/null || true
+done
+```
+
+If you want to inspect stuck agents in the app while paused, keep or restart
+only `elder-N` and `ttyd-elder-N`; do not start `clanworld-runner` or
+`clanworld-heartbeat`.
+
+Unpause:
+
+```bash
+cd apps/server
+npx convex env set CLANWORLD_RESET_LOCK false --prod
+npx convex env set CLANWORLD_USE_REAL_INDEXER true --prod
+npx convex env set CLANWORLD_USE_FAKE_HEARTBEAT false --prod
+npx convex deploy --prod
+npx convex run indexer:refreshSnapshot '{}' --prod
+
+cd ../..
+tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
+  'export PATH="$HOME/.foundry/bin:$PATH"; bash scripts/start-heartbeat-loop.sh 2>&1 | tee -a /tmp/clanworld-heartbeat.log'
+tmux new-session -d -s clanworld-runner -c "$PWD" \
+  'pnpm --filter @clan-world/runner start 2>&1 | tee -a /tmp/clanworld-runner.log'
+```
+
+After unpausing, verify `getSnapshot:getSnapshot` advances and runner logs show
+new observed ticks.
 
 ## 8. Deploy Web App
 
@@ -262,6 +377,15 @@ vercel --prod
 ```
 
 If any Vercel project env var points directly at the diamond or lens, update it before deploying. The main game frontend should normally read the realm through Convex.
+
+If the monorepo build is blocked by Android-only release env such as
+`CLAN_WORLD_MAP_URL`, build the web app directly and deploy the static output:
+
+```bash
+pnpm --filter @clan-world/web build
+cd apps/web
+vercel deploy dist --prod --yes
+```
 
 ## 9. Smoke Tests
 
