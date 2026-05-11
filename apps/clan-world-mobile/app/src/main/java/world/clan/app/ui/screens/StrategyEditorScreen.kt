@@ -163,6 +163,8 @@ fun StrategyEditorScreenRoute(
             vm.setSavePhase(SendPhase.Failed, "no wallet found on device.")
           is MwaResult.WalletNotAllowed ->
             vm.setSavePhase(SendPhase.Failed, FakeWalletPolicy.BLOCKED_MESSAGE)
+          is MwaResult.WrongNetwork ->
+            vm.setSavePhase(SendPhase.Failed, "switch your wallet to Solana Devnet, then try again.")
           is MwaResult.Error ->
             vm.setSavePhase(SendPhase.Failed, result.cause.message ?: "the wallet refused the seal.")
         }

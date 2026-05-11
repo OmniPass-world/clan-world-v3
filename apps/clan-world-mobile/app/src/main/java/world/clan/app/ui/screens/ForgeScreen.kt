@@ -117,6 +117,8 @@ fun ForgeScreenRoute(
             vm.setMintPhase(SendPhase.Failed, "no wallet found on device.")
           is MwaResult.WalletNotAllowed ->
             vm.setMintPhase(SendPhase.Failed, FakeWalletPolicy.BLOCKED_MESSAGE)
+          is MwaResult.WrongNetwork ->
+            vm.setMintPhase(SendPhase.Failed, "switch your wallet to Solana Devnet, then try again.")
           is MwaResult.Error ->
             vm.setMintPhase(SendPhase.Failed, r.cause.message ?: "the wallet refused the seal.")
         }

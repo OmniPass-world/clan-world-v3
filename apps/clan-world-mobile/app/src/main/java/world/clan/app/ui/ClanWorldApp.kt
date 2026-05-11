@@ -283,6 +283,12 @@ fun ClanWorldApp(
           Toast.makeText(hostActivity, "No wallet found on device.", Toast.LENGTH_LONG).show()
         is MwaResult.WalletNotAllowed ->
           Toast.makeText(hostActivity, "Demo wallets are blocked in this build.", Toast.LENGTH_LONG).show()
+        is MwaResult.WrongNetwork ->
+          Toast.makeText(
+            hostActivity,
+            "Open your wallet and switch to Solana Devnet, then tap MINT again.",
+            Toast.LENGTH_LONG,
+          ).show()
         is MwaResult.Error ->
           Toast.makeText(hostActivity, result.cause.message ?: "Faucet tx failed.", Toast.LENGTH_LONG).show()
       }

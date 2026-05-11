@@ -173,6 +173,9 @@ fun SteeringConsoleScreenRoute(
           is MwaResult.UserDeclined -> vm.setSending(false)
           is MwaResult.WalletNotFound -> vm.setError("no wallet found on device.")
           is MwaResult.WalletNotAllowed -> vm.setError(FakeWalletPolicy.BLOCKED_MESSAGE)
+          is MwaResult.WrongNetwork -> vm.setError(
+            "switch your wallet to Solana Devnet, then try again.",
+          )
           is MwaResult.Error -> vm.setError(
             result.cause.message ?: "the wallet refused the seal.",
           )

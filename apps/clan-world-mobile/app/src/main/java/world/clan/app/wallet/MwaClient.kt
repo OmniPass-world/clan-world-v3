@@ -4,7 +4,6 @@ import android.net.Uri
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionParams
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.SignAndSendTransactionsResult
@@ -23,6 +22,7 @@ sealed class MwaResult<out T> {
   data object UserDeclined : MwaResult<Nothing>()
   data object WalletNotFound : MwaResult<Nothing>()
   data object WalletNotAllowed : MwaResult<Nothing>()
+  data object WrongNetwork : MwaResult<Nothing>()
   data class Error(val cause: Throwable) : MwaResult<Nothing>()
 }
 
@@ -34,8 +34,9 @@ sealed class MwaResult<out T> {
  * disconnect calls. signMessage is wired but unused; slice 2 (full) will
  * exercise it for the SIWS identity-link challenge.
  *
- * V3 doesn't transact on Solana, so [Solana.Devnet] is cosmetic — a
- * wallet may surface "Connect to Devnet" but we never broadcast anything.
+ * The MWA session targets [ClanWorldMwaCluster] (devnet); GOLD mint /
+ * faucet transactions are broadcast against the devnet RPC declared in
+ * `build.gradle.kts`.
  *
  * Callers pass an [ActivityResultSender] constructed in MainActivity.onCreate;
  * registering activity-results post-RESUMED throws.
@@ -53,7 +54,7 @@ class MwaClient(
       identityName = identityName,
     ),
   ).apply {
-    blockchain = Solana.Devnet
+    blockchain = ClanWorldMwaCluster
   }
 
   // ── Connect (first time) ───────────────────────────────────────────────
@@ -190,15 +191,24 @@ class MwaClient(
       return MwaResult.WalletNotAllowed
     }
     val msg = result.message.lowercase() + " " + (result.e.message?.lowercase().orEmpty())
-    return if (
+    return when {
       "declin" in msg ||
-      "cancel" in msg ||
-      "user did not approve" in msg ||
-      "user_canceled" in msg
-    ) {
-      MwaResult.UserDeclined
-    } else {
-      MwaResult.Error(result.e)
+        "cancel" in msg ||
+        "user did not approve" in msg ||
+        "user_canceled" in msg -> MwaResult.UserDeclined
+      // Wallet (e.g. Phantom on mainnet) refused because the dApp asked for
+      // a different cluster. Surfacing as a distinct result lets the UI show
+      // a clear in-app message instead of the raw wallet dialog. The match
+      // is intentionally narrow — generic "network request failed" plumbing
+      // errors must continue to fall through to the Error branch.
+      "network mismatch" in msg ||
+        "wrong network" in msg ||
+        "cluster mismatch" in msg ||
+        "wrong cluster" in msg ||
+        "invalid cluster" in msg ||
+        "switch to the correct network" in msg ||
+        "incorrect network" in msg -> MwaResult.WrongNetwork
+      else -> MwaResult.Error(result.e)
     }
   }
 }

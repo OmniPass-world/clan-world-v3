@@ -4,10 +4,10 @@ import android.net.Uri
 import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
-import com.solana.mobilewalletadapter.clientlib.Solana
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
 import world.clan.app.BuildConfig
 import world.clan.app.data.Elder
+import world.clan.app.wallet.ClanWorldMwaCluster
 import world.clan.app.wallet.FakeWalletBlockedException
 import world.clan.app.wallet.FakeWalletPolicy
 
@@ -45,7 +45,7 @@ object Mwa {
     elder: Elder,
   ): SignInResult {
     val mwa = MobileWalletAdapter(connectionIdentity = identity)
-    mwa.blockchain = Solana.Mainnet
+    mwa.blockchain = ClanWorldMwaCluster
 
     val message = ("Sign in as Ælder of ${elder.name} (clan ${elder.clanId})")
       .toByteArray(Charsets.UTF_8)

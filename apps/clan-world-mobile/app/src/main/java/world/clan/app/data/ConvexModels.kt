@@ -24,7 +24,6 @@ data class WorldSnapshot(
   val seasonEndTick: Long? = null,
   val winterActive: Boolean = false,
   val winterStartsAtTick: Long? = null,
-  val leaderboard: List<LeaderboardEntry>? = null,
 )
 
 @Serializable
@@ -43,6 +42,12 @@ data class Region(
 /**
  * One clan's summary inside getSnapshot. Wei amounts (`treasury`,
  * `goldBalance`, `vault*`) are `String` — parse with `String.weiToWhole()`.
+ *
+ * Server-side numeric clan-level fields (`baseLevel`, `baseRegion`,
+ * `wallLevel`, `monumentLevel`, `livingClansmen`) are intentionally
+ * NOT modelled — they arrive as bare JSON numbers (e.g. `1.0`) which
+ * conflict with the `String?` shape the cockpit demo previously assumed.
+ * `ignoreUnknownKeys = true` on the deserializer drops them silently.
  */
 @Serializable
 data class ClanSummary(
@@ -55,12 +60,6 @@ data class ClanSummary(
   val vaultIron: String? = null,
   val vaultWheat: String? = null,
   val vaultFish: String? = null,
-  /** May arrive as numeric string ("1.0") from Convex BigDecimal serialization — use [.toIntFlexible]. */
-  val baseRegion: String? = null,
-  val baseLevel: String? = null,
-  val wallLevel: String? = null,
-  val monumentLevel: String? = null,
-  val livingClansmen: String? = null,
   val owner: String? = null,
 )
 
@@ -74,14 +73,6 @@ data class BanditSummary(
   val stateEnteredTick: Long? = null,
   val nextActionTick: Long? = null,
   val projectedTargetClanId: Int? = null,
-)
-
-@Serializable
-data class LeaderboardEntry(
-  val clanId: Int,
-  val name: String? = null,
-  val gold: String? = null,
-  val rank: Int? = null,
 )
 
 // ─── inft:getInftDemoState ──────────────────────────────────────────────
