@@ -168,15 +168,20 @@ class ConvexJsonNumberTest {
 
   @Test
   fun normalizeLeavesOutOfLongRangeAlone() {
-    // 1e20 exceeds Long.MAX_VALUE (~9.2e18). Going through Double.toLong()
-    // would clamp/saturate silently and corrupt data — the normalizer must
-    // leave such tokens as-is so a `Double`-typed field can still take them.
-    val raw = """{"big":"99999999999999999999.0"}"""
+    // 99999999999999999999.0 exceeds Long.MAX_VALUE (~9.2e18). The
+    // string-based `toLongOrNull()` returns null on overflow, so the
+    // normalizer falls back to the original primitive — a `Double`-typed
+    // field can still consume the token, and an `Int`/`Long`-typed field
+    // will surface a real decode error rather than a silently-truncated 0.
     // (Convex doesn't emit this shape today, but the precision-guard matters
     //  for any future high-precision numeric column.)
-    val parsed = json.parseToJsonElement(raw)
-    // Above is a JSON string, not a number — confirm it stays a string.
-    val element = parsed.normalizeConvexNumbers()
-    assertTrue(element.jsonObject["big"]!!.jsonPrimitive.isString)
+    val raw = """{"big":99999999999999999999.0}"""
+    val element = json.parseToJsonElement(raw).normalizeConvexNumbers()
+    val primitive = element.jsonObject["big"]!!.jsonPrimitive
+    // Not coerced to Long — out-of-range guard kicked in.
+    assertNull(primitive.longOrNull)
+    // The original token shape is preserved (still a non-string primitive
+    // carrying the original `.0` text).
+    assertEquals("99999999999999999999.0", primitive.content)
   }
 }
