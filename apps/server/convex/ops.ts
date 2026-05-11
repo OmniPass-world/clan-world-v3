@@ -13,6 +13,7 @@ const RESET_TABLES = [
   "pricePoint",
   "goldQuote",
   "goldQuoteSample",
+  "goldTxReceipts",
   "kickstartTokens",
   "kickstartWatchedTokens",
   "agentLogs",

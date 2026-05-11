@@ -7,6 +7,7 @@ import com.solana.transaction.Message
 import com.solana.transaction.Transaction
 import com.solana.transaction.TransactionInstruction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -65,7 +66,12 @@ class GoldSolanaClient(
 
   suspend fun balance(ownerBase58: String): Long = withContext(Dispatchers.IO) {
     val ata = associatedTokenAddress(ownerBase58.toPubkey(), mint)
-    val result = rpc("getTokenAccountBalance", buildJsonArray { add(JsonPrimitive(ata.base58())) })
+    val result = try {
+      rpc("getTokenAccountBalance", buildJsonArray { add(JsonPrimitive(ata.base58())) })
+    } catch (err: GoldSolanaException) {
+      if (err.isMissingTokenAccount()) return@withContext 0L
+      throw err
+    }
     result.jsonObject["value"]
       ?.jsonObject
       ?.get("amount")
@@ -83,12 +89,12 @@ class GoldSolanaClient(
       ?.longOrNull
       ?: 0L
     if (balance < 25_000_000L) {
-      runCatching {
-        rpc("requestAirdrop", buildJsonArray {
-          add(JsonPrimitive(owner.base58()))
-          add(JsonPrimitive(1_000_000_000L))
-        })
-      }
+      val signature = rpc("requestAirdrop", buildJsonArray {
+        add(JsonPrimitive(owner.base58()))
+        add(JsonPrimitive(1_000_000_000L))
+      }).jsonPrimitive.contentOrNull
+        ?: throw GoldSolanaException("Solana airdrop returned no signature")
+      awaitSignatureConfirmation(signature)
     }
   }
 
@@ -231,6 +237,32 @@ class GoldSolanaClient(
 
   private fun u64(value: Long): ByteArray =
     ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array()
+
+  private suspend fun awaitSignatureConfirmation(signature: String) {
+    repeat(10) { attempt ->
+      val statuses = rpc("getSignatureStatuses", buildJsonArray {
+        add(buildJsonArray { add(JsonPrimitive(signature)) })
+        add(buildJsonObject { put("searchTransactionHistory", true) })
+      }).jsonObject["value"] as? JsonArray
+      val status = statuses?.firstOrNull()
+      if (status != null && status !is JsonNull) {
+        val statusObject = status.jsonObject
+        val err = statusObject["err"]
+        if (err != null && err !is JsonNull) throw GoldSolanaException("Solana airdrop failed: $err")
+        val confirmationStatus = statusObject["confirmationStatus"]?.jsonPrimitive?.contentOrNull
+        if (confirmationStatus == "confirmed" || confirmationStatus == "finalized") return
+      }
+      if (attempt < 9) delay(1_000L)
+    }
+    throw GoldSolanaException("Solana airdrop is still pending; retry shortly")
+  }
+
+  private fun GoldSolanaException.isMissingTokenAccount(): Boolean {
+    val text = message.orEmpty()
+    return text.contains("could not find account", ignoreCase = true) ||
+      text.contains("account does not exist", ignoreCase = true) ||
+      text.contains("invalid param", ignoreCase = true) && text.contains("find account", ignoreCase = true)
+  }
 
   private fun String.toPubkey(): SolanaPublicKey {
     val decoded = Base58.decode(this)

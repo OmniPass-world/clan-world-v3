@@ -261,7 +261,11 @@ fun ClanWorldApp(
     }
     Toast.makeText(hostActivity, "Opening wallet for 100K GOLD faucet…", Toast.LENGTH_SHORT).show()
     coroutineScope.launch {
-      app.goldClient.maybeAirdropFeeSol(owner)
+      runCatching { app.goldClient.maybeAirdropFeeSol(owner) }
+        .onFailure {
+          Toast.makeText(hostActivity, it.message ?: "Could not fund wallet fees.", Toast.LENGTH_LONG).show()
+          return@launch
+        }
       val memo = GoldMemo.faucet(owner, GoldSolanaClient.FAUCET_AMOUNT)
       val tx = runCatching { app.goldClient.buildFaucetClaim(owner, memo) }
         .getOrElse {

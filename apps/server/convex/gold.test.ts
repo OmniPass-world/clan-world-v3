@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDoctrineMemo,
   buildWhisperMemo,
+  fetchParsedTransaction,
   hasBurn,
   hasSkipTaxTransfer,
   sha256Hex,
@@ -64,6 +65,42 @@ describe("GOLD tx verification helpers", () => {
   });
 });
 
+describe("fetchParsedTransaction", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    globalThis.fetch = originalFetch;
+  });
+
+  it("retries until Solana RPC has indexed a parsed transaction", async () => {
+    const tx = parsedTx([]);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(rpcOk(null))
+      .mockResolvedValueOnce(rpcOk({ meta: null, transaction: null }))
+      .mockResolvedValueOnce(rpcOk(tx));
+    globalThis.fetch = fetchMock as any;
+
+    const promise = fetchParsedTransaction("sig111");
+    await vi.runAllTimersAsync();
+
+    await expect(promise).resolves.toBe(tx);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+});
+
 function parsedTx(instructions: any[]) {
   return { transaction: { message: { instructions } } };
+}
+
+function rpcOk(result: unknown) {
+  return {
+    ok: true,
+    json: async () => ({ result }),
+  };
 }

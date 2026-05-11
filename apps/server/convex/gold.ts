@@ -10,6 +10,9 @@ const MAX_CLANS = 12;
 const DOCTRINE_SEPARATOR = "\n---notes---\n";
 const GOLD_MINT = process.env.CLAN_WORLD_GOLD_MINT ?? "FPBZJfEgxdkKEeT8pZhLRPg1NzwhyWJRqPKpzRWZLSAF";
 const GOLD_TREASURY_ATA = process.env.CLAN_WORLD_GOLD_TREASURY_ATA ?? "4jQN1PfXQ2yfU75K4pMiY4Ue62yXknjKFJ7L9wukSRn8";
+const TX_FETCH_ATTEMPTS = 5;
+const TX_FETCH_TIMEOUT_MS = 2000;
+const TX_FETCH_INITIAL_BACKOFF_MS = 500;
 
 type ParsedInstruction = {
   program?: string;
@@ -42,37 +45,87 @@ function rpcUrl() {
   return process.env.CLAN_WORLD_GOLD_RPC_URL ?? DEFAULT_DEVNET_RPC;
 }
 
-async function fetchParsedTransaction(signature: string): Promise<TxResponse> {
-  const response = await fetch(rpcUrl(), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: "clanworld",
-      method: "getTransaction",
-      params: [
-        signature,
-        {
-          commitment: "confirmed",
-          encoding: "jsonParsed",
-          maxSupportedTransactionVersion: 0,
-        },
-      ],
-    }),
-    signal: AbortSignal.timeout(8000),
-  }).catch((err) => {
-    if (err.name === "TimeoutError" || err.name === "AbortError") {
-      throw new Error("Solana RPC slow or unreachable — please retry");
-    }
-    throw err;
-  });
-  if (!response.ok) {
-    throw new Error(`Solana RPC getTransaction failed: ${response.status} ${response.statusText}`);
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function rpcErrorText(error: unknown): string {
+  if (!error) return "";
+  if (typeof error === "string") return error;
+  if (typeof error === "object" && "message" in error && typeof error.message === "string") {
+    return error.message;
   }
-  const payload = (await response.json()) as RpcResponse;
-  if (payload.error) throw new Error(`Solana RPC rejected getTransaction: ${JSON.stringify(payload.error)}`);
-  if (!payload.result) throw new Error("Solana transaction is not confirmed yet");
-  return payload.result as TxResponse;
+  return JSON.stringify(error);
+}
+
+function isTransactionNotVisibleError(error: unknown): boolean {
+  const message = rpcErrorText(error).toLowerCase();
+  if (!message) return false;
+  return message.includes("not found") ||
+    message.includes("not confirmed") ||
+    message.includes("not available") ||
+    message.includes("could not find");
+}
+
+function isTxIndexed(tx: TxResponse): boolean {
+  return tx.meta != null || tx.transaction != null;
+}
+
+export async function fetchParsedTransaction(signature: string): Promise<TxResponse> {
+  let lastRetryableError: Error | undefined;
+
+  for (let attempt = 0; attempt < TX_FETCH_ATTEMPTS; attempt += 1) {
+    const response = await fetch(rpcUrl(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "clanworld",
+        method: "getTransaction",
+        params: [
+          signature,
+          {
+            commitment: "confirmed",
+            encoding: "jsonParsed",
+            maxSupportedTransactionVersion: 0,
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(TX_FETCH_TIMEOUT_MS),
+    }).catch(async (err) => {
+      if (err.name !== "TimeoutError" && err.name !== "AbortError") throw err;
+      lastRetryableError = new Error("Solana RPC slow or unreachable — please retry");
+      return null;
+    });
+
+    if (response?.ok === false) {
+      throw new Error(`Solana RPC getTransaction failed: ${response.status} ${response.statusText}`);
+    }
+
+    if (response) {
+      const payload = (await response.json()) as RpcResponse;
+      if (payload.error) {
+        if (!isTransactionNotVisibleError(payload.error)) {
+          throw new Error(`Solana RPC rejected getTransaction: ${JSON.stringify(payload.error)}`);
+        }
+        lastRetryableError = new Error(`Solana transaction is not visible yet: ${rpcErrorText(payload.error)}`);
+      } else if (!payload.result) {
+        lastRetryableError = new Error("Solana transaction is not confirmed yet");
+      } else {
+        const tx = payload.result as TxResponse;
+        if (isTxIndexed(tx)) return tx;
+        lastRetryableError = new Error("Solana transaction is not indexed yet");
+      }
+    }
+
+    if (attempt < TX_FETCH_ATTEMPTS - 1) {
+      await sleep(TX_FETCH_INITIAL_BACKOFF_MS * (2 ** attempt));
+    }
+  }
+
+  throw new Error(
+    `Solana RPC has not yet indexed this transaction; please retry shortly (${lastRetryableError?.message ?? "not visible"})`,
+  );
 }
 
 function signerMatches(tx: TxResponse, owner: string): boolean {
