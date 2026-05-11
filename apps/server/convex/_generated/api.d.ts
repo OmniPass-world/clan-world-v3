@@ -14,6 +14,7 @@ import type {
   FunctionReference,
 } from "convex/server";
 import type * as agentLogs from "../agentLogs.js";
+import type * as authShared from "../authShared.js";
 import type * as bulletins from "../bulletins.js";
 import type * as clansmen from "../clansmen.js";
 import type * as comms from "../comms.js";
@@ -41,6 +42,7 @@ import type * as vault from "../vault.js";
  */
 declare const fullApi: ApiFromModules<{
   agentLogs: typeof agentLogs;
+  authShared: typeof authShared;
   bulletins: typeof bulletins;
   clansmen: typeof clansmen;
   comms: typeof comms;

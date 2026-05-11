@@ -5,8 +5,10 @@ import { v } from "convex/values";
 const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
+const REQUIRED_BURN_AMOUNT = 5;
+const DOCTRINE_SEPARATOR = "\n---notes---\n";
 const GOLD_MINT = process.env.CLAN_WORLD_GOLD_MINT ?? "FPBZJfEgxdkKEeT8pZhLRPg1NzwhyWJRqPKpzRWZLSAF";
-const GOLD_TREASURY_OWNER = process.env.CLAN_WORLD_GOLD_TREASURY_OWNER ?? "5YqhQK4LfJmaaZQLqSEfcJc4ViUQHX15quVCXwNJDFnd";
+const GOLD_TREASURY_ATA = process.env.CLAN_WORLD_GOLD_TREASURY_ATA ?? "4jQN1PfXQ2yfU75K4pMiY4Ue62yXknjKFJ7L9wukSRn8";
 
 type ParsedInstruction = {
   program?: string;
@@ -27,6 +29,12 @@ type TxResponse = {
 type RpcResponse = {
   error?: unknown;
   result?: unknown;
+};
+
+type CryptoLike = {
+  subtle: {
+    digest(algorithm: string, data: Uint8Array): Promise<ArrayBuffer>;
+  };
 };
 
 function rpcUrl() {
@@ -72,35 +80,65 @@ function instructions(tx: TxResponse): ParsedInstruction[] {
   return tx.transaction?.message?.instructions ?? [];
 }
 
-function hasMemo(tx: TxResponse, memo: string): boolean {
+export async function sha256Hex(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await (globalThis.crypto as CryptoLike).subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function buildWhisperMemo(args: {
+  clanId: number;
+  body: string;
+  owner: string;
+  skipTax: number;
+}): Promise<string> {
+  const body = args.body.trim();
+  return `clanworld:whisper:v1:${args.clanId}:${await sha256Hex(body)}:${args.owner}:${REQUIRED_BURN_AMOUNT}:${args.skipTax}`;
+}
+
+export async function buildDoctrineMemo(args: {
+  clanId: number;
+  strategy: string;
+  notes: string;
+  owner: string;
+}): Promise<string> {
+  const payloadHash = await sha256Hex(`${args.strategy}${DOCTRINE_SEPARATOR}${args.notes}`);
+  return `clanworld:doctrine:v1:${args.clanId}:${payloadHash}:${args.owner}:${REQUIRED_BURN_AMOUNT}:0`;
+}
+
+export function hasMemo(tx: TxResponse, memo: string): boolean {
   return instructions(tx).some((ix) => {
     if (ix.programId !== MEMO_PROGRAM_ID && ix.program !== "spl-memo") return false;
     return ix.parsed === memo;
   });
 }
 
-function hasBurn(tx: TxResponse, owner: string, amount: number): boolean {
+export function hasBurn(tx: TxResponse, owner: string, amount: number): boolean {
+  const expectedAmount = String(amount);
   return instructions(tx).some((ix) => {
     if (ix.programId !== TOKEN_PROGRAM_ID || typeof ix.parsed !== "object") return false;
     if (ix.parsed.type !== "burnChecked") return false;
     const info = ix.parsed.info ?? {};
     return info.mint === GOLD_MINT &&
       info.authority === owner &&
-      Number(info.tokenAmount?.amount) === amount &&
+      info.tokenAmount?.amount === expectedAmount &&
       Number(info.tokenAmount?.decimals) === 0;
   });
 }
 
-function hasSkipTaxTransfer(tx: TxResponse, owner: string, amount: number): boolean {
+export function hasSkipTaxTransfer(tx: TxResponse, owner: string, amount: number): boolean {
   if (amount === 0) return true;
+  const expectedAmount = String(amount);
   return instructions(tx).some((ix) => {
     if (ix.programId !== TOKEN_PROGRAM_ID || typeof ix.parsed !== "object") return false;
     if (ix.parsed.type !== "transferChecked") return false;
     const info = ix.parsed.info ?? {};
     return info.mint === GOLD_MINT &&
       info.authority === owner &&
-      info.destinationOwner === GOLD_TREASURY_OWNER &&
-      Number(info.tokenAmount?.amount) === amount &&
+      info.destination === GOLD_TREASURY_ATA &&
+      info.tokenAmount?.amount === expectedAmount &&
       Number(info.tokenAmount?.decimals) === 0;
   });
 }
@@ -126,13 +164,14 @@ export const recordWhisperAfterTx = action({
     body: v.string(),
     owner: v.string(),
     signature: v.string(),
-    burnAmount: v.number(),
     skipTax: v.number(),
-    memo: v.string(),
   },
   handler: async (ctx, args) => {
-    await verifyGoldTx(args);
-    await ctx.runMutation(internal.gold.commitWhisperAfterTx, args);
+    const body = args.body.trim();
+    const memo = await buildWhisperMemo({ ...args, body });
+    const burnAmount = REQUIRED_BURN_AMOUNT;
+    await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: args.skipTax, memo });
+    await ctx.runMutation(internal.gold.commitWhisperAfterTx, { ...args, body, burnAmount, memo });
     return { ok: true };
   },
 });
@@ -144,12 +183,12 @@ export const saveDoctrineAfterTx = action({
     notes: v.string(),
     owner: v.string(),
     signature: v.string(),
-    burnAmount: v.number(),
-    memo: v.string(),
   },
   handler: async (ctx, args) => {
-    await verifyGoldTx({ ...args, skipTax: 0 });
-    await ctx.runMutation(internal.gold.commitDoctrineAfterTx, args);
+    const memo = await buildDoctrineMemo(args);
+    const burnAmount = REQUIRED_BURN_AMOUNT;
+    await verifyGoldTx({ ...args, burnAmount, memo, skipTax: 0 });
+    await ctx.runMutation(internal.gold.commitDoctrineAfterTx, { ...args, burnAmount, memo });
     return { ok: true };
   },
 });

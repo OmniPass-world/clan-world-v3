@@ -112,13 +112,13 @@ android {
       applicationIdSuffix = ".debug"
       versionNameSuffix = "-debug"
       buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "true")
-      if (hasStableSigning) {
-        signingConfig = signingConfigs.getByName("stable")
-      }
     }
     release {
       buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "false")
       buildConfigField("boolean", "ALLOW_FAKE_WALLETS", "false")
+      if (hasStableSigning) {
+        signingConfig = signingConfigs.getByName("stable")
+      }
       isMinifyEnabled = true
       isShrinkResources = true
       proguardFiles(

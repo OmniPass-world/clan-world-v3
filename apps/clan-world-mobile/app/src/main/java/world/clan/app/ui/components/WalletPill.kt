@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import world.clan.app.R
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.wallet.WalletIdentity
+import java.text.NumberFormat
 
 /**
  * Pill displayed in the [CrownHeader]. Tap to open a dropdown with
@@ -278,8 +279,7 @@ fun WalletPill(
 }
 
 private fun Long.formatThousands(): String {
-  val s = toString()
-  return s.reversed().chunked(3).joinToString(",").reversed()
+  return NumberFormat.getIntegerInstance().format(this)
 }
 
 // ─────────────────────────────────────────────────────────────────────────

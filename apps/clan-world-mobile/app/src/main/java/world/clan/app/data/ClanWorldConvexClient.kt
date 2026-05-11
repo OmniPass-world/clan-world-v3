@@ -75,18 +75,14 @@ class ClanWorldConvexClient(private val convexUrl: String) {
     body: String,
     owner: String,
     signature: String,
-    burnAmount: Long,
     skipTax: Long,
-    memo: String,
   ) {
     callAction<JsonObject>("gold:recordWhisperAfterTx", buildJsonObject {
       put("clanId", clanId)
       put("body", body)
       put("owner", owner)
       put("signature", signature)
-      put("burnAmount", burnAmount)
       put("skipTax", skipTax)
-      put("memo", memo)
     })
   }
 
@@ -96,8 +92,6 @@ class ClanWorldConvexClient(private val convexUrl: String) {
     notes: String,
     owner: String,
     signature: String,
-    burnAmount: Long,
-    memo: String,
   ) {
     callAction<JsonObject>("gold:saveDoctrineAfterTx", buildJsonObject {
       put("clanId", clanId)
@@ -105,8 +99,6 @@ class ClanWorldConvexClient(private val convexUrl: String) {
       put("notes", notes)
       put("owner", owner)
       put("signature", signature)
-      put("burnAmount", burnAmount)
-      put("memo", memo)
     })
   }
 

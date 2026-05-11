@@ -59,6 +59,8 @@ import world.clan.app.ui.screens.HallScreenRoute
 import world.clan.app.ui.screens.HearthScreenRoute
 import world.clan.app.ui.screens.InftDetailScreenRoute
 import world.clan.app.ui.theme.ClanWorldTheme
+import world.clan.app.data.gold.GoldMemo
+import world.clan.app.data.gold.GoldSolanaClient
 import world.clan.app.viewmodel.ClanWorldViewModelFactory
 import world.clan.app.viewmodel.ConnectUiState
 import world.clan.app.viewmodel.ConnectViewModel
@@ -260,7 +262,7 @@ fun ClanWorldApp(
     Toast.makeText(hostActivity, "Opening wallet for 100K GOLD faucet…", Toast.LENGTH_SHORT).show()
     coroutineScope.launch {
       app.goldClient.maybeAirdropFeeSol(owner)
-      val memo = "clanworld:faucet:v1:$owner:100000"
+      val memo = GoldMemo.faucet(owner, GoldSolanaClient.FAUCET_AMOUNT)
       val tx = runCatching { app.goldClient.buildFaucetClaim(owner, memo) }
         .getOrElse {
           Toast.makeText(hostActivity, it.message ?: "Could not build faucet tx.", Toast.LENGTH_LONG).show()

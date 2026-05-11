@@ -60,6 +60,7 @@ import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import world.clan.app.App
 import world.clan.app.R
 import world.clan.app.data.gold.GoldSolanaClient
+import world.clan.app.data.gold.GoldMemo
 import world.clan.app.ui.components.EmberCta
 import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.viewmodel.SendPhase
@@ -69,7 +70,6 @@ import world.clan.app.viewmodel.StrategyEditorViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
-import java.security.MessageDigest
 
 private const val STRATEGY_LIMIT = 800
 private const val NOTES_LIMIT = 400
@@ -122,8 +122,12 @@ fun StrategyEditorScreenRoute(
           vm.setSavePhase(SendPhase.Failed, "not signed in.")
           return@launch
         }
-        val payloadHash = "${state.draftStrategy}\n---notes---\n${state.draftNotes}".sha256Hex()
-        val memo = "clanworld:doctrine:v1:${state.clanId}:$payloadHash:$owner:${GoldSolanaClient.BURN_AMOUNT}:0"
+        val memo = GoldMemo.doctrine(
+          clanId = state.clanId,
+          strategy = state.draftStrategy,
+          notes = state.draftNotes,
+          owner = owner,
+        )
         val tx = runCatching {
           app.goldClient.buildBurn(
             ownerBase58 = owner,
@@ -144,8 +148,6 @@ fun StrategyEditorScreenRoute(
                 notes = state.draftNotes,
                 owner = owner,
                 signature = result.value,
-                burnAmount = GoldSolanaClient.BURN_AMOUNT,
-                memo = memo,
               )
             }.onSuccess {
               vm.confirmSeal(result.value)
@@ -259,10 +261,6 @@ private fun StrategyEditor(
   }
 }
 
-private fun String.sha256Hex(): String =
-  MessageDigest.getInstance("SHA-256")
-    .digest(toByteArray())
-    .joinToString("") { "%02x".format(it) }
 
 // ─────────────────────────────────────────────────────────────────────
 // Sub-composables

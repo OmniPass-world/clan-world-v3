@@ -49,6 +49,7 @@ import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import world.clan.app.App
 import world.clan.app.R
 import world.clan.app.data.gold.GoldSolanaClient
+import world.clan.app.data.gold.GoldMemo
 import world.clan.app.ui.components.BalanceRow
 import world.clan.app.ui.components.BurnFlash
 import world.clan.app.ui.components.ChatInput
@@ -60,7 +61,6 @@ import world.clan.app.viewmodel.SteeringConsoleViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
 import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
-import java.security.MessageDigest
 
 private const val WHISPER_COOLDOWN_MS = 10L * 60L * 1000L  // 10 minutes
 private const val WHISPER_BURN = 5L
@@ -122,7 +122,14 @@ fun SteeringConsoleScreenRoute(
         val fullMinutes = ((cooldownMs + 59_999L) / 60_000L).coerceAtLeast(0L)
         val skipTax = if (cooldownMs > 0L) fullMinutes * SKIP_TAX_PER_MINUTE else 0L
 
-        val memo = "clanworld:whisper:v1:${state.clanId}:${state.draft.sha256Hex()}:$owner:$WHISPER_BURN:$skipTax"
+        val body = state.draft.trim()
+        val memo = GoldMemo.whisper(
+          clanId = state.clanId,
+          body = body,
+          owner = owner,
+          burnAmount = WHISPER_BURN,
+          skipTax = skipTax,
+        )
         val tx = runCatching {
           app.goldClient.buildBurn(
             ownerBase58 = owner,
@@ -140,12 +147,10 @@ fun SteeringConsoleScreenRoute(
             runCatching {
               app.convexClient.recordWhisperAfterGoldTx(
                 clanId = state.clanId,
-                body = state.draft.trim(),
+                body = body,
                 owner = owner,
                 signature = result.value,
-                burnAmount = WHISPER_BURN,
                 skipTax = skipTax,
-                memo = memo,
               )
             }.onFailure {
               vm.setError(it.message ?: "GOLD burned, but Convex did not record the whisper.")
@@ -258,10 +263,6 @@ private fun SteeringConsole(
   }
 }
 
-private fun String.sha256Hex(): String =
-  MessageDigest.getInstance("SHA-256")
-    .digest(toByteArray())
-    .joinToString("") { "%02x".format(it) }
 
 @Composable
 private fun BackBar(text: String, onBack: () -> Unit) {

@@ -12,13 +12,10 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
@@ -235,31 +232,13 @@ class GoldSolanaClient(
   private fun u64(value: Long): ByteArray =
     ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putLong(value).array()
 
-  private fun String.toPubkey(): SolanaPublicKey = SolanaPublicKey(decodeBase58(this))
+  private fun String.toPubkey(): SolanaPublicKey {
+    val decoded = Base58.decode(this)
+    if (decoded.size != 32) throw GoldSolanaException("Expected 32-byte public key: $this")
+    return SolanaPublicKey(decoded)
+  }
 
   private fun SolanaPublicKey.bytes(): ByteArray = bytes
-
-  private fun decodeBase58(value: String): ByteArray {
-    var bytes = byteArrayOf(0)
-    value.forEach { c ->
-      val digit = BASE58_ALPHABET.indexOf(c)
-      if (digit < 0) throw GoldSolanaException("Invalid base58 public key: $value")
-      var carry = digit
-      for (i in bytes.indices.reversed()) {
-        carry += (bytes[i].toInt() and 0xff) * 58
-        bytes[i] = carry.toByte()
-        carry = carry ushr 8
-      }
-      while (carry > 0) {
-        bytes = byteArrayOf((carry and 0xff).toByte()) + bytes
-        carry = carry ushr 8
-      }
-    }
-    val leadingZeros = value.takeWhile { it == '1' }.length
-    val decoded = ByteArray(leadingZeros) + bytes.dropWhile { it.toInt() == 0 }.toByteArray()
-    if (decoded.size != 32) throw GoldSolanaException("Expected 32-byte public key: $value")
-    return decoded
-  }
 
   private fun rpc(method: String, params: JsonArray): JsonElement {
     val payload = buildJsonObject {
@@ -272,42 +251,27 @@ class GoldSolanaClient(
       .url(rpcUrl)
       .post(payload.toRequestBody(mediaType))
       .build()
-    val resp = http.newCall(req).execute()
-    val body = resp.body?.string().orEmpty()
-    if (!resp.isSuccessful) throw GoldSolanaException("Solana RPC ${resp.code}: $body")
-    val root = json.parseToJsonElement(body).jsonObject
-    val error = root["error"]
-    if (error != null && error !is JsonNull) throw GoldSolanaException("Solana RPC $method failed: $error")
-    return root["result"] ?: throw GoldSolanaException("Solana RPC $method returned no result")
+    http.newCall(req).execute().use { resp ->
+      val body = resp.body?.string().orEmpty()
+      if (!resp.isSuccessful) throw GoldSolanaException("Solana RPC ${resp.code}: $body")
+      val root = json.parseToJsonElement(body).jsonObject
+      val error = root["error"]
+      if (error != null && error !is JsonNull) throw GoldSolanaException("Solana RPC $method failed: $error")
+      return root["result"] ?: throw GoldSolanaException("Solana RPC $method returned no result")
+    }
   }
 
   companion object {
     const val FAUCET_AMOUNT = 100_000L
     const val BURN_AMOUNT = 5L
 
-    private const val BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
     private val TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".toPubkeyStatic()
     private val ASSOCIATED_TOKEN_PROGRAM_ID = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL".toPubkeyStatic()
     private val SYSTEM_PROGRAM_ID = "11111111111111111111111111111111".toPubkeyStatic()
     private val MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr".toPubkeyStatic()
 
     private fun String.toPubkeyStatic(): SolanaPublicKey {
-      var bytes = byteArrayOf(0)
-      forEach { c ->
-        val digit = BASE58_ALPHABET.indexOf(c)
-        require(digit >= 0) { "invalid base58" }
-        var carry = digit
-        for (i in bytes.indices.reversed()) {
-          carry += (bytes[i].toInt() and 0xff) * 58
-          bytes[i] = carry.toByte()
-          carry = carry ushr 8
-        }
-        while (carry > 0) {
-          bytes = byteArrayOf((carry and 0xff).toByte()) + bytes
-          carry = carry ushr 8
-        }
-      }
-      val decoded = ByteArray(takeWhile { it == '1' }.length) + bytes.dropWhile { it.toInt() == 0 }.toByteArray()
+      val decoded = Base58.decode(this)
       return SolanaPublicKey(decoded)
     }
   }
