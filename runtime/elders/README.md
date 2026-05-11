@@ -14,6 +14,7 @@ Source tree for the 4-Elder ClanWorld cluster. Deploy to any machine:
 Materializes `$DEST/` with:
 - Shared parent config (`AGENTS.md`, `.claude/skills/`, `settings.json`)
 - Per-elder dirs (`elder-1/` through `elder-4/`) with `run.sh` and credentials symlink
+- Per-elder MCP config (`elder-N/.mcp.json`) for structured Elder tool calls
 - systemd unit files (`~/.config/systemd/user/ttyd-elder-{1..4}.service`)
 
 Idempotent: re-running safe; never clobbers `.env`, `agent-directive.secret.md`, or `state/`.
@@ -27,6 +28,14 @@ Each elder needs one-time OAuth setup (interactive browser dance):
     make -C $HOME/clan-world elders-up # now all 4 start cleanly
 
 See ADR 0013 for OAuth-MAX constraint — never use `ANTHROPIC_API_KEY`.
+
+## Runtime tool access
+
+Elders should use the `elder` MCP server for structured calls when available.
+The Bash fallback is intentionally tiny: exact `date` plus approved `elder`
+subcommands. Order JSON for the CLI fallback must be written with Claude
+`Write`/`Edit` under `/tmp/elder-N/`, then submitted with
+`elder clan submit-orders /tmp/elder-N/orders.json`.
 
 ## Shell shortcuts
 

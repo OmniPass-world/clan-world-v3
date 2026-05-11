@@ -107,6 +107,7 @@ COMMANDS:
   memory save <key> <value>                   Persist memory across context wipes
   peer whisper <toClanId> <msg>               Send a whisper to another clan's inbox
   peer inbox                                  Read your unread whispers
+  bulletin post <msg>                         Post a public bulletin visible to all clans
   ack-clear                                   Signal runner you're ready for context wipe
   rules                                       Print game rules + capacity constants + action codes
 
@@ -120,6 +121,7 @@ EXAMPLES:
   elder clan submit-orders /tmp/my-orders.json
   elder memory save active-strategy "T19. Food-first; trade iron for wheat with clan 4."
   elder peer whisper 2 "Iron-for-wheat at 1:2, T20+. Confirm?"
+  elder bulletin post "Defense alliance forming. Bring wheat, I bring iron."
   elder rules
 
 For per-command help: elder <command> --help
@@ -292,6 +294,15 @@ EXAMPLES:
   elder peer inbox
 `;
 
+const BULLETIN_POST_HELP = `elder bulletin post <msg...>
+
+Post a public bulletin for your clan. Bulletins are visible to every Elder and
+the iNFT Owner cockpit. Requires ELDER_N env var.
+
+EXAMPLES:
+  elder bulletin post "Defense alliance forming. Bring wheat, I bring iron."
+`;
+
 const ACK_CLEAR_HELP = `elder ack-clear
 
 Signal the runner that you've finished processing this tick and are ready for a
@@ -320,6 +331,7 @@ const SUBCOMMAND_HELP: Record<string, string> = {
   'memory save': MEMORY_SAVE_HELP,
   'peer whisper': PEER_WHISPER_HELP,
   'peer inbox': PEER_INBOX_HELP,
+  'bulletin post': BULLETIN_POST_HELP,
   'ack-clear': ACK_CLEAR_HELP,
   rules: RULES_HELP,
   // also handle bare-namespace help
@@ -347,6 +359,13 @@ Subcommands:
   inbox                                Read your unread whispers
 
 For per-subcommand help: elder peer <subcommand> --help
+`,
+  bulletin: `elder bulletin <subcommand>
+
+Subcommands:
+  post <msg...>                        Post a public bulletin for your clan
+
+For per-subcommand help: elder bulletin <subcommand> --help
 `,
 };
 
@@ -657,6 +676,20 @@ export async function runCommand(
       .join('\n') + '\n';
   }
 
+  if (ns === 'bulletin' && cmd === 'post') {
+    if (rest.length === 0) throw new UsageError('usage: elder bulletin post <msg>');
+    const n = getElderN(env);
+    const body = rest.join(' ').trim();
+    if (!body) throw new UsageError('usage: elder bulletin post <msg>');
+    const snapshot = await deps.convex.getSnapshot();
+    await deps.convex.postBulletin({
+      clanId: n,
+      slot: typeof snapshot.tick === 'number' ? snapshot.tick : 0,
+      body,
+    });
+    return 'bulletin posted\n';
+  }
+
   if (ns === 'ack-clear') {
     const n = getElderN(env);
     const file = ackFile(n, homeBase);
@@ -680,6 +713,7 @@ export async function runCommand(
       '  elder memory save <key> <value>\n' +
       '  elder peer whisper <clanId> <msg>\n' +
       '  elder peer inbox\n' +
+      '  elder bulletin post <msg>\n' +
       '  elder ack-clear\n' +
       '  elder rules\n' +
       '\nFor full help: elder --help\n',
