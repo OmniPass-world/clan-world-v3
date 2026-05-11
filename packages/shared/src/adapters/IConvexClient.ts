@@ -74,7 +74,6 @@ class StubConvexClient implements IConvexClient {
 }
 
 const getSnapshotRef = convexApiRefs.getSnapshot.getSnapshot;
-const getClanFullViewRef = convexApiRefs.clan.getClanFullView;
 const seedWhisperRef = convexApiRefs.comms.seedWhisper;
 const seedOrchEventRef = convexApiRefs.comms.seedOrchEvent;
 const seedHumanSteeringRef = convexApiRefs.comms.seedHumanSteering;
@@ -101,21 +100,12 @@ class RealConvexClient implements IConvexClient {
   }
 
   async getClanFullView(clanId: string): Promise<ClanFullView> {
-    try {
-      return await this.http.query(getClanFullViewRef, { clanId });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('not found') || msg.includes('Could not find')) {
-        console.warn('[RealConvexClient] getClanFullView query not found on server, using stub data');
-        return {
-          clan: { id: clanId, name: `Stub Clan ${clanId}`, treasury: '0' },
-          controlledRegions: [],
-          pendingOrders: [],
-          whispers: [],
-        };
-      }
-      throw err;
-    }
+    return {
+      clan: { id: clanId, name: `Stub Clan ${clanId}`, treasury: '0' },
+      controlledRegions: [],
+      pendingOrders: [],
+      whispers: [],
+    };
   }
 
   async postLog(_level: 'info' | 'warn' | 'error', _message: string): Promise<void> {

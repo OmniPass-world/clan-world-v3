@@ -1,4 +1,4 @@
-import { action, internalMutation } from "./_generated/server";
+import { action, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 
@@ -6,6 +6,7 @@ const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
 const REQUIRED_BURN_AMOUNT = 5;
+const MAX_CLANS = 12;
 const DOCTRINE_SEPARATOR = "\n---notes---\n";
 const GOLD_MINT = process.env.CLAN_WORLD_GOLD_MINT ?? "FPBZJfEgxdkKEeT8pZhLRPg1NzwhyWJRqPKpzRWZLSAF";
 const GOLD_TREASURY_ATA = process.env.CLAN_WORLD_GOLD_TREASURY_ATA ?? "4jQN1PfXQ2yfU75K4pMiY4Ue62yXknjKFJ7L9wukSRn8";
@@ -58,6 +59,12 @@ async function fetchParsedTransaction(signature: string): Promise<TxResponse> {
         },
       ],
     }),
+    signal: AbortSignal.timeout(8000),
+  }).catch((err) => {
+    if (err.name === "TimeoutError" || err.name === "AbortError") {
+      throw new Error("Solana RPC slow or unreachable — please retry");
+    }
+    throw err;
   });
   if (!response.ok) {
     throw new Error(`Solana RPC getTransaction failed: ${response.status} ${response.statusText}`);
@@ -158,6 +165,32 @@ async function verifyGoldTx(args: {
   if (!hasSkipTaxTransfer(tx, args.owner, args.skipTax)) throw new Error("Solana tx did not pay the required cooldown skip tax");
 }
 
+function assertValidClanId(clanId: number) {
+  if (!Number.isInteger(clanId) || clanId < 1 || clanId > MAX_CLANS) {
+    throw new Error(`Invalid clanId ${clanId}; expected 1-${MAX_CLANS}`);
+  }
+}
+
+async function verifyClanOwnership(ctx: any, clanId: number, owner: string) {
+  const clan = await ctx.runQuery(internal.gold.getClanOwner, { clanId });
+  if (!clan) throw new Error(`No clanView record for clanId ${clanId}`);
+  if (clan.owner !== owner) throw new Error(`owner ${owner} does not own clan ${clanId}`);
+}
+
+export const getClanOwner = internalQuery({
+  args: {
+    clanId: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const clan = await ctx.db
+      .query("clanView")
+      .withIndex("by_clanId", (q) => q.eq("clanId", args.clanId))
+      .order("desc")
+      .first();
+    return clan ? { owner: clan.owner } : null;
+  },
+});
+
 export const recordWhisperAfterTx = action({
   args: {
     clanId: v.number(),
@@ -167,11 +200,21 @@ export const recordWhisperAfterTx = action({
     skipTax: v.number(),
   },
   handler: async (ctx, args) => {
+    assertValidClanId(args.clanId);
     const body = args.body.trim();
     const memo = await buildWhisperMemo({ ...args, body });
     const burnAmount = REQUIRED_BURN_AMOUNT;
     await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: args.skipTax, memo });
-    await ctx.runMutation(internal.gold.commitWhisperAfterTx, { ...args, body, burnAmount, memo });
+    await verifyClanOwnership(ctx, args.clanId, args.owner);
+    await ctx.runMutation(internal.gold.commitWhisperAfterTx, {
+      clanId: args.clanId,
+      body,
+      owner: args.owner,
+      signature: args.signature,
+      burnAmount,
+      skipTax: args.skipTax,
+      memo,
+    });
     return { ok: true };
   },
 });
@@ -185,10 +228,20 @@ export const saveDoctrineAfterTx = action({
     signature: v.string(),
   },
   handler: async (ctx, args) => {
+    assertValidClanId(args.clanId);
     const memo = await buildDoctrineMemo(args);
     const burnAmount = REQUIRED_BURN_AMOUNT;
-    await verifyGoldTx({ ...args, burnAmount, memo, skipTax: 0 });
-    await ctx.runMutation(internal.gold.commitDoctrineAfterTx, { ...args, burnAmount, memo });
+    await verifyGoldTx({ signature: args.signature, owner: args.owner, burnAmount, skipTax: 0, memo });
+    await verifyClanOwnership(ctx, args.clanId, args.owner);
+    await ctx.runMutation(internal.gold.commitDoctrineAfterTx, {
+      clanId: args.clanId,
+      strategy: args.strategy,
+      notes: args.notes,
+      owner: args.owner,
+      signature: args.signature,
+      burnAmount,
+      memo,
+    });
     return { ok: true };
   },
 });

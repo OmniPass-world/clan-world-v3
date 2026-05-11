@@ -1,6 +1,6 @@
 import type { FunctionReference } from 'convex/server';
 import { anyApi } from 'convex/server';
-import type { ClanFullView, WorldSnapshot } from '../types';
+import type { WorldSnapshot } from '../types';
 
 type PublicQuery<Args extends Record<string, unknown>, Result> = FunctionReference<'query', 'public', Args, Result>;
 type PublicMutation<Args extends Record<string, unknown>, Result = null> = FunctionReference<'mutation', 'public', Args, Result>;
@@ -42,9 +42,6 @@ type SeedBulletinArgs = {
 type ClanWorldConvexApi = {
   getSnapshot: {
     getSnapshot: PublicQuery<Record<string, never>, WorldSnapshot>;
-  };
-  clan: {
-    getClanFullView: PublicQuery<{ clanId: string }, ClanFullView>;
   };
   comms: {
     seedWhisper: PublicMutation<SeedWhisperArgs>;
