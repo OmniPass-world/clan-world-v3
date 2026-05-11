@@ -2295,12 +2295,16 @@ export function WorldMap() {
     if (!region) return null;
     const { scaleX, scaleY, offsetX, offsetY } = layoutRef.current;
 
+    const seen = new Set<string>();
     const basePositions: Array<[number, number]> = [];
     for (const entry of drawnRef.current.bases) {
       if (entry.clan.homeRegion !== regionKey) continue;
-      const baseRegion = REGIONS.find(r => r.id === entry.clan.homeRegion);
-      if (!baseRegion) continue;
-      basePositions.push([baseRegion.nx * REF_W, baseRegion.ny * REF_H]);
+      const bx = region.nx * REF_W;
+      const by = region.ny * REF_H;
+      const key = `${bx},${by}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      basePositions.push([bx, by]);
     }
 
     if (basePositions.length === 0) {
