@@ -574,7 +574,7 @@ library LibBanditCombat {
 
     function perDefenderBanditLootShare(uint256 loot, uint256 nDefenders) public pure returns (uint256) {
         if (nDefenders == 1) return loot;
-        return ((loot / RESOURCE_UNIT) / nDefenders) * RESOURCE_UNIT;
+        return loot / nDefenders;
     }
 
     function addClansmanCarryCapped(uint256 currentCarry, uint256 amount, uint256 carryCap)

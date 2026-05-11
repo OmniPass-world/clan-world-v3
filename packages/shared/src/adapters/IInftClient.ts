@@ -303,8 +303,12 @@ class RealInftClient implements IInftClient {
   }
 
   private async write(functionName: 'updateMetadata' | 'iTransfer' | 'authorizeUsage' | 'revokeAuthorization', args: readonly unknown[]): Promise<Hex> {
-    const pk = readEnv('OG_INFT_PRIVATE_KEY') ?? readEnv('DEPLOYER_PRIVATE_KEY');
-    if (!pk) throw new Error('OG_INFT_PRIVATE_KEY or DEPLOYER_PRIVATE_KEY is required for iNFT writes');
+    const allowFallback = readEnv('ALLOW_DEPLOYER_KEY_FALLBACK') === 'true';
+    const pk = readEnv('OG_INFT_PRIVATE_KEY') ?? (allowFallback ? readEnv('DEPLOYER_PRIVATE_KEY') : undefined);
+    if (allowFallback && !readEnv('OG_INFT_PRIVATE_KEY') && pk) {
+      console.warn('[RealInftClient] ALLOW_DEPLOYER_KEY_FALLBACK=true; using DEPLOYER_PRIVATE_KEY for iNFT writes');
+    }
+    if (!pk) throw new Error('OG_INFT_PRIVATE_KEY is required for iNFT writes; set ALLOW_DEPLOYER_KEY_FALLBACK=true only for explicit test-only deployer fallback');
     const normalized = pk.startsWith('0x') ? pk : `0x${pk}`;
     if (!/^0x[0-9a-fA-F]{64}$/.test(normalized)) throw new Error('iNFT private key must be 32 bytes hex');
     const account = privateKeyToAccount(normalized as Hex);
