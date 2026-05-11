@@ -14,6 +14,8 @@ RUNTIME_DIR="$(cd "$AGENT_DIR/.." && pwd)"
 # NEVER use ANTHROPIC_API_KEY, NEVER use --bare (forces API key).
 export CLAUDE_CONFIG_DIR="$RUNTIME_DIR/.claude"
 export CLAUDE_CODE_HIDE_ACCOUNT_INFO=1
+export ENABLE_CLAUDEAI_MCP_SERVERS=false
+export IS_DEMO=1
 
 # === Token-based auth (skips interactive OAuth wizard) ===
 # CLAUDE_CODE_OAUTH_TOKEN env var avoids the per-elder wizard dance.
@@ -69,7 +71,6 @@ export PATH="$CLAN_WORLD_REPO/packages/agents/bin:$PATH"
 cd "$AGENT_DIR"
 echo "[$AGENT_NAME] Starting... model=$ANTHROPIC_MODEL $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
-export ENABLE_CLAUDEAI_MCP_SERVERS=false
 
 # Elders don't need the Telegram plugin (no inbound Telegram), so omit --channels.
 # The runner injects situation blocks via tmux send-keys directly to this REPL.
