@@ -153,6 +153,13 @@ Flush all game/indexer state for the old realm. At minimum clear:
 
 Then trigger one indexer refresh or wait for the first heartbeat webhook.
 
+If the deployed backend includes `ops:flushGameState`, run it repeatedly until `complete` is `true`:
+
+```bash
+npx convex run ops:flushGameState '{"secret":"'"$INDEXER_SECRET"'","batchSize":500}' --prod
+npx convex run ops:resetCheckpoint '{"secret":"'"$INDEXER_SECRET"'","lastBlock":'"$INDEXER_START_BLOCK"'}' --prod
+```
+
 ## 6. Mint Four Clans
 
 Derive or load the four elder addresses, then mint one clan per elder:
