@@ -87,8 +87,8 @@ class StrategyEditorViewModel(
   fun setSavePhase(phase: SendPhase, error: String? = null) =
     _state.update { it.copy(savePhase = phase, errorMessage = error) }
 
-  /** Optimistic commit after the wallet seal succeeds. */
-  fun confirmSeal() {
+  /** Optimistic commit after the wallet burn and Convex write succeed. */
+  fun confirmSeal(signature: String) {
     val s = _state.value
     val fields = buildList {
       if (s.draftStrategy != s.committedStrategy) add("strategy")
@@ -101,7 +101,7 @@ class StrategyEditorViewModel(
         savePhase = SendPhase.Queued,
         errorMessage = null,
         statusBody = if (fields.isEmpty()) "essence sealed"
-        else "essence sealed · ${fields.joinToString(" + ")} written to 0G",
+        else "essence sealed · ${fields.joinToString(" + ")} written · ${signature.take(6)}…",
       )
     }
   }

@@ -2,6 +2,7 @@ package world.clan.app
 
 import android.app.Application
 import world.clan.app.data.ClanWorldConvexClient
+import world.clan.app.data.gold.GoldSolanaClient
 import world.clan.app.data.LineageStore
 import world.clan.app.data.SessionStore
 import world.clan.app.wallet.DeviceCapabilities
@@ -18,6 +19,15 @@ class App : Application() {
 
   val convexClient: ClanWorldConvexClient by lazy {
     ClanWorldConvexClient(BuildConfig.CONVEX_URL)
+  }
+  val goldClient: GoldSolanaClient by lazy {
+    GoldSolanaClient(
+      rpcUrl = BuildConfig.GOLD_RPC_URL,
+      mintBase58 = BuildConfig.GOLD_MINT,
+      faucetProgramBase58 = BuildConfig.GOLD_FAUCET_PROGRAM_ID,
+      treasuryOwnerBase58 = BuildConfig.GOLD_TREASURY_OWNER,
+      decimals = BuildConfig.GOLD_DECIMALS,
+    )
   }
   val mwaClient: MwaClient by lazy { MwaClient() }
   val sessionStore: SessionStore by lazy { SessionStore(this) }

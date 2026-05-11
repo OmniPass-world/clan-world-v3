@@ -1,6 +1,9 @@
 package world.clan.app.ui
 
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.AnimatedVisibility
@@ -18,11 +21,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
@@ -40,7 +46,10 @@ import world.clan.app.cockpit.CockpitScreen
 import world.clan.app.owner.OwnerComingSoonScreen
 import world.clan.app.owner.OwnerSignInScreen
 import world.clan.app.ui.components.ClanWorldTabBar
+import world.clan.app.ui.components.LocalGoldBalance
+import world.clan.app.ui.components.LocalOnGoldFaucet
 import world.clan.app.ui.components.LocalOnDisconnect
+import world.clan.app.ui.components.LocalOnViewWallet
 import world.clan.app.ui.components.LocalWalletIdentity
 import world.clan.app.ui.components.ObsidianBackground
 import world.clan.app.ui.components.RootTab
@@ -53,6 +62,8 @@ import world.clan.app.ui.theme.ClanWorldTheme
 import world.clan.app.viewmodel.ClanWorldViewModelFactory
 import world.clan.app.viewmodel.ConnectUiState
 import world.clan.app.viewmodel.ConnectViewModel
+import world.clan.app.viewmodel.HearthViewModel
+import world.clan.app.wallet.MwaResult
 import world.clan.app.wallet.WalletIdentity
 
 object Routes {
@@ -190,12 +201,23 @@ fun ClanWorldApp(
       WalletIdentity.fromSession(app.sessionStore.read())
     }
   }
+  var goldBalance by remember { mutableStateOf<Long?>(null) }
 
   // Compose-managed scope for the wallet-side fire-and-forget. Cancels
   // automatically when ClanWorldApp leaves composition, vs MainScope()
   // which leaks both the Job and captured hostActivity reference per
   // Disconnect tap.
   val coroutineScope = rememberCoroutineScope()
+  suspend fun refreshGoldBalance(owner: String) {
+    goldBalance = runCatching { app.goldClient.balance(owner) }.getOrNull()
+  }
+
+  LaunchedEffect(identity?.pubkeyBase58) {
+    val owner = identity?.pubkeyBase58
+    goldBalance = null
+    if (owner != null) refreshGoldBalance(owner)
+  }
+
   val onDisconnect: () -> Unit = {
     // Snapshot the auth token before clearing the session — we need
     // it for the wallet-side disconnect call below.
@@ -214,6 +236,51 @@ fun ClanWorldApp(
       coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
         app.mwaClient.disconnect(mwaSender, authToken)
       }
+    }
+  }
+
+  val onGoldFaucet: () -> Unit = onGoldFaucet@{
+    val session = app.sessionStore.read()
+    val token = session?.mwaAuthToken
+    val owner = session?.solanaPubkeyBase58
+    if (token == null || owner == null) {
+      Toast.makeText(hostActivity, "Connect wallet first.", Toast.LENGTH_SHORT).show()
+      return@onGoldFaucet
+    }
+    Toast.makeText(hostActivity, "Opening wallet for 100K GOLD faucet…", Toast.LENGTH_SHORT).show()
+    coroutineScope.launch {
+      app.goldClient.maybeAirdropFeeSol(owner)
+      val memo = "clanworld:faucet:v1:$owner:100000"
+      val tx = runCatching { app.goldClient.buildFaucetClaim(owner, memo) }
+        .getOrElse {
+          Toast.makeText(hostActivity, it.message ?: "Could not build faucet tx.", Toast.LENGTH_LONG).show()
+          return@launch
+        }
+      when (val result = app.mwaClient.signAndSendTransaction(mwaSender, token, tx)) {
+        is MwaResult.Ok -> {
+          refreshGoldBalance(owner)
+          Toast.makeText(hostActivity, "Minted 100K GOLD · ${result.value.take(6)}…", Toast.LENGTH_LONG).show()
+        }
+        is MwaResult.UserDeclined ->
+          Toast.makeText(hostActivity, "Faucet cancelled.", Toast.LENGTH_SHORT).show()
+        is MwaResult.WalletNotFound ->
+          Toast.makeText(hostActivity, "No wallet found on device.", Toast.LENGTH_LONG).show()
+        is MwaResult.Error ->
+          Toast.makeText(hostActivity, result.cause.message ?: "Faucet tx failed.", Toast.LENGTH_LONG).show()
+      }
+    }
+  }
+
+  val onViewWallet: () -> Unit = {
+    val owner = app.sessionStore.read()?.solanaPubkeyBase58
+    if (owner == null) {
+      Toast.makeText(hostActivity, "Connect wallet first.", Toast.LENGTH_SHORT).show()
+    } else {
+      val uri = Uri.parse("https://solscan.io/account/$owner?cluster=devnet")
+      CustomTabsIntent.Builder()
+        .setShowTitle(true)
+        .build()
+        .launchUrl(hostActivity, uri)
     }
   }
 
@@ -243,16 +310,19 @@ fun ClanWorldApp(
     currentRoute?.startsWith("treasury/") == true -> RootTab.Hall // treasury is a Hall drill-in
     currentRoute == Routes.Forge -> RootTab.Hall // forge wizard surfaces from Hall
     currentRoute?.startsWith("steer/") == true ||
-      currentRoute?.startsWith("bridge/") == true ||
-      currentRoute?.startsWith("cockpit/") == true ||
       currentRoute?.startsWith("ownerSignIn/") == true ||
       currentRoute?.startsWith("ownerComingSoon/") == true -> RootTab.Hall
+    currentRoute?.startsWith("bridge/") == true ||
+      currentRoute?.startsWith("cockpit/") == true -> RootTab.Cockpit
     else -> RootTab.Hearth
   }
 
   CompositionLocalProvider(
     LocalWalletIdentity provides identity,
+    LocalGoldBalance provides goldBalance,
     LocalOnDisconnect provides onDisconnect,
+    LocalOnGoldFaucet provides onGoldFaucet,
+    LocalOnViewWallet provides onViewWallet,
   ) {
     Scaffold(
       containerColor = Color.Transparent,
@@ -264,7 +334,11 @@ fun ClanWorldApp(
         ) {
           ClanWorldTabBar(
             selected = selectedTab,
-            onSelect = { tab -> navigateTab(nav, tab) },
+            onSelect = { tab ->
+              val cockpitClanId = app.sessionStore.read()?.selectedClanId
+                ?: HearthViewModel.DEFAULT_LINKED_CLAN
+              navigateTab(nav, tab, cockpitClanId)
+            },
           )
         }
       },
@@ -680,10 +754,12 @@ fun ClanWorldApp(
 private fun navigateTab(
   nav: androidx.navigation.NavHostController,
   tab: RootTab,
+  cockpitClanId: Int,
 ) {
   val route = when (tab) {
     RootTab.Hearth -> Routes.Hearth
     RootTab.Hall -> Routes.Hall
+    RootTab.Cockpit -> Routes.bridge(cockpitClanId)
     RootTab.Bazaar -> Routes.Bazaar
     RootTab.Codex -> Routes.Codex
   }

@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import world.clan.app.BuildConfig
 import world.clan.app.cockpit.tabs.shared.SectionHeader
 import world.clan.app.data.Elder
 import world.clan.app.data.StubData
@@ -49,7 +50,7 @@ fun ClansmanTab(elder: Elder, modifier: Modifier = Modifier) {
   val live = useClansmen(elder.clanId)
   val rows = when (live) {
     is QueryState.Live -> live.data.map { it.toDomain() }
-    else -> StubData.clansmen(elder.clanId)
+    else -> if (BuildConfig.STUB_FALLBACK_ENABLED) StubData.clansmen(elder.clanId) else emptyList()
   }
 
   Column(

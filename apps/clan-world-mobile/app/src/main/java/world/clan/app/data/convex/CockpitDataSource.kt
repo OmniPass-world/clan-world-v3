@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import world.clan.app.BuildConfig
 import world.clan.app.cockpit.ConnectionStatus
 
 /**
@@ -104,9 +105,9 @@ class CockpitDataSource(
     }
 
   /**
-   * Polls [fetch] every [tabIntervalMs] while subscribed. Empty lists map to
-   * [QueryState.Stub] — mirrors the web's "stub if empty" behaviour so the
-   * UI doesn't render an empty tab when the backend has nothing to show.
+   * Polls [fetch] every [tabIntervalMs] while subscribed. Debug builds keep
+   * the demo stub fallback for empty/error results; release builds surface the
+   * live empty/error state so production never shows fake backend data.
    */
   private fun <T> pollFlow(
     fetch: suspend () -> Result<List<T>>,
@@ -116,8 +117,14 @@ class CockpitDataSource(
         val res = fetch()
         emit(
           res.fold(
-            onSuccess = { if (it.isEmpty()) QueryState.Stub else QueryState.Live(it) },
-            onFailure = { QueryState.Error(it) },
+            onSuccess = {
+              if (it.isEmpty() && BuildConfig.STUB_FALLBACK_ENABLED) QueryState.Stub
+              else QueryState.Live(it)
+            },
+            onFailure = {
+              if (BuildConfig.STUB_FALLBACK_ENABLED) QueryState.Stub
+              else QueryState.Error(it)
+            },
           )
         )
         delay(tabIntervalMs)

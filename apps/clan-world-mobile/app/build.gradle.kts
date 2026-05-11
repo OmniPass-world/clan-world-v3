@@ -37,6 +37,14 @@ val mapUrl = resolveBuildConfigUrl("CLAN_WORLD_MAP_URL", "clanWorldMapUrl")
 val terminalBaseUrl = resolveBuildConfigUrl("CLAN_WORLD_TERMINAL_BASE_URL", "clanWorldTerminalBaseUrl")
 val convexUrl = providers.environmentVariable("CLAN_WORLD_CONVEX_URL")
   .orElse("https://valuable-kudu-985.convex.cloud")
+val goldRpcUrl = providers.environmentVariable("CLAN_WORLD_GOLD_RPC_URL")
+  .orElse("https://api.devnet.solana.com")
+val goldMint = providers.environmentVariable("CLAN_WORLD_GOLD_MINT")
+  .orElse("11111111111111111111111111111111")
+val goldFaucetProgramId = providers.environmentVariable("CLAN_WORLD_GOLD_FAUCET_PROGRAM_ID")
+  .orElse("11111111111111111111111111111111")
+val goldTreasuryOwner = providers.environmentVariable("CLAN_WORLD_GOLD_TREASURY_OWNER")
+  .orElse("11111111111111111111111111111111")
 
 // for details — both apps share the same secret names so one CI step can
 // provision both.
@@ -62,6 +70,11 @@ android {
     buildConfigField("String", "MAP_URL", "\"$mapUrl\"")
     buildConfigField("String", "TERMINAL_BASE_URL", "\"$terminalBaseUrl\"")
     buildConfigField("String", "CONVEX_URL", "\"${convexUrl.get()}\"")
+    buildConfigField("String", "GOLD_RPC_URL", "\"${goldRpcUrl.get()}\"")
+    buildConfigField("String", "GOLD_MINT", "\"${goldMint.get()}\"")
+    buildConfigField("String", "GOLD_FAUCET_PROGRAM_ID", "\"${goldFaucetProgramId.get()}\"")
+    buildConfigField("String", "GOLD_TREASURY_OWNER", "\"${goldTreasuryOwner.get()}\"")
+    buildConfigField("int", "GOLD_DECIMALS", "0")
     vectorDrawables { useSupportLibrary = true }
   }
 
@@ -78,9 +91,13 @@ android {
 
   buildTypes {
     debug {
+      buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "true")
       if (hasStableSigning) {
         signingConfig = signingConfigs.getByName("stable")
       }
+    }
+    release {
+      buildConfigField("boolean", "STUB_FALLBACK_ENABLED", "false")
     }
   }
 
@@ -135,6 +152,7 @@ dependencies {
 
   // ── WebView (cockpit's MapWebView + slice 2 cockpit URL surface) ─────
   implementation("androidx.webkit:webkit:1.12.1")
+  implementation("androidx.browser:browser:1.8.0")
 
   // ── Coroutines ───────────────────────────────────────────────────────
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
@@ -158,6 +176,7 @@ dependencies {
   // 8.7.3 / compileSdk 35. The 2.0.x line is API-identical for our usage
   // (verified against the v2.0.5 + v2.0.7 tags).
   implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.0.7")
+  implementation("com.solanamobile:web3-solana-jvm:0.3.0-beta4")
 
   // ── Tests ────────────────────────────────────────────────────────────
   testImplementation("junit:junit:4.13.2")

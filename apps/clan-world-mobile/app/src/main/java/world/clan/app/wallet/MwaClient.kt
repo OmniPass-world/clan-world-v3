@@ -5,7 +5,9 @@ import com.solana.mobilewalletadapter.clientlib.ActivityResultSender
 import com.solana.mobilewalletadapter.clientlib.ConnectionIdentity
 import com.solana.mobilewalletadapter.clientlib.MobileWalletAdapter
 import com.solana.mobilewalletadapter.clientlib.Solana
+import com.solana.mobilewalletadapter.clientlib.TransactionParams
 import com.solana.mobilewalletadapter.clientlib.TransactionResult
+import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient.SignAndSendTransactionsResult
 
 /** Result of a connect / reauthorize call. */
 data class MwaSession(
@@ -106,6 +108,32 @@ class MwaClient(
     }
     return when (result) {
       is TransactionResult.Success -> MwaResult.Ok(result.payload)
+      is TransactionResult.NoWalletFound -> MwaResult.WalletNotFound
+      is TransactionResult.Failure -> classifyFailure(result)
+    }
+  }
+
+  suspend fun signAndSendTransaction(
+    sender: ActivityResultSender,
+    authToken: String,
+    serializedTransaction: ByteArray,
+  ): MwaResult<String> {
+    val a = adapter().apply { this.authToken = authToken }
+    val result: TransactionResult<ByteArray> = a.transact(sender) {
+      val sent: SignAndSendTransactionsResult = signAndSendTransactions(
+        arrayOf(serializedTransaction),
+        TransactionParams(
+          null,
+          "confirmed",
+          false,
+          5,
+          true,
+        ),
+      )
+      sent.signatures.first()
+    }
+    return when (result) {
+      is TransactionResult.Success -> MwaResult.Ok(Base58.encode(result.payload))
       is TransactionResult.NoWalletFound -> MwaResult.WalletNotFound
       is TransactionResult.Failure -> classifyFailure(result)
     }

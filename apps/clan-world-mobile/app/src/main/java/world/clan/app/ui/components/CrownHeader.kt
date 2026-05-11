@@ -24,6 +24,15 @@ val LocalWalletIdentity = compositionLocalOf<WalletIdentity?> { null }
 /** App-level disconnect handler. Clears the session and routes back to Connect. */
 val LocalOnDisconnect = compositionLocalOf<() -> Unit> { {} }
 
+/** App-level Devnet GOLD faucet action, exposed from the wallet menu. */
+val LocalOnGoldFaucet = compositionLocalOf<() -> Unit> { {} }
+
+/** Connected wallet's on-chain GOLD balance, whole units. Null while loading. */
+val LocalGoldBalance = compositionLocalOf<Long?> { null }
+
+/** Opens the connected wallet on Devnet Solscan. */
+val LocalOnViewWallet = compositionLocalOf<() -> Unit> { {} }
+
 /**
  * Top header: crown mark + screen name + WalletPill.
  *
@@ -42,6 +51,9 @@ fun CrownHeader(
 ) {
   val identity = LocalWalletIdentity.current
   val onDisconnect = LocalOnDisconnect.current
+  val onGoldFaucet = LocalOnGoldFaucet.current
+  val goldBalance = LocalGoldBalance.current
+  val onViewWallet = LocalOnViewWallet.current
   val hairline = ClanWorldTheme.colors.hairline
   val gold = ClanWorldTheme.colors.gold
 
@@ -83,6 +95,9 @@ fun CrownHeader(
     if (identity != null) {
       WalletPill(
         identity = identity,
+        goldBalance = goldBalance,
+        onMintGold = onGoldFaucet,
+        onViewWallet = onViewWallet,
         onDisconnect = onDisconnect,
       )
     }
