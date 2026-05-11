@@ -5,8 +5,8 @@ import { v } from "convex/values";
 const DEFAULT_DEVNET_RPC = "https://api.devnet.solana.com";
 const TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const MEMO_PROGRAM_ID = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr";
-const GOLD_MINT = process.env.CLAN_WORLD_GOLD_MINT ?? "11111111111111111111111111111111";
-const GOLD_TREASURY_OWNER = process.env.CLAN_WORLD_GOLD_TREASURY_OWNER ?? "11111111111111111111111111111111";
+const GOLD_MINT = process.env.CLAN_WORLD_GOLD_MINT ?? "FPBZJfEgxdkKEeT8pZhLRPg1NzwhyWJRqPKpzRWZLSAF";
+const GOLD_TREASURY_OWNER = process.env.CLAN_WORLD_GOLD_TREASURY_OWNER ?? "5YqhQK4LfJmaaZQLqSEfcJc4ViUQHX15quVCXwNJDFnd";
 
 type ParsedInstruction = {
   program?: string;
