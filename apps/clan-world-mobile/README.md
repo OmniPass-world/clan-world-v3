@@ -27,7 +27,7 @@ Five screens, all matching `design/slice-1-prototype.html` 1:1:
 |---|---|
 | Visual design | **Real** — Compose mirrors the HTML prototype |
 | Convex queries | **Real** — `getSnapshot`, `getInftDemoState`, `getCombinedComms`, `getVaultMovements`, `bulletins.getByClan` |
-| Solana MWA | **Stubbed** — `MwaClient.kt` returns a deterministic fake pubkey after a 1.2s delay. Slice 2 will wire the real artifact. |
+| Solana MWA | **Real** — `MwaClient.kt` uses Solana Mobile Wallet Adapter. Release builds reject fake/test wallets after wallet authorization metadata returns; debug builds allow them for local testing. |
 | EVM wallet / iNFT ownership | **N/A** — this slice is Solana-only UX; the user's "linked" iNFTs are a hardcoded `linkedClanIds = [2, 6, 5]` in `HearthViewModel` |
 | Cockpit WebView | **Preserved** as `CockpitActivity`, no longer the launcher; reachable via `adb shell am start -n world.clan.app/.CockpitActivity` |
 
@@ -77,7 +77,8 @@ app/src/main/java/world/clan/app/
 │   ├── ConvexModels.kt          @Serializable response shapes
 │   └── SessionStore.kt          EncryptedSharedPreferences wrapper
 ├── wallet/
-│   ├── MwaClient.kt             SLICE 1: stub. SLICE 2: real MWA.
+│   ├── MwaClient.kt             Real Solana Mobile Wallet Adapter wrapper
+│   ├── FakeWalletPolicy.kt      Release-only fake/test wallet rejection
 │   ├── DeviceCapabilities.kt    Seeker / Seed Vault detection
 │   └── Base58.kt                Standalone Base58 encoder
 └── viewmodel/                   One ViewModel per screen, StateFlow-driven
@@ -108,7 +109,6 @@ Both files come from `github.com/google/fonts` and ship under SIL OFL-1.1.
 
 ## Slice 2 punch list
 
-- Real MWA (replace `MwaClient` stub)
 - Cockpit WebView with `window.__clanworld` injection
 - Cross-chain identity link (Solana pubkey ↔ clan owner address)
 - Pull-to-refresh on Hearth/Hall

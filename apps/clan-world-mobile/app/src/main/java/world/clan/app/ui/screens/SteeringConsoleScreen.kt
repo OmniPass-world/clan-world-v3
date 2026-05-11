@@ -57,6 +57,7 @@ import world.clan.app.viewmodel.SteeringConsoleUiState
 import world.clan.app.viewmodel.SteeringConsoleViewModel
 import world.clan.app.viewmodel.SteeringConsoleViewModelFactory
 import world.clan.app.viewmodel.clanDisplayName
+import world.clan.app.wallet.FakeWalletPolicy
 import world.clan.app.wallet.MwaResult
 
 private const val WHISPER_COOLDOWN_MS = 10L * 60L * 1000L  // 10 minutes
@@ -128,6 +129,7 @@ fun SteeringConsoleScreenRoute(
           }
           is MwaResult.UserDeclined -> vm.setSending(false)
           is MwaResult.WalletNotFound -> vm.setError("no wallet found on device.")
+          is MwaResult.WalletNotAllowed -> vm.setError(FakeWalletPolicy.BLOCKED_MESSAGE)
           is MwaResult.Error -> vm.setError(
             result.cause.message ?: "the wallet refused the seal.",
           )
