@@ -16,10 +16,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +53,7 @@ fun WhispersScreenRoute(
   clanId: Int,
   onBack: () -> Unit,
   onCompose: () -> Unit = {},
+  onStrategy: () -> Unit = {},
 ) {
   val vm: WhispersViewModel = viewModel(factory = WhispersViewModelFactory(app, clanId))
   val state by vm.state.collectAsState()
@@ -58,6 +64,7 @@ fun WhispersScreenRoute(
     onSetFilter = vm::setFilter,
     onCompose = onCompose,
     onRefresh = vm::refresh,
+    onStrategy = onStrategy,
   )
 }
 
@@ -69,9 +76,26 @@ private fun WhispersScreen(
   onSetFilter: (WhispersFilter) -> Unit,
   onCompose: () -> Unit = {},
   onRefresh: () -> Unit = {},
+  onStrategy: () -> Unit = {},
 ) {
+  // Selected tab — Tab 1 (Strategy & Notes) fires onStrategy callback to navigate
+  // to StrategyEditorScreen rather than embedding it inline. Tab state is local;
+  // returning to this screen always shows the WHISPERS tab.
+  var selectedTab by remember { mutableStateOf(0) }
+
   Column(modifier = Modifier.fillMaxSize()) {
     InboxBackBar(clanId = clanId, onBack = onBack)
+
+    InboxTabs(
+      selected = selectedTab,
+      onSelect = { idx ->
+        if (idx == 1) {
+          onStrategy()
+        } else {
+          selectedTab = idx
+        }
+      },
+    )
 
     Column(modifier = Modifier.padding(horizontal = 22.dp)) {
       InboxHead(clanId = clanId, count = state.filtered().size)
@@ -164,6 +188,36 @@ private fun InboxBackBar(clanId: Int, onBack: () -> Unit) {
       style = ClanWorldTheme.type.monoMicro,
       color = ClanWorldTheme.colors.warmDim,
     )
+  }
+}
+
+@Composable
+private fun InboxTabs(selected: Int, onSelect: (Int) -> Unit) {
+  val tabs = listOf("WHISPERS", "STRATEGY & NOTES")
+  val parchment = ClanWorldTheme.colors.parchment
+  val warmDim = ClanWorldTheme.colors.warmDim
+  TabRow(
+    selectedTabIndex = selected,
+    containerColor = Color.Transparent,
+    contentColor = parchment,
+    divider = {},
+  ) {
+    tabs.forEachIndexed { idx, label ->
+      val isSelected = idx == selected
+      Tab(
+        selected = isSelected,
+        onClick = { onSelect(idx) },
+        selectedContentColor = parchment,
+        unselectedContentColor = warmDim,
+      ) {
+        Text(
+          text = label,
+          style = ClanWorldTheme.type.monoMicro,
+          color = if (isSelected) parchment else warmDim,
+          modifier = Modifier.padding(vertical = 12.dp),
+        )
+      }
+    }
   }
 }
 

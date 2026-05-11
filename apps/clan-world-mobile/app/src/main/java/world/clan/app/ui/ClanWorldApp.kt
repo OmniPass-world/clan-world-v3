@@ -470,6 +470,7 @@ fun ClanWorldApp(
               clanId = clanId,
               onBack = { nav.popBackStack() },
               onCompose = { nav.navigate(Routes.steer(clanId)) },
+              onStrategy = { nav.navigate(Routes.strategy(clanId)) },
             )
           }
 
