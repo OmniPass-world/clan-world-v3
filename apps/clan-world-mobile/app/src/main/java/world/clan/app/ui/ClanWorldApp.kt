@@ -16,8 +16,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -350,6 +354,14 @@ fun ClanWorldApp(
   ) {
     Scaffold(
       containerColor = Color.Transparent,
+      // Top: keep the status-bar safe inset on content. Bottom: let
+      // content + bottom bar fill behind the nav bar / gesture handle.
+      // Interactive elements (tab icons, page-indicator dots) apply
+      // `navigationBarsPadding()` themselves so they remain above the
+      // gesture handle.
+      contentWindowInsets = WindowInsets.statusBars.only(
+        WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+      ),
       bottomBar = {
         AnimatedVisibility(
           visible = showTabBar,

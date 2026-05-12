@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -43,7 +45,14 @@ fun OwnerComingSoonScreen(
     modifier = Modifier
       .fillMaxSize()
       .background(CockpitTokens.Bg.Iron)
-      .windowInsetsPadding(WindowInsets.systemBars),
+      // Top status-bar inset only — content fills behind the bottom
+      // nav bar / gesture handle. No interactive controls live at the
+      // bottom of this screen, so no per-element nav-bar padding.
+      .windowInsetsPadding(
+        WindowInsets.systemBars.only(
+          WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
+      ),
   ) {
     // 2dp top accent line (matches MiniCockpit panel chrome)
     Box(

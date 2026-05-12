@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -89,7 +93,14 @@ fun OwnerSignInScreen(
           ),
         ),
       )
-      .windowInsetsPadding(WindowInsets.systemBars),
+      // Keep top status-bar inset; fill behind the bottom nav bar /
+      // gesture handle. Interactive elements below add their own
+      // `navigationBarsPadding()` so they aren't obscured.
+      .windowInsetsPadding(
+        WindowInsets.systemBars.only(
+          WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+        ),
+      ),
   ) {
     BackChevron(onBack = onBack, modifier = Modifier.padding(start = 8.dp, top = 8.dp))
 
@@ -137,6 +148,7 @@ fun OwnerSignInScreen(
       hostState = snackbar,
       modifier = Modifier
         .align(Alignment.BottomCenter)
+        .navigationBarsPadding()
         .padding(16.dp),
     )
   }

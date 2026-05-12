@@ -20,9 +20,14 @@ import world.clan.app.data.elderById
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
- * Page-indicator dots — overlay drawn on top of the map's bottom edge.
- * Each dot tints to the corresponding clan's accent when active. Tapping
- * a dot moves the pager.
+ * Page-indicator dots — overlay anchored to the bottom of the clan panel
+ * pager (NOT the map). Each dot tints to the corresponding clan's accent
+ * when active. Tapping a dot moves the pager.
+ *
+ * Caller is responsible for adding `Modifier.navigationBarsPadding()` so
+ * the dots sit above the gesture handle / nav bar — the panel background
+ * itself fills behind the unsafe bottom inset, but interactive controls
+ * must not be obscured.
  */
 @Composable
 fun PageIndicatorOverlay(
