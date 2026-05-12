@@ -69,6 +69,7 @@ fun ClansmanWire.toDomain(): StubData.ClansmanRow = StubData.ClansmanRow(
   eta = eta?.toInt(),
   cooldown = cooldown.toInt(),
   hunger = hunger.toFloat(),
+  isDead = isDead,
 )
 
 // ---- 0G memory -------------------------------------------------------

@@ -1,18 +1,22 @@
 import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import { ClansmanState } from "@clan-world/shared/generated/enums";
 
 /**
  * Per-clansman roster for ClansmanTab. Reads the latest `clanView` row, maps
  * the raw chain `ClansmanFullView[]` into a UI-friendly row shape, and
- * synthesizes the four fields the tab renders:
- *   - mission   : action verb (or "Idle")
+ * synthesizes the fields the tab renders:
+ *   - mission   : action verb ("Idle" when waiting, "DEAD" when fallen)
  *   - location  : human region label (start-region while traveling)
- *   - eta       : ticks until mission settles, or null when idle
+ *   - eta       : ticks until mission settles, or null when idle/dead
  *   - cooldown  : ticks of cooldown remaining after mission ends, 0 = ready
  *   - hunger    : 0..1 — derived from clan-level isStarving flag
  *                  (per-clansman hunger isn't on chain; we use clan starvation
  *                   ramp so the visual warning still surfaces correctly)
+ *   - isDead    : true when the chain `ClansmanState` is DEAD (3). Takes
+ *                  precedence over any active mission — the cockpit renders
+ *                  "DEAD" instead of "Idle" so wiped clans don't read as alive.
  *
  * Returns `[]` when there is no `clanView` row yet (cold demo / no indexer).
  * The frontend treats `[]` as "fall back to STUB_CLANSMEN" so the cockpit
@@ -113,6 +117,12 @@ export interface ClansmanRow {
   eta: number | null;
   cooldown: number;
   hunger: number;
+  /**
+   * True when the chain reports this clansman as ClansmanState.DEAD (enum=3).
+   * The tab uses this to override the mission/eta/cooldown display so a wiped
+   * clan reads as DEAD instead of "Idle / ready".
+   */
+  isDead: boolean;
 }
 
 export const getClanClansmen = query({
@@ -143,7 +153,14 @@ export const getClanClansmen = query({
       const clansmanId = numberLike(fieldAt(clansman, "clansmanId"));
       if (clansmanId <= 0) continue;
 
-      const missionActive = boolLike(fieldAt(mission, "active"));
+      // Dead-state check: ClansmanState.DEAD = 3 on chain. When a clansman is
+      // dead, we still render the row so the roster reflects the wipe — but
+      // we surface "DEAD" instead of mission/idle and zero out eta/cooldown
+      // so the row doesn't read as "ready in 0t" (alive-looking).
+      const clansmanStateRaw = numberLike(fieldAt(clansman, "state"), -1);
+      const isDead = clansmanStateRaw === ClansmanState.DEAD;
+
+      const missionActive = !isDead && boolLike(fieldAt(mission, "active"));
       const action = missionActive ? numberLike(fieldAt(mission, "action")) : 0;
 
       const currentRegion = numberLike(
@@ -200,11 +217,15 @@ export const getClanClansmen = query({
 
       out.push({
         id: `C${clansmanId}`,
-        mission: missionActive ? actionLabel(action) : "Idle",
+        mission: isDead ? "DEAD" : missionActive ? actionLabel(action) : "Idle",
         location: regionLabel(displayRegion),
-        eta,
-        cooldown,
+        // Dead clansmen never have an active mission OR a cooldown to wait on —
+        // both fields are forced to a "no countdown" state so the row reads as
+        // permanently fallen rather than "cooldown 3t / ready next tick".
+        eta: isDead ? null : eta,
+        cooldown: isDead ? 0 : cooldown,
         hunger,
+        isDead,
       });
     }
     return out;

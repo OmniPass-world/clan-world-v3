@@ -9,7 +9,7 @@ import { EventTicker } from './EventTicker';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import { DEMO_MODE } from './config/env';
-import { BanditState } from '@clan-world/shared/generated/enums';
+import { BanditState, ClansmanState } from '@clan-world/shared/generated/enums';
 import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
@@ -112,7 +112,18 @@ type LiveClansmanMarker = {
   carryFish: number;
   offsetIndex: number;
   color: number;
+  /**
+   * True when the chain reports ClansmanState.DEAD (enum=3). Dead clansmen
+   * stay visible at their last region (no hide), but the body sprite rotates
+   * 90° (lying down) and darkens via tint so the world map state matches the
+   * cockpit "DEAD" badge instead of continuing to render an idle/standing pose.
+   */
+  isDead: boolean;
   node: Container;
+  /** Direct ref to the body sprite (or Graphics fallback) so we can rotate / tint it without rotating the carry indicator + status badge. */
+  body: Sprite | Graphics | null;
+  /** Halo Graphics drawn for active-mission markers. Hidden when isDead. */
+  halo: Graphics | null;
   carry: CarryIndicator;
   statusBg: Graphics;
   statusText: Text;
@@ -2174,7 +2185,7 @@ export function WorldMap() {
   function extractLiveClansmen(liveClans: readonly SnapshotClan[] | undefined) {
     if (!liveClans || liveClans.length === 0) return [];
     const byClan = new Map(liveClansToVisualClans(liveClans).map((clan) => [clan.id, clan]));
-    const markers: Array<Omit<LiveClansmanMarker, 'node' | 'carry' | 'statusBg' | 'statusText' | 'offsetIndex'>> = [];
+    const markers: Array<Omit<LiveClansmanMarker, 'node' | 'body' | 'halo' | 'carry' | 'statusBg' | 'statusText' | 'offsetIndex'>> = [];
     for (const clan of liveClans) {
       const visual = byClan.get(clan.id);
       if (!visual || !Array.isArray(clan.clansmen)) continue;
@@ -2184,16 +2195,22 @@ export function WorldMap() {
         const mission = fieldAt(row, 'activeMission') ?? fieldAt(derived, 'activeMission');
         const clansmanId = numberLike(fieldAt(clansman, 'clansmanId'));
         if (clansmanId <= 0) continue;
+        // ClansmanState.DEAD (chain enum mirrored in shared/generated/enums.ts).
+        // Dead clansmen render at their last-known region (lying down + darkened),
+        // and we suppress any "active mission" hint so the sprite doesn't animate.
+        const clansmanStateRaw = numberLike(fieldAt(clansman, 'state'), -1);
+        const isDead = clansmanStateRaw === ClansmanState.DEAD;
         const currentRegion = numberLike(
           fieldAt(derived, 'effectiveRegion') ?? fieldAt(clansman, 'currentRegion') ?? clan.baseRegion,
           clan.baseRegion ?? 0,
         );
-        const missionActive = Boolean(fieldAt(mission, 'active'));
+        const missionActive = !isDead && Boolean(fieldAt(mission, 'active'));
         const action = missionActive ? numberLike(fieldAt(mission, 'action')) : 0;
         const startRegion = missionActive ? numberLike(fieldAt(mission, 'startRegion'), currentRegion) : currentRegion;
         const targetRegion = missionActive ? numberLike(fieldAt(mission, 'targetRegion'), currentRegion) : currentRegion;
         const regionKey = REGION_KEY_BY_CHAIN_ID[missionActive ? startRegion : currentRegion] ?? visual.homeRegion;
-        const targetRegionKey = REGION_KEY_BY_CHAIN_ID[targetRegion];
+        // Dead clansmen never have a target region — the route line should not draw.
+        const targetRegionKey = isDead ? undefined : REGION_KEY_BY_CHAIN_ID[targetRegion];
         const startTick = numberLike(fieldAt(mission, 'startTick') ?? fieldAt(mission, 'submittedAtTick'));
         const arrivalTick = numberLike(fieldAt(mission, 'arrivalTick'), startTick);
         const actionStartTick = numberLike(fieldAt(mission, 'actionStartTick'), arrivalTick);
@@ -2215,6 +2232,7 @@ export function WorldMap() {
           carryWheat: resourceUnits(fieldAt(clansman, 'carryWheat')),
           carryFish: resourceUnits(fieldAt(clansman, 'carryFish')),
           color: visual.color,
+          isDead,
         });
       }
     }
@@ -2227,7 +2245,7 @@ export function WorldMap() {
     });
   }
 
-  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean) {
+  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean, isDead: boolean) {
     const container = new Container();
     const statusBg = new Graphics();
     const statusText = new Text({
@@ -2241,28 +2259,36 @@ export function WorldMap() {
       },
     });
     statusText.anchor.set(0.5, 0.5);
+    let body: Sprite | Graphics | null = null;
     const tex = clansmanTextureCache[clanId];
     if (tex) {
       const sprite = new Sprite(tex);
-      sprite.anchor.set(0.5, 0.82);
+      // Dead clansmen rotate 90° (lying down) — anchor at sprite center so the
+      // rotation pivots on the body, not the feet. Live clansmen keep the
+      // feet-anchor (0.5, 0.82) so they stand on their map dot.
+      sprite.anchor.set(0.5, isDead ? 0.5 : 0.82);
       const targetH = missionActive ? 42 : 34;
       const ratio = targetH / sprite.texture.height;
       sprite.height = targetH;
       sprite.width = sprite.texture.width * ratio;
       container.addChild(sprite);
+      body = sprite;
     } else {
       const fallback = new Graphics();
       fallback.circle(0, 0, missionActive ? 7 : 6);
       fallback.fill({ color, alpha: 1 });
       fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
       container.addChild(fallback);
+      body = fallback;
     }
-    if (missionActive) {
-      const halo = new Graphics();
+    let halo: Graphics | null = null;
+    if (missionActive && !isDead) {
+      halo = new Graphics();
       halo.circle(0, 0, 16);
       halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
       container.addChildAt(halo, 0);
     }
+    applyDeadVisualState(body, isDead);
     const carry = makeCarryIndicator();
     carry.container.y = -24;
     container.addChild(carry.container);
@@ -2275,7 +2301,62 @@ export function WorldMap() {
         setSelectedClanId(null);
       }
     });
-    return { container, carry, statusBg, statusText };
+    return { container, body, halo, carry, statusBg, statusText };
+  }
+
+  /**
+   * Apply the "dead" pose on a clansman body — rotation 90°, darkening tint,
+   * and a centered anchor so the 90° rotation pivots on the body center
+   * rather than the feet. Pulled out so it can run both at marker-creation
+   * time and whenever an alive→dead transition fires inside the sync loop.
+   *
+   * Why tint=0x808080: PixiJS multiplies the tint against the source pixels,
+   * so a flat mid-grey collapses the dynamic range and reads as "shadowed"
+   * without losing the silhouette. Graphics fallbacks accept the same tint
+   * channel since PIXI v8.
+   *
+   * For the inverse transition (dead→alive), use applyAliveVisualState — it
+   * restores the feet-anchor (0.5, 0.82) and clears tint/rotation/alpha.
+   */
+  function applyDeadVisualState(body: Sprite | Graphics | null, isDead: boolean) {
+    if (!body) return;
+    if (isDead) {
+      // Anchor BEFORE rotation so the 90° flip pivots around the body
+      // center, not the feet. Graphics fallback (circle drawn at origin)
+      // has no .anchor — guard with `'anchor' in body`.
+      if ('anchor' in body) {
+        (body as Sprite).anchor.set(0.5, 0.5);
+      }
+      body.rotation = Math.PI / 2; // 90°, sprite lies on its side
+      // Cast to any: Graphics has `tint` in pixi v8 too but the type only
+      // surfaces it on Sprite; we know the runtime supports it.
+      (body as Sprite).tint = 0x808080;
+      body.alpha = 0.9;
+    } else {
+      // Backwards-compat path: callers that pass isDead=false still get the
+      // alive pose, but applyAliveVisualState is the preferred entry point
+      // because it makes the symmetry explicit at call-sites.
+      applyAliveVisualState(body);
+    }
+  }
+
+  /**
+   * Apply the "alive" pose on a clansman body — feet-anchor (0.5, 0.82) so
+   * the sprite stands on its map dot, rotation 0, full opacity, default
+   * tint. This is the symmetric counterpart to applyDeadVisualState and is
+   * what the sync-loop calls on a dead→alive (revive) transition.
+   *
+   * Note: the caller is responsible for restoring `halo.visible = true` on
+   * the marker container — halo lives at marker level, not on `body`.
+   */
+  function applyAliveVisualState(body: Sprite | Graphics | null) {
+    if (!body) return;
+    if ('anchor' in body) {
+      (body as Sprite).anchor.set(0.5, 0.82);
+    }
+    body.rotation = 0;
+    (body as Sprite).tint = 0xffffff;
+    body.alpha = 1;
   }
 
   function syncLiveClansmanVisuals(isAssetLoadCancelled: () => boolean) {
@@ -2299,22 +2380,52 @@ export function WorldMap() {
     for (const marker of markers) {
       const existing = existingByKey.get(marker.key);
       if (existing) {
+        const wasDead = existing.isDead;
         Object.assign(existing, marker, {
           node: existing.node,
+          body: existing.body,
+          halo: existing.halo,
           carry: existing.carry,
           statusBg: existing.statusBg,
           statusText: existing.statusText,
           route: existing.route,
         });
+        // Alive→dead (or dead→alive) transition: re-pose the body sprite
+        // in place without rebuilding the node. The split between
+        // applyDeadVisualState and applyAliveVisualState makes the symmetry
+        // explicit — both branches MUST set anchor (centered for the dead
+        // 90° rotation, feet for the standing pose) and tint/alpha/rotation,
+        // otherwise an alive→dead→alive cycle leaks state.
+        if (wasDead !== marker.isDead) {
+          if (marker.isDead) {
+            applyDeadVisualState(existing.body, true);
+            if (existing.halo) existing.halo.visible = false;
+            if (existing.route) {
+              // A corpse doesn't travel — drop the route line. We keep
+              // existing.route undefined so updateLiveClansmanPositions()
+              // won't try to re-draw it.
+              existing.route.line.parent?.removeChild(existing.route.line);
+              existing.route.line.destroy();
+              existing.route = undefined;
+            }
+          } else {
+            applyAliveVisualState(existing.body);
+            // Halo lives at marker level, not on body — restore here on
+            // revive. Whether it should be visible right now depends on
+            // missionActive, which `marker` already reflects.
+            if (existing.halo) existing.halo.visible = marker.missionActive;
+          }
+        }
         continue;
       }
-      const { container, carry, statusBg, statusText } = makeLiveClansmanMarker(
+      const { container, body, halo, carry, statusBg, statusText } = makeLiveClansmanMarker(
         marker.color,
         marker.clanId,
         marker.missionActive,
+        marker.isDead,
       );
       layers.worldDynamic.addChild(container);
-      drawn.liveClansmen.push({ ...marker, node: container, carry, statusBg, statusText });
+      drawn.liveClansmen.push({ ...marker, node: container, body, halo, carry, statusBg, statusText });
     }
     liveClansmanVisualKeyRef.current = rosterKey;
     updateLiveClansmanPositions();
@@ -2604,6 +2715,24 @@ export function WorldMap() {
     for (const marker of drawn.liveClansmen) {
       const from = regionWanderPoint(marker.regionKey, marker, 0);
       if (!from) continue;
+      // Dead clansmen freeze at their last-known wander point — no bob, no
+      // route line, no carry/status overlay. The body sprite is already
+      // rotated 90° + darkened via applyDeadVisualState at create time.
+      if (marker.isDead) {
+        marker.node.x = from.x;
+        marker.node.y = from.y;
+        marker.node.zIndex = Math.round(marker.node.y + 8);
+        marker.node.alpha = 1; // container alpha stays 1; body's own alpha dims the sprite
+        marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
+        marker.carry.label.text = '';
+        marker.carry.targetFill = 0;
+        marker.carry.displayedFill = 0;
+        redrawCarryIndicator(marker.carry);
+        marker.statusText.text = '';
+        marker.statusText.alpha = 0;
+        marker.statusBg.clear();
+        continue;
+      }
       const isTraveling = marker.missionActive && marker.targetRegionKey && marker.targetRegionKey !== marker.regionKey;
       let position: Point2 = from;
       if (isTraveling && marker.targetRegionKey) {
