@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
-import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
+import { Application, Assets, BlurFilter, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
@@ -9,7 +9,8 @@ import { EventTicker } from './EventTicker';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import { DEMO_MODE } from './config/env';
-import { BanditState } from '@clan-world/shared/generated/enums';
+import { BanditState, ClansmanState } from '@clan-world/shared/generated/enums';
+import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
@@ -111,7 +112,18 @@ type LiveClansmanMarker = {
   carryFish: number;
   offsetIndex: number;
   color: number;
+  /**
+   * True when the chain reports ClansmanState.DEAD (enum=3). Dead clansmen
+   * stay visible at their last region (no hide), but the body sprite rotates
+   * 90° (lying down) and darkens via tint so the world map state matches the
+   * cockpit "DEAD" badge instead of continuing to render an idle/standing pose.
+   */
+  isDead: boolean;
   node: Container;
+  /** Direct ref to the body sprite (or Graphics fallback) so we can rotate / tint it without rotating the carry indicator + status badge. */
+  body: Sprite | Graphics | null;
+  /** Halo Graphics drawn for active-mission markers. Hidden when isDead. */
+  halo: Graphics | null;
   carry: CarryIndicator;
   statusBg: Graphics;
   statusText: Text;
@@ -574,7 +586,7 @@ type CombatTrigger = {
 // "lastOutcome" memo. T3 last 10s = telegraph. T4 = full battle / advance / escape.
 
 type BanditDiffOutcome =
-  | { type: 'defeated'; resolvedTick: number; fromRegion: number }
+  | { type: 'defeated'; resolvedTick: number; fromRegion: number; targetClanId: string | null }
   | { type: 'won'; resolvedTick: number; fromRegion: number; toRegion: number; targetClanId: string | null }
   | { type: 'no_battle_advance'; resolvedTick: number; fromRegion: number; toRegion: number };
 
@@ -902,10 +914,17 @@ export function computeBanditAnimPhase(
 
       const fromRegionKey = regionKeyByChainId[lastOutcome.fromRegion];
       if (!fromRegionKey) return { kind: 'hidden' };
+      // Both 'won' and 'defeated' outcomes now carry a targetClanId so the
+      // attack-circle animation anchors to the actual rendered base sprite
+      // instead of a stale fromAnchor offset (empty patch of map).
+      const phaseTargetClanId =
+        lastOutcome.type === 'won' || lastOutcome.type === 'defeated'
+          ? lastOutcome.targetClanId
+          : null;
       return {
         kind: 'battle',
         regionKey: fromRegionKey,
-        targetClanId: lastOutcome.type === 'won' ? lastOutcome.targetClanId : null,
+        targetClanId: phaseTargetClanId,
         outcome: lastOutcome,
         battleT,
       };
@@ -942,15 +961,17 @@ export function computeBanditAnimPhase(
     if (bandit.state === BanditState.Defeated) {
       const battleT = currentTickFloat - bandit.stateEnteredTick;
       if (battleT < 0 || battleT >= BATTLE_T_FADE_END) return { kind: 'hidden' };
+      const targetClanId = bandit.projectedTargetClanId > 0 ? String(bandit.projectedTargetClanId) : null;
       const outcome: BanditDiffOutcome = {
         type: 'defeated',
         resolvedTick: bandit.stateEnteredTick,
         fromRegion: bandit.region,
+        targetClanId,
       };
       return {
         kind: 'battle',
         regionKey,
-        targetClanId: bandit.projectedTargetClanId > 0 ? String(bandit.projectedTargetClanId) : null,
+        targetClanId,
         outcome,
         battleT,
       };
@@ -1128,6 +1149,11 @@ export function WorldMap() {
   const burstTickerCbRef = useRef<(() => void) | null>(null);
   const seenBurstLogIdsRef = useRef<Set<string>>(new Set());
 
+  // Winter snowfall overlay (screen-space particle layer above viewport, below
+  // React DOM UI). Created post-init; activated/deactivated via setActive in a
+  // separate effect that watches `snapshot.winterActive`.
+  const winterSnowRef = useRef<WinterSnowHandle | null>(null);
+
   // Bandit attack animation (docs/planning/bandit-animation-impl-plan.md).
   // Snapshot-diff tracking: derive last resolution outcome on every snapshot tick.
   // Known cold-start gap: if the page reloads during the T4 resolution window,
@@ -1141,6 +1167,13 @@ export function WorldMap() {
     campGlow: Graphics | null;
     walkers: Sprite[];
     deathSprites: Sprite[];
+    /** Red-tinted, blurred sprite shadows layered BEHIND each walker.
+     * Gives the bandit silhouette a glow halo against the map terrain
+     * (standing / moving / attacking — all 3 states share the same walker
+     * sprite, so one halo array covers them). */
+    walkerGlows: Sprite[];
+    /** Red-tinted, blurred sprite shadows layered BEHIND each death sprite. */
+    deathGlows: Sprite[];
     walkTextures: { ne: import('pixi.js').Texture[]; se: import('pixi.js').Texture[] };
     deathTextures: import('pixi.js').Texture[];
     campTexture: import('pixi.js').Texture | null;
@@ -1151,6 +1184,8 @@ export function WorldMap() {
     campGlow: null,
     walkers: [],
     deathSprites: [],
+    walkerGlows: [],
+    deathGlows: [],
     walkTextures: { ne: [], se: [] },
     deathTextures: [],
     campTexture: null,
@@ -1244,10 +1279,14 @@ export function WorldMap() {
           // Backend snapshots do not expose attackAttemptsMade yet, so we cannot
           // discriminate terminal no-target escape from defeat. Prefer defeated
           // until a compact lastResolution snapshot field is available.
+          // Carry the projected target so the circle/battle animation can anchor
+          // to the actual base sprite world coords (not a stale fromAnchor offset).
+          const hadTarget = typeof prev.projectedTargetClanId === 'number' && prev.projectedTargetClanId > 0;
           lastBanditOutcomeRef.current = {
             type: 'defeated',
             resolvedTick: tick,
             fromRegion: prev.region,
+            targetClanId: hadTarget ? String(prev.projectedTargetClanId) : null,
           };
         } else {
           // Live synth in computeBanditAnimPhase already ran the death animation.
@@ -1808,6 +1847,24 @@ export function WorldMap() {
         burstTickerCbRef.current = burstCb;
         app.ticker.add(burstCb);
 
+        // Winter snowfall overlay. Lives directly on app.stage (NOT inside the
+        // pixi-viewport) so particles stay in screen space — falling from the
+        // top of the visible canvas regardless of how the user has panned/zoomed
+        // the world. Stage children: [viewport, snow.container]. React DOM
+        // (TopHud / EventTicker / status badges) renders above the canvas in
+        // the DOM, so it sits above the snow naturally. Honors
+        // `prefers-reduced-motion`: when set, we skip creating the system at
+        // all so we never spend ticker cycles on motion the user opted out of.
+        const reducedMotion =
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reducedMotion) {
+          const snow = createWinterSnow(app, { particleCount: 100 });
+          app.stage.addChild(snow.container);
+          winterSnowRef.current = snow;
+        }
+
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
         // viewport handles screen-fit transformation. Children inside the viewport
@@ -1834,6 +1891,13 @@ export function WorldMap() {
       if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
       if (a && banditAnimTickerCbRef.current) a.ticker.remove(banditAnimTickerCbRef.current);
       if (a && burstTickerCbRef.current) a.ticker.remove(burstTickerCbRef.current);
+      // Winter snow owns its own ticker callback + texture lifecycle; .destroy()
+      // unregisters from the app ticker and disposes the shared snowflake
+      // texture so Pixi destroy() (below) doesn't leave a GPU texture leak.
+      if (winterSnowRef.current) {
+        winterSnowRef.current.destroy();
+        winterSnowRef.current = null;
+      }
       if (pixiCanvas && canvasClickHandler) pixiCanvas.removeEventListener('click', canvasClickHandler);
       finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
@@ -1860,6 +1924,8 @@ export function WorldMap() {
         campGlow: null,
         walkers: [],
         deathSprites: [],
+        walkerGlows: [],
+        deathGlows: [],
         walkTextures: { ne: [], se: [] },
         deathTextures: [],
         campTexture: null,
@@ -2119,7 +2185,7 @@ export function WorldMap() {
   function extractLiveClansmen(liveClans: readonly SnapshotClan[] | undefined) {
     if (!liveClans || liveClans.length === 0) return [];
     const byClan = new Map(liveClansToVisualClans(liveClans).map((clan) => [clan.id, clan]));
-    const markers: Array<Omit<LiveClansmanMarker, 'node' | 'carry' | 'statusBg' | 'statusText' | 'offsetIndex'>> = [];
+    const markers: Array<Omit<LiveClansmanMarker, 'node' | 'body' | 'halo' | 'carry' | 'statusBg' | 'statusText' | 'offsetIndex'>> = [];
     for (const clan of liveClans) {
       const visual = byClan.get(clan.id);
       if (!visual || !Array.isArray(clan.clansmen)) continue;
@@ -2129,16 +2195,22 @@ export function WorldMap() {
         const mission = fieldAt(row, 'activeMission') ?? fieldAt(derived, 'activeMission');
         const clansmanId = numberLike(fieldAt(clansman, 'clansmanId'));
         if (clansmanId <= 0) continue;
+        // ClansmanState.DEAD (chain enum mirrored in shared/generated/enums.ts).
+        // Dead clansmen render at their last-known region (lying down + darkened),
+        // and we suppress any "active mission" hint so the sprite doesn't animate.
+        const clansmanStateRaw = numberLike(fieldAt(clansman, 'state'), -1);
+        const isDead = clansmanStateRaw === ClansmanState.DEAD;
         const currentRegion = numberLike(
           fieldAt(derived, 'effectiveRegion') ?? fieldAt(clansman, 'currentRegion') ?? clan.baseRegion,
           clan.baseRegion ?? 0,
         );
-        const missionActive = Boolean(fieldAt(mission, 'active'));
+        const missionActive = !isDead && Boolean(fieldAt(mission, 'active'));
         const action = missionActive ? numberLike(fieldAt(mission, 'action')) : 0;
         const startRegion = missionActive ? numberLike(fieldAt(mission, 'startRegion'), currentRegion) : currentRegion;
         const targetRegion = missionActive ? numberLike(fieldAt(mission, 'targetRegion'), currentRegion) : currentRegion;
         const regionKey = REGION_KEY_BY_CHAIN_ID[missionActive ? startRegion : currentRegion] ?? visual.homeRegion;
-        const targetRegionKey = REGION_KEY_BY_CHAIN_ID[targetRegion];
+        // Dead clansmen never have a target region — the route line should not draw.
+        const targetRegionKey = isDead ? undefined : REGION_KEY_BY_CHAIN_ID[targetRegion];
         const startTick = numberLike(fieldAt(mission, 'startTick') ?? fieldAt(mission, 'submittedAtTick'));
         const arrivalTick = numberLike(fieldAt(mission, 'arrivalTick'), startTick);
         const actionStartTick = numberLike(fieldAt(mission, 'actionStartTick'), arrivalTick);
@@ -2160,6 +2232,7 @@ export function WorldMap() {
           carryWheat: resourceUnits(fieldAt(clansman, 'carryWheat')),
           carryFish: resourceUnits(fieldAt(clansman, 'carryFish')),
           color: visual.color,
+          isDead,
         });
       }
     }
@@ -2172,7 +2245,7 @@ export function WorldMap() {
     });
   }
 
-  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean) {
+  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean, isDead: boolean) {
     const container = new Container();
     const statusBg = new Graphics();
     const statusText = new Text({
@@ -2186,28 +2259,36 @@ export function WorldMap() {
       },
     });
     statusText.anchor.set(0.5, 0.5);
+    let body: Sprite | Graphics | null = null;
     const tex = clansmanTextureCache[clanId];
     if (tex) {
       const sprite = new Sprite(tex);
-      sprite.anchor.set(0.5, 0.82);
+      // Dead clansmen rotate 90° (lying down) — anchor at sprite center so the
+      // rotation pivots on the body, not the feet. Live clansmen keep the
+      // feet-anchor (0.5, 0.82) so they stand on their map dot.
+      sprite.anchor.set(0.5, isDead ? 0.5 : 0.82);
       const targetH = missionActive ? 42 : 34;
       const ratio = targetH / sprite.texture.height;
       sprite.height = targetH;
       sprite.width = sprite.texture.width * ratio;
       container.addChild(sprite);
+      body = sprite;
     } else {
       const fallback = new Graphics();
       fallback.circle(0, 0, missionActive ? 7 : 6);
       fallback.fill({ color, alpha: 1 });
       fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
       container.addChild(fallback);
+      body = fallback;
     }
-    if (missionActive) {
-      const halo = new Graphics();
+    let halo: Graphics | null = null;
+    if (missionActive && !isDead) {
+      halo = new Graphics();
       halo.circle(0, 0, 16);
       halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
       container.addChildAt(halo, 0);
     }
+    applyDeadVisualState(body, isDead);
     const carry = makeCarryIndicator();
     carry.container.y = -24;
     container.addChild(carry.container);
@@ -2220,7 +2301,62 @@ export function WorldMap() {
         setSelectedClanId(null);
       }
     });
-    return { container, carry, statusBg, statusText };
+    return { container, body, halo, carry, statusBg, statusText };
+  }
+
+  /**
+   * Apply the "dead" pose on a clansman body — rotation 90°, darkening tint,
+   * and a centered anchor so the 90° rotation pivots on the body center
+   * rather than the feet. Pulled out so it can run both at marker-creation
+   * time and whenever an alive→dead transition fires inside the sync loop.
+   *
+   * Why tint=0x808080: PixiJS multiplies the tint against the source pixels,
+   * so a flat mid-grey collapses the dynamic range and reads as "shadowed"
+   * without losing the silhouette. Graphics fallbacks accept the same tint
+   * channel since PIXI v8.
+   *
+   * For the inverse transition (dead→alive), use applyAliveVisualState — it
+   * restores the feet-anchor (0.5, 0.82) and clears tint/rotation/alpha.
+   */
+  function applyDeadVisualState(body: Sprite | Graphics | null, isDead: boolean) {
+    if (!body) return;
+    if (isDead) {
+      // Anchor BEFORE rotation so the 90° flip pivots around the body
+      // center, not the feet. Graphics fallback (circle drawn at origin)
+      // has no .anchor — guard with `'anchor' in body`.
+      if ('anchor' in body) {
+        (body as Sprite).anchor.set(0.5, 0.5);
+      }
+      body.rotation = Math.PI / 2; // 90°, sprite lies on its side
+      // Cast to any: Graphics has `tint` in pixi v8 too but the type only
+      // surfaces it on Sprite; we know the runtime supports it.
+      (body as Sprite).tint = 0x808080;
+      body.alpha = 0.9;
+    } else {
+      // Backwards-compat path: callers that pass isDead=false still get the
+      // alive pose, but applyAliveVisualState is the preferred entry point
+      // because it makes the symmetry explicit at call-sites.
+      applyAliveVisualState(body);
+    }
+  }
+
+  /**
+   * Apply the "alive" pose on a clansman body — feet-anchor (0.5, 0.82) so
+   * the sprite stands on its map dot, rotation 0, full opacity, default
+   * tint. This is the symmetric counterpart to applyDeadVisualState and is
+   * what the sync-loop calls on a dead→alive (revive) transition.
+   *
+   * Note: the caller is responsible for restoring `halo.visible = true` on
+   * the marker container — halo lives at marker level, not on `body`.
+   */
+  function applyAliveVisualState(body: Sprite | Graphics | null) {
+    if (!body) return;
+    if ('anchor' in body) {
+      (body as Sprite).anchor.set(0.5, 0.82);
+    }
+    body.rotation = 0;
+    (body as Sprite).tint = 0xffffff;
+    body.alpha = 1;
   }
 
   function syncLiveClansmanVisuals(isAssetLoadCancelled: () => boolean) {
@@ -2244,22 +2380,52 @@ export function WorldMap() {
     for (const marker of markers) {
       const existing = existingByKey.get(marker.key);
       if (existing) {
+        const wasDead = existing.isDead;
         Object.assign(existing, marker, {
           node: existing.node,
+          body: existing.body,
+          halo: existing.halo,
           carry: existing.carry,
           statusBg: existing.statusBg,
           statusText: existing.statusText,
           route: existing.route,
         });
+        // Alive→dead (or dead→alive) transition: re-pose the body sprite
+        // in place without rebuilding the node. The split between
+        // applyDeadVisualState and applyAliveVisualState makes the symmetry
+        // explicit — both branches MUST set anchor (centered for the dead
+        // 90° rotation, feet for the standing pose) and tint/alpha/rotation,
+        // otherwise an alive→dead→alive cycle leaks state.
+        if (wasDead !== marker.isDead) {
+          if (marker.isDead) {
+            applyDeadVisualState(existing.body, true);
+            if (existing.halo) existing.halo.visible = false;
+            if (existing.route) {
+              // A corpse doesn't travel — drop the route line. We keep
+              // existing.route undefined so updateLiveClansmanPositions()
+              // won't try to re-draw it.
+              existing.route.line.parent?.removeChild(existing.route.line);
+              existing.route.line.destroy();
+              existing.route = undefined;
+            }
+          } else {
+            applyAliveVisualState(existing.body);
+            // Halo lives at marker level, not on body — restore here on
+            // revive. Whether it should be visible right now depends on
+            // missionActive, which `marker` already reflects.
+            if (existing.halo) existing.halo.visible = marker.missionActive;
+          }
+        }
         continue;
       }
-      const { container, carry, statusBg, statusText } = makeLiveClansmanMarker(
+      const { container, body, halo, carry, statusBg, statusText } = makeLiveClansmanMarker(
         marker.color,
         marker.clanId,
         marker.missionActive,
+        marker.isDead,
       );
       layers.worldDynamic.addChild(container);
-      drawn.liveClansmen.push({ ...marker, node: container, carry, statusBg, statusText });
+      drawn.liveClansmen.push({ ...marker, node: container, body, halo, carry, statusBg, statusText });
     }
     liveClansmanVisualKeyRef.current = rosterKey;
     updateLiveClansmanPositions();
@@ -2549,6 +2715,24 @@ export function WorldMap() {
     for (const marker of drawn.liveClansmen) {
       const from = regionWanderPoint(marker.regionKey, marker, 0);
       if (!from) continue;
+      // Dead clansmen freeze at their last-known wander point — no bob, no
+      // route line, no carry/status overlay. The body sprite is already
+      // rotated 90° + darkened via applyDeadVisualState at create time.
+      if (marker.isDead) {
+        marker.node.x = from.x;
+        marker.node.y = from.y;
+        marker.node.zIndex = Math.round(marker.node.y + 8);
+        marker.node.alpha = 1; // container alpha stays 1; body's own alpha dims the sprite
+        marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
+        marker.carry.label.text = '';
+        marker.carry.targetFill = 0;
+        marker.carry.displayedFill = 0;
+        redrawCarryIndicator(marker.carry);
+        marker.statusText.text = '';
+        marker.statusText.alpha = 0;
+        marker.statusBg.clear();
+        continue;
+      }
       const isTraveling = marker.missionActive && marker.targetRegionKey && marker.targetRegionKey !== marker.regionKey;
       let position: Point2 = from;
       if (isTraveling && marker.targetRegionKey) {
@@ -2703,9 +2887,30 @@ export function WorldMap() {
       animContainer.campGlow = glow;
 
       // Pre-create 3 walker sprites + 3 death sprites (max active bandits = 3 per spec).
+      // Each gets a red-tinted, blurred "glow" sprite behind it so the bandit
+      // silhouette pops against the map background. The glow is the SAME sprite
+      // (same texture/scale/flip), tinted 0xff2222 with a BlurFilter applied
+      // (PixiJS v8 ships BlurFilter; pixi-filters' GlowFilter isn't in the
+      // dep tree, but blur+tint+layering produces an equivalent halo).
+      const makeGlow = (tex: import('pixi.js').Texture) => {
+        const glow = new Sprite(tex);
+        glow.anchor.set(0.5, 0.85);
+        glow.tint = 0xff2222;
+        glow.alpha = 0.7;
+        glow.visible = false;
+        glow.filters = [new BlurFilter({ strength: 6, quality: 2 })];
+        return glow;
+      };
+
       const walkBaseTex = seFiltered[0] ?? neFiltered[0];
       if (walkBaseTex) {
         for (let i = 0; i < 3; i++) {
+          // Glow added FIRST so it sits behind the walker in worldDynamic's
+          // sortable z-order (we also set zIndex = walker.zIndex - 1 each frame).
+          const glow = makeGlow(walkBaseTex);
+          layers.worldDynamic.addChild(glow);
+          animContainer.walkerGlows.push(glow);
+
           const walker = new Sprite(walkBaseTex);
           walker.anchor.set(0.5, 0.85);
           walker.visible = false;
@@ -2717,6 +2922,10 @@ export function WorldMap() {
       if (deathFiltered.length > 0) {
         const deathBase = deathFiltered[0]!;
         for (let i = 0; i < 3; i++) {
+          const glow = makeGlow(deathBase);
+          layers.worldDynamic.addChild(glow);
+          animContainer.deathGlows.push(glow);
+
           const dead = new Sprite(deathBase);
           dead.anchor.set(0.5, 0.85);
           dead.visible = false;
@@ -2769,8 +2978,43 @@ export function WorldMap() {
     sprite.scale.set(scale, scale);
   }
 
+  // Mirror every walker → walkerGlow (red blurred halo) and every death sprite
+  // → deathGlow. Called after each render frame so the glow tracks position/
+  // texture/scale/visibility without each render branch needing to know about it.
+  function syncBanditGlows() {
+    const animState = banditAnimRef.current;
+    const syncPair = (src: Sprite, glow: Sprite | undefined) => {
+      if (!glow) return;
+      glow.visible = src.visible;
+      if (!src.visible) return;
+      glow.texture = src.texture;
+      // Slight upscale (1.15x) so the halo bleeds past the sprite silhouette;
+      // preserve flipX via sign of scale.x.
+      glow.scale.set(src.scale.x * 1.15, src.scale.y * 1.15);
+      glow.x = src.x;
+      glow.y = src.y;
+      // Halo sits one z below the actual sprite so the sprite remains crisp.
+      glow.zIndex = src.zIndex - 1;
+      glow.alpha = src.alpha * 0.7;
+    };
+    animState.walkers.forEach((w, i) => syncPair(w, animState.walkerGlows[i]));
+    animState.deathSprites.forEach((d, i) => syncPair(d, animState.deathGlows[i]));
+  }
+
   // Render dispatch — called from the bandit-anim ticker every frame.
   function updateBanditAnimation() {
+    try {
+      updateBanditAnimationInner();
+    } finally {
+      // Always mirror walker / death sprites onto their red-glow halos AFTER
+      // the per-phase render has finalized x/y/texture/scale/visibility.
+      // Wrapping in try/finally guarantees the halos stay in lock-step even
+      // when an inner branch early-returns (which is the dominant pattern).
+      syncBanditGlows();
+    }
+  }
+
+  function updateBanditAnimationInner() {
     const animState = banditAnimRef.current;
     if (!animState.assetsReady) return;
 
@@ -2779,6 +3023,8 @@ export function WorldMap() {
       if (animState.campGlow) animState.campGlow.alpha = 0;
       animState.walkers.forEach(w => { w.visible = false; });
       animState.deathSprites.forEach(d => { d.visible = false; });
+      animState.walkerGlows.forEach(g => { g.visible = false; });
+      animState.deathGlows.forEach(g => { g.visible = false; });
     };
 
     // Yield to the existing combat vignette (DEMO mode) so we don't double-render.
@@ -2911,9 +3157,16 @@ export function WorldMap() {
     if (!fromAnchor) return;
 
     // Locate the old-region target base. Won outcomes still battle at the
-    // defeated base before walking to the destination region.
+    // defeated base before walking to the destination region. Both 'defeated'
+    // and 'won' outcomes now carry targetClanId, so we anchor the circle to
+    // the actual rendered base sprite's world coords (was: stale fromAnchor
+    // offset that landed in an empty patch of map).
     let targetCenter: { x: number; y: number } | null = null;
-    const targetClanId = phase.outcome.type === 'won' ? phase.outcome.targetClanId : phase.targetClanId;
+    const targetClanId =
+      phase.outcome.type === 'won' || phase.outcome.type === 'defeated'
+        ? phase.outcome.targetClanId
+        : phase.targetClanId;
+    const layoutScale = layoutRef.current.scale;
     if (targetClanId) {
       const targetClanNum = Number(targetClanId);
       const targetBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey && b.clan.id === targetClanId)
@@ -2924,13 +3177,27 @@ export function WorldMap() {
         ))
         ?? drawn.bases.find(b => b.clan.id === targetClanId);
       if (targetBase) {
-        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 * layoutRef.current.scale };
+        // Use the rendered base sprite's world coords (container.x/y is set in
+        // the relayout pass), offset slightly upward so the orbit reads as
+        // "circling above the base" rather than overlapping it.
+        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 * layoutScale };
       }
     }
-    // If the target clan has been deleted from the snapshot, use the neutral
-    // region anchor rather than visually attributing the battle to another base.
-    const layoutScale = layoutRef.current.scale;
-    targetCenter = targetCenter ?? { x: fromAnchor.x + 40 * layoutScale, y: fromAnchor.y + 30 * layoutScale };
+    if (!targetCenter) {
+      // Last-resort: pick any rendered base in the bandit's region. Avoids the
+      // old "fromAnchor + 40px" fallback which landed the circle in an empty
+      // patch of map next to the bandit camp.
+      const regionBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey);
+      if (regionBase) {
+        targetCenter = { x: regionBase.container.x, y: regionBase.container.y - 30 * layoutScale };
+      }
+    }
+    if (!targetCenter) {
+      // Absolute fallback: the region's projected geographic anchor (never an
+      // empty offset from the bandit camp).
+      const regionAnchor = projectedRegionAnchor(phase.regionKey);
+      targetCenter = regionAnchor ?? { x: fromAnchor.x, y: fromAnchor.y };
+    }
 
     const t = phase.battleT;
     const dir = pickWalkDirection(fromAnchor, targetCenter);
@@ -2955,7 +3222,8 @@ export function WorldMap() {
     // 7–14.5s: circle + accelerate (whirlwind).
     if (t < BATTLE_T_CIRCLE_END) {
       const circleT = clamp01((t - BATTLE_T_MARCH_END) / (BATTLE_T_CIRCLE_END - BATTLE_T_MARCH_END));
-      const radius = 38 * layoutScale * (1 - circleT * 0.4);
+      // +50% diameter (was 38 → 57) for visibility — Liam UAT 2026-05-11.
+      const radius = 57 * layoutScale * (1 - circleT * 0.4);
       const angSpeed = 1.6 + circleT * 4.2; // radians/sec
       const baseAng = renderNow * 0.001 * angSpeed;
       animState.walkers.forEach((walker, i) => {
@@ -3012,12 +3280,17 @@ export function WorldMap() {
           deathPhaseT < 0.25 ? 0
             : deathPhaseT < 0.5 ? 1
               : 2;
-        // Flicker: square wave at 8Hz.
+        // Flicker: square wave at 8Hz — but ONLY for frames 0–1. Once we
+        // transition to the tombstone (frame 2) the sprite stays solid and
+        // only the fade-out drives alpha. Flashing the tombstone reads as
+        // a broken/strobing asset (Liam UAT 2026-05-11).
         const flickerOn = Math.floor(renderNow / 125) % 2 === 0;
+        const isTombstoneFrame = deathFrameIdx >= 2;
+        const flickerAlpha = isTombstoneFrame ? 1 : (flickerOn ? 1 : 0.55);
         animState.deathSprites.forEach((dead, i) => {
           if (i >= 3) return;
           dead.visible = true;
-          dead.alpha = (1 - fadeT) * (flickerOn ? 1 : 0.55);
+          dead.alpha = (1 - fadeT) * flickerAlpha;
           const ang = (i * Math.PI * 2 / 3);
           const radius = 50 * layoutScale;
           dead.x = targetCenter!.x + Math.cos(ang) * radius;
@@ -3944,6 +4217,19 @@ export function WorldMap() {
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTick, pixiReady, liveBandit]);
+
+  // Winter snowfall: subscribe to `worldSnapshot.winterActive` and drive the
+  // particle overlay's active state. The underlying snapshot type doesn't yet
+  // expose the season fields (matches the cast TopHud does — same getSnapshot
+  // query, same broader-schema-pending caveat), so we read via `any`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const winterActive = (snapshot as any)?.winterActive === true;
+  useEffect(() => {
+    if (!pixiReady) return;
+    const snow = winterSnowRef.current;
+    if (!snow) return; // reduced-motion path — handle was never created
+    snow.setActive(winterActive);
+  }, [pixiReady, winterActive]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.
   useEffect(() => {

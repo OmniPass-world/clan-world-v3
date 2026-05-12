@@ -99,27 +99,7 @@ class GoldSolanaClient(
   }
 
   suspend fun buildFaucetClaim(ownerBase58: String, memo: String): ByteArray {
-    val owner = ownerBase58.toPubkey()
-    val ownerAta = associatedTokenAddress(owner, mint)
-    val mintAuthority = pda("mint-authority")
-    return buildTransaction(
-      payer = owner,
-      instructions = listOf(
-        createAssociatedTokenAccountIdempotent(owner, owner, mint, ownerAta),
-        TransactionInstruction(
-          faucetProgram,
-          listOf(
-            AccountMeta(owner, isSigner = true, isWritable = true),
-            AccountMeta(mint, isSigner = false, isWritable = true),
-            AccountMeta(ownerAta, isSigner = false, isWritable = true),
-            AccountMeta(mintAuthority, isSigner = false, isWritable = false),
-            AccountMeta(TOKEN_PROGRAM_ID, isSigner = false, isWritable = false),
-          ),
-          anchorDiscriminator("global:claim"),
-        ),
-        memo(owner, memo),
-      ),
-    )
+    return buildTransaction(faucetClaimInstructions(ownerBase58.toPubkey(), memo))
   }
 
   suspend fun buildBurn(
@@ -128,7 +108,38 @@ class GoldSolanaClient(
     memo: String,
     skipTax: Long = 0L,
   ): ByteArray {
-    val owner = ownerBase58.toPubkey()
+    return buildTransaction(burnInstructions(ownerBase58.toPubkey(), amount, memo, skipTax))
+  }
+
+  internal suspend fun faucetClaimInstructions(
+    owner: SolanaPublicKey,
+    memo: String,
+  ): List<TransactionInstruction> {
+    val ownerAta = associatedTokenAddress(owner, mint)
+    val mintAuthority = pda("mint-authority")
+    return listOf(
+      createAssociatedTokenAccountIdempotent(owner, owner, mint, ownerAta),
+      TransactionInstruction(
+        faucetProgram,
+        listOf(
+          AccountMeta(owner, isSigner = true, isWritable = true),
+          AccountMeta(mint, isSigner = false, isWritable = true),
+          AccountMeta(ownerAta, isSigner = false, isWritable = true),
+          AccountMeta(mintAuthority, isSigner = false, isWritable = false),
+          AccountMeta(TOKEN_PROGRAM_ID, isSigner = false, isWritable = false),
+        ),
+        anchorDiscriminator("global:claim"),
+      ),
+      memo(owner, memo),
+    )
+  }
+
+  internal suspend fun burnInstructions(
+    owner: SolanaPublicKey,
+    amount: Long,
+    memo: String,
+    skipTax: Long = 0L,
+  ): List<TransactionInstruction> {
     val ownerAta = associatedTokenAddress(owner, mint)
     val instructions = mutableListOf<TransactionInstruction>()
     instructions += burnChecked(ownerAta, mint, owner, amount)
@@ -138,18 +149,17 @@ class GoldSolanaClient(
       instructions += transferChecked(ownerAta, mint, treasuryAta, owner, skipTax)
     }
     instructions += memo(owner, memo)
-    return buildTransaction(owner, instructions)
+    return instructions
   }
 
   private suspend fun buildTransaction(
-    payer: SolanaPublicKey,
     instructions: List<TransactionInstruction>,
   ): ByteArray {
     val blockhash = latestBlockhash()
-    val message = Message.Builder(instructions.toMutableList(), payer)
-      .setRecentBlockhash(blockhash)
-      .build()
-    return Transaction(message).serialize()
+    val canonical = unionAccountFlags(instructions)
+    val builder = Message.Builder().setRecentBlockhash(blockhash)
+    canonical.forEach { builder.addInstruction(it) }
+    return Transaction(builder.build()).serialize()
   }
 
   private suspend fun latestBlockhash(): String = withContext(Dispatchers.IO) {
@@ -176,12 +186,12 @@ class GoldSolanaClient(
   private suspend fun pda(seed: String): SolanaPublicKey =
     ProgramDerivedAddress.find(listOf(seed.toByteArray()), faucetProgram).getOrThrow()
 
-  private fun createAssociatedTokenAccountIdempotent(
+  internal fun createAssociatedTokenAccountIdempotent(
     payer: SolanaPublicKey,
     owner: SolanaPublicKey,
     mint: SolanaPublicKey,
     ata: SolanaPublicKey,
-  ) = TransactionInstruction(
+  ): TransactionInstruction = TransactionInstruction(
     ASSOCIATED_TOKEN_PROGRAM_ID,
     listOf(
       AccountMeta(payer, isSigner = true, isWritable = true),
@@ -193,6 +203,50 @@ class GoldSolanaClient(
     ),
     byteArrayOf(1),
   )
+
+  /**
+   * Pre-pass for #240 follow-up:
+   * `com.solanamobile:web3-solana-jvm:0.3.0-beta4`'s `Message.Builder.build()`
+   * buckets `AccountMeta`s by `(isSigner, isWritable)` GLOBALLY across all
+   * instructions (writable-signer / readonly-signer / writable-non-signer /
+   * readonly-non-signer). The compiled `accounts` list dedups pubkeys, but the
+   * header counters (`signatureCount`, `readOnlyAccounts`, `readOnlyNonSigners`)
+   * use the RAW bucket sizes pre-dedup. So a pubkey that appears in 2+
+   * instructions with DIFFERENT flag tuples produces a malformed header /
+   * accounts mismatch, and the on-chain sanitizer rejects the transaction
+   * with "Transaction failed to sanitize accounts offsets correctly".
+   *
+   * Real-world hit: `buildFaucetClaim` adds the owner as writable-signer
+   * (via ATA-create's payer slot + claim's payer slot) AND as readonly-signer
+   * (via `memo()`'s owner slot). Same problem in `buildBurn(skipTax > 0)`.
+   *
+   * Canonical Solana SDKs (Rust `solana-sdk` `Message::new`, JS `@solana/web3.js`)
+   * union flags per pubkey before compiling. The JVM SDK does not, so we
+   * compensate here by normalizing every occurrence of a pubkey to the
+   * OR-union of its flag tuples.
+   */
+  internal fun unionAccountFlags(
+    instructions: List<TransactionInstruction>,
+  ): List<TransactionInstruction> {
+    val union = mutableMapOf<List<Byte>, Pair<Boolean, Boolean>>()
+    instructions.forEach { ix ->
+      ix.accounts.forEach { meta ->
+        val key = meta.publicKey.bytes.toList()
+        val prev = union[key] ?: (false to false)
+        union[key] = (prev.first || meta.isSigner) to (prev.second || meta.isWritable)
+      }
+    }
+    return instructions.map { ix ->
+      TransactionInstruction(
+        ix.programId,
+        ix.accounts.map { meta ->
+          val (isS, isW) = union[meta.publicKey.bytes.toList()]!!
+          AccountMeta(meta.publicKey, isSigner = isS, isWritable = isW)
+        },
+        ix.data,
+      )
+    }
+  }
 
   private fun burnChecked(
     source: SolanaPublicKey,

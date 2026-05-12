@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# elder-{{ELDER_NUMBER}} entry point — adapted from ~/agents/_template/run.sh
-# Pattern A per back-on-plan §1A: shared parent .claude/ at ~/clan-world/.claude/
-# is the single Claude config dir for every Elder. Each Elder still runs from
-# its own working directory for local .env, state, and outbox files.
+# elder-{{ELDER_NUMBER}} entry point.
+# Shared Claude config stays at ~/clan-world/.claude, while the ClanWorld Elder
+# plugin carries the shared skills, Bash hook, CLI wrappers, and MCP server.
+# Each Elder still runs from its own working directory for local .env, state,
+# and outbox files.
 
 set -euo pipefail
 
@@ -45,6 +46,7 @@ fi
 # === Plugin isolation (Telegram unused for Elders, but isolation matters) ===
 export TELEGRAM_STATE_DIR="$AGENT_DIR/state/channels/telegram"
 export CLAUDE_CODE_PLUGIN_CACHE_DIR="$AGENT_DIR/state/plugin-cache"
+ELDER_PLUGIN_DIR="$RUNTIME_DIR/plugins/clan-world-elder"
 
 # === Runtime state dirs ===
 mkdir -p "$AGENT_DIR/state/plugin-cache" "$AGENT_DIR/state/outbox"
@@ -65,14 +67,14 @@ export TZ="America/New_York"
 # === Elder CLI on PATH ===
 # The runner injects situation blocks; Elders respond by calling `elder` subcommands
 # (world snapshot, clan view, market actions, peer whispers, memory save, ack-clear).
-# Binary lives in the clan-world workspace; symlink/PATH avoids hardcoding repo paths in skills.
-export PATH="$CLAN_WORLD_REPO/packages/agents/bin:$PATH"
+# The plugin bin directory is added by Claude Code while the plugin is enabled;
+# this PATH fallback keeps direct shell startup/debug usage working too.
+export PATH="$ELDER_PLUGIN_DIR/bin:$CLAN_WORLD_REPO/packages/agents/bin:$PATH"
 
 # === CWD stays per-Elder; CLAUDE_CONFIG_DIR is shared ===
 cd "$AGENT_DIR"
 echo "[$AGENT_NAME] Starting... model=$ANTHROPIC_MODEL $(date '+%Y-%m-%d %H:%M:%S %Z')"
 
 
-# Elders don't need the Telegram plugin (no inbound Telegram), so omit --channels.
 # The runner injects situation blocks via tmux send-keys directly to this REPL.
-exec claude "$@"
+exec claude --plugin-dir "$ELDER_PLUGIN_DIR" "$@"

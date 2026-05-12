@@ -57,6 +57,10 @@ library LibBanditSpawning {
         uint8 selectedRegion = selectBanditSpawnRegion(tickSeed, candidateWeights);
         if (selectedRegion != ClanWorldConstants.REGION_NOOP) {
             uint8 tier = banditSpawnTier(tickSeed, selectedRegion);
+            uint8 cap = maxBanditTier(s);
+            if (tier > cap) {
+                tier = cap;
+            }
             spawnBandit(s, selectedRegion, tier, getBanditAttackPower(tier));
         }
 
@@ -194,6 +198,14 @@ library LibBanditSpawning {
         uint256 nonce = uint256(keccak256(abi.encodePacked("bandit_spawn_tier", region)));
         uint256 roll = RNG.rngBounded(tickSeed, RNG.DOMAIN_BANDIT_SPAWN, nonce, BANDIT_TIER_COUNT);
         return uint8(roll + 1);
+    }
+
+    function maxBanditTier(LibStorage.AppStorage storage s) internal view returns (uint8) {
+        uint8 configured = s.maxBanditTier;
+        if (configured == 0) {
+            return BANDIT_TIER_COUNT;
+        }
+        return configured;
     }
 
     function isBanditAllowedRegion(uint8 region) public pure returns (bool) {
