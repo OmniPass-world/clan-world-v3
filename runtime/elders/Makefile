@@ -60,25 +60,22 @@ help:
 # Idempotent. Safe to re-run. Will NOT clobber:
 #   .env, agent-directive.secret.md, state/, existing CLAUDE.md (personality)
 # WILL overwrite (source-controlled, always safe to update):
-#   AGENTS.md, settings.json, skills/, run.sh, bin/, Makefile, aliases.sh
+#   AGENTS.md, settings.json, plugins/, run.sh, bin/, Makefile, aliases.sh
 
 install:
 	@echo "=== installing elder harness to $(DEST) ==="
-	@mkdir -p "$(DEST)"/.claude/skills
-	@mkdir -p "$(DEST)"/.claude/hooks
+	@mkdir -p "$(DEST)"/.claude
 	@mkdir -p "$(DEST)"/bin
-	@cp -p "$(REPO_DIR)"/parent/AGENTS.md "$(DEST)"/AGENTS.md
+	@mkdir -p "$(DEST)"/plugins
+	@cp -p "$(REPO_DIR)"/parent/.claude/CLAUDE.md "$(DEST)"/AGENTS.md
 	@ln -sf AGENTS.md $(DEST)/CLAUDE.md
 	@cp -p "$(REPO_DIR)"/parent/.claude/settings.json "$(DEST)"/.claude/settings.json
-	@cp -p "$(REPO_DIR)"/parent/.claude/hooks/bash-guard.sh "$(DEST)"/.claude/hooks/bash-guard.sh
-	@chmod +x "$(DEST)"/.claude/hooks/bash-guard.sh
-	@for skill in cleared-context-start elder-base-context final-tick-continuity \
-	              uniswap-arb-camping uniswap-market-overview \
-	              uniswap-sell-immediate uniswap-sell-scheduled; do \
-	    mkdir -p $(DEST)/.claude/skills/$$skill; \
-	    cp -p "$(REPO_DIR)"/parent/.claude/skills/$$skill/SKILL.md \
-	          "$(DEST)"/.claude/skills/$$skill/SKILL.md; \
-	done
+	@rm -rf "$(DEST)"/.claude/skills "$(DEST)"/.claude/hooks
+	@rm -rf "$(DEST)"/plugins/clan-world-elder
+	@cp -a "$(REPO_DIR)"/plugins/clan-world-elder "$(DEST)"/plugins/
+	@chmod +x "$(DEST)"/plugins/clan-world-elder/bin/elder \
+	          "$(DEST)"/plugins/clan-world-elder/bin/elder-mcp \
+	          "$(DEST)"/plugins/clan-world-elder/hooks/bash-guard.sh
 	@mkdir -p "$(DEST)"/ttyd
 	@cp -p "$(REPO_DIR)"/ttyd/index.html "$(DEST)"/ttyd/index.html
 	@cp -p "$(REPO_DIR)"/Makefile "$(DEST)"/Makefile
@@ -100,10 +97,7 @@ install:
 	        $(REPO_DIR)/template/run.sh.template \
 	        > $(DEST)/elder-$$n/run.sh; \
 	    chmod +x $(DEST)/elder-$$n/run.sh; \
-	    sed -e 's#{{ELDER_NUMBER}}#'"$$n"'#g' \
-	        -e 's#{{CLAN_WORLD_REPO}}#$(CLAN_WORLD_REPO)#g' \
-	        $(REPO_DIR)/template/.mcp.json.template \
-	        > $(DEST)/elder-$$n/.mcp.json; \
+	    rm -f $(DEST)/elder-$$n/.mcp.json; \
 	    if [ ! -f $(DEST)/elder-$$n/.claude/CLAUDE.md ]; then \
 	        cp -p $(REPO_DIR)/personalities/elder-$$n.md \
 	              $(DEST)/elder-$$n/.claude/CLAUDE.md; \
