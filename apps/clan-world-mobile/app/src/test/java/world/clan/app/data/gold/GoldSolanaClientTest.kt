@@ -84,7 +84,7 @@ class GoldSolanaClientTest {
       ata = ata,
     )
 
-    val message = buildLegacyMessage(client.unionAccountFlags(listOf(ix)))
+    val message = buildLegacyMessage(client.unionAccountFlags(listOf(ix), payer = owner))
 
     assertHeaderAccountsConsistent(message)
     assertOwnerInWritableSignerBucket(message, owner)
@@ -99,7 +99,7 @@ class GoldSolanaClientTest {
       ata = ata,
     )
 
-    val message = buildLegacyMessage(client.unionAccountFlags(listOf(ix)))
+    val message = buildLegacyMessage(client.unionAccountFlags(listOf(ix), payer = differentPayer))
 
     assertHeaderAccountsConsistent(message)
     // payer is the only signer; owner is readonly non-signer.
@@ -122,7 +122,7 @@ class GoldSolanaClientTest {
     // the full instruction list — ATA-create + claim + memo — must compile
     // to a Message whose header counters partition `accounts` cleanly.
     val instructions = client.faucetClaimInstructions(owner, "faucet:test")
-    val canonical = client.unionAccountFlags(instructions)
+    val canonical = client.unionAccountFlags(instructions, payer = owner)
     val message = buildLegacyMessage(canonical)
 
     assertHeaderAccountsConsistent(message)
@@ -149,7 +149,7 @@ class GoldSolanaClientTest {
     assertTrue("memo() emits owner as readonly-signer (input shape)", memoOwnerMeta.isSigner && !memoOwnerMeta.isWritable)
 
     // After union, every owner meta should be writable-signer.
-    val canonical = client.unionAccountFlags(raw)
+    val canonical = client.unionAccountFlags(raw, payer = owner)
     canonical.forEach { ix ->
       ix.accounts.filter { it.publicKey.bytes.contentEquals(owner.bytes) }.forEach { meta ->
         assertTrue(
@@ -169,41 +169,57 @@ class GoldSolanaClientTest {
     // treasuryAta emits payer=owner(true,true), transferChecked emits
     // owner(true,false), and memo emits owner(true,false).
     val instructions = client.burnInstructions(owner, amount = 100L, memo = "burn:test", skipTax = 5L)
-    val canonical = client.unionAccountFlags(instructions)
+    val canonical = client.unionAccountFlags(instructions, payer = owner)
     val message = buildLegacyMessage(canonical)
 
     assertHeaderAccountsConsistent(message)
     assertOwnerInWritableSignerBucket(message, owner)
   }
 
+  // v2.5.1 hotfix regression: super-swarm flagged that buildBurn(skipTax=0L)
+  // produced ZERO writable signers because burnChecked + memo both emit
+  // owner as readonly-signer. Message.Builder in web3-solana-jvm:0.3.0-beta4
+  // has no setFeePayer — it infers from the first writable signer in the
+  // bucketed accounts list. No writable signer → Solana fee-payer derivation
+  // fails → pre-flight rejection ("Transaction has no writable signer").
+  //
+  // Fix: unionAccountFlags(instructions, payer) force-promotes the payer
+  // pubkey to (isSigner=true, isWritable=true) so the compiled message
+  // always has a writable-signer bucket. The payer (== owner here) MUST
+  // land in writable-signer regardless of whether any instruction emits
+  // owner as writable.
   @Test
-  fun burnWithoutSkipTaxStillProducesConsistentHeader() = runBlocking {
-    // No-skip-tax burn: owner only appears as readonly-signer (no writable
-    // need). Verify the union pre-pass is a no-op here and that the header
-    // is still consistent.
+  fun burnWithoutSkipTaxStillProducesConsistentHeaderAndHasWritablePayer() = runBlocking {
     val instructions = client.burnInstructions(owner, amount = 100L, memo = "burn:test", skipTax = 0L)
-    val canonical = client.unionAccountFlags(instructions)
+    val canonical = client.unionAccountFlags(instructions, payer = owner)
     val message = buildLegacyMessage(canonical)
 
     assertHeaderAccountsConsistent(message)
-    // Owner should be readonly-signer here (no writable need).
+
+    // The critical regression assertion: the compiled message has AT LEAST
+    // ONE writable signer (i.e. writableSigners = signatureCount -
+    // readOnlyAccounts >= 1). Without payer promotion, this is 0 and Solana
+    // pre-flight rejects.
     val signers = message.signatureCount.toInt()
-    val readonlyAccounts = message.readOnlyAccounts.toInt()
-    val ownerIndex = message.accounts.indexOfFirst { it.bytes.contentEquals(owner.bytes) }
-    val firstReadonlySigner = signers - readonlyAccounts
+    val readonlySigners = message.readOnlyAccounts.toInt()
+    val writableSigners = signers - readonlySigners
     assertTrue(
-      "Owner in burn-no-skip-tax should land in readonly-signer slice " +
-        "[$firstReadonlySigner, $signers) — actual index $ownerIndex",
-      ownerIndex in firstReadonlySigner until signers,
+      "Compiled message MUST have >= 1 writable signer for Solana fee-payer " +
+        "derivation. signatureCount=$signers, readOnlyAccounts=$readonlySigners, " +
+        "writableSigners=$writableSigners. If this fails, payer promotion is broken.",
+      writableSigners >= 1,
     )
+
+    // Owner is the payer here, so it MUST land in the writable-signer slice.
+    assertOwnerInWritableSignerBucket(message, owner)
   }
 
   // ─── unionAccountFlags unit semantics ────────────────────────────────────
 
   @Test
   fun unionAccountFlagsIsIdempotentOnAlreadyCanonicalInput() = runBlocking {
-    val canonical = client.unionAccountFlags(client.faucetClaimInstructions(owner, "memo"))
-    val twice = client.unionAccountFlags(canonical)
+    val canonical = client.unionAccountFlags(client.faucetClaimInstructions(owner, "memo"), payer = owner)
+    val twice = client.unionAccountFlags(canonical, payer = owner)
     assertEquals(canonical.size, twice.size)
     canonical.zip(twice).forEach { (a, b) ->
       assertEquals(a.accounts.size, b.accounts.size)
@@ -213,6 +229,47 @@ class GoldSolanaClientTest {
         assertEquals(am.isWritable, bm.isWritable)
       }
     }
+  }
+
+  @Test
+  fun unionAccountFlagsPromotesReadonlySignerPayerToWritableSigner() = runBlocking {
+    // Direct unit test for the v2.5.1 hotfix on the precise input shape
+    // that triggered the regression: payer appears in instructions ONLY as
+    // readonly-signer (isSigner=true, isWritable=false). Pre-fix, the union
+    // map would dutifully record (true, false) and the compiled message
+    // would have ZERO writable signers, breaking fee-payer derivation.
+    //
+    // Post-fix, the payer is force-seeded with (true, true) before the
+    // union loop runs, so the union output is (true, true) even though
+    // every input meta said (true, false).
+    val readonlySignerIx = com.solana.transaction.TransactionInstruction(
+      mint,
+      listOf(
+        com.solana.transaction.AccountMeta(mint, isSigner = false, isWritable = true),
+        com.solana.transaction.AccountMeta(owner, isSigner = true, isWritable = false),
+      ),
+      byteArrayOf(0),
+    )
+
+    val canonical = client.unionAccountFlags(listOf(readonlySignerIx), payer = owner)
+
+    // After union, owner meta in the unioned instruction must be
+    // (isSigner=true, isWritable=true).
+    val ownerMeta = canonical.single().accounts.single { it.publicKey.bytes.contentEquals(owner.bytes) }
+    assertTrue(
+      "Payer promotion must upgrade readonly-signer payer to writable-signer. " +
+        "Got isSigner=${ownerMeta.isSigner}, isWritable=${ownerMeta.isWritable}",
+      ownerMeta.isSigner && ownerMeta.isWritable,
+    )
+
+    // And the compiled message must have a writable-signer slice with the payer in it.
+    val message = buildLegacyMessage(canonical)
+    assertHeaderAccountsConsistent(message)
+    val signers = message.signatureCount.toInt()
+    val readonlySigners = message.readOnlyAccounts.toInt()
+    val writableSigners = signers - readonlySigners
+    assertTrue("compiled message must have >= 1 writable signer", writableSigners >= 1)
+    assertOwnerInWritableSignerBucket(message, owner)
   }
 
   // ─── helpers ─────────────────────────────────────────────────────────────
