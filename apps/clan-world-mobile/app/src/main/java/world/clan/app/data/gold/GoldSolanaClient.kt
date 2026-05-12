@@ -103,8 +103,7 @@ class GoldSolanaClient(
     val ownerAta = associatedTokenAddress(owner, mint)
     val mintAuthority = pda("mint-authority")
     return buildTransaction(
-      payer = owner,
-      instructions = listOf(
+      listOf(
         createAssociatedTokenAccountIdempotent(owner, owner, mint, ownerAta),
         TransactionInstruction(
           faucetProgram,
@@ -138,18 +137,16 @@ class GoldSolanaClient(
       instructions += transferChecked(ownerAta, mint, treasuryAta, owner, skipTax)
     }
     instructions += memo(owner, memo)
-    return buildTransaction(owner, instructions)
+    return buildTransaction(instructions)
   }
 
   private suspend fun buildTransaction(
-    payer: SolanaPublicKey,
     instructions: List<TransactionInstruction>,
   ): ByteArray {
     val blockhash = latestBlockhash()
-    val message = Message.Builder(instructions.toMutableList(), payer)
-      .setRecentBlockhash(blockhash)
-      .build()
-    return Transaction(message).serialize()
+    val builder = Message.Builder().setRecentBlockhash(blockhash)
+    instructions.forEach { builder.addInstruction(it) }
+    return Transaction(builder.build()).serialize()
   }
 
   private suspend fun latestBlockhash(): String = withContext(Dispatchers.IO) {
@@ -176,23 +173,26 @@ class GoldSolanaClient(
   private suspend fun pda(seed: String): SolanaPublicKey =
     ProgramDerivedAddress.find(listOf(seed.toByteArray()), faucetProgram).getOrThrow()
 
-  private fun createAssociatedTokenAccountIdempotent(
+  internal fun createAssociatedTokenAccountIdempotent(
     payer: SolanaPublicKey,
     owner: SolanaPublicKey,
     mint: SolanaPublicKey,
     ata: SolanaPublicKey,
-  ) = TransactionInstruction(
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    listOf(
-      AccountMeta(payer, isSigner = true, isWritable = true),
-      AccountMeta(ata, isSigner = false, isWritable = true),
-      AccountMeta(owner, isSigner = false, isWritable = false),
-      AccountMeta(mint, isSigner = false, isWritable = false),
-      AccountMeta(SYSTEM_PROGRAM_ID, isSigner = false, isWritable = false),
-      AccountMeta(TOKEN_PROGRAM_ID, isSigner = false, isWritable = false),
-    ),
-    byteArrayOf(1),
-  )
+  ): TransactionInstruction {
+    val ownerIsSelf = owner.bytes.contentEquals(payer.bytes)
+    return TransactionInstruction(
+      ASSOCIATED_TOKEN_PROGRAM_ID,
+      listOf(
+        AccountMeta(payer, isSigner = true, isWritable = true),
+        AccountMeta(ata, isSigner = false, isWritable = true),
+        AccountMeta(owner, isSigner = ownerIsSelf, isWritable = ownerIsSelf),
+        AccountMeta(mint, isSigner = false, isWritable = false),
+        AccountMeta(SYSTEM_PROGRAM_ID, isSigner = false, isWritable = false),
+        AccountMeta(TOKEN_PROGRAM_ID, isSigner = false, isWritable = false),
+      ),
+      byteArrayOf(1),
+    )
+  }
 
   private fun burnChecked(
     source: SolanaPublicKey,
