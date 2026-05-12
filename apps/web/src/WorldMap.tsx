@@ -71,6 +71,18 @@ interface RegionDef {
 
 interface ClanDef {
   id: string;
+  /**
+   * Visual asset ID used to look up sprite-sheet PNG, base sprites, etc.
+   * In DEMO_MODE this is identical to `id` (both come from MOCK_CLANS). In
+   * live mode, `id` is the on-chain clan ID (e.g. "1", "2") and
+   * `spriteSheetId` is the visual asset ID assigned via LIVE_CLAN_META
+   * (e.g. "clan-iron", "clan-ember"). Separating the two keeps the chain
+   * ID stable for focus/selection while sprite-sheet lookups
+   * (hasClansmanSpriteSheet / loadClansmanSpriteSheet) hit the correct
+   * SHEET_PATH_BY_CLAN entry. Without this, live-mode clans silently
+   * skipped the animated walk sheet (super-swarm v2.6.0 HIGH from codex 5.5).
+   */
+  spriteSheetId: string;
   name: string;
   homeRegion: string;
   color: number;
@@ -131,6 +143,15 @@ type ChainEvent = {
 type LiveClansmanMarker = {
   key: string;
   clanId: string;
+  /**
+   * Visual asset ID used for sprite-sheet lookup
+   * (getClansmanFrameSet / hasClansmanSpriteSheet). Mirrors ClanDef.spriteSheetId.
+   * In DEMO_MODE equals clanId; in live mode clanId is the chain ID
+   * (e.g. "1", "2") and spriteSheetId is the resolved visual asset ID
+   * (e.g. "clan-iron", "clan-ember"). Carrying both avoids per-frame Map
+   * lookups against the visual-clans list inside the position-update loop.
+   */
+  spriteSheetId: string;
   clansmanId: string;
   regionKey: string;
   targetRegionKey?: string;
@@ -290,10 +311,10 @@ const REGION_VISUAL_AREAS: Record<string, { rx: number; ry: number }> = {
 //   verdant-grove    — green tree/treehouse castle (druid)
 // The 4 active clans are mapped to themes whose colour palette matches their sigil.
 const MOCK_CLANS: ClanDef[] = [
-  { id: 'clan-iron',  name: 'Iron Guard',   homeRegion: 'forest',     color: 0x4488cc, sigil: '/sigils/iron-guard-sigil.png',  portrait: '/portraits/aldric-portrait.png',  archetype: 'Cautious',   basePng: '/bases/cobalt-keep.png',   clansmanPng: '/clansmen/clan-iron.png'  },
-  { id: 'clan-ember', name: 'Ember Hand',   homeRegion: 'mountains',  color: 0xcc4422, sigil: '/sigils/ember-hand-sigil.png',  portrait: '/portraits/brennan-portrait.png', archetype: 'Aggressive', basePng: '/bases/bone-standard.png', clansmanPng: '/clansmen/clan-ember.png' },
-  { id: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/gilded-hold.png',   clansmanPng: '/clansmen/clan-dawn.png'  },
-  { id: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
+  { id: 'clan-iron',  spriteSheetId: 'clan-iron',  name: 'Iron Guard',   homeRegion: 'forest',     color: 0x4488cc, sigil: '/sigils/iron-guard-sigil.png',  portrait: '/portraits/aldric-portrait.png',  archetype: 'Cautious',   basePng: '/bases/cobalt-keep.png',   clansmanPng: '/clansmen/clan-iron.png'  },
+  { id: 'clan-ember', spriteSheetId: 'clan-ember', name: 'Ember Hand',   homeRegion: 'mountains',  color: 0xcc4422, sigil: '/sigils/ember-hand-sigil.png',  portrait: '/portraits/brennan-portrait.png', archetype: 'Aggressive', basePng: '/bases/bone-standard.png', clansmanPng: '/clansmen/clan-ember.png' },
+  { id: 'clan-dawn',  spriteSheetId: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/gilded-hold.png',   clansmanPng: '/clansmen/clan-dawn.png'  },
+  { id: 'clan-storm', spriteSheetId: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
 ];
 
 const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
@@ -457,6 +478,12 @@ function liveClansToVisualClans(live: readonly SnapshotClan[] | undefined): Clan
       return {
         ...meta,
         id: clan.id,
+        // Preserve the visual asset ID from the matched LIVE_CLAN_META entry —
+        // overriding `id` with the chain ID would otherwise clobber it via
+        // the spread, breaking sprite-sheet lookups in
+        // hasClansmanSpriteSheet / loadClansmanSpriteSheet which key on the
+        // visual asset ID (clan-iron, clan-ember, etc).
+        spriteSheetId: meta.spriteSheetId,
         name: genericName ? meta.name : clan.name,
         homeRegion,
         level: clan.baseLevel ?? clan.monumentLevel ?? 1,
@@ -2430,8 +2457,14 @@ export function WorldMap() {
       // ./effects/clansmanSpriteSheet.ts SHEET_PATH_BY_CLAN. Only clans
       // listed there have animated walking; others keep the single-PNG
       // textured marker.
-      if (hasClansmanSpriteSheet(clan.id)) {
-        loadClansmanSpriteSheet(clan.id)
+      // Use clan.spriteSheetId (NOT clan.id) — in live mode clan.id is the
+      // on-chain numeric ID and won't hit SHEET_PATH_BY_CLAN. The spriteSheetId
+      // resolves to the visual asset key (clan-iron, clan-ember, ...).
+      // Without this fix, live-mode clans silently fell through to the
+      // legacy single-PNG marker and never gained the animated walk cycle
+      // (super-swarm v2.6.0 HIGH from codex 5.5).
+      if (hasClansmanSpriteSheet(clan.spriteSheetId)) {
+        loadClansmanSpriteSheet(clan.spriteSheetId)
           .then(() => {
             const cancelled = isAssetLoadCancelled();
             if (cancelled || DEMO_MODE) return;
@@ -2521,6 +2554,7 @@ export function WorldMap() {
         markers.push({
           key: `${clan.id}:${clansmanId}`,
           clanId: clan.id,
+          spriteSheetId: visual.spriteSheetId,
           clansmanId: String(clansmanId),
           regionKey,
           targetRegionKey,
@@ -2564,7 +2598,7 @@ export function WorldMap() {
     return halo;
   }
 
-  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean, isDead: boolean) {
+  function makeLiveClansmanMarker(color: number, clanId: string, spriteSheetId: string, missionActive: boolean, isDead: boolean) {
     const container = new Container();
     const statusBg = new Graphics();
     const statusText = new Text({
@@ -2587,7 +2621,11 @@ export function WorldMap() {
     // The first frame of the S row is the starting frame because that's
     // the visual the legacy single-PNG textures were authored from
     // (front-facing, feet planted).
-    const frameSet = getClansmanFrameSet(clanId);
+    //
+    // Use spriteSheetId (NOT clanId) for the frame-set lookup — in live mode
+    // clanId is the on-chain ID ("1", "2", ...) and won't match
+    // SHEET_PATH_BY_CLAN keys (which are visual asset IDs).
+    const frameSet = getClansmanFrameSet(spriteSheetId);
     let anim: ClansmanAnimState | undefined;
     if (frameSet) {
       const startTex = frameSet.rows.S[0]!;
@@ -2646,6 +2684,50 @@ export function WorldMap() {
       }
     });
     return { container, body, halo, carry, statusBg, statusText, anim };
+  }
+
+  /**
+   * Resize a clansman body sprite for the current mission-active state.
+   * makeLiveClansmanMarker authors the body at 42px (active) or 34px (idle)
+   * tall, then the sync loop hits this helper on idle↔active transitions
+   * so existing markers track the same dimorphism without a full rebuild.
+   *
+   * Sprite path: rescale via target-height + aspect ratio (mirrors the
+   * makeLiveClansmanMarker math). Graphics fallback: redraw the circle at
+   * the new radius (7 active / 6 idle) since Graphics has no .height/.width
+   * the same way Sprite does.
+   *
+   * Without this, alive idle→active transitions on existing markers grew
+   * a halo (via lazy makeHaloGraphics) but kept the smaller 34px body, so
+   * a clansman who got assigned a mission visually under-sized vs one who
+   * was created with missionActive=true at first sight (super-swarm v2.6.0
+   * MED from codex 5.4).
+   */
+  function applyMissionActiveBodySize(
+    body: Sprite | Graphics | null,
+    color: number,
+    missionActive: boolean,
+  ) {
+    if (!body) return;
+    if ('texture' in body) {
+      const sprite = body as Sprite;
+      const targetH = missionActive ? 42 : 34;
+      // Skip re-scale if already at target — saves a UV recompute when sync
+      // fires for unrelated reasons (e.g. dead↔alive without missionActive change).
+      if (Math.abs(sprite.height - targetH) < 0.5) return;
+      const sourceH = sprite.texture.height;
+      if (!sourceH) return;
+      const ratio = targetH / sourceH;
+      sprite.height = targetH;
+      sprite.width = sprite.texture.width * ratio;
+    } else {
+      // Graphics fallback: redraw circle at new radius.
+      const fallback = body as Graphics;
+      fallback.clear();
+      fallback.circle(0, 0, missionActive ? 7 : 6);
+      fallback.fill({ color, alpha: 1 });
+      fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
+    }
   }
 
   /**
@@ -2756,6 +2838,12 @@ export function WorldMap() {
             }
           } else {
             applyAliveVisualState(existing.body);
+            // Body size tracks missionActive too — a revived clansman with
+            // missionActive=true needs the 42px body (not the 34px idle
+            // size). Without this, the dead→alive revive restored anchor
+            // / rotation / tint but kept whatever size the body had at
+            // marker creation (v2.6.0 MED fix from codex 5.4).
+            applyMissionActiveBodySize(existing.body, marker.color, marker.missionActive);
             // Halo lives at marker level, not on body — restore here on
             // revive. If the marker was first seen DEAD, makeLiveClansmanMarker
             // never allocated `halo` (the `if (missionActive && !isDead)` guard
@@ -2788,12 +2876,19 @@ export function WorldMap() {
           } else if (existing.halo) {
             existing.halo.visible = marker.missionActive;
           }
+          // Body size dimorphism — 42px active / 34px idle. Without this,
+          // a clansman who got assigned a mission grew a halo but kept the
+          // 34px idle body (and vice versa on mission completion). The
+          // sprite/Graphics distinction is handled inside the helper
+          // (super-swarm v2.6.0 MED from codex 5.4).
+          applyMissionActiveBodySize(existing.body, marker.color, marker.missionActive);
         }
         continue;
       }
       const { container, body, halo, carry, statusBg, statusText, anim } = makeLiveClansmanMarker(
         marker.color,
         marker.clanId,
+        marker.spriteSheetId,
         marker.missionActive,
         marker.isDead,
       );
@@ -3086,24 +3181,37 @@ export function WorldMap() {
    * updateLiveClansmanPositions iteration after the body position has been
    * assigned.
    *
-   * - Diff (lastX, lastY) → (currentX, currentY) to derive a movement vector
-   * - Below WALK_EPSILON_PX we treat the marker as idle (pause on frame 0,
-   *   hold last direction)
-   * - Above the threshold, advance frame at WALK_FRAME_MS cadence using
-   *   real wall-clock dt so the animation stays smooth even if the position
+   * - Direction is derived from (lastX, lastY) → (currentX, currentY) so it
+   *   reflects ACTUAL motion (route segment heading, etc.)
+   * - The walk-vs-freeze decision uses the explicit `isMoving` flag passed
+   *   in by the caller (= mission-active + targetRegionKey != regionKey).
+   *   Using the position-delta threshold (WALK_EPSILON_PX) here was buggy:
+   *   the decorative idle bob (±1.2px) exceeded the 0.05px threshold and
+   *   caused idle clansmen to flicker through the walk cycle. Semantic
+   *   intent is the source of truth (super-swarm v2.6.0 MED from codex 5.4
+   *   + codex 5.5 consensus).
+   * - When isMoving=true, advance frame at WALK_FRAME_MS cadence using real
+   *   wall-clock dt so the animation stays smooth even if the position
    *   update fires unevenly
    * - For mirrored directions (NW, W, SW) reuse the E-side textures and
    *   set sprite.scale.x to the negative current magnitude
    * - Dead markers freeze on whatever frame they were on — caller's
    *   isDead branch handles that case before reaching here.
    */
-  function advanceClansmanAnimation(marker: LiveClansmanMarker, currentX: number, currentY: number) {
+  function advanceClansmanAnimation(
+    marker: LiveClansmanMarker,
+    currentX: number,
+    currentY: number,
+    isMoving: boolean,
+  ) {
     const anim = marker.anim;
     if (!anim) return;
     const body = marker.body;
     if (!body || !('texture' in body)) return; // Graphics fallback has no .texture
     const sprite = body as Sprite;
-    const frameSet = getClansmanFrameSet(marker.clanId);
+    // Frame-set is cached by visual asset ID — use spriteSheetId, not clanId
+    // (in live mode, clanId is the chain ID and won't match cache keys).
+    const frameSet = getClansmanFrameSet(marker.spriteSheetId);
     if (!frameSet) return;
 
     const now = performance.now();
@@ -3113,11 +3221,22 @@ export function WorldMap() {
       dx = currentX - anim.lastX;
       dy = currentY - anim.lastY;
     }
+    // Direction still derives from observed motion (so left vs right vs N/S
+    // matches the actual segment heading), but only when there's enough
+    // delta to avoid bob-jitter rotating the sprite. WALK_EPSILON_PX is
+    // re-purposed: was the walk/freeze gate, now just a direction-update
+    // gate. When isMoving but dx/dy is tiny (e.g. first frame post-resume,
+    // pause-at-waypoint), the held direction carries through.
     const distSq = dx * dx + dy * dy;
-    const isWalking = distSq >= WALK_EPSILON_PX * WALK_EPSILON_PX;
+    const hasDirectionalMotion = distSq >= WALK_EPSILON_PX * WALK_EPSILON_PX;
 
-    if (isWalking) {
-      anim.direction = directionForVector(dx, dy);
+    if (isMoving) {
+      // Only update direction when there's enough delta — otherwise the
+      // last-known direction holds (avoids re-snapping to S on a near-zero
+      // bezier tangent).
+      if (hasDirectionalMotion) {
+        anim.direction = directionForVector(dx, dy);
+      }
       const dt = now - anim.lastTickMs;
       anim.frameAccumMs += dt;
       // Multi-frame catch-up: if a position update was skipped (tab
@@ -3238,8 +3357,10 @@ export function WorldMap() {
       redrawCarryIndicator(marker.carry);
       redrawWorkerStatus(marker, tickFloat);
       // Drive walking animation last — needs the current screen position
-      // (post-route/bob) to derive its movement vector.
-      advanceClansmanAnimation(marker, position.x, position.y);
+      // (post-route/bob) to derive movement direction. The walk/freeze
+      // decision uses isTraveling (semantic intent) so the idle bob
+      // doesn't accidentally trigger the walk cycle (v2.6.0 fix).
+      advanceClansmanAnimation(marker, position.x, position.y, Boolean(isTraveling));
     }
   }
 

@@ -4,15 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -44,15 +39,13 @@ fun OwnerComingSoonScreen(
   Box(
     modifier = Modifier
       .fillMaxSize()
-      .background(CockpitTokens.Bg.Iron)
-      // Top status-bar inset only — content fills behind the bottom
-      // nav bar / gesture handle. No interactive controls live at the
-      // bottom of this screen, so no per-element nav-bar padding.
-      .windowInsetsPadding(
-        WindowInsets.systemBars.only(
-          WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
-      ),
+      .background(CockpitTokens.Bg.Iron),
+    // Status-bar + horizontal-system-bar safe inset is applied at the
+    // Scaffold level in ClanWorldApp.kt; re-applying it here stacked
+    // the inset and shifted content down by an extra status-bar height
+    // (super-swarm v2.6.0 HIGH from codex 5.5). No interactive controls
+    // live at the bottom of this screen so we let content fill behind
+    // the nav bar / gesture handle.
   ) {
     // 2dp top accent line (matches MiniCockpit panel chrome)
     Box(

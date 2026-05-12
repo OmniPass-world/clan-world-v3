@@ -12,19 +12,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -92,15 +86,14 @@ fun OwnerSignInScreen(
             CockpitTokens.Obsidian.Bottom,
           ),
         ),
-      )
-      // Keep top status-bar inset; fill behind the bottom nav bar /
-      // gesture handle. Interactive elements below add their own
-      // `navigationBarsPadding()` so they aren't obscured.
-      .windowInsetsPadding(
-        WindowInsets.systemBars.only(
-          WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-        ),
       ),
+    // Status-bar + horizontal-system-bar safe inset is already applied
+    // by the Scaffold in ClanWorldApp.kt via `contentWindowInsets =
+    // WindowInsets.statusBars.only(Top + Horizontal)`. Re-applying it
+    // here stacked the inset and shifted content down by an extra
+    // status-bar height (super-swarm v2.6.0 HIGH from codex 5.5).
+    // Interactive elements below still apply `navigationBarsPadding()`
+    // individually since Scaffold lets nav-bar area bleed through.
   ) {
     BackChevron(onBack = onBack, modifier = Modifier.padding(start = 8.dp, top = 8.dp))
 

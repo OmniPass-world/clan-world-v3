@@ -34,20 +34,28 @@ contract UpgradeHeartbeatBanditCap is Script {
         // Support either env var name (CLAN_WORLD_DIAMOND_ADDRESS or CLAN_WORLD_CONTRACT_ADDRESS).
         address diamond = _diamondAddress();
 
-        // Split the 8-entry heartbeatConfigSelectors() array into:
-        //   - first 6 → REPLACE (already routed to old HeartbeatConfigFacet)
-        //   - last 2  → ADD     (new in this upgrade: maxBanditTier + setMaxBanditTier)
-        bytes4[] memory allConfig = DiamondSelectors.heartbeatConfigSelectors();
-        require(allConfig.length == 8, "heartbeatConfigSelectors len drift");
-
+        // Explicit `.selector` references for each REPLACE/ADD entry —
+        // resilient to selector reordering in DiamondSelectors. The previous
+        // version index-split the 8-entry heartbeatConfigSelectors() array
+        // at position 6 (0..5 → REPLACE, 6..7 → ADD); if any selector was
+        // re-ordered inside DiamondSelectors.heartbeatConfigSelectors(),
+        // the script would silently mis-classify which to REPLACE vs ADD
+        // (super-swarm v2.6.0 MED from codex 5.5 + gemini).
+        //
+        // The 6 REPLACE selectors are the pre-existing on-chain methods
+        // (probed 2026-05-11, see header notes). The 2 ADD selectors are
+        // the new bandit-tier cap surface.
         bytes4[] memory replaceConfig = new bytes4[](6);
-        for (uint256 i = 0; i < 6; i++) {
-            replaceConfig[i] = allConfig[i];
-        }
+        replaceConfig[0] = HeartbeatConfigFacet.heartbeatIntervalSeconds.selector;
+        replaceConfig[1] = HeartbeatConfigFacet.setHeartbeatIntervalSeconds.selector;
+        replaceConfig[2] = HeartbeatConfigFacet.clansmanCooldownSeconds.selector;
+        replaceConfig[3] = HeartbeatConfigFacet.setClansmanCooldownSeconds.selector;
+        replaceConfig[4] = HeartbeatConfigFacet.banditSpawnTriggered.selector;
+        replaceConfig[5] = HeartbeatConfigFacet.triggerBanditSpawn.selector;
 
         bytes4[] memory addConfig = new bytes4[](2);
-        addConfig[0] = allConfig[6]; // maxBanditTier()
-        addConfig[1] = allConfig[7]; // setMaxBanditTier(uint8)
+        addConfig[0] = HeartbeatConfigFacet.maxBanditTier.selector;
+        addConfig[1] = HeartbeatConfigFacet.setMaxBanditTier.selector;
 
         vm.startBroadcast(deployerPrivateKey);
 
