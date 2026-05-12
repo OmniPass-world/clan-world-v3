@@ -24,13 +24,15 @@ library DiamondSelectors {
     }
 
     function heartbeatConfigSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](6);
+        selectors = new bytes4[](8);
         selectors[0] = HeartbeatConfigFacet.heartbeatIntervalSeconds.selector;
         selectors[1] = HeartbeatConfigFacet.setHeartbeatIntervalSeconds.selector;
         selectors[2] = HeartbeatConfigFacet.clansmanCooldownSeconds.selector;
         selectors[3] = HeartbeatConfigFacet.setClansmanCooldownSeconds.selector;
         selectors[4] = HeartbeatConfigFacet.banditSpawnTriggered.selector;
         selectors[5] = HeartbeatConfigFacet.triggerBanditSpawn.selector;
+        selectors[6] = HeartbeatConfigFacet.maxBanditTier.selector;
+        selectors[7] = HeartbeatConfigFacet.setMaxBanditTier.selector;
     }
 
     function worldPauseSelectors() internal pure returns (bytes4[] memory selectors) {

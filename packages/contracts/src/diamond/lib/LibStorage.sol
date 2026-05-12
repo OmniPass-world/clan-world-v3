@@ -111,6 +111,7 @@ library LibStorage {
         uint64 heartbeatIntervalSeconds;
         uint64 clansmanCooldownSeconds;
         bool forceBanditSpawnNextHeartbeat;
+        uint8 maxBanditTier;
     }
 
     error ReentrantCall();

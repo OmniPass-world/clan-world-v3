@@ -2,6 +2,7 @@
 pragma solidity ^0.8.34;
 
 import {ClanWorldConstants} from "../../IClanWorld.sol";
+import {LibBanditSpawning} from "../lib/LibBanditSpawning.sol";
 import {LibDiamond} from "../lib/LibDiamond.sol";
 import {LibStorage} from "../lib/LibStorage.sol";
 import {LibWorldClock} from "../lib/LibWorldClock.sol";
@@ -9,9 +10,11 @@ import {LibWorldClock} from "../lib/LibWorldClock.sol";
 contract HeartbeatConfigFacet {
     uint64 private constant MAX_HEARTBEAT_INTERVAL_SECONDS = 1 hours;
     uint64 private constant MAX_CLANSMAN_COOLDOWN_SECONDS = 1 hours;
+    uint8 private constant MAX_BANDIT_TIER_CEILING = 5;
 
     event HeartbeatIntervalUpdated(uint64 oldIntervalSeconds, uint64 newIntervalSeconds, uint64 nextHeartbeatAtTs);
     event ClansmanCooldownUpdated(uint64 oldCooldownSeconds, uint64 newCooldownSeconds);
+    event MaxBanditTierUpdated(uint8 oldMax, uint8 newMax);
     event BanditSpawnTriggered(uint64 currentTick);
 
     function heartbeatIntervalSeconds() external view returns (uint64) {
@@ -53,6 +56,21 @@ contract HeartbeatConfigFacet {
         s.clansmanCooldownSeconds = cooldownSeconds;
 
         emit ClansmanCooldownUpdated(oldCooldownSeconds, cooldownSeconds);
+    }
+
+    function maxBanditTier() external view returns (uint8) {
+        return LibBanditSpawning.maxBanditTier(LibStorage.appStorage());
+    }
+
+    function setMaxBanditTier(uint8 newMax) external {
+        LibDiamond.enforceIsContractOwner();
+        require(newMax >= 1 && newMax <= MAX_BANDIT_TIER_CEILING, "ClanWorld: invalid max bandit tier");
+
+        LibStorage.AppStorage storage s = LibStorage.appStorage();
+        uint8 oldMax = LibBanditSpawning.maxBanditTier(s);
+        s.maxBanditTier = newMax;
+
+        emit MaxBanditTierUpdated(oldMax, newMax);
     }
 
     function banditSpawnTriggered() external view returns (bool) {
