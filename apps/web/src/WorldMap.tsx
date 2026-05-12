@@ -1153,6 +1153,12 @@ export function WorldMap() {
   // React DOM UI). Created post-init; activated/deactivated via setActive in a
   // separate effect that watches `snapshot.winterActive`.
   const winterSnowRef = useRef<WinterSnowHandle | null>(null);
+  // prefers-reduced-motion media query + change listener. Sampled once at app
+  // init and re-checked on any OS-level toggle (issue #250). Stored on refs so
+  // the cleanup in the pixi-init useEffect can remove the listener without
+  // re-running on every render.
+  const reducedMotionMqRef = useRef<MediaQueryList | null>(null);
+  const reducedMotionHandlerRef = useRef<((event: MediaQueryListEvent) => void) | null>(null);
 
   // Bandit attack animation (docs/planning/bandit-animation-impl-plan.md).
   // Snapshot-diff tracking: derive last resolution outcome on every snapshot tick.
@@ -1855,14 +1861,50 @@ export function WorldMap() {
         // the DOM, so it sits above the snow naturally. Honors
         // `prefers-reduced-motion`: when set, we skip creating the system at
         // all so we never spend ticker cycles on motion the user opted out of.
-        const reducedMotion =
-          typeof window !== 'undefined' &&
-          typeof window.matchMedia === 'function' &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (!reducedMotion) {
+        //
+        // v2.5.2 (issue #250): also subscribe to the MediaQueryList's `change`
+        // event so toggling OS motion preference mid-session takes effect.
+        // Previously the value was sampled exactly once at init — if the user
+        // turned reduced-motion ON, snow kept animating; if they turned it OFF
+        // after init, the handle was never created and snow never appeared.
+        const mq =
+          typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        if (!mq || !mq.matches) {
           const snow = createWinterSnow(app, { particleCount: 100 });
           app.stage.addChild(snow.container);
           winterSnowRef.current = snow;
+        }
+        if (mq) {
+          const handleChange = () => {
+            const currentApp = appRef.current;
+            if (!currentApp) return;
+            if (mq.matches) {
+              // User just turned reduced-motion ON. If the snow system was
+              // built, deactivate it (setActive(false) freezes the particles
+              // and stops the ticker callback) — leave the handle in place so
+              // a subsequent OFF toggle can re-enable without re-allocating.
+              winterSnowRef.current?.setActive(false);
+            } else {
+              // User just turned reduced-motion OFF. Lazily build the handle
+              // if init skipped it (reducedMotion was true at startup), then
+              // restore the snapshot-driven active state. The (snapshot as any)
+              // cast mirrors the dedicated useEffect downstream — same broader
+              // snapshot-schema-pending caveat.
+              if (!winterSnowRef.current) {
+                const snow = createWinterSnow(currentApp, { particleCount: 100 });
+                currentApp.stage.addChild(snow.container);
+                winterSnowRef.current = snow;
+              }
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const winterActive = (snapshotRef.current as any)?.winterActive === true;
+              winterSnowRef.current.setActive(winterActive);
+            }
+          };
+          mq.addEventListener('change', handleChange);
+          reducedMotionMqRef.current = mq;
+          reducedMotionHandlerRef.current = handleChange;
         }
 
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
@@ -1898,6 +1940,15 @@ export function WorldMap() {
         winterSnowRef.current.destroy();
         winterSnowRef.current = null;
       }
+      // Unsubscribe the prefers-reduced-motion `change` listener (issue #250).
+      // If we leave it attached, OS-level motion toggles after unmount would
+      // still fire handleChange against a stale appRef — handleChange guards
+      // with `if (!currentApp) return`, but cleaning up is correct hygiene.
+      if (reducedMotionMqRef.current && reducedMotionHandlerRef.current) {
+        reducedMotionMqRef.current.removeEventListener('change', reducedMotionHandlerRef.current);
+        reducedMotionMqRef.current = null;
+        reducedMotionHandlerRef.current = null;
+      }
       if (pixiCanvas && canvasClickHandler) pixiCanvas.removeEventListener('click', canvasClickHandler);
       finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
@@ -1916,6 +1967,35 @@ export function WorldMap() {
       dayNightTickerCbRef.current = null;
       combatTickerCbRef.current = null;
       banditAnimTickerCbRef.current = null;
+      // Explicitly destroy BlurFilter instances on bandit glow sprites BEFORE
+      // resetting the arrays / running app.destroy() below (issue #251). Each
+      // of 3 walker glows + 3 death glows owns its own BlurFilter, and each
+      // filter allocates a render-target framebuffer on the GPU. PixiJS v8's
+      // DestroyOptions has no `filters` flag (verified via @types/pixi.js
+      // 8.18 — destroyTypes.d.ts exposes only children/texture/textureSource/
+      // context/style), and Sprite.destroy() does NOT cascade into the
+      // sprite's `filters[]` array. Without this loop the FBOs leak across
+      // vite HMR cycles in dev, and across StrictMode double-mount in prod-
+      // mode builds.
+      const glowSprites = [
+        ...banditAnimRef.current.walkerGlows,
+        ...banditAnimRef.current.deathGlows,
+      ];
+      for (const glow of glowSprites) {
+        const filters = glow.filters;
+        if (Array.isArray(filters)) {
+          for (const filter of filters) {
+            try {
+              filter.destroy();
+            } catch (err) {
+              if (import.meta.env.DEV) {
+                console.debug('[WorldMap] glow filter destroy noop:', err);
+              }
+            }
+          }
+          glow.filters = null;
+        }
+      }
       // Reset bandit animation state — sprite refs survive Pixi destroy via
       // child-tree cleanup, but we need to clear the cached state so the next
       // mount re-loads textures fresh.
@@ -2245,6 +2325,22 @@ export function WorldMap() {
     });
   }
 
+  /**
+   * Build the yellow "active mission" halo ring that orbits behind an alive
+   * clansman marker when `missionActive` is true. Factored out so both
+   * makeLiveClansmanMarker (initial allocation) and the sync loop (lazy-create
+   * on dead→alive revive or idle→active transition) can use the same geometry.
+   * Lazy-create is required because a clansman first seen DEAD has no halo
+   * allocated; previously the dead→alive transition only flipped
+   * `halo.visible`, which was a silent no-op when halo was null (issue #249).
+   */
+  function makeHaloGraphics(): Graphics {
+    const halo = new Graphics();
+    halo.circle(0, 0, 16);
+    halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
+    return halo;
+  }
+
   function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean, isDead: boolean) {
     const container = new Container();
     const statusBg = new Graphics();
@@ -2283,9 +2379,7 @@ export function WorldMap() {
     }
     let halo: Graphics | null = null;
     if (missionActive && !isDead) {
-      halo = new Graphics();
-      halo.circle(0, 0, 16);
-      halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
+      halo = makeHaloGraphics();
       container.addChildAt(halo, 0);
     }
     applyDeadVisualState(body, isDead);
@@ -2381,6 +2475,7 @@ export function WorldMap() {
       const existing = existingByKey.get(marker.key);
       if (existing) {
         const wasDead = existing.isDead;
+        const wasMissionActive = existing.missionActive;
         Object.assign(existing, marker, {
           node: existing.node,
           body: existing.body,
@@ -2411,9 +2506,36 @@ export function WorldMap() {
           } else {
             applyAliveVisualState(existing.body);
             // Halo lives at marker level, not on body — restore here on
-            // revive. Whether it should be visible right now depends on
-            // missionActive, which `marker` already reflects.
-            if (existing.halo) existing.halo.visible = marker.missionActive;
+            // revive. If the marker was first seen DEAD, makeLiveClansmanMarker
+            // never allocated `halo` (the `if (missionActive && !isDead)` guard
+            // was false), so `existing.halo` is null. Lazily create it now
+            // when missionActive is true — otherwise the dead→alive transition
+            // is a silent no-op and the revived clansman never grows a halo
+            // (issue #249, super-swarm v2.5.0 MED from codex 5.5, codex 5.4,
+            // and Opus 4.7).
+            if (!existing.halo && marker.missionActive) {
+              existing.halo = makeHaloGraphics();
+              // addChildAt(_, 0): halo MUST sit behind the body so the
+              // clansman silhouette reads on top of the ring, matching the
+              // z-order makeLiveClansmanMarker uses at initial allocation.
+              existing.node.addChildAt(existing.halo, 0);
+            } else if (existing.halo) {
+              existing.halo.visible = marker.missionActive;
+            }
+          }
+        } else if (!marker.isDead && wasMissionActive !== marker.missionActive) {
+          // Idle→active (or active→idle) transition for an ALIVE clansman:
+          // same lazy-create pattern. An alive+idle clansman who just got
+          // assigned a mission has no halo yet — allocate it on demand.
+          // Without this, the marker has the right size/anchor but visually
+          // looks idle (no orbit ring) until full re-mount. Mirrors the
+          // dead→alive branch so both transitions converge on a consistent
+          // visual state (issue #249, second leg).
+          if (!existing.halo && marker.missionActive) {
+            existing.halo = makeHaloGraphics();
+            existing.node.addChildAt(existing.halo, 0);
+          } else if (existing.halo) {
+            existing.halo.visible = marker.missionActive;
           }
         }
         continue;
@@ -3184,17 +3306,14 @@ export function WorldMap() {
       }
     }
     if (!targetCenter) {
-      // Last-resort: pick any rendered base in the bandit's region. Avoids the
-      // old "fromAnchor + 40px" fallback which landed the circle in an empty
-      // patch of map next to the bandit camp.
-      const regionBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey);
-      if (regionBase) {
-        targetCenter = { x: regionBase.container.x, y: regionBase.container.y - 30 * layoutScale };
-      }
-    }
-    if (!targetCenter) {
-      // Absolute fallback: the region's projected geographic anchor (never an
-      // empty offset from the bandit camp).
+      // Fallback: the region's projected geographic anchor — a NEUTRAL anchor,
+      // NOT an arbitrary same-region base. v2.5.0 had a "pick any base in
+      // bandit's region" fallback here (issue #248); in a multi-clan region
+      // that picked the WRONG clan's base when targetClanId was missing,
+      // visually attributing the attack to a clan that wasn't actually under
+      // siege (e.g. bandits circling a surviving clan = false game state).
+      // The neutral region anchor reads as "battle is happening somewhere in
+      // this region" without falsely indicting a specific surviving clan.
       const regionAnchor = projectedRegionAnchor(phase.regionKey);
       targetCenter = regionAnchor ?? { x: fromAnchor.x, y: fromAnchor.y };
     }
