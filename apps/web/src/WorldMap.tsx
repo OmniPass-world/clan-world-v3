@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
-import { Application, Assets, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
+import { Application, Assets, BlurFilter, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
@@ -574,7 +574,7 @@ type CombatTrigger = {
 // "lastOutcome" memo. T3 last 10s = telegraph. T4 = full battle / advance / escape.
 
 type BanditDiffOutcome =
-  | { type: 'defeated'; resolvedTick: number; fromRegion: number }
+  | { type: 'defeated'; resolvedTick: number; fromRegion: number; targetClanId: string | null }
   | { type: 'won'; resolvedTick: number; fromRegion: number; toRegion: number; targetClanId: string | null }
   | { type: 'no_battle_advance'; resolvedTick: number; fromRegion: number; toRegion: number };
 
@@ -902,10 +902,17 @@ export function computeBanditAnimPhase(
 
       const fromRegionKey = regionKeyByChainId[lastOutcome.fromRegion];
       if (!fromRegionKey) return { kind: 'hidden' };
+      // Both 'won' and 'defeated' outcomes now carry a targetClanId so the
+      // attack-circle animation anchors to the actual rendered base sprite
+      // instead of a stale fromAnchor offset (empty patch of map).
+      const phaseTargetClanId =
+        lastOutcome.type === 'won' || lastOutcome.type === 'defeated'
+          ? lastOutcome.targetClanId
+          : null;
       return {
         kind: 'battle',
         regionKey: fromRegionKey,
-        targetClanId: lastOutcome.type === 'won' ? lastOutcome.targetClanId : null,
+        targetClanId: phaseTargetClanId,
         outcome: lastOutcome,
         battleT,
       };
@@ -942,15 +949,17 @@ export function computeBanditAnimPhase(
     if (bandit.state === BanditState.Defeated) {
       const battleT = currentTickFloat - bandit.stateEnteredTick;
       if (battleT < 0 || battleT >= BATTLE_T_FADE_END) return { kind: 'hidden' };
+      const targetClanId = bandit.projectedTargetClanId > 0 ? String(bandit.projectedTargetClanId) : null;
       const outcome: BanditDiffOutcome = {
         type: 'defeated',
         resolvedTick: bandit.stateEnteredTick,
         fromRegion: bandit.region,
+        targetClanId,
       };
       return {
         kind: 'battle',
         regionKey,
-        targetClanId: bandit.projectedTargetClanId > 0 ? String(bandit.projectedTargetClanId) : null,
+        targetClanId,
         outcome,
         battleT,
       };
@@ -1141,6 +1150,13 @@ export function WorldMap() {
     campGlow: Graphics | null;
     walkers: Sprite[];
     deathSprites: Sprite[];
+    /** Red-tinted, blurred sprite shadows layered BEHIND each walker.
+     * Gives the bandit silhouette a glow halo against the map terrain
+     * (standing / moving / attacking — all 3 states share the same walker
+     * sprite, so one halo array covers them). */
+    walkerGlows: Sprite[];
+    /** Red-tinted, blurred sprite shadows layered BEHIND each death sprite. */
+    deathGlows: Sprite[];
     walkTextures: { ne: import('pixi.js').Texture[]; se: import('pixi.js').Texture[] };
     deathTextures: import('pixi.js').Texture[];
     campTexture: import('pixi.js').Texture | null;
@@ -1151,6 +1167,8 @@ export function WorldMap() {
     campGlow: null,
     walkers: [],
     deathSprites: [],
+    walkerGlows: [],
+    deathGlows: [],
     walkTextures: { ne: [], se: [] },
     deathTextures: [],
     campTexture: null,
@@ -1244,10 +1262,14 @@ export function WorldMap() {
           // Backend snapshots do not expose attackAttemptsMade yet, so we cannot
           // discriminate terminal no-target escape from defeat. Prefer defeated
           // until a compact lastResolution snapshot field is available.
+          // Carry the projected target so the circle/battle animation can anchor
+          // to the actual base sprite world coords (not a stale fromAnchor offset).
+          const hadTarget = typeof prev.projectedTargetClanId === 'number' && prev.projectedTargetClanId > 0;
           lastBanditOutcomeRef.current = {
             type: 'defeated',
             resolvedTick: tick,
             fromRegion: prev.region,
+            targetClanId: hadTarget ? String(prev.projectedTargetClanId) : null,
           };
         } else {
           // Live synth in computeBanditAnimPhase already ran the death animation.
@@ -1860,6 +1882,8 @@ export function WorldMap() {
         campGlow: null,
         walkers: [],
         deathSprites: [],
+        walkerGlows: [],
+        deathGlows: [],
         walkTextures: { ne: [], se: [] },
         deathTextures: [],
         campTexture: null,
@@ -2703,9 +2727,30 @@ export function WorldMap() {
       animContainer.campGlow = glow;
 
       // Pre-create 3 walker sprites + 3 death sprites (max active bandits = 3 per spec).
+      // Each gets a red-tinted, blurred "glow" sprite behind it so the bandit
+      // silhouette pops against the map background. The glow is the SAME sprite
+      // (same texture/scale/flip), tinted 0xff2222 with a BlurFilter applied
+      // (PixiJS v8 ships BlurFilter; pixi-filters' GlowFilter isn't in the
+      // dep tree, but blur+tint+layering produces an equivalent halo).
+      const makeGlow = (tex: import('pixi.js').Texture) => {
+        const glow = new Sprite(tex);
+        glow.anchor.set(0.5, 0.85);
+        glow.tint = 0xff2222;
+        glow.alpha = 0.7;
+        glow.visible = false;
+        glow.filters = [new BlurFilter({ strength: 6, quality: 2 })];
+        return glow;
+      };
+
       const walkBaseTex = seFiltered[0] ?? neFiltered[0];
       if (walkBaseTex) {
         for (let i = 0; i < 3; i++) {
+          // Glow added FIRST so it sits behind the walker in worldDynamic's
+          // sortable z-order (we also set zIndex = walker.zIndex - 1 each frame).
+          const glow = makeGlow(walkBaseTex);
+          layers.worldDynamic.addChild(glow);
+          animContainer.walkerGlows.push(glow);
+
           const walker = new Sprite(walkBaseTex);
           walker.anchor.set(0.5, 0.85);
           walker.visible = false;
@@ -2717,6 +2762,10 @@ export function WorldMap() {
       if (deathFiltered.length > 0) {
         const deathBase = deathFiltered[0]!;
         for (let i = 0; i < 3; i++) {
+          const glow = makeGlow(deathBase);
+          layers.worldDynamic.addChild(glow);
+          animContainer.deathGlows.push(glow);
+
           const dead = new Sprite(deathBase);
           dead.anchor.set(0.5, 0.85);
           dead.visible = false;
@@ -2769,8 +2818,43 @@ export function WorldMap() {
     sprite.scale.set(scale, scale);
   }
 
+  // Mirror every walker → walkerGlow (red blurred halo) and every death sprite
+  // → deathGlow. Called after each render frame so the glow tracks position/
+  // texture/scale/visibility without each render branch needing to know about it.
+  function syncBanditGlows() {
+    const animState = banditAnimRef.current;
+    const syncPair = (src: Sprite, glow: Sprite | undefined) => {
+      if (!glow) return;
+      glow.visible = src.visible;
+      if (!src.visible) return;
+      glow.texture = src.texture;
+      // Slight upscale (1.15x) so the halo bleeds past the sprite silhouette;
+      // preserve flipX via sign of scale.x.
+      glow.scale.set(src.scale.x * 1.15, src.scale.y * 1.15);
+      glow.x = src.x;
+      glow.y = src.y;
+      // Halo sits one z below the actual sprite so the sprite remains crisp.
+      glow.zIndex = src.zIndex - 1;
+      glow.alpha = src.alpha * 0.7;
+    };
+    animState.walkers.forEach((w, i) => syncPair(w, animState.walkerGlows[i]));
+    animState.deathSprites.forEach((d, i) => syncPair(d, animState.deathGlows[i]));
+  }
+
   // Render dispatch — called from the bandit-anim ticker every frame.
   function updateBanditAnimation() {
+    try {
+      updateBanditAnimationInner();
+    } finally {
+      // Always mirror walker / death sprites onto their red-glow halos AFTER
+      // the per-phase render has finalized x/y/texture/scale/visibility.
+      // Wrapping in try/finally guarantees the halos stay in lock-step even
+      // when an inner branch early-returns (which is the dominant pattern).
+      syncBanditGlows();
+    }
+  }
+
+  function updateBanditAnimationInner() {
     const animState = banditAnimRef.current;
     if (!animState.assetsReady) return;
 
@@ -2779,6 +2863,8 @@ export function WorldMap() {
       if (animState.campGlow) animState.campGlow.alpha = 0;
       animState.walkers.forEach(w => { w.visible = false; });
       animState.deathSprites.forEach(d => { d.visible = false; });
+      animState.walkerGlows.forEach(g => { g.visible = false; });
+      animState.deathGlows.forEach(g => { g.visible = false; });
     };
 
     // Yield to the existing combat vignette (DEMO mode) so we don't double-render.
@@ -2911,9 +2997,16 @@ export function WorldMap() {
     if (!fromAnchor) return;
 
     // Locate the old-region target base. Won outcomes still battle at the
-    // defeated base before walking to the destination region.
+    // defeated base before walking to the destination region. Both 'defeated'
+    // and 'won' outcomes now carry targetClanId, so we anchor the circle to
+    // the actual rendered base sprite's world coords (was: stale fromAnchor
+    // offset that landed in an empty patch of map).
     let targetCenter: { x: number; y: number } | null = null;
-    const targetClanId = phase.outcome.type === 'won' ? phase.outcome.targetClanId : phase.targetClanId;
+    const targetClanId =
+      phase.outcome.type === 'won' || phase.outcome.type === 'defeated'
+        ? phase.outcome.targetClanId
+        : phase.targetClanId;
+    const layoutScale = layoutRef.current.scale;
     if (targetClanId) {
       const targetClanNum = Number(targetClanId);
       const targetBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey && b.clan.id === targetClanId)
@@ -2924,13 +3017,27 @@ export function WorldMap() {
         ))
         ?? drawn.bases.find(b => b.clan.id === targetClanId);
       if (targetBase) {
-        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 * layoutRef.current.scale };
+        // Use the rendered base sprite's world coords (container.x/y is set in
+        // the relayout pass), offset slightly upward so the orbit reads as
+        // "circling above the base" rather than overlapping it.
+        targetCenter = { x: targetBase.container.x, y: targetBase.container.y - 30 * layoutScale };
       }
     }
-    // If the target clan has been deleted from the snapshot, use the neutral
-    // region anchor rather than visually attributing the battle to another base.
-    const layoutScale = layoutRef.current.scale;
-    targetCenter = targetCenter ?? { x: fromAnchor.x + 40 * layoutScale, y: fromAnchor.y + 30 * layoutScale };
+    if (!targetCenter) {
+      // Last-resort: pick any rendered base in the bandit's region. Avoids the
+      // old "fromAnchor + 40px" fallback which landed the circle in an empty
+      // patch of map next to the bandit camp.
+      const regionBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey);
+      if (regionBase) {
+        targetCenter = { x: regionBase.container.x, y: regionBase.container.y - 30 * layoutScale };
+      }
+    }
+    if (!targetCenter) {
+      // Absolute fallback: the region's projected geographic anchor (never an
+      // empty offset from the bandit camp).
+      const regionAnchor = projectedRegionAnchor(phase.regionKey);
+      targetCenter = regionAnchor ?? { x: fromAnchor.x, y: fromAnchor.y };
+    }
 
     const t = phase.battleT;
     const dir = pickWalkDirection(fromAnchor, targetCenter);
@@ -2955,7 +3062,8 @@ export function WorldMap() {
     // 7–14.5s: circle + accelerate (whirlwind).
     if (t < BATTLE_T_CIRCLE_END) {
       const circleT = clamp01((t - BATTLE_T_MARCH_END) / (BATTLE_T_CIRCLE_END - BATTLE_T_MARCH_END));
-      const radius = 38 * layoutScale * (1 - circleT * 0.4);
+      // +50% diameter (was 38 → 57) for visibility — Liam UAT 2026-05-11.
+      const radius = 57 * layoutScale * (1 - circleT * 0.4);
       const angSpeed = 1.6 + circleT * 4.2; // radians/sec
       const baseAng = renderNow * 0.001 * angSpeed;
       animState.walkers.forEach((walker, i) => {
@@ -3012,12 +3120,17 @@ export function WorldMap() {
           deathPhaseT < 0.25 ? 0
             : deathPhaseT < 0.5 ? 1
               : 2;
-        // Flicker: square wave at 8Hz.
+        // Flicker: square wave at 8Hz — but ONLY for frames 0–1. Once we
+        // transition to the tombstone (frame 2) the sprite stays solid and
+        // only the fade-out drives alpha. Flashing the tombstone reads as
+        // a broken/strobing asset (Liam UAT 2026-05-11).
         const flickerOn = Math.floor(renderNow / 125) % 2 === 0;
+        const isTombstoneFrame = deathFrameIdx >= 2;
+        const flickerAlpha = isTombstoneFrame ? 1 : (flickerOn ? 1 : 0.55);
         animState.deathSprites.forEach((dead, i) => {
           if (i >= 3) return;
           dead.visible = true;
-          dead.alpha = (1 - fadeT) * (flickerOn ? 1 : 0.55);
+          dead.alpha = (1 - fadeT) * flickerAlpha;
           const ang = (i * Math.PI * 2 / 3);
           const radius = 50 * layoutScale;
           dead.x = targetCenter!.x + Math.cos(ang) * radius;
