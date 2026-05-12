@@ -26,10 +26,16 @@ import {
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
 // at native resolution. The viewport scales/pans this world inside the screen.
-const MAP_WIDTH = 814;
-const MAP_HEIGHT = 1448;
+const MAP_WIDTH = 960;
+const MAP_HEIGHT = 1280;
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
+
+// Debug overlay: render REGIONS[*].polygon as a colored fill + stroke so the
+// hand-tuned region polygons are visible against the new map background. Lets
+// us iterate the polygon coords visually with the map in view. Flip OFF for
+// release; ON during region authoring / map redesigns.
+const SHOW_REGION_POLYGONS = true;
 
 // On first mount we look at the most recent BanditAttackResolved logs and
 // only animate ones decoded within this window — older events are marked
@@ -158,82 +164,96 @@ type LiveClansmanMarker = {
 const REF_W = MAP_WIDTH;
 const REF_H = MAP_HEIGHT;
 
+// FIRST-PASS region polygons for 960x1280 map. Strategy:
+//   1. Scale old polygon coords by sx = 960/814 ≈ 1.179, sy = 1280/1448 ≈ 0.884.
+//   2. For forest / mountains / west-farms / east-farms, additionally widen
+//      the INWARD-FACING edges by +30..+45 px so they read as visibly larger
+//      on the new map (per Liam directive: those four regions want to be
+//      wider; unicorn-town, docks, deep-sea keep scale-only sizing).
+//   3. Region centers (nx/ny) are scaled-old-centers with a small inward nudge
+//      for the four widened regions; they anchor the clan zone halos and the
+//      region labels.
+// Toggle SHOW_REGION_POLYGONS (above) to render the polygons as colored
+// overlays for visual tuning, then iterate coords here.
 const REGIONS: RegionDef[] = [
   {
     id: 'forest',
     name: 'Forest',
-    nx: 210 / REF_W,
-    ny: 245 / REF_H,
+    nx: 268 / REF_W,
+    ny: 217 / REF_H,
     color: 0x228822,
-    polygon: [[0, 0], [400, 0], [475, 165], [420, 355], [285, 500], [0, 555]],
+    polygon: [[0, 0], [512, 0], [600, 146], [525, 314], [366, 442], [0, 491]],
   },
   {
     id: 'mountains',
     name: 'Mountains',
-    nx: 640 / REF_W,
-    ny: 245 / REF_H,
+    nx: 735 / REF_W,
+    ny: 217 / REF_H,
     color: 0x888888,
-    polygon: [[545, 0], [814, 0], [814, 510], [660, 535], [525, 420], [505, 255], [485, 135]],
+    polygon: [[603, 0], [960, 0], [960, 451], [778, 473], [579, 371], [556, 225], [532, 119]],
   },
   {
     id: 'unicorn-town',
     name: 'Unicorn Town',
-    nx: 425 / REF_W,
-    ny: 500 / REF_H,
+    nx: 501 / REF_W,
+    ny: 442 / REF_H,
     color: 0xcc88cc,
-    polygon: [[400, 375], [510, 375], [610, 500], [535, 585], [410, 585], [355, 520]],
+    polygon: [[472, 331], [601, 331], [719, 442], [631, 517], [484, 517], [419, 460]],
   },
   {
     id: 'west-farms',
     name: 'West Farms',
-    nx: 210 / REF_W,
-    ny: 760 / REF_H,
+    nx: 268 / REF_W,
+    ny: 672 / REF_H,
     color: 0xaacc44,
-    polygon: [[0, 555], [330, 520], [425, 760], [300, 960], [0, 985]],
+    polygon: [[0, 491], [434, 460], [546, 672], [394, 849], [0, 871]],
   },
   {
     id: 'east-farms',
     name: 'East Farms',
-    nx: 625 / REF_W,
-    ny: 760 / REF_H,
+    nx: 717 / REF_W,
+    ny: 672 / REF_H,
     color: 0x88bb33,
-    polygon: [[535, 625], [814, 570], [814, 985], [535, 970], [425, 785]],
+    polygon: [[586, 552], [960, 504], [960, 871], [586, 857], [456, 694]],
   },
   {
     id: 'west-docks',
     name: 'West Docks',
-    nx: 220 / REF_W,
-    ny: 1115 / REF_H,
+    nx: 259 / REF_W,
+    ny: 986 / REF_H,
     color: 0x336688,
-    polygon: [[105, 985], [365, 985], [390, 1130], [260, 1270], [95, 1235], [55, 1085]],
+    polygon: [[124, 871], [430, 871], [460, 999], [307, 1123], [112, 1092], [65, 959]],
   },
   {
     id: 'east-docks',
     name: 'East Docks',
-    nx: 655 / REF_W,
-    ny: 1115 / REF_H,
+    nx: 772 / REF_W,
+    ny: 986 / REF_H,
     color: 0x336688,
-    polygon: [[560, 985], [814, 985], [814, 1235], [650, 1260], [540, 1135]],
+    polygon: [[660, 871], [960, 871], [960, 1092], [767, 1114], [637, 1003]],
   },
   {
     id: 'deep-sea',
     name: 'Deep Sea',
-    nx: 500 / REF_W,
-    ny: 1095 / REF_H,
+    nx: 590 / REF_W,
+    ny: 968 / REF_H,
     color: 0x1144aa,
-    polygon: [[405, 1015], [535, 1015], [580, 1145], [500, 1230], [390, 1165]],
+    polygon: [[478, 897], [631, 897], [684, 1012], [590, 1087], [460, 1030]],
   },
 ];
 
+// Halo / visual-area sizes (used for region focus / select rings). Scaled to
+// the new 960x1280 dimensions: rx ~ *1.179, ry ~ *0.884, plus +15 rx for the
+// four widened regions to match the polygon expansion.
 const REGION_VISUAL_AREAS: Record<string, { rx: number; ry: number }> = {
-  forest: { rx: 120, ry: 70 },
-  mountains: { rx: 135, ry: 76 },
-  'unicorn-town': { rx: 92, ry: 62 },
-  'west-farms': { rx: 140, ry: 86 },
-  'east-farms': { rx: 150, ry: 90 },
-  'west-docks': { rx: 118, ry: 76 },
-  'east-docks': { rx: 118, ry: 76 },
-  'deep-sea': { rx: 180, ry: 90 },
+  forest: { rx: 157, ry: 62 },
+  mountains: { rx: 174, ry: 67 },
+  'unicorn-town': { rx: 109, ry: 55 },
+  'west-farms': { rx: 180, ry: 76 },
+  'east-farms': { rx: 192, ry: 80 },
+  'west-docks': { rx: 139, ry: 67 },
+  'east-docks': { rx: 139, ry: 67 },
+  'deep-sea': { rx: 212, ry: 80 },
 };
 
 // Clan ↔ archetype mapping (style/bandit-archetype-sprites): each clan gets a portrait
@@ -1078,6 +1098,10 @@ export function WorldMap() {
   const drawnRef = useRef<{
     regions: Graphics[];
     regionLabels: Text[];
+    /** Per-region debug polygon overlay (visible when SHOW_REGION_POLYGONS).
+     *  Indexes align with REGIONS[]. Each is a Graphics on terrainBackground
+     *  (above bg image, below clanZones/sprites). Cleared + redrawn per layout. */
+    regionPolygons: Graphics[];
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
@@ -1109,6 +1133,7 @@ export function WorldMap() {
   }>({
     regions: [],
     regionLabels: [],
+    regionPolygons: [],
     clanZones: [],
     bases: [],
     levelBadges: [],
@@ -2045,6 +2070,7 @@ export function WorldMap() {
       drawnRef.current = {
         regions: [],
         regionLabels: [],
+        regionPolygons: [],
         clanZones: [],
         bases: [],
         levelBadges: [],
@@ -3674,6 +3700,16 @@ export function WorldMap() {
       }
     }
 
+    // Region polygon debug overlay (toggle via SHOW_REGION_POLYGONS). Added to
+    // terrainBackground BEFORE the region dots/labels so dots+labels render on
+    // top. terrainBackground sits below terrainAccents (clanZones live there),
+    // so the overlay correctly draws between bg image and clan zones.
+    for (let i = 0; i < REGIONS.length; i++) {
+      const g = new Graphics();
+      layers.terrainBackground.addChild(g);
+      drawn.regionPolygons.push(g);
+    }
+
     for (const region of REGIONS) {
       const g = new Graphics();
       layers.terrainBackground.addChild(g);
@@ -3818,6 +3854,25 @@ export function WorldMap() {
       // Crisp edge stroke
       gfx.circle(cx, cy, r);
       gfx.stroke({ color: clan.color, width: 2, alpha: 0.55 });
+    });
+
+    // Region polygon DEBUG overlay — when SHOW_REGION_POLYGONS is true, fill +
+    // stroke each region.polygon in its color so we can visually inspect the
+    // hand-tuned polygons against the map. Projects native-pixel polygon coords
+    // through projX/projY so the overlay tracks the viewport.
+    REGIONS.forEach((region, i) => {
+      const g = drawn.regionPolygons[i];
+      if (!g) return;
+      g.clear();
+      if (!SHOW_REGION_POLYGONS) return;
+      const pts: number[] = [];
+      for (const [px, py] of region.polygon) {
+        pts.push(projX(px / REF_W), projY(py / REF_H));
+      }
+      g.poly(pts);
+      g.fill({ color: region.color, alpha: 0.30 });
+      g.poly(pts);
+      g.stroke({ color: region.color, width: 2, alpha: 0.85 });
     });
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
