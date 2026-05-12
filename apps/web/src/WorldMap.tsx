@@ -8,17 +8,51 @@ import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
+import worldMapWinterBg from './assets/world-map-winter.png';
 import { DEMO_MODE } from './config/env';
 import { BanditState, ClansmanState } from '@clan-world/shared/generated/enums';
 import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
+import {
+  type ClansmanAnimState,
+  WALK_EPSILON_PX,
+  WALK_FRAME_MS,
+  directionForVector,
+  framesForDirection,
+  getClansmanFrameSet,
+  hasClansmanSpriteSheet,
+  loadClansmanSpriteSheet,
+  makeClansmanAnimState,
+} from './effects/clansmanSpriteSheet';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
 // at native resolution. The viewport scales/pans this world inside the screen.
-const MAP_WIDTH = 814;
+const MAP_WIDTH = 1086;
 const MAP_HEIGHT = 1448;
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
+
+// Debug overlay: render REGIONS[*].polygon as a colored fill + stroke so the
+// hand-tuned region polygons are visible against the new map background. Lets
+// us iterate the polygon coords visually with the map in view. Flip OFF for
+// release; ON during region authoring / map redesigns.
+const SHOW_REGION_POLYGONS = true;
+
+// Winter map-overlay fade timings. The base map (`world-map.png`) stays fully
+// opaque at all times; we modulate the alpha of a second Sprite
+// (`world-map-winter.png`) layered immediately above it so the ground reads as
+// snow-covered while `snapshot.winterActive` is true.
+//
+// Wall-clock fades — chosen to feel cinematic at the demo's 1s tick cadence
+// without snapping. Spring thaw is intentionally slower than the freeze.
+// These are intentionally NOT coupled to the heartbeat interval — if the
+// on-chain tick rate changes, the fade still looks natural.
+//
+// Syncs with the existing snow particle effect (winterSnow.ts) via the same
+// `winterActive` boolean — both kick off on the rising edge and unwind on the
+// falling edge.
+const WINTER_FADE_IN_MS = 1500;
+const WINTER_FADE_OUT_MS = 2000;
 
 // On first mount we look at the most recent BanditAttackResolved logs and
 // only animate ones decoded within this window — older events are marked
@@ -37,6 +71,18 @@ interface RegionDef {
 
 interface ClanDef {
   id: string;
+  /**
+   * Visual asset ID used to look up sprite-sheet PNG, base sprites, etc.
+   * In DEMO_MODE this is identical to `id` (both come from MOCK_CLANS). In
+   * live mode, `id` is the on-chain clan ID (e.g. "1", "2") and
+   * `spriteSheetId` is the visual asset ID assigned via LIVE_CLAN_META
+   * (e.g. "clan-iron", "clan-ember"). Separating the two keeps the chain
+   * ID stable for focus/selection while sprite-sheet lookups
+   * (hasClansmanSpriteSheet / loadClansmanSpriteSheet) hit the correct
+   * SHEET_PATH_BY_CLAN entry. Without this, live-mode clans silently
+   * skipped the animated walk sheet (super-swarm v2.6.0 HIGH from codex 5.5).
+   */
+  spriteSheetId: string;
   name: string;
   homeRegion: string;
   color: number;
@@ -97,6 +143,15 @@ type ChainEvent = {
 type LiveClansmanMarker = {
   key: string;
   clanId: string;
+  /**
+   * Visual asset ID used for sprite-sheet lookup
+   * (getClansmanFrameSet / hasClansmanSpriteSheet). Mirrors ClanDef.spriteSheetId.
+   * In DEMO_MODE equals clanId; in live mode clanId is the chain ID
+   * (e.g. "1", "2") and spriteSheetId is the resolved visual asset ID
+   * (e.g. "clan-iron", "clan-ember"). Carrying both avoids per-frame Map
+   * lookups against the visual-clans list inside the position-update loop.
+   */
+  spriteSheetId: string;
   clansmanId: string;
   regionKey: string;
   targetRegionKey?: string;
@@ -128,88 +183,115 @@ type LiveClansmanMarker = {
   statusBg: Graphics;
   statusText: Text;
   route?: TravelRoute;
+  /**
+   * Per-marker animated-sprite state — direction, frame, last position, etc.
+   * Populated when the clan's walk sheet has loaded and the body sprite was
+   * built from a frame Texture (not from the legacy single-PNG fallback).
+   * Null when the marker is still on the dot/legacy sprite path.
+   *
+   * Updated every tick from updateLiveClansmanPositions: we diff
+   * (lastX, lastY) vs the new screen position to derive movement direction,
+   * then advance `frame` by elapsed-ms / WALK_FRAME_MS when walking.
+   * Dead clansmen freeze on whatever frame they were on; idle alive ones
+   * snap to frame 0 of the held direction.
+   */
+  anim?: ClansmanAnimState;
 };
 
 // Reference design size — coords below are authored against the actual map art.
 const REF_W = MAP_WIDTH;
 const REF_H = MAP_HEIGHT;
 
+// FIRST-PASS region polygons for 1086x1448 map. Strategy:
+//   1. Scale old (814x1448) polygon coords by sx = 1086/814 ≈ 1.334 horizontally
+//      only — the new map kept the same height (1448), it's just wider.
+//   2. For forest / mountains / west-farms / east-farms, additionally widen the
+//      INWARD-FACING edges by ±40 px so they read as visibly larger on the new
+//      map (per Liam directive: those four regions want to be wider;
+//      unicorn-town, docks, deep-sea keep scale-only sizing).
+//   3. Region centers (nx/ny) are scaled-old-centers — they anchor the clan
+//      zone halos and the region labels.
+// Toggle SHOW_REGION_POLYGONS (above) to render the polygons as colored overlays
+// for visual tuning, then iterate coords here.
 const REGIONS: RegionDef[] = [
   {
     id: 'forest',
     name: 'Forest',
-    nx: 210 / REF_W,
+    nx: 280 / REF_W,
     ny: 245 / REF_H,
     color: 0x228822,
-    polygon: [[0, 0], [400, 0], [475, 165], [420, 355], [285, 500], [0, 555]],
+    polygon: [[0, 0], [573, 0], [673, 165], [600, 355], [380, 500], [0, 555]],
   },
   {
     id: 'mountains',
     name: 'Mountains',
-    nx: 640 / REF_W,
+    nx: 854 / REF_W,
     ny: 245 / REF_H,
     color: 0x888888,
-    polygon: [[545, 0], [814, 0], [814, 510], [660, 535], [525, 420], [505, 255], [485, 135]],
+    polygon: [[687, 0], [1086, 0], [1086, 510], [880, 535], [700, 420], [634, 255], [607, 135]],
   },
   {
     id: 'unicorn-town',
     name: 'Unicorn Town',
-    nx: 425 / REF_W,
+    nx: 567 / REF_W,
     ny: 500 / REF_H,
     color: 0xcc88cc,
-    polygon: [[400, 375], [510, 375], [610, 500], [535, 585], [410, 585], [355, 520]],
+    polygon: [[533, 375], [681, 375], [814, 500], [714, 585], [547, 585], [474, 520]],
   },
   {
     id: 'west-farms',
     name: 'West Farms',
-    nx: 210 / REF_W,
+    nx: 280 / REF_W,
     ny: 760 / REF_H,
     color: 0xaacc44,
-    polygon: [[0, 555], [330, 520], [425, 760], [300, 960], [0, 985]],
+    polygon: [[0, 555], [480, 520], [607, 760], [440, 960], [0, 985]],
   },
   {
     id: 'east-farms',
     name: 'East Farms',
-    nx: 625 / REF_W,
+    nx: 834 / REF_W,
     ny: 760 / REF_H,
     color: 0x88bb33,
-    polygon: [[535, 625], [814, 570], [814, 985], [535, 970], [425, 785]],
+    polygon: [[674, 625], [1086, 570], [1086, 985], [674, 970], [527, 785]],
   },
   {
     id: 'west-docks',
     name: 'West Docks',
-    nx: 220 / REF_W,
+    nx: 293 / REF_W,
     ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[105, 985], [365, 985], [390, 1130], [260, 1270], [95, 1235], [55, 1085]],
+    polygon: [[140, 985], [487, 985], [520, 1130], [347, 1270], [127, 1235], [73, 1085]],
   },
   {
     id: 'east-docks',
     name: 'East Docks',
-    nx: 655 / REF_W,
+    nx: 874 / REF_W,
     ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[560, 985], [814, 985], [814, 1235], [650, 1260], [540, 1135]],
+    polygon: [[747, 985], [1086, 985], [1086, 1235], [867, 1260], [720, 1135]],
   },
   {
     id: 'deep-sea',
     name: 'Deep Sea',
-    nx: 500 / REF_W,
+    nx: 667 / REF_W,
     ny: 1095 / REF_H,
     color: 0x1144aa,
-    polygon: [[405, 1015], [535, 1015], [580, 1145], [500, 1230], [390, 1165]],
+    polygon: [[540, 1015], [714, 1015], [774, 1145], [667, 1230], [520, 1165]],
   },
 ];
 
+// Halo / visual-area sizes (used for region focus / select rings). Scaled to
+// the new 1086x1448 dimensions: rx ~ *1.334 (horizontal-only), ry unchanged,
+// plus +20 rx for the four widened regions to match the polygon expansion.
 const REGION_VISUAL_AREAS: Record<string, { rx: number; ry: number }> = {
-  forest: { rx: 120, ry: 70 },
-  mountains: { rx: 135, ry: 76 },
-  'unicorn-town': { rx: 92, ry: 62 },
-  'west-farms': { rx: 140, ry: 86 },
-  'east-farms': { rx: 150, ry: 90 },
-  'west-docks': { rx: 118, ry: 76 },
-  'east-docks': { rx: 118, ry: 76 },
-  'deep-sea': { rx: 180, ry: 90 },
+  forest: { rx: 180, ry: 70 },
+  mountains: { rx: 200, ry: 76 },
+  'unicorn-town': { rx: 124, ry: 62 },
+  'west-farms': { rx: 207, ry: 86 },
+  'east-farms': { rx: 220, ry: 90 },
+  'west-docks': { rx: 157, ry: 76 },
+  'east-docks': { rx: 157, ry: 76 },
+  'deep-sea': { rx: 240, ry: 90 },
 };
 
 // Clan ↔ archetype mapping (style/bandit-archetype-sprites): each clan gets a portrait
@@ -229,10 +311,10 @@ const REGION_VISUAL_AREAS: Record<string, { rx: number; ry: number }> = {
 //   verdant-grove    — green tree/treehouse castle (druid)
 // The 4 active clans are mapped to themes whose colour palette matches their sigil.
 const MOCK_CLANS: ClanDef[] = [
-  { id: 'clan-iron',  name: 'Iron Guard',   homeRegion: 'forest',     color: 0x4488cc, sigil: '/sigils/iron-guard-sigil.png',  portrait: '/portraits/aldric-portrait.png',  archetype: 'Cautious',   basePng: '/bases/cobalt-keep.png',   clansmanPng: '/clansmen/clan-iron.png'  },
-  { id: 'clan-ember', name: 'Ember Hand',   homeRegion: 'mountains',  color: 0xcc4422, sigil: '/sigils/ember-hand-sigil.png',  portrait: '/portraits/brennan-portrait.png', archetype: 'Aggressive', basePng: '/bases/bone-standard.png', clansmanPng: '/clansmen/clan-ember.png' },
-  { id: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/gilded-hold.png',   clansmanPng: '/clansmen/clan-dawn.png'  },
-  { id: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
+  { id: 'clan-iron',  spriteSheetId: 'clan-iron',  name: 'Iron Guard',   homeRegion: 'forest',     color: 0x4488cc, sigil: '/sigils/iron-guard-sigil.png',  portrait: '/portraits/aldric-portrait.png',  archetype: 'Cautious',   basePng: '/bases/cobalt-keep.png',   clansmanPng: '/clansmen/clan-iron.png'  },
+  { id: 'clan-ember', spriteSheetId: 'clan-ember', name: 'Ember Hand',   homeRegion: 'mountains',  color: 0xcc4422, sigil: '/sigils/ember-hand-sigil.png',  portrait: '/portraits/brennan-portrait.png', archetype: 'Aggressive', basePng: '/bases/bone-standard.png', clansmanPng: '/clansmen/clan-ember.png' },
+  { id: 'clan-dawn',  spriteSheetId: 'clan-dawn',  name: 'Dawn Watch',   homeRegion: 'west-farms', color: 0xccaa22, sigil: '/sigils/dawn-watch-sigil.png',  portrait: '/portraits/sora-portrait.png',    archetype: 'Builder',    basePng: '/bases/gilded-hold.png',   clansmanPng: '/clansmen/clan-dawn.png'  },
+  { id: 'clan-storm', spriteSheetId: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
 ];
 
 const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
@@ -396,6 +478,12 @@ function liveClansToVisualClans(live: readonly SnapshotClan[] | undefined): Clan
       return {
         ...meta,
         id: clan.id,
+        // Preserve the visual asset ID from the matched LIVE_CLAN_META entry —
+        // overriding `id` with the chain ID would otherwise clobber it via
+        // the spread, breaking sprite-sheet lookups in
+        // hasClansmanSpriteSheet / loadClansmanSpriteSheet which key on the
+        // visual asset ID (clan-iron, clan-ember, etc).
+        spriteSheetId: meta.spriteSheetId,
         name: genericName ? meta.name : clan.name,
         homeRegion,
         level: clan.baseLevel ?? clan.monumentLevel ?? 1,
@@ -1054,6 +1142,10 @@ export function WorldMap() {
   const drawnRef = useRef<{
     regions: Graphics[];
     regionLabels: Text[];
+    /** Per-region debug polygon overlay (visible when SHOW_REGION_POLYGONS).
+     *  Indexes align with REGIONS[]. Each is a Graphics on terrainBackground
+     *  (above bg image, below clanZones/sprites). Cleared + redrawn per layout. */
+    regionPolygons: Graphics[];
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
@@ -1085,6 +1177,7 @@ export function WorldMap() {
   }>({
     regions: [],
     regionLabels: [],
+    regionPolygons: [],
     clanZones: [],
     bases: [],
     levelBadges: [],
@@ -1153,6 +1246,32 @@ export function WorldMap() {
   // React DOM UI). Created post-init; activated/deactivated via setActive in a
   // separate effect that watches `snapshot.winterActive`.
   const winterSnowRef = useRef<WinterSnowHandle | null>(null);
+  // Winter MAP overlay sprite — second Sprite layered in `terrainBackground`
+  // immediately above the base map and below region polygons / clan zones /
+  // clansmen. Its `alpha` is animated by a per-frame ticker callback based on
+  // an `idle | fade-in | active | fade-out` state machine driven by
+  // `snapshot.winterActive` edge detection. Sprite stays mounted across the
+  // entire session — only alpha modulates — so we never re-allocate / re-bind
+  // the (large 1086x1448) texture on season swaps.
+  const winterSpriteRef = useRef<Sprite | null>(null);
+  // Edge-detector for winterActive. `null` on first render so we don't
+  // mis-trigger a fade-in if the world boots already in Winter.
+  const prevWinterActiveRef = useRef<boolean | null>(null);
+  // Alpha-envelope state machine. Drives `winterSpriteRef.current.alpha` from a
+  // ticker callback so the animation runs in wall-clock time (not tied to
+  // React renders or chain ticks). Mirrors the fade pattern used by
+  // `createWinterSnow`'s internal phase machine — start-alpha is captured at
+  // each transition so mid-fade reversals are seamless (no blink).
+  const winterFadePhaseRef = useRef<'idle' | 'fade-in' | 'active' | 'fade-out'>('idle');
+  const winterFadeStartMsRef = useRef(0);
+  const winterFadeStartAlphaRef = useRef(0);
+  const winterFadeTickerCbRef = useRef<(() => void) | null>(null);
+  // prefers-reduced-motion media query + change listener. Sampled once at app
+  // init and re-checked on any OS-level toggle (issue #250). Stored on refs so
+  // the cleanup in the pixi-init useEffect can remove the listener without
+  // re-running on every render.
+  const reducedMotionMqRef = useRef<MediaQueryList | null>(null);
+  const reducedMotionHandlerRef = useRef<((event: MediaQueryListEvent) => void) | null>(null);
 
   // Bandit attack animation (docs/planning/bandit-animation-impl-plan.md).
   // Snapshot-diff tracking: derive last resolution outcome on every snapshot tick.
@@ -1609,6 +1728,38 @@ export function WorldMap() {
           console.warn('[WorldMap] failed to load terrain background', err);
         }
 
+        // 1b. Winter map overlay — same dimensions as the base map (1086x1448),
+        // alpha-modulated above. Layered AFTER the base map but BEFORE the
+        // region polygons / labels / clan zones (those get addChild'd later in
+        // buildScene), so it visually sits between ground art and gameplay
+        // overlays. Kept invisible (alpha=0) until a Winter season transition
+        // flips the state machine to `fade-in`.
+        //
+        // Pre-allocated once per Pixi-init so we never pay the 3.8MB upload
+        // cost mid-season. Texture load failure is non-fatal — without the
+        // sprite, the only visible degradation is that the snow particles
+        // (winterSnow.ts) won't be accompanied by ground recoloring, which is
+        // still a usable Winter visual.
+        try {
+          const winterTex = await Assets.load(worldMapWinterBg);
+          if (!mounted || !isMountedRef.current) return;
+          const winterSprite = new Sprite(winterTex);
+          winterSprite.width = MAP_WIDTH;
+          winterSprite.height = MAP_HEIGHT;
+          winterSprite.x = 0;
+          winterSprite.y = 0;
+          winterSprite.alpha = 0;
+          // `eventMode = 'none'` ensures the sprite never intercepts pointer
+          // events meant for region polygons / clan bases sitting above it in
+          // the same Container.
+          winterSprite.eventMode = 'none';
+          layers.terrainBackground.addChild(winterSprite);
+          winterSpriteRef.current = winterSprite;
+        } catch (err) {
+          // Non-fatal — fall through; the snow particle effect still plays.
+          console.warn('[WorldMap] failed to load winter map overlay', err);
+        }
+
         // 2. Build scene (regions, sigil sprites, bandit indicator) — PR #41 + PR #42 logic
         // Layers are added to `viewport` (not app.stage) so pinch/drag affect them.
         buildScene(() => !mounted || !isMountedRef.current);
@@ -1855,15 +2006,96 @@ export function WorldMap() {
         // the DOM, so it sits above the snow naturally. Honors
         // `prefers-reduced-motion`: when set, we skip creating the system at
         // all so we never spend ticker cycles on motion the user opted out of.
-        const reducedMotion =
-          typeof window !== 'undefined' &&
-          typeof window.matchMedia === 'function' &&
-          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        if (!reducedMotion) {
+        //
+        // v2.5.2 (issue #250): also subscribe to the MediaQueryList's `change`
+        // event so toggling OS motion preference mid-session takes effect.
+        // Previously the value was sampled exactly once at init — if the user
+        // turned reduced-motion ON, snow kept animating; if they turned it OFF
+        // after init, the handle was never created and snow never appeared.
+        const mq =
+          typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            ? window.matchMedia('(prefers-reduced-motion: reduce)')
+            : null;
+        if (!mq || !mq.matches) {
           const snow = createWinterSnow(app, { particleCount: 100 });
           app.stage.addChild(snow.container);
           winterSnowRef.current = snow;
         }
+        if (mq) {
+          const handleChange = () => {
+            const currentApp = appRef.current;
+            if (!currentApp) return;
+            if (mq.matches) {
+              // User just turned reduced-motion ON. If the snow system was
+              // built, deactivate it (setActive(false) freezes the particles
+              // and stops the ticker callback) — leave the handle in place so
+              // a subsequent OFF toggle can re-enable without re-allocating.
+              winterSnowRef.current?.setActive(false);
+            } else {
+              // User just turned reduced-motion OFF. Lazily build the handle
+              // if init skipped it (reducedMotion was true at startup), then
+              // restore the snapshot-driven active state. The (snapshot as any)
+              // cast mirrors the dedicated useEffect downstream — same broader
+              // snapshot-schema-pending caveat.
+              if (!winterSnowRef.current) {
+                const snow = createWinterSnow(currentApp, { particleCount: 100 });
+                currentApp.stage.addChild(snow.container);
+                winterSnowRef.current = snow;
+              }
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const winterActive = (snapshotRef.current as any)?.winterActive === true;
+              winterSnowRef.current.setActive(winterActive);
+            }
+          };
+          mq.addEventListener('change', handleChange);
+          reducedMotionMqRef.current = mq;
+          reducedMotionHandlerRef.current = handleChange;
+        }
+
+        // Winter map-overlay alpha ticker. Drives the fade-in/active/fade-out
+        // state machine each frame in wall-clock time. The phase ref is
+        // mutated by a separate useEffect that watches `snapshot.winterActive`
+        // (see below) — this callback only reads phase + start markers and
+        // writes `winterSprite.alpha`. Idle short-circuits before any math so
+        // the per-frame cost in non-winter weather is a single ref read.
+        const winterFadeCb = (): void => {
+          const phase = winterFadePhaseRef.current;
+          if (phase === 'idle') return;
+          const sprite = winterSpriteRef.current;
+          if (!sprite) return;
+          const now = performance.now();
+          const startAlpha = winterFadeStartAlphaRef.current;
+          const startMs = winterFadeStartMsRef.current;
+          if (phase === 'fade-in') {
+            // Remaining duration scales with (1 - startAlpha) so a fade-in
+            // resuming mid-fade-out from e.g. alpha=0.4 only spends 60% of
+            // WINTER_FADE_IN_MS reaching 1.0 — symmetric with fade-out logic.
+            const remainingMs = WINTER_FADE_IN_MS * (1 - startAlpha);
+            const t = remainingMs > 0 ? Math.min(1, (now - startMs) / remainingMs) : 1;
+            const alpha = startAlpha + (1 - startAlpha) * t;
+            sprite.alpha = alpha;
+            if (t >= 1) {
+              sprite.alpha = 1;
+              winterFadePhaseRef.current = 'active';
+            }
+          } else if (phase === 'active') {
+            // Hold at full opacity — no per-frame work needed beyond the early
+            // return, but we set alpha=1 defensively in case the snapshot
+            // edge-detector skipped the fade-in (e.g. world boots in Winter).
+            sprite.alpha = 1;
+          } else if (phase === 'fade-out') {
+            const remainingMs = WINTER_FADE_OUT_MS * startAlpha;
+            const t = remainingMs > 0 ? Math.min(1, (now - startMs) / remainingMs) : 1;
+            const alpha = startAlpha * (1 - t);
+            sprite.alpha = alpha;
+            if (t >= 1) {
+              sprite.alpha = 0;
+              winterFadePhaseRef.current = 'idle';
+            }
+          }
+        };
+        winterFadeTickerCbRef.current = winterFadeCb;
+        app.ticker.add(winterFadeCb);
 
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
@@ -1898,6 +2130,38 @@ export function WorldMap() {
         winterSnowRef.current.destroy();
         winterSnowRef.current = null;
       }
+      // Winter map-overlay ticker + sprite. Destroying the sprite with the
+      // texture (`{ texture: true }` would error in PIXI v8 — use the explicit
+      // texture.destroy() instead) releases the 1086x1448 RGBA atlas off the
+      // GPU. The sprite itself is a child of terrainBackground (inside
+      // worldContainer inside the viewport) and would be cleaned by Pixi's
+      // recursive destroy in app.destroy() below, but we null the ref + drop
+      // the texture explicitly to match the snow-handle pattern.
+      if (a && winterFadeTickerCbRef.current) {
+        a.ticker.remove(winterFadeTickerCbRef.current);
+        winterFadeTickerCbRef.current = null;
+      }
+      if (winterSpriteRef.current) {
+        const winterTex = winterSpriteRef.current.texture;
+        winterSpriteRef.current.destroy();
+        // The PNG texture was loaded via Assets.load and is cached by the
+        // PIXI Assets registry — destroying it here would also blow away any
+        // future re-mount's cache hit. We let PIXI's Assets unloader handle
+        // it; only the Sprite (display object) is destroyed.
+        void winterTex;
+        winterSpriteRef.current = null;
+      }
+      winterFadePhaseRef.current = 'idle';
+      prevWinterActiveRef.current = null;
+      // Unsubscribe the prefers-reduced-motion `change` listener (issue #250).
+      // If we leave it attached, OS-level motion toggles after unmount would
+      // still fire handleChange against a stale appRef — handleChange guards
+      // with `if (!currentApp) return`, but cleaning up is correct hygiene.
+      if (reducedMotionMqRef.current && reducedMotionHandlerRef.current) {
+        reducedMotionMqRef.current.removeEventListener('change', reducedMotionHandlerRef.current);
+        reducedMotionMqRef.current = null;
+        reducedMotionHandlerRef.current = null;
+      }
       if (pixiCanvas && canvasClickHandler) pixiCanvas.removeEventListener('click', canvasClickHandler);
       finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
@@ -1916,6 +2180,35 @@ export function WorldMap() {
       dayNightTickerCbRef.current = null;
       combatTickerCbRef.current = null;
       banditAnimTickerCbRef.current = null;
+      // Explicitly destroy BlurFilter instances on bandit glow sprites BEFORE
+      // resetting the arrays / running app.destroy() below (issue #251). Each
+      // of 3 walker glows + 3 death glows owns its own BlurFilter, and each
+      // filter allocates a render-target framebuffer on the GPU. PixiJS v8's
+      // DestroyOptions has no `filters` flag (verified via @types/pixi.js
+      // 8.18 — destroyTypes.d.ts exposes only children/texture/textureSource/
+      // context/style), and Sprite.destroy() does NOT cascade into the
+      // sprite's `filters[]` array. Without this loop the FBOs leak across
+      // vite HMR cycles in dev, and across StrictMode double-mount in prod-
+      // mode builds.
+      const glowSprites = [
+        ...banditAnimRef.current.walkerGlows,
+        ...banditAnimRef.current.deathGlows,
+      ];
+      for (const glow of glowSprites) {
+        const filters = glow.filters;
+        if (Array.isArray(filters)) {
+          for (const filter of filters) {
+            try {
+              filter.destroy();
+            } catch (err) {
+              if (import.meta.env.DEV) {
+                console.debug('[WorldMap] glow filter destroy noop:', err);
+              }
+            }
+          }
+          glow.filters = null;
+        }
+      }
       // Reset bandit animation state — sprite refs survive Pixi destroy via
       // child-tree cleanup, but we need to clear the cached state so the next
       // mount re-loads textures fresh.
@@ -1941,6 +2234,7 @@ export function WorldMap() {
       drawnRef.current = {
         regions: [],
         regionLabels: [],
+        regionPolygons: [],
         clanZones: [],
         bases: [],
         levelBadges: [],
@@ -2150,6 +2444,48 @@ export function WorldMap() {
         .catch(() => {
           // Travel dot fallback handles missing texture.
         });
+
+      // Per-clan walk sprite sheet — async load + slice into 20 frame
+      // Textures (4 cols × 5 rows: N/NE/E/SE/S directions × 4 frames). Once
+      // ready, evict existing markers so the next sync re-creates them with
+      // the AnimatedSprite-style body. Falls back silently to the
+      // single-PNG `loadClansmanTexture` path above when the sheet is
+      // missing or fails — markers drawn during the load gap render as the
+      // legacy still sprite, then upgrade on next sync.
+      //
+      // Mapping of which clan gets which sheet lives in
+      // ./effects/clansmanSpriteSheet.ts SHEET_PATH_BY_CLAN. Only clans
+      // listed there have animated walking; others keep the single-PNG
+      // textured marker.
+      // Use clan.spriteSheetId (NOT clan.id) — in live mode clan.id is the
+      // on-chain numeric ID and won't hit SHEET_PATH_BY_CLAN. The spriteSheetId
+      // resolves to the visual asset key (clan-iron, clan-ember, ...).
+      // Without this fix, live-mode clans silently fell through to the
+      // legacy single-PNG marker and never gained the animated walk cycle
+      // (super-swarm v2.6.0 HIGH from codex 5.5).
+      if (hasClansmanSpriteSheet(clan.spriteSheetId)) {
+        loadClansmanSpriteSheet(clan.spriteSheetId)
+          .then(() => {
+            const cancelled = isAssetLoadCancelled();
+            if (cancelled || DEMO_MODE) return;
+            const drawnNow = drawnRef.current;
+            for (let i = drawnNow.liveClansmen.length - 1; i >= 0; i--) {
+              const m = drawnNow.liveClansmen[i];
+              if (!m || m.clanId !== clan.id) continue;
+              m.route?.line.parent?.removeChild(m.route.line);
+              m.route?.line.destroy();
+              m.node.parent?.removeChild(m.node);
+              m.node.destroy({ children: true });
+              drawnNow.liveClansmen.splice(i, 1);
+            }
+            liveClansmanVisualKeyRef.current = '';
+            syncLiveClansmanVisuals(() => !isMountedRef.current);
+            relayout(WORLD_WIDTH, WORLD_HEIGHT);
+          })
+          .catch(() => {
+            // Sheet load failed — keep the single-PNG fallback rendering.
+          });
+      }
     }
 
     for (const clan of clans) {
@@ -2218,6 +2554,7 @@ export function WorldMap() {
         markers.push({
           key: `${clan.id}:${clansmanId}`,
           clanId: clan.id,
+          spriteSheetId: visual.spriteSheetId,
           clansmanId: String(clansmanId),
           regionKey,
           targetRegionKey,
@@ -2245,7 +2582,23 @@ export function WorldMap() {
     });
   }
 
-  function makeLiveClansmanMarker(color: number, clanId: string, missionActive: boolean, isDead: boolean) {
+  /**
+   * Build the yellow "active mission" halo ring that orbits behind an alive
+   * clansman marker when `missionActive` is true. Factored out so both
+   * makeLiveClansmanMarker (initial allocation) and the sync loop (lazy-create
+   * on dead→alive revive or idle→active transition) can use the same geometry.
+   * Lazy-create is required because a clansman first seen DEAD has no halo
+   * allocated; previously the dead→alive transition only flipped
+   * `halo.visible`, which was a silent no-op when halo was null (issue #249).
+   */
+  function makeHaloGraphics(): Graphics {
+    const halo = new Graphics();
+    halo.circle(0, 0, 16);
+    halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
+    return halo;
+  }
+
+  function makeLiveClansmanMarker(color: number, clanId: string, spriteSheetId: string, missionActive: boolean, isDead: boolean) {
     const container = new Container();
     const statusBg = new Graphics();
     const statusText = new Text({
@@ -2260,32 +2613,61 @@ export function WorldMap() {
     });
     statusText.anchor.set(0.5, 0.5);
     let body: Sprite | Graphics | null = null;
-    const tex = clansmanTextureCache[clanId];
-    if (tex) {
-      const sprite = new Sprite(tex);
-      // Dead clansmen rotate 90° (lying down) — anchor at sprite center so the
-      // rotation pivots on the body, not the feet. Live clansmen keep the
-      // feet-anchor (0.5, 0.82) so they stand on their map dot.
+    // Prefer the animated walk-sheet frame when ready — gives us 4-frame
+    // directional walking via updateLiveClansmanPositions. Falls back to
+    // the legacy single-PNG sprite (still walk-pose), then to the dot
+    // Graphics for the load-gap.
+    //
+    // The first frame of the S row is the starting frame because that's
+    // the visual the legacy single-PNG textures were authored from
+    // (front-facing, feet planted).
+    //
+    // Use spriteSheetId (NOT clanId) for the frame-set lookup — in live mode
+    // clanId is the on-chain ID ("1", "2", ...) and won't match
+    // SHEET_PATH_BY_CLAN keys (which are visual asset IDs).
+    const frameSet = getClansmanFrameSet(spriteSheetId);
+    let anim: ClansmanAnimState | undefined;
+    if (frameSet) {
+      const startTex = frameSet.rows.S[0]!;
+      const sprite = new Sprite(startTex);
       sprite.anchor.set(0.5, isDead ? 0.5 : 0.82);
+      // The sheet's per-frame size (≈280×280) is much bigger than the legacy
+      // 64-ish px asset, so we re-scale to the same target heights the dot
+      // marker used (34/42 px) to keep marker footprint identical. Width
+      // tracks height via the texture aspect ratio.
       const targetH = missionActive ? 42 : 34;
       const ratio = targetH / sprite.texture.height;
       sprite.height = targetH;
       sprite.width = sprite.texture.width * ratio;
       container.addChild(sprite);
       body = sprite;
+      anim = makeClansmanAnimState();
     } else {
-      const fallback = new Graphics();
-      fallback.circle(0, 0, missionActive ? 7 : 6);
-      fallback.fill({ color, alpha: 1 });
-      fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
-      container.addChild(fallback);
-      body = fallback;
+      const tex = clansmanTextureCache[clanId];
+      if (tex) {
+        const sprite = new Sprite(tex);
+        // Dead clansmen rotate 90° (lying down) — anchor at sprite center so the
+        // rotation pivots on the body, not the feet. Live clansmen keep the
+        // feet-anchor (0.5, 0.82) so they stand on their map dot.
+        sprite.anchor.set(0.5, isDead ? 0.5 : 0.82);
+        const targetH = missionActive ? 42 : 34;
+        const ratio = targetH / sprite.texture.height;
+        sprite.height = targetH;
+        sprite.width = sprite.texture.width * ratio;
+        container.addChild(sprite);
+        body = sprite;
+      } else {
+        const fallback = new Graphics();
+        fallback.circle(0, 0, missionActive ? 7 : 6);
+        fallback.fill({ color, alpha: 1 });
+        fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
+        container.addChild(fallback);
+        body = fallback;
+      }
     }
     let halo: Graphics | null = null;
     if (missionActive && !isDead) {
-      halo = new Graphics();
-      halo.circle(0, 0, 16);
-      halo.stroke({ color: 0xffe6a0, width: 2, alpha: 0.95 });
+      halo = makeHaloGraphics();
       container.addChildAt(halo, 0);
     }
     applyDeadVisualState(body, isDead);
@@ -2301,7 +2683,51 @@ export function WorldMap() {
         setSelectedClanId(null);
       }
     });
-    return { container, body, halo, carry, statusBg, statusText };
+    return { container, body, halo, carry, statusBg, statusText, anim };
+  }
+
+  /**
+   * Resize a clansman body sprite for the current mission-active state.
+   * makeLiveClansmanMarker authors the body at 42px (active) or 34px (idle)
+   * tall, then the sync loop hits this helper on idle↔active transitions
+   * so existing markers track the same dimorphism without a full rebuild.
+   *
+   * Sprite path: rescale via target-height + aspect ratio (mirrors the
+   * makeLiveClansmanMarker math). Graphics fallback: redraw the circle at
+   * the new radius (7 active / 6 idle) since Graphics has no .height/.width
+   * the same way Sprite does.
+   *
+   * Without this, alive idle→active transitions on existing markers grew
+   * a halo (via lazy makeHaloGraphics) but kept the smaller 34px body, so
+   * a clansman who got assigned a mission visually under-sized vs one who
+   * was created with missionActive=true at first sight (super-swarm v2.6.0
+   * MED from codex 5.4).
+   */
+  function applyMissionActiveBodySize(
+    body: Sprite | Graphics | null,
+    color: number,
+    missionActive: boolean,
+  ) {
+    if (!body) return;
+    if ('texture' in body) {
+      const sprite = body as Sprite;
+      const targetH = missionActive ? 42 : 34;
+      // Skip re-scale if already at target — saves a UV recompute when sync
+      // fires for unrelated reasons (e.g. dead↔alive without missionActive change).
+      if (Math.abs(sprite.height - targetH) < 0.5) return;
+      const sourceH = sprite.texture.height;
+      if (!sourceH) return;
+      const ratio = targetH / sourceH;
+      sprite.height = targetH;
+      sprite.width = sprite.texture.width * ratio;
+    } else {
+      // Graphics fallback: redraw circle at new radius.
+      const fallback = body as Graphics;
+      fallback.clear();
+      fallback.circle(0, 0, missionActive ? 7 : 6);
+      fallback.fill({ color, alpha: 1 });
+      fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
+    }
   }
 
   /**
@@ -2381,6 +2807,7 @@ export function WorldMap() {
       const existing = existingByKey.get(marker.key);
       if (existing) {
         const wasDead = existing.isDead;
+        const wasMissionActive = existing.missionActive;
         Object.assign(existing, marker, {
           node: existing.node,
           body: existing.body,
@@ -2389,6 +2816,7 @@ export function WorldMap() {
           statusBg: existing.statusBg,
           statusText: existing.statusText,
           route: existing.route,
+          anim: existing.anim,
         });
         // Alive→dead (or dead→alive) transition: re-pose the body sprite
         // in place without rebuilding the node. The split between
@@ -2410,22 +2838,62 @@ export function WorldMap() {
             }
           } else {
             applyAliveVisualState(existing.body);
+            // Body size tracks missionActive too — a revived clansman with
+            // missionActive=true needs the 42px body (not the 34px idle
+            // size). Without this, the dead→alive revive restored anchor
+            // / rotation / tint but kept whatever size the body had at
+            // marker creation (v2.6.0 MED fix from codex 5.4).
+            applyMissionActiveBodySize(existing.body, marker.color, marker.missionActive);
             // Halo lives at marker level, not on body — restore here on
-            // revive. Whether it should be visible right now depends on
-            // missionActive, which `marker` already reflects.
-            if (existing.halo) existing.halo.visible = marker.missionActive;
+            // revive. If the marker was first seen DEAD, makeLiveClansmanMarker
+            // never allocated `halo` (the `if (missionActive && !isDead)` guard
+            // was false), so `existing.halo` is null. Lazily create it now
+            // when missionActive is true — otherwise the dead→alive transition
+            // is a silent no-op and the revived clansman never grows a halo
+            // (issue #249, super-swarm v2.5.0 MED from codex 5.5, codex 5.4,
+            // and Opus 4.7).
+            if (!existing.halo && marker.missionActive) {
+              existing.halo = makeHaloGraphics();
+              // addChildAt(_, 0): halo MUST sit behind the body so the
+              // clansman silhouette reads on top of the ring, matching the
+              // z-order makeLiveClansmanMarker uses at initial allocation.
+              existing.node.addChildAt(existing.halo, 0);
+            } else if (existing.halo) {
+              existing.halo.visible = marker.missionActive;
+            }
           }
+        } else if (!marker.isDead && wasMissionActive !== marker.missionActive) {
+          // Idle→active (or active→idle) transition for an ALIVE clansman:
+          // same lazy-create pattern. An alive+idle clansman who just got
+          // assigned a mission has no halo yet — allocate it on demand.
+          // Without this, the marker has the right size/anchor but visually
+          // looks idle (no orbit ring) until full re-mount. Mirrors the
+          // dead→alive branch so both transitions converge on a consistent
+          // visual state (issue #249, second leg).
+          if (!existing.halo && marker.missionActive) {
+            existing.halo = makeHaloGraphics();
+            existing.node.addChildAt(existing.halo, 0);
+          } else if (existing.halo) {
+            existing.halo.visible = marker.missionActive;
+          }
+          // Body size dimorphism — 42px active / 34px idle. Without this,
+          // a clansman who got assigned a mission grew a halo but kept the
+          // 34px idle body (and vice versa on mission completion). The
+          // sprite/Graphics distinction is handled inside the helper
+          // (super-swarm v2.6.0 MED from codex 5.4).
+          applyMissionActiveBodySize(existing.body, marker.color, marker.missionActive);
         }
         continue;
       }
-      const { container, body, halo, carry, statusBg, statusText } = makeLiveClansmanMarker(
+      const { container, body, halo, carry, statusBg, statusText, anim } = makeLiveClansmanMarker(
         marker.color,
         marker.clanId,
+        marker.spriteSheetId,
         marker.missionActive,
         marker.isDead,
       );
       layers.worldDynamic.addChild(container);
-      drawn.liveClansmen.push({ ...marker, node: container, body, halo, carry, statusBg, statusText });
+      drawn.liveClansmen.push({ ...marker, node: container, body, halo, carry, statusBg, statusText, anim });
     }
     liveClansmanVisualKeyRef.current = rosterKey;
     updateLiveClansmanPositions();
@@ -2708,11 +3176,113 @@ export function WorldMap() {
     }, TRAVEL_RECONCILE_MS);
   }
 
+  /**
+   * Drive the per-marker walking animation. Called at the end of every
+   * updateLiveClansmanPositions iteration after the body position has been
+   * assigned.
+   *
+   * - Direction is derived from (lastX, lastY) → (currentX, currentY) so it
+   *   reflects ACTUAL motion (route segment heading, etc.)
+   * - The walk-vs-freeze decision uses the explicit `isMoving` flag passed
+   *   in by the caller (= mission-active + targetRegionKey != regionKey).
+   *   Using the position-delta threshold (WALK_EPSILON_PX) here was buggy:
+   *   the decorative idle bob (±1.2px) exceeded the 0.05px threshold and
+   *   caused idle clansmen to flicker through the walk cycle. Semantic
+   *   intent is the source of truth (super-swarm v2.6.0 MED from codex 5.4
+   *   + codex 5.5 consensus).
+   * - When isMoving=true, advance frame at WALK_FRAME_MS cadence using real
+   *   wall-clock dt so the animation stays smooth even if the position
+   *   update fires unevenly
+   * - For mirrored directions (NW, W, SW) reuse the E-side textures and
+   *   set sprite.scale.x to the negative current magnitude
+   * - Dead markers freeze on whatever frame they were on — caller's
+   *   isDead branch handles that case before reaching here.
+   */
+  function advanceClansmanAnimation(
+    marker: LiveClansmanMarker,
+    currentX: number,
+    currentY: number,
+    isMoving: boolean,
+  ) {
+    const anim = marker.anim;
+    if (!anim) return;
+    const body = marker.body;
+    if (!body || !('texture' in body)) return; // Graphics fallback has no .texture
+    const sprite = body as Sprite;
+    // Frame-set is cached by visual asset ID — use spriteSheetId, not clanId
+    // (in live mode, clanId is the chain ID and won't match cache keys).
+    const frameSet = getClansmanFrameSet(marker.spriteSheetId);
+    if (!frameSet) return;
+
+    const now = performance.now();
+    let dx = 0;
+    let dy = 0;
+    if (anim.lastX !== null && anim.lastY !== null) {
+      dx = currentX - anim.lastX;
+      dy = currentY - anim.lastY;
+    }
+    // Direction still derives from observed motion (so left vs right vs N/S
+    // matches the actual segment heading), but only when there's enough
+    // delta to avoid bob-jitter rotating the sprite. WALK_EPSILON_PX is
+    // re-purposed: was the walk/freeze gate, now just a direction-update
+    // gate. When isMoving but dx/dy is tiny (e.g. first frame post-resume,
+    // pause-at-waypoint), the held direction carries through.
+    const distSq = dx * dx + dy * dy;
+    const hasDirectionalMotion = distSq >= WALK_EPSILON_PX * WALK_EPSILON_PX;
+
+    if (isMoving) {
+      // Only update direction when there's enough delta — otherwise the
+      // last-known direction holds (avoids re-snapping to S on a near-zero
+      // bezier tangent).
+      if (hasDirectionalMotion) {
+        anim.direction = directionForVector(dx, dy);
+      }
+      const dt = now - anim.lastTickMs;
+      anim.frameAccumMs += dt;
+      // Multi-frame catch-up: if a position update was skipped (tab
+      // backgrounded, frame coalescing) advance the cycle accordingly so
+      // the walk doesn't "snap" on resume.
+      while (anim.frameAccumMs >= WALK_FRAME_MS) {
+        anim.frame = (anim.frame + 1) % 4;
+        anim.frameAccumMs -= WALK_FRAME_MS;
+      }
+      anim.wasWalking = true;
+    } else {
+      // Idle: pause on frame 0 of the held direction, reset frame timer so
+      // the next walk segment starts cleanly on frame 0 → 1 → 2 → 3.
+      anim.frame = 0;
+      anim.frameAccumMs = 0;
+      anim.wasWalking = false;
+    }
+    anim.lastTickMs = now;
+    anim.lastX = currentX;
+    anim.lastY = currentY;
+
+    const lookup = framesForDirection(frameSet, anim.direction);
+    const tex = lookup.frames[anim.frame] ?? lookup.frames[0]!;
+    if (sprite.texture !== tex) {
+      sprite.texture = tex;
+    }
+    // Mirror flip for NW / W / SW. Preserve the magnitude of the current
+    // X-scale (which carries the marker-level size from
+    // makeLiveClansmanMarker → sprite.height/width). Pixi multiplies
+    // container.scale on top, so a per-sprite mirror is safe.
+    const xMag = Math.abs(sprite.scale.x) || 1;
+    sprite.scale.x = lookup.mirror ? -xMag : xMag;
+  }
+
   function updateLiveClansmanPositions() {
     const drawn = drawnRef.current;
     if (drawn.liveClansmen.length === 0) return;
     const tickFloat = currentTickFloat();
+    // Focus mode (base-click): selected clan stays bright; other clans dim.
+    // Same constants as applyClanFocus() so the per-frame value matches the
+    // one-shot value set on selection — prevents the per-frame loop from
+    // clobbering the dim back to 1 (Liam 2026-05-12).
+    const focusClanId = selectedClanIdRef.current;
     for (const marker of drawn.liveClansmen) {
+      const isOtherClan = !!focusClanId && marker.clanId !== focusClanId;
+      const focusAlpha = isOtherClan ? 0.18 : 1;
       const from = regionWanderPoint(marker.regionKey, marker, 0);
       if (!from) continue;
       // Dead clansmen freeze at their last-known wander point — no bob, no
@@ -2722,7 +3292,11 @@ export function WorldMap() {
         marker.node.x = from.x;
         marker.node.y = from.y;
         marker.node.zIndex = Math.round(marker.node.y + 8);
-        marker.node.alpha = 1; // container alpha stays 1; body's own alpha dims the sprite
+        // Container alpha is normally 1 (body's own alpha dims the sprite).
+        // During focus mode, dead-OTHER-clan clansmen also dim — the focus
+        // dim multiplies onto the existing dead-body alpha (PR #244) so
+        // dead+other-clan reads as even more faded than alive+other-clan.
+        marker.node.alpha = focusAlpha;
         marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
         marker.carry.label.text = '';
         marker.carry.targetFill = 0;
@@ -2731,6 +3305,20 @@ export function WorldMap() {
         marker.statusText.text = '';
         marker.statusText.alpha = 0;
         marker.statusBg.clear();
+        // Dead-state animation freeze: keep anim.lastX/Y in sync with the
+        // current position so the next dead→alive revive doesn't see a
+        // huge phantom delta and start an erroneous walk-cycle. Do NOT
+        // advance frame — body sprite stays on whatever texture was set
+        // last frame, plus the 90° rotation + grey tint applied at
+        // applyDeadVisualState time. Skipping advanceClansmanAnimation
+        // here is what "freezes on current frame" actually means.
+        if (marker.anim) {
+          marker.anim.lastX = from.x;
+          marker.anim.lastY = from.y;
+          marker.anim.frameAccumMs = 0;
+          marker.anim.wasWalking = false;
+          marker.anim.lastTickMs = performance.now();
+        }
         continue;
       }
       const isTraveling = marker.missionActive && marker.targetRegionKey && marker.targetRegionKey !== marker.regionKey;
@@ -2755,7 +3343,11 @@ export function WorldMap() {
       marker.node.x = position.x;
       marker.node.y = position.y;
       marker.node.zIndex = Math.round(marker.node.y + 8);
-      marker.node.alpha = 1;
+      marker.node.alpha = focusAlpha;
+      // Route line follows the same focus-dim rule. applyClanFocus() sets
+      // this once on selection, but routes can be created/destroyed
+      // dynamically per travel — re-apply per frame so new routes also dim.
+      if (marker.route) marker.route.line.alpha = isOtherClan ? 0.12 : 1;
       marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
       const carry = carryReadout(marker, tickFloat);
       marker.carry.label.text = carry.text;
@@ -2764,6 +3356,11 @@ export function WorldMap() {
       else marker.carry.displayedFill += (marker.carry.targetFill - marker.carry.displayedFill) * 0.18;
       redrawCarryIndicator(marker.carry);
       redrawWorkerStatus(marker, tickFloat);
+      // Drive walking animation last — needs the current screen position
+      // (post-route/bob) to derive movement direction. The walk/freeze
+      // decision uses isTraveling (semantic intent) so the idle bob
+      // doesn't accidentally trigger the walk cycle (v2.6.0 fix).
+      advanceClansmanAnimation(marker, position.x, position.y, Boolean(isTraveling));
     }
   }
 
@@ -3184,17 +3781,14 @@ export function WorldMap() {
       }
     }
     if (!targetCenter) {
-      // Last-resort: pick any rendered base in the bandit's region. Avoids the
-      // old "fromAnchor + 40px" fallback which landed the circle in an empty
-      // patch of map next to the bandit camp.
-      const regionBase = drawn.bases.find(b => b.clan.homeRegion === phase.regionKey);
-      if (regionBase) {
-        targetCenter = { x: regionBase.container.x, y: regionBase.container.y - 30 * layoutScale };
-      }
-    }
-    if (!targetCenter) {
-      // Absolute fallback: the region's projected geographic anchor (never an
-      // empty offset from the bandit camp).
+      // Fallback: the region's projected geographic anchor — a NEUTRAL anchor,
+      // NOT an arbitrary same-region base. v2.5.0 had a "pick any base in
+      // bandit's region" fallback here (issue #248); in a multi-clan region
+      // that picked the WRONG clan's base when targetClanId was missing,
+      // visually attributing the attack to a clan that wasn't actually under
+      // siege (e.g. bandits circling a surviving clan = false game state).
+      // The neutral region anchor reads as "battle is happening somewhere in
+      // this region" without falsely indicting a specific surviving clan.
       const regionAnchor = projectedRegionAnchor(phase.regionKey);
       targetCenter = regionAnchor ?? { x: fromAnchor.x, y: fromAnchor.y };
     }
@@ -3379,6 +3973,16 @@ export function WorldMap() {
       }
     }
 
+    // Region polygon debug overlay (toggle via SHOW_REGION_POLYGONS). Added to
+    // terrainBackground BEFORE the region dots/labels so dots+labels render on
+    // top. terrainBackground sits below terrainAccents (clanZones live there),
+    // so the overlay correctly draws between bg image and clan zones.
+    for (let i = 0; i < REGIONS.length; i++) {
+      const g = new Graphics();
+      layers.terrainBackground.addChild(g);
+      drawn.regionPolygons.push(g);
+    }
+
     for (const region of REGIONS) {
       const g = new Graphics();
       layers.terrainBackground.addChild(g);
@@ -3523,6 +4127,25 @@ export function WorldMap() {
       // Crisp edge stroke
       gfx.circle(cx, cy, r);
       gfx.stroke({ color: clan.color, width: 2, alpha: 0.55 });
+    });
+
+    // Region polygon DEBUG overlay — when SHOW_REGION_POLYGONS is true, fill +
+    // stroke each region.polygon in its color so we can visually inspect the
+    // hand-tuned polygons against the map. Projects native-pixel polygon coords
+    // through projX/projY so the overlay tracks the viewport.
+    REGIONS.forEach((region, i) => {
+      const g = drawn.regionPolygons[i];
+      if (!g) return;
+      g.clear();
+      if (!SHOW_REGION_POLYGONS) return;
+      const pts: number[] = [];
+      for (const [px, py] of region.polygon) {
+        pts.push(projX(px / REF_W), projY(py / REF_H));
+      }
+      g.poly(pts);
+      g.fill({ color: region.color, alpha: 0.30 });
+      g.poly(pts);
+      g.stroke({ color: region.color, width: 2, alpha: 0.85 });
     });
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
@@ -4229,6 +4852,49 @@ export function WorldMap() {
     const snow = winterSnowRef.current;
     if (!snow) return; // reduced-motion path — handle was never created
     snow.setActive(winterActive);
+  }, [pixiReady, winterActive]);
+
+  // Winter map-overlay edge detector. Same signal as the snow above, but
+  // drives the alpha state machine of the winter map Sprite instead of the
+  // particle system. The actual per-frame alpha math lives in the ticker
+  // callback set up in the pixi-init useEffect (winterFadeCb); this effect
+  // only flips phase + records start-time/start-alpha at the rising / falling
+  // edge of `winterActive`. Mid-fade reversals are handled by reading the
+  // sprite's current alpha as the next start-alpha, mirroring the
+  // mid-fade-resume pattern in createWinterSnow.
+  useEffect(() => {
+    if (!pixiReady) return;
+    const sprite = winterSpriteRef.current;
+    if (!sprite) return; // texture-load failure path — silent fallback
+    const prev = prevWinterActiveRef.current;
+    prevWinterActiveRef.current = winterActive;
+    // Skip on the very first observation — we don't want to fade IN on app
+    // boot if the world is already in Winter (would look like a slow reveal of
+    // existing state). Just snap to the correct alpha and phase.
+    if (prev === null) {
+      if (winterActive) {
+        sprite.alpha = 1;
+        winterFadePhaseRef.current = 'active';
+      } else {
+        sprite.alpha = 0;
+        winterFadePhaseRef.current = 'idle';
+      }
+      return;
+    }
+    if (prev === winterActive) return; // no edge
+    if (winterActive) {
+      // Rising edge — entering Winter. Capture current alpha so a fade-in
+      // mid fade-out resumes smoothly (no blink to 0 then up).
+      winterFadeStartAlphaRef.current = sprite.alpha;
+      winterFadeStartMsRef.current = performance.now();
+      winterFadePhaseRef.current = 'fade-in';
+    } else {
+      // Falling edge — leaving Winter (entering Spring or whatever season
+      // transitions out). Same mid-fade-resume logic: capture current alpha.
+      winterFadeStartAlphaRef.current = sprite.alpha;
+      winterFadeStartMsRef.current = performance.now();
+      winterFadePhaseRef.current = 'fade-out';
+    }
   }, [pixiReady, winterActive]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.

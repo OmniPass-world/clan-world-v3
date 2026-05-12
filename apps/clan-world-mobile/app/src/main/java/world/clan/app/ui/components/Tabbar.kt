@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -69,10 +70,13 @@ fun ClanWorldTabBar(
 
   val selectedIndex = RootTab.values().indexOf(selected)
 
+  // Outer Box: background gradient + top hairline fill the full unsafe
+  // bottom area (extends behind the gesture handle). Inner content adds
+  // `navigationBarsPadding()` so the tab icons + halo sit ABOVE the
+  // gesture handle while the obsidian still paints to screen bottom.
   Box(
     modifier
       .fillMaxWidth()
-      .height(84.dp)
       .background(
         Brush.verticalGradient(
           0f to Color.Transparent,
@@ -93,6 +97,8 @@ fun ClanWorldTabBar(
     BoxWithConstraints(
       modifier = Modifier
         .fillMaxWidth()
+        .navigationBarsPadding()
+        .height(84.dp)
         .padding(start = 18.dp, top = 10.dp, end = 18.dp, bottom = 20.dp),
     ) {
       val tabCount = RootTab.values().size

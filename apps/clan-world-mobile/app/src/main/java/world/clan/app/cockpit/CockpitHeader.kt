@@ -9,13 +9,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -58,6 +55,20 @@ val CockpitTitleStyle: TextStyle = TextStyle(
 /** Width of the gap between CLAN and WORLD — sized to clear the camera cutout. */
 private val CutoutGapWidth = 32.dp
 
+/**
+ * Height of the first row (CLAN/WORLD title band).
+ *
+ * Was previously sized to the system status-bar inset
+ * (`windowInsetsTopHeight(WindowInsets.statusBars)`), but the Scaffold
+ * (ClanWorldApp.kt) already applies the status-bar inset to its content
+ * via `contentWindowInsets = WindowInsets.statusBars.only(Top + Horizontal)`.
+ * That meant Row 1 paid the status-bar height TWICE: once via Scaffold's
+ * outer padding, once via this Row's own inset-driven height. Fixing it
+ * to a small constant matches the visible title-band design and removes
+ * the duplicate (super-swarm v2.6.0 HIGH from codex 5.5).
+ */
+val HeaderRow1Height = 28.dp
+
 /** Height of the second row (chrome strip carrying the controls). */
 val HeaderRow2Height = 40.dp
 
@@ -90,11 +101,13 @@ fun CockpitHeader(
   val ticksUntilWipe: Int = max(0, WIPE_INTERVAL_TICKS - (tick % WIPE_INTERVAL_TICKS))
 
   Column(modifier = modifier) {
-    // Row 1 — CLAN [cutout] WORLD, centred on the cutout
+    // Row 1 — CLAN [cutout] WORLD, centred on the cutout. Fixed
+    // HeaderRow1Height (28dp) instead of `windowInsetsTopHeight` —
+    // see the constant's doc for the duplicate-inset rationale.
     Row(
       modifier = Modifier
         .fillMaxWidth()
-        .windowInsetsTopHeight(WindowInsets.statusBars),
+        .height(HeaderRow1Height),
       horizontalArrangement = Arrangement.Center,
       verticalAlignment = Alignment.CenterVertically,
     ) {

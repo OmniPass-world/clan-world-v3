@@ -5,13 +5,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -86,15 +84,28 @@ fun CockpitScreen(
   ) {
     // (1) Cockpit body — header height reserved by spacers so the map's
     //     weighted height matches the post-header layout.
+    //
+    // The Scaffold (ClanWorldApp.kt) supplies `contentWindowInsets =
+    // WindowInsets.statusBars.only(Top + Horizontal)`, padding this
+    // Column down by the status-bar height. Previously we ALSO reserved
+    // a `windowInsetsTopHeight(WindowInsets.statusBars)` spacer here for
+    // header Row 1, which stacked on top of the Scaffold inset and
+    // double-padded the top of the cockpit by statusBarHeight. The
+    // header Row 1 visible-height is also redrawn below as a fixed
+    // 28dp band (matches the design — no longer pinned to status-bar
+    // pixel height) so body + header stay aligned without the duplicate
+    // inset (super-swarm v2.6.0 HIGH from codex 5.5).
     Column(modifier = Modifier.fillMaxSize()) {
-      // Spacer for row 1 (status-bar inset, where CLAN/WORLD render)
-      Box(modifier = Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+      // Spacer for row 1 (CLAN/WORLD title strip, fixed 28dp tall)
+      Box(modifier = Modifier.fillMaxWidth().height(HeaderRow1Height))
       // Spacer for row 2 (controls strip)
       Box(modifier = Modifier.fillMaxWidth().height(HeaderRow2Height))
 
-      // Map region — fills its weighted height; dots + toggle overlay the
-      // bottom edge so there's no gap before the panel. Map's bottom
-      // corners are rounded (mirrors the device's natural top-corner curve).
+      // Map region — fills its weighted height; collapse toggle overlays
+      // the bottom edge. Page indicator dots have been moved into the
+      // panel below so they scroll/animate with the pager, not the map.
+      // Map's bottom corners are rounded (mirrors the device's natural
+      // top-corner curve).
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -108,15 +119,6 @@ fun CockpitScreen(
       ) {
         MapWebView(modifier = Modifier.fillMaxSize())
 
-        PageIndicatorOverlay(
-          pageCount = ELDERS.size,
-          currentPage = (activeClanId - 1).coerceIn(0, ELDERS.size - 1),
-          onDotClick = { activeClanId = it + 1 },
-          modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 56.dp),
-        )
-
         CollapseToggle(
           collapsed = collapsed,
           activeClanId = activeClanId,
@@ -127,15 +129,34 @@ fun CockpitScreen(
         )
       }
 
-      ClanPanelPager(
+      // Panel region — wraps the pager in a Box so the page indicator
+      // dots can anchor to the panel's bottom edge instead of floating
+      // over the map. The dots also pick up nav-bar safe padding so
+      // they sit above the gesture handle while the panel background
+      // continues to fill behind it.
+      Box(
         modifier = Modifier
           .fillMaxWidth()
           .weight(pagerWeight),
-        activeClanId = activeClanId,
-        onActiveClanChange = { activeClanId = it },
-        contentAlpha = pagerAlpha,
-        onOwnerControl = onOwnerControl,
-      )
+      ) {
+        ClanPanelPager(
+          modifier = Modifier.fillMaxSize(),
+          activeClanId = activeClanId,
+          onActiveClanChange = { activeClanId = it },
+          contentAlpha = pagerAlpha,
+          onOwnerControl = onOwnerControl,
+        )
+
+        PageIndicatorOverlay(
+          pageCount = ELDERS.size,
+          currentPage = (activeClanId - 1).coerceIn(0, ELDERS.size - 1),
+          onDotClick = { activeClanId = it + 1 },
+          modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .padding(bottom = 8.dp),
+        )
+      }
     }
 
     // (2) Bulletin flyout — drawn over the body. Its top shadow extends

@@ -6,6 +6,53 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.6.0] — 2026-05-12
+
+Minor release. Eight PRs landed since v2.5.1 in a single overnight build-out: new world map asset + region debug overlay; per-clan 4-frame walking animations; winter map overlay with seasonal fade; on-chain diamond upgrade that finally enables the `setMaxBanditTier` cap at spawn time (was code-only since v2.5.0); plus polish on Android edge-to-edge, TopHud ordering, base-click focus dim, and the four super-swarm deferred fixes from v2.5.0 review. All eight PRs had Tier 1 Claude subagent CLEAN at merge.
+
+### Added
+
+- **Web: new world map asset (1086 × 1448 PNG)** (PR #260): Replaces the old 814 × 1448 map with a hand-curated version that's 33% wider while keeping the same height. The south extent of the world is unchanged; the +272 horizontal pixels go to widening the forest, mountains, west-farms, and east-farms regions. Includes a `SHOW_REGION_POLYGONS` debug flag (default `true` this release) that renders `REGIONS[*].polygon` as colored fill + stroke overlays between the map and clan zones, so the polygon coords can be visually tuned against the new background. All 8 region polygons rescaled by `sx = 1.334` (horizontal-only); forest / mountains / west-farms / east-farms additionally pushed +40 px on their inward edges per design directive.
+- **Web: winter map overlay sprite with seasonal fade** (PR #263): New `apps/web/src/assets/world-map-winter.png` is layered as a Pixi Sprite in `terrainBackground`, between the base map and the region polygons. Alpha modulates via a wall-clock state machine (`idle | fade-in | active | fade-out`) driven by edge detection on `snapshot.winterActive`. Fade-in 1500 ms (cinematic, intentionally slower than the 1 s heartbeat); fade-out 2000 ms (slower spring thaw). Mid-fade reversals preserve current alpha as the new start so rapid season flips don't blink. Booting in Winter snaps to `alpha=1` instead of slow-revealing. Syncs with the existing #243 snow particle system on the same trigger, but uses its own fade timings for decoupled cinematic feel.
+- **Web: per-clan 4-frame directional walking animations** (PR #259, closes #258): Liam-provided 7 sprite sheets (4 × 5 grid each = 20 frames per clan, layout N/NE/E/SE/S × 4-frame walk). New `apps/web/src/effects/clansmanSpriteSheet.ts` slices each sheet into 20 Pixi `Texture`s and exposes a per-clan direction lookup. NW/W/SW directions are derived at render time via `sprite.scale.x = -1` horizontal mirror (cheaper than pre-baking mirrored textures). Per-marker animation state lives on `LiveClansmanMarker`; `advanceClansmanAnimation` runs at 8 fps when the position delta exceeds `WALK_EPSILON_PX`, freezes on frame 0 of the held direction when idle, and freezes entirely when the clansman is dead (PR #244 interop). 4 sheets wired to current clans (iron / ember / dawn / storm); 3 staged for future clans (cream, stoneroot, doomweb).
+- **Chain: `setMaxBanditTier` cap is now ACTIVE on Base Sepolia** (PR #264): The owner setter shipped in v2.5.0 PR #245 was code-only until this release — the on-chain `HeartbeatFacet` was still linked to the old `LibBanditSpawning` bytecode that lacked the spawn-side `tier = min(computed, max)` clamp. New `script/UpgradeHeartbeatBanditCap.s.sol` deploys a fresh `HeartbeatFacet` (at `0xd208C87EBaDB6FE888a248908fCba112c8C1561E`) and `HeartbeatConfigFacet` (at `0xa1C57eF8667B1b6645D7C5ba01c4D350F6Aa4521`) — both linked to the new library bytecode — then `diamondCut`s to **REPLACE** the existing Heartbeat selectors and **ADD** the two new setter / getter selectors. Verified post-broadcast: `cast call facetAddress(0x90fab46c)` now returns the new facet address (was `address(0)`); `maxBanditTier()` returns the default 5 fallthrough; the setter is callable from the owner key. The cap takes effect at every subsequent bandit spawn.
+
+### Fixed
+
+- **Web + Android: super-swarm v2.5.0 deferred fixes** (PR #253, closes #248–#251): All four MEDIUM-severity findings from the v2.5.0 super-swarm review:
+  - **#248** (codex 5.4): bandit battle-fallback no longer picks an arbitrary same-region base when `targetClanId` is missing — falls back to neutral `projectedRegionAnchor(phase.regionKey)` only.
+  - **#249** (codex 5.5 + 5.4 + Opus 4.7): halo on revived dead-clansman markers now lazily creates if `marker.missionActive && !existing.halo`. Same pattern applied to idle→active transitions.
+  - **#250** (Opus 4.7 + Gemini): `prefers-reduced-motion` now subscribes to `MediaQueryList` change events. Snow handle lazily created on first non-reduced motion event.
+  - **#251** (Opus 4.7, dev-only HMR leak): `BlurFilter` instances on bandit glow sprites now explicitly destroyed in Pixi teardown.
+- **Web: focus-mode dim now applies to other-clan clansmen** (PR #262): Clicking a clan base correctly dimmed everything except the selected clan's footprint in v2.5.x — but the per-frame `updateLiveClansmanPositions` ticker was unconditionally resetting `marker.node.alpha = 1`, clobbering the dim every render. Fix: read `selectedClanIdRef.current` in the ticker and compute `focusAlpha = isOtherClan ? 0.18 : 1` per marker. Dead-clansman alpha (0.9 body) multiplies with container 0.18 so dead+other-clan reads even more faded. Route lines dim to 0.12 to match `applyClanFocus`.
+- **Web: TopHud — season percentage now sits next to the bar** (PR #255): Previously rendered `bar → ❄ WINTER → 62%` with the event chip splitting the season-progress group; now `bar → 62% → ❄ WINTER` so the bar and its percentage read as a unit.
+- **Android: page-indicator dots moved out of the map overlay** (PR #254): The cockpit page-indicator dots were drawn as a z-overlay above the world map. Moved into the bottom of the tab/page panel content area so they scroll/animate with the panel and don't float over the map.
+- **Android: bottom unsafe-area filled across all screens** (PR #254): Scaffold `contentWindowInsets` now drops the bottom inset. Backgrounds (TabBar gradient, ObsidianBackground, panel `Bg.Void`, owner-screen radial gradient) fill behind the gesture handle. Interactive controls (tab icons, page-indicator dots, SteeringConsole `ChatInput`, ConnectScreen "Open Seed Vault" CTA, owner snackbar) keep `navigationBarsPadding()` so they're not obscured. Top status-bar inset is preserved on all screens.
+
+### Infrastructure
+
+- **Codegen refresh** (PR #264 follow-on commit): Ran `pnpm codegen` to rebuild ABIs and chain client adapters post-diamond-upgrade. Only meaningful diff was Convex picking up the `resetLock` module (added in v2.4.1) into `apps/server/convex/_generated/api.d.ts`. No ABI or chainclient drift — on-chain matches source.
+
+### Validation
+
+- Per-PR Tier 1 Claude subagent swarm: CLEAN at merge time on all 8 PRs (#253, #254, #255, #259, #260, #262, #263, #264)
+- `packages/contracts` forge: MaxBanditTier 2/2, DiamondSkeleton 39/39, StorageLayoutGuard 2/2, full forge build green
+- `apps/clan-world-mobile :app:testDebugUnitTest`: 30/30 green
+- `apps/web` `pnpm build` + `tsc --noEmit`: green (vite 6–7 s typical; bundle warning unchanged from v2.5.x)
+- `apps/server` `pnpm test`: 34/34 green
+- On-chain verification post-diamond-upgrade: 3 broadcast txs confirmed; `cast call`s confirm new selectors routed; default `maxBanditTier()=5`
+
+### Operational follow-up
+
+- `SHOW_REGION_POLYGONS = true` ships intentionally — Liam will tune the new region polygons visually against the new map and flip it to `false` before the next release.
+- Diamond owner can now call `setMaxBanditTier(3)` (or any `1 ≤ n ≤ 5`) before next demo to cap bandit spawn tier. Default behavior is unchanged.
+- v2.5.3 backlog (filed as GH issues during this release):
+  - #256 `dayNightFilter` ColorMatrixFilter has same FBO leak pattern as #251 bandit BlurFilters
+  - #257 SteeringConsole IME gap (additive padding stack — aesthetic only)
+  - #261 clansman sprite atlas packing + frame-accum overflow guard
+
+---
+
 ## [2.5.1] — 2026-05-11
 
 Patch release. Super-swarm review on the v2.5.0 release PR (#246) caught two HIGH severity regressions that slipped past the per-PR Tier 1 reviews. Both fixed here.
