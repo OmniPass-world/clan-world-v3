@@ -6,6 +6,36 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.5.0] — 2026-05-11
+
+Minor release. Five PRs (#241, #242, #243, #244, #245) landed in a single demo-day train: Android faucet sanitize bug fully resolved at the Builder level; first-class dead-clansman state in cockpit + map; winter snowfall ambient effect; bandit-attack animation polish; new owner setter to cap bandit spawn tier (motivated by tonight's tier-5 wipe). All Tier 1 swarm verdicts CLEAN at merge time.
+
+### Added
+
+- **Web: winter snowfall particle overlay** (PR #243): Hand-rolled PixiJS particle system in `apps/web/src/effects/winterSnow.ts` driven by `worldSnapshot.season === Winter`. Pre-allocated pool of 100 sprites sharing a generated 4×4 white-disc texture, ticker-driven, mounted on `app.stage` (screen-space invariant to pan/zoom). Sine-based horizontal drift with per-particle phase. R2 fix separated drift clock (`startMs`, monotonic) from envelope clocks (`fadeInStartMs` / `fadeOutStartMs`) so mid-fade reversals resume smoothly from current alpha — no blink, no horizontal drift jumps. `prefers-reduced-motion` opt-out at creation.
+- **Web + Android: first-class dead-clansman state** (PR #244): Cockpit (`ClansmanTab.tsx` + Compose port) shows a red letter-spaced "DEAD" label, struck-through ID, em-dash status, and ~55% row opacity when `clansman.state === ClansmanState.DEAD` (chain enum 3). Convex `getClanClansmen` query exposes `isDead` derived from the chain state machine; Android wire/domain mappers propagate it. World map sprites rotate 90° (anchor reset to body center) and tint to `0x808080` on alive→dead transition; new `applyAliveVisualState` helper provides the symmetric revive path (restore anchor `(0.5, 0.82)`, rotation `0`, tint `0xffffff`, alpha `1`, halo visibility from `marker.missionActive`). Replaces a literal `=== 3` with the typed `ClansmanState.DEAD` enum.
+- **Chain: `setMaxBanditTier(uint8)` owner-only admin setter** (PR #245): New diamond function on `HeartbeatConfigFacet` (mirrors `setHeartbeatIntervalSeconds` pattern) lets the contract owner cap freshly-spawned bandit tier at `1 ≤ n ≤ 5`. Storage zero (default) falls through to `BANDIT_TIER_COUNT = 5`, preserving previous behavior. `LibBanditSpawning` applies `tier = min(computed, maxBanditTier)` at the single diamond spawn site. `MaxBanditTierUpdated(uint8 oldMax, uint8 newMax)` event emitted. New selectors registered in `DiamondSelectors.heartbeatConfigSelectors()` (6 → 8); production selector-count guard updated 71 → 73. Motivated by the demo wipe — tier-5 bandits one-shot fresh clans before elders can react; this lets demo configs bias toward survivable spawns.
+
+### Fixed
+
+- **Android: faucet "sanitize accounts offsets" — full multi-bucket coverage** (PR #241, fixes #240): The v2.4.1 narrow fix only patched the ATA-create instruction's `payer == owner` slot mismatch. Real-world `buildFaucetClaim` and `buildBurn(skipTax > 0)` flows still failed because `memo(owner, ...)` emits `owner` as readonly-signer while ATA-create and `claim()` emit `owner` as writable-signer — `web3-solana-jvm:0.3.0-beta4`'s `Message.Builder.build()` buckets `AccountMeta`s globally by `(isSigner, isWritable)` without unioning flags, so `owner` landed in two buckets and the on-chain sanitizer rejected the message. New `unionAccountFlags(instructions)` pre-pass OR-unions flag tuples per pubkey across all instructions before `Message.Builder`, routed through the single `buildTransaction` chokepoint. Vacuous R1 tests dropped; 7 new tests assert the canonical Solana header invariant (`accounts.size == signatureCount + writableNonSigners + readOnlyNonSigners`). Empirically regression-proofed: temporarily no-op'ing `unionAccountFlags` fails exactly 3 of 7 tests — the multi-instruction paths.
+- **Web: bandit attack animation polish** (PR #242): Four UI fixes in `apps/web/src/WorldMap.tsx` from tonight's demo session: (a) `BanditDiffOutcome.defeated` gained `targetClanId`, propagated from both snapshot-diff and live `BanditState.Defeated` synth paths, so the circling animation now anchors to the rendered base coords (`targetBase.container.x/.y - 30 * scale`) instead of falling back to an empty patch of map; (b) circle diameter `38 → 57` (+50%) for visibility; (c) tombstone flash gated to `deathFrameIdx < 2` — the 3rd sprite is now solid while fading; (d) red glow (`tint 0xff2222`, `alpha 0.7`, `BlurFilter {strength: 6, quality: 2}`) on all 3 bandit walker states (standing, moving, attacking), with `syncBanditGlows` in a `try/finally` around the inner animation step so every early-return phase still gets a synced halo.
+
+### Validation
+
+- `apps/clan-world-mobile :app:testDebugUnitTest` — `GoldSolanaClientTest` 7/7 (multi-bucket regression suite)
+- `packages/contracts` `forge test --match-test "MaxBanditTier"` — 2/2; `forge test --match-contract "DiamondSkeleton"` — 39/39; `forge test --match-contract "StorageLayoutGuard"` — 2/2 (append-only storage layout preserved)
+- `apps/server` `pnpm test` — 34/34
+- `pnpm --filter @clan-world/web build` — green (web bundle including snow + bandit + dead-clansman changes)
+- Tier 1 Claude subagent swarm: CLEAN on all 5 PRs at merge
+
+### Notes
+
+- Pre-existing failures in `packages/contracts/test/BanditAttackResolution.t.sol` (2 gold-share tests) verified to also fail on `origin/dev` HEAD before #245's changes — unrelated to this release.
+- Operational follow-up: contract owner can call `setMaxBanditTier(3)` from the diamond before next demo cut to bias toward survivable spawns.
+
+---
+
 ## [2.4.1] — 2026-05-11
 
 Patch release. Fixes two Android regressions introduced in v2.4.0 (Convex float serialization crash on Hearth home screen; wrong-network dialog on GOLD mint), corrects bandit camp sprite positioning on the web client, tightens the Elder runtime security surface, and ships a round of Elder MCP reliability improvements.
