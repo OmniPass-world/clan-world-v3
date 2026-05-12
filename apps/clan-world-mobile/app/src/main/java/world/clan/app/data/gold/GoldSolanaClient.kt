@@ -99,7 +99,8 @@ class GoldSolanaClient(
   }
 
   suspend fun buildFaucetClaim(ownerBase58: String, memo: String): ByteArray {
-    return buildTransaction(faucetClaimInstructions(ownerBase58.toPubkey(), memo))
+    val owner = ownerBase58.toPubkey()
+    return buildTransaction(faucetClaimInstructions(owner, memo), payer = owner)
   }
 
   suspend fun buildBurn(
@@ -108,7 +109,8 @@ class GoldSolanaClient(
     memo: String,
     skipTax: Long = 0L,
   ): ByteArray {
-    return buildTransaction(burnInstructions(ownerBase58.toPubkey(), amount, memo, skipTax))
+    val owner = ownerBase58.toPubkey()
+    return buildTransaction(burnInstructions(owner, amount, memo, skipTax), payer = owner)
   }
 
   internal suspend fun faucetClaimInstructions(
@@ -154,9 +156,10 @@ class GoldSolanaClient(
 
   private suspend fun buildTransaction(
     instructions: List<TransactionInstruction>,
+    payer: SolanaPublicKey,
   ): ByteArray {
     val blockhash = latestBlockhash()
-    val canonical = unionAccountFlags(instructions)
+    val canonical = unionAccountFlags(instructions, payer)
     val builder = Message.Builder().setRecentBlockhash(blockhash)
     canonical.forEach { builder.addInstruction(it) }
     return Transaction(builder.build()).serialize()
@@ -224,11 +227,36 @@ class GoldSolanaClient(
    * union flags per pubkey before compiling. The JVM SDK does not, so we
    * compensate here by normalizing every occurrence of a pubkey to the
    * OR-union of its flag tuples.
+   *
+   * # Why `payer` is force-promoted to `(isSigner=true, isWritable=true)`
+   *
+   * `Message.Builder` in `web3-solana-jvm:0.3.0-beta4` has no `setFeePayer`
+   * call — it infers the fee payer from the first writable-signer in the
+   * bucketed accounts list. If NO instruction emits the payer as
+   * writable-signer, the compiled message has no writable-signer bucket,
+   * Solana pre-flight rejects with "no writable signer" / fee payer cannot
+   * be derived.
+   *
+   * Real-world hit (v2.5.1 hotfix): `buildBurn(skipTax = 0L)` only emits
+   * owner as `(isSigner=true, isWritable=false)` — `burnChecked` has owner
+   * as readonly-signer, and `memo()` has owner as readonly-signer. After
+   * union, owner is still readonly-signer. There is no writable signer in
+   * the compiled message → fee payer derivation fails.
+   *
+   * Fix: include the `payer` pubkey in the union map with `(true, true)` so
+   * the payer always ends up in the writable-signer bucket. Callers pass
+   * the on-chain fee-payer pubkey explicitly so we don't have to guess it
+   * from instruction shape.
    */
   internal fun unionAccountFlags(
     instructions: List<TransactionInstruction>,
+    payer: SolanaPublicKey,
   ): List<TransactionInstruction> {
     val union = mutableMapOf<List<Byte>, Pair<Boolean, Boolean>>()
+    // Force-include payer as writable-signer first so the compiled message
+    // always has at least one writable-signer for fee-payer derivation,
+    // even if no instruction emits payer as writable.
+    union[payer.bytes.toList()] = true to true
     instructions.forEach { ix ->
       ix.accounts.forEach { meta ->
         val key = meta.publicKey.bytes.toList()
