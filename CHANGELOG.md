@@ -6,6 +6,38 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.5.1] — 2026-05-11
+
+Patch release. Super-swarm review on the v2.5.0 release PR (#246) caught two HIGH severity regressions that slipped past the per-PR Tier 1 reviews. Both fixed here.
+
+### Fixed
+
+- **Android: faucet `buildBurn(skipTax = 0)` had no writable signer** (PR #247, super-swarm codex 5.5 HIGH): v2.5.0's R2 refactor dropped the explicit `payer` argument from `buildTransaction`, relying on `web3-solana-jvm:0.3.0-beta4`'s `Message.Builder` to infer the fee payer from the first writable signer. That works for faucet-claim (owner becomes writable via ATA-create + claim()) and burn-with-tax (owner becomes writable via createATA + transferChecked). It **breaks for no-tax burns** because `burnChecked` + `memo` both emit owner as `(isSigner=true, isWritable=false)` — readonly-signer — so after `unionAccountFlags`, owner remains readonly with no writable signer in the transaction. Solana's pre-flight sanitizer rejects. New v2.5.0 tests asserted multi-bucket header consistency but didn't cover fee-payer writability, so the bug shipped. Fix: re-add explicit `payer` arg on `buildTransaction(instructions, payer)` and extend `unionAccountFlags(instructions, payer)` to force-seed the payer in the union map with `(isSigner=true, isWritable=true)` before OR-unioning instruction flags. Renamed `burnWithoutSkipTaxStillProducesConsistentHeader` test to assert post-hotfix invariant (writable-signer count ≥ 1; owner in writable-signer bucket); previous version was encoding the v2.5.0 bug as expected behavior.
+
+- **Elder runtime: doubled-slash permission paths in `settings.json`** (PR #247, super-swarm codex 5.5 + Opus 4.6 + Opus 4.7 consensus): PR #237's Elder permission restructure introduced `//tmp/elder-*/**` and `//home/claude/...` (double-slash) prefixes on 3 allow + 3 deny rules. Claude Code's permission matcher treats globs as literal — `//tmp/...` does NOT match `/tmp/...` — so the allow rules silently denied Elder access to its `/tmp/elder-N/` scratch dir AND the deny rules for `.credentials.json` / `.claude.json` / `history.jsonl` became no-ops. Security boundary regression on the Elder runtime. Fix: every `//tmp/`, `//home/` prefix replaced with single leading slash. New `packages/agents/test/elderSettingsPaths.test.ts` vitest guard scans `runtime/elders/**/{settings.json,settings.local.json}` for double-slash permission entries to prevent regression.
+
+### Security
+
+- **Elder runtime: defense-in-depth Bash denies restored** (PR #247, super-swarm Opus 4.7 MEDIUM): Re-added explicit `Bash(cat *)`, `Bash(tee *)`, `Bash(echo *)`, `Bash(ls *)`, `Bash(mkdir *)` denies that were dropped in the permission restructure. These overlap with the `bash-guard.sh` PreToolUse hook but provide a second layer of defense — if the plugin fails to load or the hook aborts early (e.g. `jq` missing), the deny list still blocks raw shell access. No behavioral downside for legitimate Elder use.
+
+### Validation
+
+- `apps/clan-world-mobile :app:testDebugUnitTest` — 30/30 green (`GoldSolanaClientTest` 8/8 including renamed regression for no-tax burn invariant)
+- `pnpm --filter @clan-world/agents exec vitest run elderSettingsPaths` — 2/2 green
+- `grep -rnE '"(Read|Write|Edit|Bash)\(//' runtime/` returns 0 matches
+- Negative-tested the new vitest guard: flipping `Read(/tmp/...)` back to `Read(//tmp/...)` fails the suite
+
+### Deferred to v2.5.2
+
+Super-swarm findings tracked for follow-up:
+
+- **Bandit battle fallback picks wrong clan's base** (issue #248, codex 5.4 MEDIUM)
+- **Dead-clansman halo lazy-create on revive** (issue #249, codex 5.5 + 5.4 + Opus 4.7 MEDIUM)
+- **prefers-reduced-motion init-only sampling** (issue #250, Opus 4.7 + Gemini 3.1 Pro LOW)
+- **BlurFilter leak on HMR teardown** (issue #251, Opus 4.7 MEDIUM, dev-only)
+
+---
+
 ## [2.5.0] — 2026-05-11
 
 Minor release. Five PRs (#241, #242, #243, #244, #245) landed in a single demo-day train: Android faucet sanitize bug fully resolved at the Builder level; first-class dead-clansman state in cockpit + map; winter snowfall ambient effect; bandit-attack animation polish; new owner setter to cap bandit spawn tier (motivated by tonight's tier-5 wipe). All Tier 1 swarm verdicts CLEAN at merge time.
