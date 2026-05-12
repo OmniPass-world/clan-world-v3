@@ -10,6 +10,7 @@ import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import { DEMO_MODE } from './config/env';
 import { BanditState } from '@clan-world/shared/generated/enums';
+import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
@@ -1128,6 +1129,11 @@ export function WorldMap() {
   const burstTickerCbRef = useRef<(() => void) | null>(null);
   const seenBurstLogIdsRef = useRef<Set<string>>(new Set());
 
+  // Winter snowfall overlay (screen-space particle layer above viewport, below
+  // React DOM UI). Created post-init; activated/deactivated via setActive in a
+  // separate effect that watches `snapshot.winterActive`.
+  const winterSnowRef = useRef<WinterSnowHandle | null>(null);
+
   // Bandit attack animation (docs/planning/bandit-animation-impl-plan.md).
   // Snapshot-diff tracking: derive last resolution outcome on every snapshot tick.
   // Known cold-start gap: if the page reloads during the T4 resolution window,
@@ -1808,6 +1814,24 @@ export function WorldMap() {
         burstTickerCbRef.current = burstCb;
         app.ticker.add(burstCb);
 
+        // Winter snowfall overlay. Lives directly on app.stage (NOT inside the
+        // pixi-viewport) so particles stay in screen space — falling from the
+        // top of the visible canvas regardless of how the user has panned/zoomed
+        // the world. Stage children: [viewport, snow.container]. React DOM
+        // (TopHud / EventTicker / status badges) renders above the canvas in
+        // the DOM, so it sits above the snow naturally. Honors
+        // `prefers-reduced-motion`: when set, we skip creating the system at
+        // all so we never spend ticker cycles on motion the user opted out of.
+        const reducedMotion =
+          typeof window !== 'undefined' &&
+          typeof window.matchMedia === 'function' &&
+          window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reducedMotion) {
+          const snow = createWinterSnow(app, { particleCount: 100 });
+          app.stage.addChild(snow.container);
+          winterSnowRef.current = snow;
+        }
+
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
         // viewport handles screen-fit transformation. Children inside the viewport
@@ -1834,6 +1858,13 @@ export function WorldMap() {
       if (a && combatTickerCbRef.current) a.ticker.remove(combatTickerCbRef.current);
       if (a && banditAnimTickerCbRef.current) a.ticker.remove(banditAnimTickerCbRef.current);
       if (a && burstTickerCbRef.current) a.ticker.remove(burstTickerCbRef.current);
+      // Winter snow owns its own ticker callback + texture lifecycle; .destroy()
+      // unregisters from the app ticker and disposes the shared snowflake
+      // texture so Pixi destroy() (below) doesn't leave a GPU texture leak.
+      if (winterSnowRef.current) {
+        winterSnowRef.current.destroy();
+        winterSnowRef.current = null;
+      }
       if (pixiCanvas && canvasClickHandler) pixiCanvas.removeEventListener('click', canvasClickHandler);
       finishCombatVignette(true);
       selectedRef.current?.ring.destroy();
@@ -3944,6 +3975,19 @@ export function WorldMap() {
     redrawBandit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveTick, pixiReady, liveBandit]);
+
+  // Winter snowfall: subscribe to `worldSnapshot.winterActive` and drive the
+  // particle overlay's active state. The underlying snapshot type doesn't yet
+  // expose the season fields (matches the cast TopHud does — same getSnapshot
+  // query, same broader-schema-pending caveat), so we read via `any`.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const winterActive = (snapshot as any)?.winterActive === true;
+  useEffect(() => {
+    if (!pixiReady) return;
+    const snow = winterSnowRef.current;
+    if (!snow) return; // reduced-motion path — handle was never created
+    snow.setActive(winterActive);
+  }, [pixiReady, winterActive]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.
   useEffect(() => {
