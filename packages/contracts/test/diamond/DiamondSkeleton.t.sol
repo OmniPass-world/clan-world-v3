@@ -86,6 +86,8 @@ interface IHeartbeatAdmin {
     function setClansmanCooldownSeconds(uint64 cooldownSeconds) external;
     function banditSpawnTriggered() external view returns (bool);
     function triggerBanditSpawn() external;
+    function maxBanditTier() external view returns (uint8);
+    function setMaxBanditTier(uint8 newMax) external;
 }
 
 interface IOwnershipFacet {
@@ -767,6 +769,68 @@ contract DiamondSkeletonTest is Test {
         WorldState memory worldState = IClanWorld(address(diamond)).getWorldState();
         assertFalse(heartbeatAdmin.banditSpawnTriggered());
         assertEq(worldState.activeBanditId, 1);
+    }
+
+    function testDiamondMaxBanditTierCanBeConfiguredByOwner() public {
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        HeartbeatConfigFacet heartbeatConfigFacet = new HeartbeatConfigFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatConfigCut(address(heartbeatConfigFacet)), address(0), "");
+
+        IHeartbeatAdmin heartbeatAdmin = IHeartbeatAdmin(address(diamond));
+
+        assertEq(heartbeatAdmin.maxBanditTier(), 5);
+
+        vm.prank(address(0xBEEF));
+        vm.expectRevert(abi.encodeWithSelector(LibDiamond.DiamondNotOwner.selector, address(0xBEEF)));
+        heartbeatAdmin.setMaxBanditTier(3);
+
+        heartbeatAdmin.setMaxBanditTier(3);
+        assertEq(heartbeatAdmin.maxBanditTier(), 3);
+
+        vm.expectRevert(bytes("ClanWorld: invalid max bandit tier"));
+        heartbeatAdmin.setMaxBanditTier(0);
+
+        vm.expectRevert(bytes("ClanWorld: invalid max bandit tier"));
+        heartbeatAdmin.setMaxBanditTier(6);
+
+        heartbeatAdmin.setMaxBanditTier(1);
+        assertEq(heartbeatAdmin.maxBanditTier(), 1);
+        heartbeatAdmin.setMaxBanditTier(5);
+        assertEq(heartbeatAdmin.maxBanditTier(), 5);
+    }
+
+    function testDiamondMaxBanditTierCapsForcedSpawnTier() public {
+        HeartbeatFacet heartbeatFacet = new HeartbeatFacet();
+        HeartbeatConfigFacet heartbeatConfigFacet = new HeartbeatConfigFacet();
+        ClanLifecycleFacet lifecycleFacet = new ClanLifecycleFacet();
+        ClanWorldDiamondInit init = new ClanWorldDiamondInit();
+
+        IDiamondCut(address(diamond))
+            .diamondCut(_rawViewsCut(), address(init), abi.encodeCall(ClanWorldDiamondInit.init, ()));
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatCut(address(heartbeatFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_heartbeatConfigCut(address(heartbeatConfigFacet)), address(0), "");
+        IDiamondCut(address(diamond)).diamondCut(_lifecycleCut(address(lifecycleFacet)), address(0), "");
+
+        address elder = address(0xCAFE);
+        IClanWorld(address(diamond)).mintClan(elder);
+
+        IHeartbeatAdmin heartbeatAdmin = IHeartbeatAdmin(address(diamond));
+        heartbeatAdmin.setMaxBanditTier(1);
+        heartbeatAdmin.triggerBanditSpawn();
+
+        vm.warp(block.timestamp + ClanWorldConstants.HEARTBEAT_INTERVAL_SECONDS);
+        IClanWorld(address(diamond)).heartbeat();
+
+        uint32 activeBanditId = IClanWorld(address(diamond)).getWorldState().activeBanditId;
+        assertEq(activeBanditId, 1);
+        BanditTroop memory bandit = IClanWorld(address(diamond)).getBandit(activeBanditId);
+        assertEq(bandit.tier, 1);
+        assertEq(bandit.strength, 30);
     }
 
     function testDiamondHeartbeatAdvancesSpawnedBanditToCampedLikeCore() public {
@@ -1580,7 +1644,7 @@ contract DiamondSkeletonTest is Test {
     }
 
     function _expectedProductionSelectors() internal pure returns (bytes4[] memory selectors) {
-        selectors = new bytes4[](71);
+        selectors = new bytes4[](73);
         uint256 offset;
         selectors[offset++] = IDiamondCut.diamondCut.selector;
         offset = _copySelectors(selectors, offset, DiamondSelectors.loupeSelectors());
