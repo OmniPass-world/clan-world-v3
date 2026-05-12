@@ -4,11 +4,14 @@
   "version": "2.2.0",
   "exports": {
     "./abi/IClanWorld.json": "./abi/IClanWorld.json",
-    "./abi/IClanWorldLens.json": "./abi/IClanWorldLens.json"
+    "./abi/IClanWorldLens.json": "./abi/IClanWorldLens.json",
+    "./abi/IDiamondLoupe.json": "./abi/IDiamondLoupe.json",
+    "./abi/IDiamondCut.json": "./abi/IDiamondCut.json",
+    "./abi/OwnershipFacet.json": "./abi/OwnershipFacet.json"
   },
   "scripts": {
     "build": "bash scripts/forge.sh build script/DeployDiamond.s.sol src/IClanWorld.sol src/IClanWorldLens.sol",
-    "codegen": "bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol && node ../../scripts/gen-contract-abi.mjs",
+    "codegen": "bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol src/IDiamondLoupe.sol src/IDiamondCut.sol src/OwnershipFacet.sol && node ../../scripts/gen-contract-abi.mjs",
     "gen:enums": "pnpm --dir ../.. gen:enums",
     "check:abi": "bash -c 'command -v jq >/dev/null 2>&1 || { echo \"jq not installed; cannot check ABI\"; exit 1; }; bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol && diff <(jq \".abi\" out/IClanWorld.sol/IClanWorld.json) <(jq \".abi\" abi/IClanWorld.json) && diff <(jq \".abi\" out/IClanWorldLens.sol/IClanWorldLens.json) <(jq \".abi\" abi/IClanWorldLens.json)'",
     "check:sizes": "node scripts/check-contract-sizes.mjs",

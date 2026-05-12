@@ -11,10 +11,18 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "!abi/IClanWorld.json",
+        "!abi/IClanWorldLens.json",
+        "!abi/IDiamondLoupe.json",
+        "!abi/IDiamondCut.json",
+        "!abi/OwnershipFacet.json",
         "!convex/_generated/**"
       ],
       "outputs": [
         "abi/IClanWorld.json",
+        "abi/IClanWorldLens.json",
+        "abi/IDiamondLoupe.json",
+        "abi/IDiamondCut.json",
+        "abi/OwnershipFacet.json",
         "src/adapters/IChainClient.ts",
         "src/generated/constants.ts",
         "src/generated/enums.ts",
