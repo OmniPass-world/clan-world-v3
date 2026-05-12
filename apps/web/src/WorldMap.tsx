@@ -8,6 +8,7 @@ import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
+import worldMapWinterBg from './assets/world-map-winter.png';
 import { DEMO_MODE } from './config/env';
 import { BanditState, ClansmanState } from '@clan-world/shared/generated/enums';
 import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
@@ -36,6 +37,22 @@ const WORLD_HEIGHT = MAP_HEIGHT;
 // us iterate the polygon coords visually with the map in view. Flip OFF for
 // release; ON during region authoring / map redesigns.
 const SHOW_REGION_POLYGONS = true;
+
+// Winter map-overlay fade timings. The base map (`world-map.png`) stays fully
+// opaque at all times; we modulate the alpha of a second Sprite
+// (`world-map-winter.png`) layered immediately above it so the ground reads as
+// snow-covered while `snapshot.winterActive` is true.
+//
+// Wall-clock fades — chosen to feel cinematic at the demo's 1s tick cadence
+// without snapping. Spring thaw is intentionally slower than the freeze.
+// These are intentionally NOT coupled to the heartbeat interval — if the
+// on-chain tick rate changes, the fade still looks natural.
+//
+// Syncs with the existing snow particle effect (winterSnow.ts) via the same
+// `winterActive` boolean — both kick off on the rising edge and unwind on the
+// falling edge.
+const WINTER_FADE_IN_MS = 1500;
+const WINTER_FADE_OUT_MS = 2000;
 
 // On first mount we look at the most recent BanditAttackResolved logs and
 // only animate ones decoded within this window — older events are marked
@@ -1202,6 +1219,26 @@ export function WorldMap() {
   // React DOM UI). Created post-init; activated/deactivated via setActive in a
   // separate effect that watches `snapshot.winterActive`.
   const winterSnowRef = useRef<WinterSnowHandle | null>(null);
+  // Winter MAP overlay sprite — second Sprite layered in `terrainBackground`
+  // immediately above the base map and below region polygons / clan zones /
+  // clansmen. Its `alpha` is animated by a per-frame ticker callback based on
+  // an `idle | fade-in | active | fade-out` state machine driven by
+  // `snapshot.winterActive` edge detection. Sprite stays mounted across the
+  // entire session — only alpha modulates — so we never re-allocate / re-bind
+  // the (large 1086x1448) texture on season swaps.
+  const winterSpriteRef = useRef<Sprite | null>(null);
+  // Edge-detector for winterActive. `null` on first render so we don't
+  // mis-trigger a fade-in if the world boots already in Winter.
+  const prevWinterActiveRef = useRef<boolean | null>(null);
+  // Alpha-envelope state machine. Drives `winterSpriteRef.current.alpha` from a
+  // ticker callback so the animation runs in wall-clock time (not tied to
+  // React renders or chain ticks). Mirrors the fade pattern used by
+  // `createWinterSnow`'s internal phase machine — start-alpha is captured at
+  // each transition so mid-fade reversals are seamless (no blink).
+  const winterFadePhaseRef = useRef<'idle' | 'fade-in' | 'active' | 'fade-out'>('idle');
+  const winterFadeStartMsRef = useRef(0);
+  const winterFadeStartAlphaRef = useRef(0);
+  const winterFadeTickerCbRef = useRef<(() => void) | null>(null);
   // prefers-reduced-motion media query + change listener. Sampled once at app
   // init and re-checked on any OS-level toggle (issue #250). Stored on refs so
   // the cleanup in the pixi-init useEffect can remove the listener without
@@ -1664,6 +1701,38 @@ export function WorldMap() {
           console.warn('[WorldMap] failed to load terrain background', err);
         }
 
+        // 1b. Winter map overlay — same dimensions as the base map (1086x1448),
+        // alpha-modulated above. Layered AFTER the base map but BEFORE the
+        // region polygons / labels / clan zones (those get addChild'd later in
+        // buildScene), so it visually sits between ground art and gameplay
+        // overlays. Kept invisible (alpha=0) until a Winter season transition
+        // flips the state machine to `fade-in`.
+        //
+        // Pre-allocated once per Pixi-init so we never pay the 3.8MB upload
+        // cost mid-season. Texture load failure is non-fatal — without the
+        // sprite, the only visible degradation is that the snow particles
+        // (winterSnow.ts) won't be accompanied by ground recoloring, which is
+        // still a usable Winter visual.
+        try {
+          const winterTex = await Assets.load(worldMapWinterBg);
+          if (!mounted || !isMountedRef.current) return;
+          const winterSprite = new Sprite(winterTex);
+          winterSprite.width = MAP_WIDTH;
+          winterSprite.height = MAP_HEIGHT;
+          winterSprite.x = 0;
+          winterSprite.y = 0;
+          winterSprite.alpha = 0;
+          // `eventMode = 'none'` ensures the sprite never intercepts pointer
+          // events meant for region polygons / clan bases sitting above it in
+          // the same Container.
+          winterSprite.eventMode = 'none';
+          layers.terrainBackground.addChild(winterSprite);
+          winterSpriteRef.current = winterSprite;
+        } catch (err) {
+          // Non-fatal — fall through; the snow particle effect still plays.
+          console.warn('[WorldMap] failed to load winter map overlay', err);
+        }
+
         // 2. Build scene (regions, sigil sprites, bandit indicator) — PR #41 + PR #42 logic
         // Layers are added to `viewport` (not app.stage) so pinch/drag affect them.
         buildScene(() => !mounted || !isMountedRef.current);
@@ -1956,6 +2025,51 @@ export function WorldMap() {
           reducedMotionHandlerRef.current = handleChange;
         }
 
+        // Winter map-overlay alpha ticker. Drives the fade-in/active/fade-out
+        // state machine each frame in wall-clock time. The phase ref is
+        // mutated by a separate useEffect that watches `snapshot.winterActive`
+        // (see below) — this callback only reads phase + start markers and
+        // writes `winterSprite.alpha`. Idle short-circuits before any math so
+        // the per-frame cost in non-winter weather is a single ref read.
+        const winterFadeCb = (): void => {
+          const phase = winterFadePhaseRef.current;
+          if (phase === 'idle') return;
+          const sprite = winterSpriteRef.current;
+          if (!sprite) return;
+          const now = performance.now();
+          const startAlpha = winterFadeStartAlphaRef.current;
+          const startMs = winterFadeStartMsRef.current;
+          if (phase === 'fade-in') {
+            // Remaining duration scales with (1 - startAlpha) so a fade-in
+            // resuming mid-fade-out from e.g. alpha=0.4 only spends 60% of
+            // WINTER_FADE_IN_MS reaching 1.0 — symmetric with fade-out logic.
+            const remainingMs = WINTER_FADE_IN_MS * (1 - startAlpha);
+            const t = remainingMs > 0 ? Math.min(1, (now - startMs) / remainingMs) : 1;
+            const alpha = startAlpha + (1 - startAlpha) * t;
+            sprite.alpha = alpha;
+            if (t >= 1) {
+              sprite.alpha = 1;
+              winterFadePhaseRef.current = 'active';
+            }
+          } else if (phase === 'active') {
+            // Hold at full opacity — no per-frame work needed beyond the early
+            // return, but we set alpha=1 defensively in case the snapshot
+            // edge-detector skipped the fade-in (e.g. world boots in Winter).
+            sprite.alpha = 1;
+          } else if (phase === 'fade-out') {
+            const remainingMs = WINTER_FADE_OUT_MS * startAlpha;
+            const t = remainingMs > 0 ? Math.min(1, (now - startMs) / remainingMs) : 1;
+            const alpha = startAlpha * (1 - t);
+            sprite.alpha = alpha;
+            if (t >= 1) {
+              sprite.alpha = 0;
+              winterFadePhaseRef.current = 'idle';
+            }
+          }
+        };
+        winterFadeTickerCbRef.current = winterFadeCb;
+        app.ticker.add(winterFadeCb);
+
         // 4. Initial layout (PR #41) — projects normalized coords + positions flag anchors.
         // relayout now operates in WORLD space (MAP_WIDTH x MAP_HEIGHT) since the
         // viewport handles screen-fit transformation. Children inside the viewport
@@ -1989,6 +2103,29 @@ export function WorldMap() {
         winterSnowRef.current.destroy();
         winterSnowRef.current = null;
       }
+      // Winter map-overlay ticker + sprite. Destroying the sprite with the
+      // texture (`{ texture: true }` would error in PIXI v8 — use the explicit
+      // texture.destroy() instead) releases the 1086x1448 RGBA atlas off the
+      // GPU. The sprite itself is a child of terrainBackground (inside
+      // worldContainer inside the viewport) and would be cleaned by Pixi's
+      // recursive destroy in app.destroy() below, but we null the ref + drop
+      // the texture explicitly to match the snow-handle pattern.
+      if (a && winterFadeTickerCbRef.current) {
+        a.ticker.remove(winterFadeTickerCbRef.current);
+        winterFadeTickerCbRef.current = null;
+      }
+      if (winterSpriteRef.current) {
+        const winterTex = winterSpriteRef.current.texture;
+        winterSpriteRef.current.destroy();
+        // The PNG texture was loaded via Assets.load and is cached by the
+        // PIXI Assets registry — destroying it here would also blow away any
+        // future re-mount's cache hit. We let PIXI's Assets unloader handle
+        // it; only the Sprite (display object) is destroyed.
+        void winterTex;
+        winterSpriteRef.current = null;
+      }
+      winterFadePhaseRef.current = 'idle';
+      prevWinterActiveRef.current = null;
       // Unsubscribe the prefers-reduced-motion `change` listener (issue #250).
       // If we leave it attached, OS-level motion toggles after unmount would
       // still fire handleChange against a stale appRef — handleChange guards
@@ -4594,6 +4731,49 @@ export function WorldMap() {
     const snow = winterSnowRef.current;
     if (!snow) return; // reduced-motion path — handle was never created
     snow.setActive(winterActive);
+  }, [pixiReady, winterActive]);
+
+  // Winter map-overlay edge detector. Same signal as the snow above, but
+  // drives the alpha state machine of the winter map Sprite instead of the
+  // particle system. The actual per-frame alpha math lives in the ticker
+  // callback set up in the pixi-init useEffect (winterFadeCb); this effect
+  // only flips phase + records start-time/start-alpha at the rising / falling
+  // edge of `winterActive`. Mid-fade reversals are handled by reading the
+  // sprite's current alpha as the next start-alpha, mirroring the
+  // mid-fade-resume pattern in createWinterSnow.
+  useEffect(() => {
+    if (!pixiReady) return;
+    const sprite = winterSpriteRef.current;
+    if (!sprite) return; // texture-load failure path — silent fallback
+    const prev = prevWinterActiveRef.current;
+    prevWinterActiveRef.current = winterActive;
+    // Skip on the very first observation — we don't want to fade IN on app
+    // boot if the world is already in Winter (would look like a slow reveal of
+    // existing state). Just snap to the correct alpha and phase.
+    if (prev === null) {
+      if (winterActive) {
+        sprite.alpha = 1;
+        winterFadePhaseRef.current = 'active';
+      } else {
+        sprite.alpha = 0;
+        winterFadePhaseRef.current = 'idle';
+      }
+      return;
+    }
+    if (prev === winterActive) return; // no edge
+    if (winterActive) {
+      // Rising edge — entering Winter. Capture current alpha so a fade-in
+      // mid fade-out resumes smoothly (no blink to 0 then up).
+      winterFadeStartAlphaRef.current = sprite.alpha;
+      winterFadeStartMsRef.current = performance.now();
+      winterFadePhaseRef.current = 'fade-in';
+    } else {
+      // Falling edge — leaving Winter (entering Spring or whatever season
+      // transitions out). Same mid-fade-resume logic: capture current alpha.
+      winterFadeStartAlphaRef.current = sprite.alpha;
+      winterFadeStartMsRef.current = performance.now();
+      winterFadePhaseRef.current = 'fade-out';
+    }
   }, [pixiReady, winterActive]);
 
   // Snapshot clan changes: re-layout so monument heights track live treasury.
