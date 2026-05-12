@@ -20,11 +20,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import world.clan.app.BuildConfig
@@ -72,16 +74,27 @@ fun ClansmanTab(elder: Elder, modifier: Modifier = Modifier) {
 @Composable
 private fun ClansmanRowItem(c: StubData.ClansmanRow, accent: Color) {
   val starving = c.hunger > 0.7f
-  val borderColor = if (starving) CockpitTokens.TextC.Danger else CockpitTokens.Border.ParchmentEdge
+  // Dead state mirrors web ClansmanTab.tsx: row darkens, mission text turns
+  // danger-red and reads "DEAD" instead of the action verb, ETA/CD collapses
+  // to an em dash, and hunger bar stops showing starvation (the clansman is
+  // beyond hunger). Border still flags danger so the row catches the eye.
+  val borderColor = when {
+    c.isDead -> CockpitTokens.TextC.Danger
+    starving -> CockpitTokens.TextC.Danger
+    else     -> CockpitTokens.Border.ParchmentEdge
+  }
+  val rowBackground = if (c.isDead) Color.Black.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.22f)
+  val rowAlpha = if (c.isDead) 0.55f else 1f
 
   Row(
     modifier = Modifier
       .fillMaxWidth()
       .height(IntrinsicSize.Min)
       .clip(RoundedCornerShape(CockpitTokens.Radius.sm))
-      .background(Color.White.copy(alpha = 0.22f))
+      .background(rowBackground)
       .border(1.dp, borderColor, RoundedCornerShape(CockpitTokens.Radius.sm))
-      .padding(horizontal = 8.dp, vertical = 6.dp),
+      .padding(horizontal = 8.dp, vertical = 6.dp)
+      .alpha(rowAlpha),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
@@ -94,6 +107,7 @@ private fun ClansmanRowItem(c: StubData.ClansmanRow, accent: Color) {
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         color = accent,
+        textDecoration = if (c.isDead) TextDecoration.LineThrough else TextDecoration.None,
       ),
     )
 
@@ -104,8 +118,9 @@ private fun ClansmanRowItem(c: StubData.ClansmanRow, accent: Color) {
         style = TextStyle(
           fontFamily = CockpitFonts.Inter,
           fontSize = 11.sp,
-          fontWeight = FontWeight.SemiBold,
-          color = CockpitTokens.TextC.OnParchment,
+          fontWeight = if (c.isDead) FontWeight.Bold else FontWeight.SemiBold,
+          color = if (c.isDead) CockpitTokens.TextC.Danger else CockpitTokens.TextC.OnParchment,
+          letterSpacing = if (c.isDead) 1.2.sp else 0.sp,
         ),
       )
       Text(
@@ -118,8 +133,9 @@ private fun ClansmanRowItem(c: StubData.ClansmanRow, accent: Color) {
       )
     }
 
-    // ETA / Cooldown / Ready
+    // ETA / Cooldown / Ready / Dead
     val (statusText, statusColor) = when {
+      c.isDead                   -> "—" to CockpitTokens.TextC.OnParchmentDim
       c.eta != null && c.eta > 0 -> "${c.eta}t" to CockpitTokens.TextC.OnParchmentDim
       c.cooldown > 0             -> "cd ${c.cooldown}t" to CockpitTokens.TextC.Muted
       else                       -> "ready" to READY_GREEN
@@ -135,8 +151,8 @@ private fun ClansmanRowItem(c: StubData.ClansmanRow, accent: Color) {
       ),
     )
 
-    // Hunger bar
-    HungerBar(hunger = c.hunger, starving = starving)
+    // Hunger bar — dead clansmen don't get a starvation flag (they're beyond hunger).
+    HungerBar(hunger = c.hunger, starving = starving && !c.isDead)
   }
 }
 

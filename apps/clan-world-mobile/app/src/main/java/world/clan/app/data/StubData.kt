@@ -48,6 +48,7 @@ object StubData {
     val eta: Int?,        // ticks until mission ends; null = idle
     val cooldown: Int,    // ticks of cooldown remaining; 0 = ready
     val hunger: Float,    // 0..1
+    val isDead: Boolean = false, // true = chain reports ClansmanState.DEAD; row renders darkened
   )
 
   fun clansmen(clanId: Int): List<ClansmanRow> = listOf(

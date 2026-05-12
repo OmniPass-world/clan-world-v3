@@ -64,6 +64,13 @@ data class ClansmanWire(
   val eta: Double? = null,
   val cooldown: Double = 0.0,
   val hunger: Double = 0.0,
+  /**
+   * True when the chain reports `ClansmanState.DEAD` (enum=3). The cockpit
+   * renders "DEAD" instead of the mission verb so a wiped clan reads as
+   * fallen rather than "Idle / ready". Default false for back-compat with
+   * older query payloads that didn't ship this field.
+   */
+  val isDead: Boolean = false,
 )
 
 // ---- 0G memory -------------------------------------------------------

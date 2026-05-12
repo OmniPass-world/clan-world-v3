@@ -18,6 +18,13 @@ interface ClansmanRow {
   cooldown: number;
   /** Hunger fraction 0-1; >0.7 = visual starvation warning. */
   hunger: number;
+  /**
+   * True when the chain reports this clansman as ClansmanState.DEAD. The row
+   * darkens, shows "DEAD" in place of mission, and suppresses the ETA/cooldown
+   * countdown so a wiped clan doesn't look like it's about to act again.
+   * Optional for back-compat with stub data + older query payloads.
+   */
+  isDead?: boolean;
 }
 
 // Stub fallback. Used whenever the live Convex query is still loading
@@ -76,23 +83,33 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
       >
         {rows.map((c) => {
           const starving = c.hunger > 0.7;
+          // Dead state takes precedence over starvation styling: the whole row
+          // dims so a wiped clan reads at-a-glance as fallen. Border switches
+          // to the danger color (same red used for starvation) but the row
+          // alpha drops to ~55%, giving the "tombstone" affordance.
+          const isDead = c.isDead === true;
+          const borderColor = isDead
+            ? tokens.text.danger
+            : starving
+              ? tokens.text.danger
+              : tokens.border.parchmentEdge;
           return (
             <div
               key={c.id}
               data-testid={`${testIdPrefix}-clansman-${c.id}`}
+              data-dead={isDead ? 'true' : 'false'}
               style={{
                 display: 'grid',
                 gridTemplateColumns: '28px 1fr 60px 36px',
                 gap: tokens.space.sm,
                 alignItems: 'center',
                 padding: '6px 8px',
-                background: 'rgba(255,255,255,0.22)',
-                border: `1px solid ${
-                  starving ? tokens.text.danger : tokens.border.parchmentEdge
-                }`,
+                background: isDead ? 'rgba(0,0,0,0.18)' : 'rgba(255,255,255,0.22)',
+                border: `1px solid ${borderColor}`,
                 borderRadius: tokens.radius.sm,
                 fontFamily: tokens.font.mono,
                 fontSize: '11px',
+                opacity: isDead ? 0.55 : 1,
               }}
             >
               <span
@@ -100,6 +117,7 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
                   fontWeight: 700,
                   color: elder.accent,
                   fontSize: '12px',
+                  textDecoration: isDead ? 'line-through' : 'none',
                 }}
               >
                 {c.id}
@@ -107,8 +125,9 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
                 <span
                   style={{
-                    fontWeight: 600,
-                    color: tokens.text.onParchment,
+                    fontWeight: isDead ? 700 : 600,
+                    color: isDead ? tokens.text.danger : tokens.text.onParchment,
+                    letterSpacing: isDead ? '0.12em' : undefined,
                   }}
                 >
                   {c.mission}
@@ -129,7 +148,12 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
                   textAlign: 'right',
                 }}
               >
-                {c.eta !== null ? (
+                {isDead ? (
+                  // Dead clansmen have no mission to ETA and no cooldown to
+                  // burn down — show an em dash so the column stays visually
+                  // aligned but doesn't suggest impending action.
+                  <span aria-label="dead — no countdown">—</span>
+                ) : c.eta !== null ? (
                   <span>ETA {c.eta}t</span>
                 ) : c.cooldown > 0 ? (
                   <span>CD {c.cooldown}t</span>
@@ -137,7 +161,7 @@ export function ClansmanTab({ elder, testIdPrefix }: Props) {
                   <span style={{ color: '#3a7a3a' }}>ready</span>
                 )}
               </div>
-              <HungerBar hunger={c.hunger} starving={starving} />
+              <HungerBar hunger={c.hunger} starving={starving && !isDead} />
             </div>
           );
         })}
