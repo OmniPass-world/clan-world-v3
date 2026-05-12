@@ -238,6 +238,20 @@ export function TopHud({ liveTick }: { liveTick: number }) {
 
       {/* Right: status chips */}
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+        {/* Season progress percentage — sits adjacent to the bar so the
+            season-progress group (bar + %) reads as a single unit. Event
+            chips (winter / bandit) follow as separate right-aligned elements. */}
+        <div
+          style={{
+            color: `${PARCHMENT}55`,
+            fontSize: 11,
+            fontFamily: 'monospace',
+            letterSpacing: '0.04em',
+          }}
+        >
+          {Math.round(seasonProgress * 100)}%
+        </div>
+
         {/* Winter active */}
         {winterActive && (
           <div
@@ -289,18 +303,6 @@ export function TopHud({ liveTick }: { liveTick: number }) {
             ⚔ RAID IN {banditTicksUntil}
           </div>
         )}
-
-        {/* Compact tick legend */}
-        <div
-          style={{
-            color: `${PARCHMENT}55`,
-            fontSize: 11,
-            fontFamily: 'monospace',
-            letterSpacing: '0.04em',
-          }}
-        >
-          {Math.round(seasonProgress * 100)}%
-        </div>
       </div>
 
       <style>{`
