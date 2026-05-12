@@ -171,27 +171,51 @@ export function createWinterSnow(
    * Activation state machine: `idle` (hidden, ticker not running) →
    * `active` (visible, full alpha, ticker animating) → `fading` (visible,
    * alpha ramping to 0, ticker still animating) → `idle`. Re-activating
-   * mid-fade cancels the fade and ramps back up.
+   * mid-fade cancels the fade and ramps back up from the current alpha
+   * (no blink), and the drift clock is preserved across cycles so flake
+   * sine phase doesn't snap.
    */
   type Phase = 'idle' | 'active' | 'fading';
   let phase: Phase = 'idle';
-  let fadeStartMs = 0;
+  // Drift clock — monotonic across the lifetime of this handle. Never reset
+  // after construction; resetting it would discontinuously snap every flake's
+  // horizontal sine drift on every activate/deactivate (visible jump).
+  const startMs = performance.now();
+  // Envelope clocks — separate from `startMs` so fade timing can resume from
+  // any current alpha without disturbing the drift phase. The fade-in/out
+  // envelopes are parameterised so that `alpha(fadeStartMs) === fadeStartAlpha`
+  // and `alpha(fadeStartMs + duration*(1 - startAlpha)) === target`, i.e. the
+  // remaining-duration math accounts for the alpha we're already at.
+  const FADE_IN_MS = 400;
+  let fadeInStartMs = 0;
+  let fadeInStartAlpha = 0;
+  let fadeOutStartMs = 0;
+  let fadeOutStartAlpha = 0;
   let tickerRegistered = false;
-  let startMs = performance.now();
 
   const tick = (): void => {
     const now = performance.now();
     const dtMs = app.ticker.deltaMS;
     const dtSec = dtMs / 1000;
 
+    // Idle short-circuit — skip dims read + envelope math + particle loop.
+    if (phase === 'idle') {
+      return;
+    }
+
     // Track latest screen dims — cheap, supports resize without an explicit
     // re-init pass. Used to recycle particles + clamp baseX on respawn.
     screenW = app.renderer.screen.width;
     screenH = app.renderer.screen.height;
 
-    // Alpha envelope for fade-out / fade-in.
+    // Alpha envelope for fade-out / fade-in. Both envelopes are computed from
+    // the alpha value at the start of the fade — so a fade-in that begins at
+    // alpha=0.6 only needs 40% of FADE_IN_MS to reach 1.0, and a fade-out from
+    // alpha=0.3 only needs 30% of fadeOutMs to reach 0. This makes mid-fade
+    // direction reversals seamless (no blink).
     if (phase === 'fading') {
-      const fadeT = (now - fadeStartMs) / opts.fadeOutMs;
+      const remainingMs = opts.fadeOutMs * fadeOutStartAlpha;
+      const fadeT = remainingMs > 0 ? (now - fadeOutStartMs) / remainingMs : 1;
       if (fadeT >= 1) {
         container.alpha = 0;
         container.visible = false;
@@ -201,18 +225,17 @@ export function createWinterSnow(
         // early-return while idle.
         return;
       }
-      container.alpha = 1 - fadeT;
-    } else if (phase === 'active') {
-      // Fade IN over ~400ms on activate for a softer onset.
-      const fadeInMs = 400;
-      const t = Math.min(1, (now - startMs) / fadeInMs);
-      container.alpha = t;
+      container.alpha = fadeOutStartAlpha * (1 - fadeT);
     } else {
-      // idle — skip per-particle work entirely.
-      return;
+      // phase === 'active' — fade IN from current alpha to 1.0.
+      const remainingMs = FADE_IN_MS * (1 - fadeInStartAlpha);
+      const fadeT = remainingMs > 0 ? Math.min(1, (now - fadeInStartMs) / remainingMs) : 1;
+      container.alpha = fadeInStartAlpha + (1 - fadeInStartAlpha) * fadeT;
     }
 
     // Per-particle: gravity-driven fall + sine drift, recycle on bottom exit.
+    // tSec uses the monotonic `startMs` so sine phase is continuous across
+    // any number of activate/deactivate cycles (no horizontal jump).
     const tSec = (now - startMs) / 1000;
     for (const p of particles) {
       p.sprite.y += p.vy * dtSec;
@@ -230,18 +253,24 @@ export function createWinterSnow(
   const setActive = (active: boolean): void => {
     if (active) {
       if (phase === 'active') return;
+      // Preserve the current alpha as the fade-in start — if we were mid
+      // fade-out at e.g. alpha=0.5, the fade-in resumes from 0.5 (no blink).
+      // If we were idle (alpha=0), this is the normal cold-start case.
+      fadeInStartAlpha = container.alpha;
+      fadeInStartMs = performance.now();
       phase = 'active';
       container.visible = true;
-      // Reset startMs so fade-in begins fresh. (If reactivating mid-fade-out,
-      // this also restarts the alpha envelope from 0.)
-      startMs = performance.now();
-      container.alpha = 0;
+      // NOTE: `startMs` (drift clock) is intentionally NOT touched here —
+      // resetting it would snap every particle's sine phase, causing all 100
+      // flakes to horizontally jump on every reactivate.
     } else {
       if (phase === 'idle') return;
-      // Already fading — keep current fade in flight, don't restart.
-      if (phase === 'fading') return;
+      // Mid fade-in or already fading — start a fresh fade-out from the
+      // current alpha. This is symmetric with the fade-in resume above and
+      // also prevents a blink if a season flip happens during fade-in.
+      fadeOutStartAlpha = container.alpha;
+      fadeOutStartMs = performance.now();
       phase = 'fading';
-      fadeStartMs = performance.now();
     }
   };
 
