@@ -26,8 +26,8 @@ import {
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
 // at native resolution. The viewport scales/pans this world inside the screen.
-const MAP_WIDTH = 960;
-const MAP_HEIGHT = 1280;
+const MAP_WIDTH = 1086;
+const MAP_HEIGHT = 1448;
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
 
@@ -164,96 +164,96 @@ type LiveClansmanMarker = {
 const REF_W = MAP_WIDTH;
 const REF_H = MAP_HEIGHT;
 
-// FIRST-PASS region polygons for 960x1280 map. Strategy:
-//   1. Scale old polygon coords by sx = 960/814 ≈ 1.179, sy = 1280/1448 ≈ 0.884.
-//   2. For forest / mountains / west-farms / east-farms, additionally widen
-//      the INWARD-FACING edges by +30..+45 px so they read as visibly larger
-//      on the new map (per Liam directive: those four regions want to be
-//      wider; unicorn-town, docks, deep-sea keep scale-only sizing).
-//   3. Region centers (nx/ny) are scaled-old-centers with a small inward nudge
-//      for the four widened regions; they anchor the clan zone halos and the
-//      region labels.
-// Toggle SHOW_REGION_POLYGONS (above) to render the polygons as colored
-// overlays for visual tuning, then iterate coords here.
+// FIRST-PASS region polygons for 1086x1448 map. Strategy:
+//   1. Scale old (814x1448) polygon coords by sx = 1086/814 ≈ 1.334 horizontally
+//      only — the new map kept the same height (1448), it's just wider.
+//   2. For forest / mountains / west-farms / east-farms, additionally widen the
+//      INWARD-FACING edges by ±40 px so they read as visibly larger on the new
+//      map (per Liam directive: those four regions want to be wider;
+//      unicorn-town, docks, deep-sea keep scale-only sizing).
+//   3. Region centers (nx/ny) are scaled-old-centers — they anchor the clan
+//      zone halos and the region labels.
+// Toggle SHOW_REGION_POLYGONS (above) to render the polygons as colored overlays
+// for visual tuning, then iterate coords here.
 const REGIONS: RegionDef[] = [
   {
     id: 'forest',
     name: 'Forest',
-    nx: 268 / REF_W,
-    ny: 217 / REF_H,
+    nx: 280 / REF_W,
+    ny: 245 / REF_H,
     color: 0x228822,
-    polygon: [[0, 0], [512, 0], [600, 146], [525, 314], [366, 442], [0, 491]],
+    polygon: [[0, 0], [573, 0], [673, 165], [600, 355], [380, 500], [0, 555]],
   },
   {
     id: 'mountains',
     name: 'Mountains',
-    nx: 735 / REF_W,
-    ny: 217 / REF_H,
+    nx: 854 / REF_W,
+    ny: 245 / REF_H,
     color: 0x888888,
-    polygon: [[603, 0], [960, 0], [960, 451], [778, 473], [579, 371], [556, 225], [532, 119]],
+    polygon: [[687, 0], [1086, 0], [1086, 510], [880, 535], [700, 420], [634, 255], [607, 135]],
   },
   {
     id: 'unicorn-town',
     name: 'Unicorn Town',
-    nx: 501 / REF_W,
-    ny: 442 / REF_H,
+    nx: 567 / REF_W,
+    ny: 500 / REF_H,
     color: 0xcc88cc,
-    polygon: [[472, 331], [601, 331], [719, 442], [631, 517], [484, 517], [419, 460]],
+    polygon: [[533, 375], [681, 375], [814, 500], [714, 585], [547, 585], [474, 520]],
   },
   {
     id: 'west-farms',
     name: 'West Farms',
-    nx: 268 / REF_W,
-    ny: 672 / REF_H,
+    nx: 280 / REF_W,
+    ny: 760 / REF_H,
     color: 0xaacc44,
-    polygon: [[0, 491], [434, 460], [546, 672], [394, 849], [0, 871]],
+    polygon: [[0, 555], [480, 520], [607, 760], [440, 960], [0, 985]],
   },
   {
     id: 'east-farms',
     name: 'East Farms',
-    nx: 717 / REF_W,
-    ny: 672 / REF_H,
+    nx: 834 / REF_W,
+    ny: 760 / REF_H,
     color: 0x88bb33,
-    polygon: [[586, 552], [960, 504], [960, 871], [586, 857], [456, 694]],
+    polygon: [[674, 625], [1086, 570], [1086, 985], [674, 970], [527, 785]],
   },
   {
     id: 'west-docks',
     name: 'West Docks',
-    nx: 259 / REF_W,
-    ny: 986 / REF_H,
+    nx: 293 / REF_W,
+    ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[124, 871], [430, 871], [460, 999], [307, 1123], [112, 1092], [65, 959]],
+    polygon: [[140, 985], [487, 985], [520, 1130], [347, 1270], [127, 1235], [73, 1085]],
   },
   {
     id: 'east-docks',
     name: 'East Docks',
-    nx: 772 / REF_W,
-    ny: 986 / REF_H,
+    nx: 874 / REF_W,
+    ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[660, 871], [960, 871], [960, 1092], [767, 1114], [637, 1003]],
+    polygon: [[747, 985], [1086, 985], [1086, 1235], [867, 1260], [720, 1135]],
   },
   {
     id: 'deep-sea',
     name: 'Deep Sea',
-    nx: 590 / REF_W,
-    ny: 968 / REF_H,
+    nx: 667 / REF_W,
+    ny: 1095 / REF_H,
     color: 0x1144aa,
-    polygon: [[478, 897], [631, 897], [684, 1012], [590, 1087], [460, 1030]],
+    polygon: [[540, 1015], [714, 1015], [774, 1145], [667, 1230], [520, 1165]],
   },
 ];
 
 // Halo / visual-area sizes (used for region focus / select rings). Scaled to
-// the new 960x1280 dimensions: rx ~ *1.179, ry ~ *0.884, plus +15 rx for the
-// four widened regions to match the polygon expansion.
+// the new 1086x1448 dimensions: rx ~ *1.334 (horizontal-only), ry unchanged,
+// plus +20 rx for the four widened regions to match the polygon expansion.
 const REGION_VISUAL_AREAS: Record<string, { rx: number; ry: number }> = {
-  forest: { rx: 157, ry: 62 },
-  mountains: { rx: 174, ry: 67 },
-  'unicorn-town': { rx: 109, ry: 55 },
-  'west-farms': { rx: 180, ry: 76 },
-  'east-farms': { rx: 192, ry: 80 },
-  'west-docks': { rx: 139, ry: 67 },
-  'east-docks': { rx: 139, ry: 67 },
-  'deep-sea': { rx: 212, ry: 80 },
+  forest: { rx: 180, ry: 70 },
+  mountains: { rx: 200, ry: 76 },
+  'unicorn-town': { rx: 124, ry: 62 },
+  'west-farms': { rx: 207, ry: 86 },
+  'east-farms': { rx: 220, ry: 90 },
+  'west-docks': { rx: 157, ry: 76 },
+  'east-docks': { rx: 157, ry: 76 },
+  'deep-sea': { rx: 240, ry: 90 },
 };
 
 // Clan ↔ archetype mapping (style/bandit-archetype-sprites): each clan gets a portrait
