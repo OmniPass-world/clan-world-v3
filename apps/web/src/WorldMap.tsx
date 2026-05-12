@@ -11,6 +11,17 @@ import worldMapBg from './assets/world-map.png';
 import { DEMO_MODE } from './config/env';
 import { BanditState, ClansmanState } from '@clan-world/shared/generated/enums';
 import { createWinterSnow, type WinterSnowHandle } from './effects/winterSnow';
+import {
+  type ClansmanAnimState,
+  WALK_EPSILON_PX,
+  WALK_FRAME_MS,
+  directionForVector,
+  framesForDirection,
+  getClansmanFrameSet,
+  hasClansmanSpriteSheet,
+  loadClansmanSpriteSheet,
+  makeClansmanAnimState,
+} from './effects/clansmanSpriteSheet';
 
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
@@ -128,6 +139,19 @@ type LiveClansmanMarker = {
   statusBg: Graphics;
   statusText: Text;
   route?: TravelRoute;
+  /**
+   * Per-marker animated-sprite state — direction, frame, last position, etc.
+   * Populated when the clan's walk sheet has loaded and the body sprite was
+   * built from a frame Texture (not from the legacy single-PNG fallback).
+   * Null when the marker is still on the dot/legacy sprite path.
+   *
+   * Updated every tick from updateLiveClansmanPositions: we diff
+   * (lastX, lastY) vs the new screen position to derive movement direction,
+   * then advance `frame` by elapsed-ms / WALK_FRAME_MS when walking.
+   * Dead clansmen freeze on whatever frame they were on; idle alive ones
+   * snap to frame 0 of the held direction.
+   */
+  anim?: ClansmanAnimState;
 };
 
 // Reference design size — coords below are authored against the actual map art.
@@ -2230,6 +2254,42 @@ export function WorldMap() {
         .catch(() => {
           // Travel dot fallback handles missing texture.
         });
+
+      // Per-clan walk sprite sheet — async load + slice into 20 frame
+      // Textures (4 cols × 5 rows: N/NE/E/SE/S directions × 4 frames). Once
+      // ready, evict existing markers so the next sync re-creates them with
+      // the AnimatedSprite-style body. Falls back silently to the
+      // single-PNG `loadClansmanTexture` path above when the sheet is
+      // missing or fails — markers drawn during the load gap render as the
+      // legacy still sprite, then upgrade on next sync.
+      //
+      // Mapping of which clan gets which sheet lives in
+      // ./effects/clansmanSpriteSheet.ts SHEET_PATH_BY_CLAN. Only clans
+      // listed there have animated walking; others keep the single-PNG
+      // textured marker.
+      if (hasClansmanSpriteSheet(clan.id)) {
+        loadClansmanSpriteSheet(clan.id)
+          .then(() => {
+            const cancelled = isAssetLoadCancelled();
+            if (cancelled || DEMO_MODE) return;
+            const drawnNow = drawnRef.current;
+            for (let i = drawnNow.liveClansmen.length - 1; i >= 0; i--) {
+              const m = drawnNow.liveClansmen[i];
+              if (!m || m.clanId !== clan.id) continue;
+              m.route?.line.parent?.removeChild(m.route.line);
+              m.route?.line.destroy();
+              m.node.parent?.removeChild(m.node);
+              m.node.destroy({ children: true });
+              drawnNow.liveClansmen.splice(i, 1);
+            }
+            liveClansmanVisualKeyRef.current = '';
+            syncLiveClansmanVisuals(() => !isMountedRef.current);
+            relayout(WORLD_WIDTH, WORLD_HEIGHT);
+          })
+          .catch(() => {
+            // Sheet load failed — keep the single-PNG fallback rendering.
+          });
+      }
     }
 
     for (const clan of clans) {
@@ -2356,26 +2416,53 @@ export function WorldMap() {
     });
     statusText.anchor.set(0.5, 0.5);
     let body: Sprite | Graphics | null = null;
-    const tex = clansmanTextureCache[clanId];
-    if (tex) {
-      const sprite = new Sprite(tex);
-      // Dead clansmen rotate 90° (lying down) — anchor at sprite center so the
-      // rotation pivots on the body, not the feet. Live clansmen keep the
-      // feet-anchor (0.5, 0.82) so they stand on their map dot.
+    // Prefer the animated walk-sheet frame when ready — gives us 4-frame
+    // directional walking via updateLiveClansmanPositions. Falls back to
+    // the legacy single-PNG sprite (still walk-pose), then to the dot
+    // Graphics for the load-gap.
+    //
+    // The first frame of the S row is the starting frame because that's
+    // the visual the legacy single-PNG textures were authored from
+    // (front-facing, feet planted).
+    const frameSet = getClansmanFrameSet(clanId);
+    let anim: ClansmanAnimState | undefined;
+    if (frameSet) {
+      const startTex = frameSet.rows.S[0]!;
+      const sprite = new Sprite(startTex);
       sprite.anchor.set(0.5, isDead ? 0.5 : 0.82);
+      // The sheet's per-frame size (≈280×280) is much bigger than the legacy
+      // 64-ish px asset, so we re-scale to the same target heights the dot
+      // marker used (34/42 px) to keep marker footprint identical. Width
+      // tracks height via the texture aspect ratio.
       const targetH = missionActive ? 42 : 34;
       const ratio = targetH / sprite.texture.height;
       sprite.height = targetH;
       sprite.width = sprite.texture.width * ratio;
       container.addChild(sprite);
       body = sprite;
+      anim = makeClansmanAnimState();
     } else {
-      const fallback = new Graphics();
-      fallback.circle(0, 0, missionActive ? 7 : 6);
-      fallback.fill({ color, alpha: 1 });
-      fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
-      container.addChild(fallback);
-      body = fallback;
+      const tex = clansmanTextureCache[clanId];
+      if (tex) {
+        const sprite = new Sprite(tex);
+        // Dead clansmen rotate 90° (lying down) — anchor at sprite center so the
+        // rotation pivots on the body, not the feet. Live clansmen keep the
+        // feet-anchor (0.5, 0.82) so they stand on their map dot.
+        sprite.anchor.set(0.5, isDead ? 0.5 : 0.82);
+        const targetH = missionActive ? 42 : 34;
+        const ratio = targetH / sprite.texture.height;
+        sprite.height = targetH;
+        sprite.width = sprite.texture.width * ratio;
+        container.addChild(sprite);
+        body = sprite;
+      } else {
+        const fallback = new Graphics();
+        fallback.circle(0, 0, missionActive ? 7 : 6);
+        fallback.fill({ color, alpha: 1 });
+        fallback.stroke({ color: 0xffffff, width: 1.5, alpha: 0.85 });
+        container.addChild(fallback);
+        body = fallback;
+      }
     }
     let halo: Graphics | null = null;
     if (missionActive && !isDead) {
@@ -2395,7 +2482,7 @@ export function WorldMap() {
         setSelectedClanId(null);
       }
     });
-    return { container, body, halo, carry, statusBg, statusText };
+    return { container, body, halo, carry, statusBg, statusText, anim };
   }
 
   /**
@@ -2484,6 +2571,7 @@ export function WorldMap() {
           statusBg: existing.statusBg,
           statusText: existing.statusText,
           route: existing.route,
+          anim: existing.anim,
         });
         // Alive→dead (or dead→alive) transition: re-pose the body sprite
         // in place without rebuilding the node. The split between
@@ -2540,14 +2628,14 @@ export function WorldMap() {
         }
         continue;
       }
-      const { container, body, halo, carry, statusBg, statusText } = makeLiveClansmanMarker(
+      const { container, body, halo, carry, statusBg, statusText, anim } = makeLiveClansmanMarker(
         marker.color,
         marker.clanId,
         marker.missionActive,
         marker.isDead,
       );
       layers.worldDynamic.addChild(container);
-      drawn.liveClansmen.push({ ...marker, node: container, body, halo, carry, statusBg, statusText });
+      drawn.liveClansmen.push({ ...marker, node: container, body, halo, carry, statusBg, statusText, anim });
     }
     liveClansmanVisualKeyRef.current = rosterKey;
     updateLiveClansmanPositions();
@@ -2830,6 +2918,77 @@ export function WorldMap() {
     }, TRAVEL_RECONCILE_MS);
   }
 
+  /**
+   * Drive the per-marker walking animation. Called at the end of every
+   * updateLiveClansmanPositions iteration after the body position has been
+   * assigned.
+   *
+   * - Diff (lastX, lastY) → (currentX, currentY) to derive a movement vector
+   * - Below WALK_EPSILON_PX we treat the marker as idle (pause on frame 0,
+   *   hold last direction)
+   * - Above the threshold, advance frame at WALK_FRAME_MS cadence using
+   *   real wall-clock dt so the animation stays smooth even if the position
+   *   update fires unevenly
+   * - For mirrored directions (NW, W, SW) reuse the E-side textures and
+   *   set sprite.scale.x to the negative current magnitude
+   * - Dead markers freeze on whatever frame they were on — caller's
+   *   isDead branch handles that case before reaching here.
+   */
+  function advanceClansmanAnimation(marker: LiveClansmanMarker, currentX: number, currentY: number) {
+    const anim = marker.anim;
+    if (!anim) return;
+    const body = marker.body;
+    if (!body || !('texture' in body)) return; // Graphics fallback has no .texture
+    const sprite = body as Sprite;
+    const frameSet = getClansmanFrameSet(marker.clanId);
+    if (!frameSet) return;
+
+    const now = performance.now();
+    let dx = 0;
+    let dy = 0;
+    if (anim.lastX !== null && anim.lastY !== null) {
+      dx = currentX - anim.lastX;
+      dy = currentY - anim.lastY;
+    }
+    const distSq = dx * dx + dy * dy;
+    const isWalking = distSq >= WALK_EPSILON_PX * WALK_EPSILON_PX;
+
+    if (isWalking) {
+      anim.direction = directionForVector(dx, dy);
+      const dt = now - anim.lastTickMs;
+      anim.frameAccumMs += dt;
+      // Multi-frame catch-up: if a position update was skipped (tab
+      // backgrounded, frame coalescing) advance the cycle accordingly so
+      // the walk doesn't "snap" on resume.
+      while (anim.frameAccumMs >= WALK_FRAME_MS) {
+        anim.frame = (anim.frame + 1) % 4;
+        anim.frameAccumMs -= WALK_FRAME_MS;
+      }
+      anim.wasWalking = true;
+    } else {
+      // Idle: pause on frame 0 of the held direction, reset frame timer so
+      // the next walk segment starts cleanly on frame 0 → 1 → 2 → 3.
+      anim.frame = 0;
+      anim.frameAccumMs = 0;
+      anim.wasWalking = false;
+    }
+    anim.lastTickMs = now;
+    anim.lastX = currentX;
+    anim.lastY = currentY;
+
+    const lookup = framesForDirection(frameSet, anim.direction);
+    const tex = lookup.frames[anim.frame] ?? lookup.frames[0]!;
+    if (sprite.texture !== tex) {
+      sprite.texture = tex;
+    }
+    // Mirror flip for NW / W / SW. Preserve the magnitude of the current
+    // X-scale (which carries the marker-level size from
+    // makeLiveClansmanMarker → sprite.height/width). Pixi multiplies
+    // container.scale on top, so a per-sprite mirror is safe.
+    const xMag = Math.abs(sprite.scale.x) || 1;
+    sprite.scale.x = lookup.mirror ? -xMag : xMag;
+  }
+
   function updateLiveClansmanPositions() {
     const drawn = drawnRef.current;
     if (drawn.liveClansmen.length === 0) return;
@@ -2853,6 +3012,20 @@ export function WorldMap() {
         marker.statusText.text = '';
         marker.statusText.alpha = 0;
         marker.statusBg.clear();
+        // Dead-state animation freeze: keep anim.lastX/Y in sync with the
+        // current position so the next dead→alive revive doesn't see a
+        // huge phantom delta and start an erroneous walk-cycle. Do NOT
+        // advance frame — body sprite stays on whatever texture was set
+        // last frame, plus the 90° rotation + grey tint applied at
+        // applyDeadVisualState time. Skipping advanceClansmanAnimation
+        // here is what "freezes on current frame" actually means.
+        if (marker.anim) {
+          marker.anim.lastX = from.x;
+          marker.anim.lastY = from.y;
+          marker.anim.frameAccumMs = 0;
+          marker.anim.wasWalking = false;
+          marker.anim.lastTickMs = performance.now();
+        }
         continue;
       }
       const isTraveling = marker.missionActive && marker.targetRegionKey && marker.targetRegionKey !== marker.regionKey;
@@ -2886,6 +3059,9 @@ export function WorldMap() {
       else marker.carry.displayedFill += (marker.carry.targetFill - marker.carry.displayedFill) * 0.18;
       redrawCarryIndicator(marker.carry);
       redrawWorkerStatus(marker, tickFloat);
+      // Drive walking animation last — needs the current screen position
+      // (post-route/bob) to derive its movement vector.
+      advanceClansmanAnimation(marker, position.x, position.y);
     }
   }
 
