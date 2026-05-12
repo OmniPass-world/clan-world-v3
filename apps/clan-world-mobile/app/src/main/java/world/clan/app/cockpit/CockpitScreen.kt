@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsTopHeight
@@ -92,9 +93,11 @@ fun CockpitScreen(
       // Spacer for row 2 (controls strip)
       Box(modifier = Modifier.fillMaxWidth().height(HeaderRow2Height))
 
-      // Map region — fills its weighted height; dots + toggle overlay the
-      // bottom edge so there's no gap before the panel. Map's bottom
-      // corners are rounded (mirrors the device's natural top-corner curve).
+      // Map region — fills its weighted height; collapse toggle overlays
+      // the bottom edge. Page indicator dots have been moved into the
+      // panel below so they scroll/animate with the pager, not the map.
+      // Map's bottom corners are rounded (mirrors the device's natural
+      // top-corner curve).
       Box(
         modifier = Modifier
           .fillMaxWidth()
@@ -108,15 +111,6 @@ fun CockpitScreen(
       ) {
         MapWebView(modifier = Modifier.fillMaxSize())
 
-        PageIndicatorOverlay(
-          pageCount = ELDERS.size,
-          currentPage = (activeClanId - 1).coerceIn(0, ELDERS.size - 1),
-          onDotClick = { activeClanId = it + 1 },
-          modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 56.dp),
-        )
-
         CollapseToggle(
           collapsed = collapsed,
           activeClanId = activeClanId,
@@ -127,15 +121,34 @@ fun CockpitScreen(
         )
       }
 
-      ClanPanelPager(
+      // Panel region — wraps the pager in a Box so the page indicator
+      // dots can anchor to the panel's bottom edge instead of floating
+      // over the map. The dots also pick up nav-bar safe padding so
+      // they sit above the gesture handle while the panel background
+      // continues to fill behind it.
+      Box(
         modifier = Modifier
           .fillMaxWidth()
           .weight(pagerWeight),
-        activeClanId = activeClanId,
-        onActiveClanChange = { activeClanId = it },
-        contentAlpha = pagerAlpha,
-        onOwnerControl = onOwnerControl,
-      )
+      ) {
+        ClanPanelPager(
+          modifier = Modifier.fillMaxSize(),
+          activeClanId = activeClanId,
+          onActiveClanChange = { activeClanId = it },
+          contentAlpha = pagerAlpha,
+          onOwnerControl = onOwnerControl,
+        )
+
+        PageIndicatorOverlay(
+          pageCount = ELDERS.size,
+          currentPage = (activeClanId - 1).coerceIn(0, ELDERS.size - 1),
+          onDotClick = { activeClanId = it + 1 },
+          modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .navigationBarsPadding()
+            .padding(bottom = 8.dp),
+        )
+      }
     }
 
     // (2) Bulletin flyout — drawn over the body. Its top shadow extends
