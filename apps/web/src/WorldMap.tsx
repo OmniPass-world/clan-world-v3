@@ -2834,7 +2834,14 @@ export function WorldMap() {
     const drawn = drawnRef.current;
     if (drawn.liveClansmen.length === 0) return;
     const tickFloat = currentTickFloat();
+    // Focus mode (base-click): selected clan stays bright; other clans dim.
+    // Same constants as applyClanFocus() so the per-frame value matches the
+    // one-shot value set on selection — prevents the per-frame loop from
+    // clobbering the dim back to 1 (Liam 2026-05-12).
+    const focusClanId = selectedClanIdRef.current;
     for (const marker of drawn.liveClansmen) {
+      const isOtherClan = !!focusClanId && marker.clanId !== focusClanId;
+      const focusAlpha = isOtherClan ? 0.18 : 1;
       const from = regionWanderPoint(marker.regionKey, marker, 0);
       if (!from) continue;
       // Dead clansmen freeze at their last-known wander point — no bob, no
@@ -2844,7 +2851,11 @@ export function WorldMap() {
         marker.node.x = from.x;
         marker.node.y = from.y;
         marker.node.zIndex = Math.round(marker.node.y + 8);
-        marker.node.alpha = 1; // container alpha stays 1; body's own alpha dims the sprite
+        // Container alpha is normally 1 (body's own alpha dims the sprite).
+        // During focus mode, dead-OTHER-clan clansmen also dim — the focus
+        // dim multiplies onto the existing dead-body alpha (PR #244) so
+        // dead+other-clan reads as even more faded than alive+other-clan.
+        marker.node.alpha = focusAlpha;
         marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
         marker.carry.label.text = '';
         marker.carry.targetFill = 0;
@@ -2877,7 +2888,11 @@ export function WorldMap() {
       marker.node.x = position.x;
       marker.node.y = position.y;
       marker.node.zIndex = Math.round(marker.node.y + 8);
-      marker.node.alpha = 1;
+      marker.node.alpha = focusAlpha;
+      // Route line follows the same focus-dim rule. applyClanFocus() sets
+      // this once on selection, but routes can be created/destroyed
+      // dynamically per travel — re-apply per frame so new routes also dim.
+      if (marker.route) marker.route.line.alpha = isOtherClan ? 0.12 : 1;
       marker.node.scale.set(Math.max(0.95, layoutRef.current.scale * 1.08));
       const carry = carryReadout(marker, tickFloat);
       marker.carry.label.text = carry.text;
