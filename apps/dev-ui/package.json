@@ -1,5 +1,5 @@
 {
-  "name": "dev-ui",
+  "name": "@clan-world/dev-ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,9 +7,12 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json",
+    "clean": "rm -rf dist .turbo node_modules/.vite"
   },
   "dependencies": {
+    "@clan-world/contracts": "workspace:*",
     "@tanstack/react-query": "^5.100.9",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

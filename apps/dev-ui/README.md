@@ -1,73 +1,51 @@
-# React + TypeScript + Vite
+# @clan-world/dev-ui
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Generic read/write SPA over the ClanWorld diamond. Connects a wallet (Base Sepolia by default), enumerates every function across `IClanWorld` + `IDiamondLoupe` + `IDiamondCut` + `OwnershipFacet`, and lets you call any of them. Useful for diamond admin, debugging cuts, and one-off contract pokes during development.
 
-Currently, two official plugins are available:
+## Migrated from standalone repo on 2026-05-12
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+This app was originally `github.com:clan-world/dev-ui` (a standalone Vite + React SPA). It was absorbed into the monorepo at `apps/dev-ui/` on 2026-05-12 via `git subtree add`, preserving full git history. See PR-of-record on the absorb commit. The standalone repo will be archived/deleted by the repo owner once this absorption is verified.
 
-## React Compiler
+### Vercel project
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The standalone repo was wired to a Vercel project:
 
-## Expanding the ESLint configuration
+- Project ID: `prj_AVXVwTKNJ6sFJ7VFov4ZXzk1ZFjE`
+- Org ID: `team_YZdNnTlbEqyXPmeEe0JmPZ93`
+- Project name: `dev-ui`
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+After this PR merges, that Vercel project must be relinked to point at `apps/dev-ui/` inside this monorepo (or a new project created). The standalone repo's git integration should be disabled before its archival.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### ABI source of truth
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+ABIs are no longer vendored. They are imported as JSON modules from the workspace's canonical contracts package:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```ts
+import IClanWorldArtifact from '@clan-world/contracts/abi/IClanWorld.json' with { type: 'json' };
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+The four ABIs consumed (`IClanWorld`, `IDiamondLoupe`, `IDiamondCut`, `OwnershipFacet`) live at `packages/contracts/abi/*.json` and are regenerated from the forge artifacts under `packages/contracts/out/` by `pnpm codegen`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+If you need to add another facet ABI, add the artifact path to `scripts/gen-contract-abi.mjs` and export it from `packages/contracts/package.json`.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Local dev
+
+From repo root:
+
+```bash
+pnpm install
+pnpm --filter @clan-world/dev-ui dev      # vite dev server
+pnpm --filter @clan-world/dev-ui build    # tsc + vite build
 ```
+
+## Configuration
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `VITE_DEFAULT_DIAMOND` | `0x14392f8276c6234064395e74f0741e26f1613c1e` | Pre-populates the diamond address input on load |
+
+## Tech stack
+
+- Vite 8 + React 19 (note: newer than `apps/web` which is on React 18 / Vite 5 — these are pinned per-package by pnpm and do not conflict)
+- wagmi 3 + viem 2 for wallet + RPC
+- @tanstack/react-query for caching

@@ -9,12 +9,23 @@ import {
   useWaitForTransactionReceipt,
 } from 'wagmi';
 import { baseSepolia } from 'wagmi/chains';
-import { encodeFunctionData, type Address, type AbiFunction, isAddress } from 'viem';
+import { encodeFunctionData, type Abi, type Address, type AbiFunction, isAddress } from 'viem';
 
-import { IClanWorldAbi } from './abi/IClanWorld';
-import { IDiamondLoupeAbi } from './abi/IDiamondLoupe';
-import { IDiamondCutAbi } from './abi/IDiamondCut';
-import { OwnershipFacetAbi } from './abi/OwnershipFacet';
+// ABIs are imported from @clan-world/contracts as JSON modules. Source of truth lives at
+// packages/contracts/abi/*.json and is regenerated from forge artifacts by `pnpm codegen`.
+// Do NOT re-vendor copies here — drift between this UI and the real diamond is a footgun.
+import IClanWorldArtifact from '@clan-world/contracts/abi/IClanWorld.json' with { type: 'json' };
+import IDiamondLoupeArtifact from '@clan-world/contracts/abi/IDiamondLoupe.json' with { type: 'json' };
+import IDiamondCutArtifact from '@clan-world/contracts/abi/IDiamondCut.json' with { type: 'json' };
+import OwnershipFacetArtifact from '@clan-world/contracts/abi/OwnershipFacet.json' with { type: 'json' };
+
+// Cast through `Abi` from viem — JSON imports lose the literal-type narrowing that an
+// `as const`-d TS source would give us, so wagmi/viem can't infer call signatures unless
+// we re-tag with the structural Abi type. Same pattern as packages/shared/src/adapters/IChainClient.ts.
+const IClanWorldAbi = IClanWorldArtifact.abi as Abi;
+const IDiamondLoupeAbi = IDiamondLoupeArtifact.abi as Abi;
+const IDiamondCutAbi = IDiamondCutArtifact.abi as Abi;
+const OwnershipFacetAbi = OwnershipFacetArtifact.abi as Abi;
 import './App.css';
 
 const DEFAULT_DIAMOND =
@@ -337,7 +348,7 @@ function App() {
         <p className="loupe-status">
           {facetsCall.isLoading && '⏳ loading facets…'}
           {facetsCall.error && `✗ loupe error: ${facetsCall.error.message}`}
-          {facetsCall.data && (
+          {Boolean(facetsCall.data) && (
             <>
               ✓ {(facetsCall.data as readonly unknown[]).length} facets,{' '}
               {deployedSelectors.size} selectors deployed
