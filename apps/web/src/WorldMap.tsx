@@ -228,7 +228,7 @@ const REGIONS: RegionDef[] = [
     nx: 854 / REF_W,
     ny: 245 / REF_H,
     color: 0x888888,
-    polygon: [[687, 0], [1086, 0], [1086, 510], [880, 535], [700, 420], [634, 255], [607, 135]],
+    polygon: [[687, 0], [1086, 0], [1086, 535], [840, 555], [700, 420], [615, 270], [530, 190]],
   },
   {
     id: 'unicorn-town',
@@ -1690,6 +1690,41 @@ export function WorldMap() {
         viewport.setZoom(initialFitScale, true);
         viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
         viewportRef.current = viewport;
+
+        // Persist + restore pan/zoom so iOS Safari tab eviction (or HMR full
+        // reload during dev) doesn't lose the user's current view. Keyed in
+        // sessionStorage so it's tab-scoped — closing the tab resets to fit.
+        const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
+        try {
+          const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
+          if (raw) {
+            const saved = JSON.parse(raw) as { cx: number; cy: number; scale: number };
+            if (
+              Number.isFinite(saved.cx) &&
+              Number.isFinite(saved.cy) &&
+              Number.isFinite(saved.scale) &&
+              saved.scale >= initialFitScale &&
+              saved.scale <= initialFitScale * 4
+            ) {
+              viewport.setZoom(saved.scale, true);
+              viewport.moveCenter(saved.cx, saved.cy);
+            }
+          }
+        } catch {
+          // malformed state or storage disabled — fall back to fit-cover default
+        }
+        const saveViewportState = () => {
+          try {
+            sessionStorage.setItem(
+              VIEWPORT_STORAGE_KEY,
+              JSON.stringify({ cx: viewport.center.x, cy: viewport.center.y, scale: viewport.scale.x }),
+            );
+          } catch {
+            // quota / private-mode — swallow
+          }
+        };
+        viewport.on('moved', saveViewportState);
+        viewport.on('zoomed', saveViewportState);
 
         const layers = createWorldLayers();
         const backgroundHitArea = new Graphics();
