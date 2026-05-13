@@ -233,10 +233,10 @@ const REGIONS: RegionDef[] = [
   {
     id: 'unicorn-town',
     name: 'Unicorn Town',
-    nx: 567 / REF_W,
+    nx: 482 / REF_W,
     ny: 500 / REF_H,
     color: 0xcc88cc,
-    polygon: [[533, 375], [681, 375], [814, 500], [714, 585], [547, 585], [474, 520]],
+    polygon: [[498, 395], [596, 395], [679, 453], [679, 543], [629, 585], [462, 585], [389, 520], [429, 421]],
   },
   {
     id: 'west-farms',
@@ -273,10 +273,10 @@ const REGIONS: RegionDef[] = [
   {
     id: 'deep-sea',
     name: 'Deep Sea',
-    nx: 667 / REF_W,
+    nx: 540 / REF_W,
     ny: 1095 / REF_H,
     color: 0x1144aa,
-    polygon: [[540, 1015], [714, 1015], [774, 1145], [667, 1230], [520, 1165]],
+    polygon: [[413, 1015], [587, 1015], [647, 1145], [540, 1230], [393, 1165]],
   },
 ];
 
