@@ -220,7 +220,7 @@ const REGIONS: RegionDef[] = [
     nx: 280 / REF_W,
     ny: 245 / REF_H,
     color: 0x228822,
-    polygon: [[0, 0], [573, 0], [673, 165], [600, 355], [380, 500], [0, 555]],
+    polygon: [[0, 0], [573, 0], [523, 165], [475, 355], [330, 430], [185, 520], [10, 555]],
   },
   {
     id: 'mountains',
@@ -1146,6 +1146,10 @@ export function WorldMap() {
      *  Indexes align with REGIONS[]. Each is a Graphics on terrainBackground
      *  (above bg image, below clanZones/sprites). Cleared + redrawn per layout. */
     regionPolygons: Graphics[];
+    /** Per-region per-vertex Text labels showing polygon coords (visible when
+     *  SHOW_REGION_POLYGONS). Outer index aligns with REGIONS[], inner index
+     *  aligns with REGIONS[i].polygon[v]. Used for polygon-tuning UAT. */
+    regionVertexLabels: Text[][];
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
@@ -1178,6 +1182,7 @@ export function WorldMap() {
     regions: [],
     regionLabels: [],
     regionPolygons: [],
+    regionVertexLabels: [],
     clanZones: [],
     bases: [],
     levelBadges: [],
@@ -2235,6 +2240,7 @@ export function WorldMap() {
         regions: [],
         regionLabels: [],
         regionPolygons: [],
+        regionVertexLabels: [],
         clanZones: [],
         bases: [],
         levelBadges: [],
@@ -3981,6 +3987,27 @@ export function WorldMap() {
       const g = new Graphics();
       layers.terrainBackground.addChild(g);
       drawn.regionPolygons.push(g);
+
+      // One Text per polygon vertex, showing its (x,y) polygon coords. Added to
+      // terrainBackground AFTER the Graphics so labels render on top of the fill.
+      const vertexLabels: Text[] = [];
+      if (SHOW_REGION_POLYGONS) {
+        for (const [px, py] of REGIONS[i].polygon) {
+          const t = new Text({
+            text: `(${px},${py})`,
+            style: {
+              fill: 0xffffff,
+              fontSize: 10,
+              fontFamily: 'monospace',
+              stroke: { color: 0x000000, width: 3 },
+            },
+          });
+          t.anchor.set(0.5, 0.5);
+          layers.terrainBackground.addChild(t);
+          vertexLabels.push(t);
+        }
+      }
+      drawn.regionVertexLabels.push(vertexLabels);
     }
 
     for (const region of REGIONS) {
@@ -4146,6 +4173,19 @@ export function WorldMap() {
       g.fill({ color: region.color, alpha: 0.30 });
       g.poly(pts);
       g.stroke({ color: region.color, width: 2, alpha: 0.85 });
+
+      // Position each vertex label at its projected screen coord. Polygon
+      // dimensions can change (region.polygon mutated during tuning), so we
+      // tolerate label-array length drift by skipping out-of-range entries.
+      const vertexLabels = drawn.regionVertexLabels[i] ?? [];
+      region.polygon.forEach(([px, py], v) => {
+        const t = vertexLabels[v];
+        if (!t) return;
+        t.text = `(${px},${py})`;
+        t.x = projX(px / REF_W);
+        t.y = projY(py / REF_H);
+        t.style.fontSize = Math.max(8, Math.round(10 * cappedSizeScale));
+      });
     });
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
