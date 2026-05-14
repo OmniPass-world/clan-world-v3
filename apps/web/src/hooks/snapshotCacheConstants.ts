@@ -49,6 +49,26 @@ export const PAYLOAD_VERSION = 1;
 export const MAX_CACHE_AGE_MS = 60 * 60 * 1000; // 1 hour
 
 /**
+ * "Last known good" freshness window for the `useCachedSnapshot` guard.
+ *
+ * When the live websocket re-emits an empty snapshot (e.g. `{ clans: [] }`)
+ * during a reconnect or post-reset indexing window, we want to KEEP the
+ * previous cached state instead of letting that transient empty payload
+ * overwrite a perfectly good cache and flip the UI into "no clans" mode.
+ *
+ * But we also can't resurrect a cached snapshot indefinitely — a full-game
+ * reset legitimately empties the realm and we have to honor that. 5 minutes
+ * is the design call from PR #272 super-swarm: long enough to mask any
+ * normal reconnect / indexing gap, short enough that a real post-reset
+ * empty state surfaces within a single coffee break.
+ *
+ * Strictly less than `MAX_CACHE_AGE_MS` by construction — once the cache
+ * has aged past the freshness window we yield to live (even when live is
+ * empty); past the max age we drop the cache entirely on next read.
+ */
+export const FRESHNESS_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
  * Cached-snapshot envelope. Generic over the snapshot type so consumers can
  * narrow `data` to their own typed shape without this module depending on
  * Convex / app types.
