@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import worldMapBg from '../assets/world-map.png';
+import {
+  MAP_WIDTH,
+  MAP_HEIGHT,
+  REGION_CENTERS_BY_KEY,
+  LIVE_CLAN_REGION_BY_ID,
+  BASE_PNG_BY_VISUAL_INDEX,
+  FALLBACK_HOME_REGION_BY_INDEX,
+  baseVisualScale as _baseVisualScale,
+} from './mapGeometry';
 
 /**
- * MapGhostLayer — static HTML+CSS "ghost" of the world map rendered UNDER the
- * PixiJS canvas while WebGL is warming up.
+ * MapGhostLayer — static HTML+CSS "ghost" of the world map rendered ABOVE the
+ * PixiJS canvas while WebGL is warming up, then fading out once pixiReady fires.
  *
  * Why: on iOS Safari (and other browsers that aggressively pause background
  * tabs), returning to the PWA goes through this sequence:
@@ -35,8 +44,6 @@ import worldMapBg from '../assets/world-map.png';
  * pixi-viewport's projection.
  */
 
-const MAP_WIDTH = 1086;
-const MAP_HEIGHT = 1448;
 const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
 // Matches the same key derivation used by useCachedSnapshot.ts so the ghost
 // reads the exact same payload that the canvas will hydrate from.
@@ -50,58 +57,10 @@ const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour (matches useCachedSnapshot
 // laggy. Keep in sync with the inline style transition below.
 const FADE_OUT_MS = 200;
 
-// Region centers in NORMALIZED world coords (REF_W/REF_H = MAP_WIDTH/MAP_HEIGHT).
-// Mirrors REGIONS[*].{nx, ny} in WorldMap.tsx. We keep a duplicate here so the
-// ghost can render without importing the much larger WorldMap module (and the
-// PixiJS bundle it pulls in) — that would defeat the "render before canvas"
-// goal. If the canonical REGIONS array moves, update this map alongside.
-const REGION_CENTERS_BY_KEY: Record<string, { nx: number; ny: number }> = {
-  'forest':       { nx: 280 / MAP_WIDTH, ny: 245 / MAP_HEIGHT },
-  'mountains':    { nx: 854 / MAP_WIDTH, ny: 245 / MAP_HEIGHT },
-  'unicorn-town': { nx: 482 / MAP_WIDTH, ny: 500 / MAP_HEIGHT },
-  'west-farms':   { nx: 280 / MAP_WIDTH, ny: 760 / MAP_HEIGHT },
-  'east-farms':   { nx: 834 / MAP_WIDTH, ny: 760 / MAP_HEIGHT },
-  'west-docks':   { nx: 293 / MAP_WIDTH, ny: 1115 / MAP_HEIGHT },
-  'east-docks':   { nx: 874 / MAP_WIDTH, ny: 1115 / MAP_HEIGHT },
-  'deep-sea':     { nx: 540 / MAP_WIDTH, ny: 1095 / MAP_HEIGHT },
-};
-
-// On-chain baseRegion id → region key. Mirrors LIVE_CLAN_REGION_BY_ID in
-// WorldMap.tsx. Same rationale as REGION_CENTERS_BY_KEY: we don't want to
-// import the WorldMap module from here.
-const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
-  1: 'forest',
-  2: 'mountains',
-  4: 'west-farms',
-  5: 'east-farms',
-  6: 'west-docks',
-  7: 'east-docks',
-};
-
-// Mirrors MOCK_CLANS / LIVE_CLAN_META in WorldMap.tsx — visual asset slot
-// indexed by the snapshot's clan order. Live mode assigns the first N
-// LIVE_CLAN_META entries to the first N on-chain clans, falling back to
-// MOCK_CLANS for any extras. We replicate the same logic here so the
-// rendered base sprite matches what PixiJS will draw post-warmup. Keys are
-// kept in array order to match `live.map((clan, index) => ...)`.
-const BASE_PNG_BY_VISUAL_INDEX: readonly string[] = [
-  '/bases/cobalt-keep.png',     // Iron Guard
-  '/bases/bone-standard.png',   // Ember Hand
-  '/bases/gilded-hold.png',     // Dawn Watch
-  '/bases/tide-wardens.png',    // Storm Riders
-  '/bases/cobalt-keep.png',     // Deployer Keep (uses iron's frame)
-];
-
-// Fallback home region by visual index — matches MOCK_CLANS' homeRegion when
-// the snapshot doesn't carry a baseRegion (defensive only; live snapshots
-// generally do).
-const FALLBACK_HOME_REGION_BY_INDEX: readonly string[] = [
-  'forest',
-  'mountains',
-  'west-farms',
-  'east-farms',
-  'forest',
-];
+// REGION_CENTERS_BY_KEY, LIVE_CLAN_REGION_BY_ID, BASE_PNG_BY_VISUAL_INDEX,
+// FALLBACK_HOME_REGION_BY_INDEX are imported from ./mapGeometry — the shared
+// pure-data module used by both the ghost and WorldMap.tsx. No PixiJS imports
+// allowed in that module (see its header comment).
 
 type GhostClan = {
   id: string;
@@ -184,6 +143,12 @@ type ViewportState = { cx: number; cy: number; scale: number };
  * malformed, fall back to fit-cover centered on the world — same default
  * pixi-viewport applies on cold init. We pass screen dimensions in so the
  * fallback scale matches what the canvas will compute.
+ *
+ * The saved scale is only accepted when it lies inside the same
+ * [initialFitScale, initialFitScale * 4] band that WorldMap.tsx enforces at
+ * L1742-1743. Outside that band pixi-viewport falls back to cold-init
+ * fit-cover, so the ghost must also fall back or they'd paint at different
+ * zoom levels and produce the exact snap this component is meant to prevent.
  */
 function readViewportState(screenW: number, screenH: number): ViewportState {
   const fitScale = Math.max(screenW / MAP_WIDTH, screenH / MAP_HEIGHT);
@@ -200,7 +165,8 @@ function readViewportState(screenW: number, screenH: number): ViewportState {
       typeof saved.cx === 'number' && Number.isFinite(saved.cx) &&
       typeof saved.cy === 'number' && Number.isFinite(saved.cy) &&
       typeof saved.scale === 'number' && Number.isFinite(saved.scale) &&
-      saved.scale > 0
+      saved.scale >= fitScale &&
+      saved.scale <= fitScale * 4
     ) {
       return { cx: saved.cx, cy: saved.cy, scale: saved.scale };
     }
@@ -317,9 +283,8 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
   // baseVisualScale mirrors the stepwise function in WorldMap.tsx (NOT a
   // linear formula): levels 1-2 → 0.675, 3-4 → 0.81, 5 → 0.9. Keep in sync.
   const baseSizeFor = (level: number): number => {
-    const lvl = Math.max(1, Math.min(5, Math.floor(level)));
-    const visualScale = lvl <= 2 ? 0.675 : lvl <= 4 ? 0.81 : 0.9;
-    return 101 * visualScale;
+    const lvl = clamp(Math.floor(level), 1, 5);
+    return 101 * _baseVisualScale(lvl);
   };
 
   return (

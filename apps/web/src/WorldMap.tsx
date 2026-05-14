@@ -8,6 +8,7 @@ import { WorldNoticePanel } from './WorldNoticePanel';
 import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
 import { MapGhostLayer } from './components/MapGhostLayer';
+import { MAP_WIDTH, MAP_HEIGHT, LIVE_CLAN_REGION_BY_ID } from './components/mapGeometry';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import worldMapWinterBg from './assets/world-map-winter.png';
@@ -29,8 +30,7 @@ import {
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
 // at native resolution. The viewport scales/pans this world inside the screen.
-const MAP_WIDTH = 1086;
-const MAP_HEIGHT = 1448;
+// Re-exported from mapGeometry below (pure-data shared module).
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
 
@@ -319,14 +319,7 @@ const MOCK_CLANS: ClanDef[] = [
   { id: 'clan-storm', spriteSheetId: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
 ];
 
-const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
-  1: 'forest',
-  2: 'mountains',
-  4: 'west-farms',
-  5: 'east-farms',
-  6: 'west-docks',
-  7: 'east-docks',
-};
+// LIVE_CLAN_REGION_BY_ID is imported from ./components/mapGeometry — shared with MapGhostLayer.
 
 function clansmanPngForClanId(clanId: string): string | null {
   return MOCK_CLANS.find((clan) => clan.id === clanId)?.clansmanPng ?? null;
