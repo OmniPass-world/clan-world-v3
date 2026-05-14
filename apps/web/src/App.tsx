@@ -18,10 +18,10 @@ class CockpitErrorBoundary extends Component<{ children: ReactNode }, { hasError
     if (this.state.hasError) {
       return (
         <main
+          className="cw-fullheight"
           style={{
             background: '#0a0a0a',
             width: '100vw',
-            height: '100dvh',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -126,10 +126,10 @@ export function App() {
 function MainApp() {
   return (
     <main
+      className="cw-fullheight"
       style={{
         background: '#0a0a0a',
         width: '100vw',
-        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

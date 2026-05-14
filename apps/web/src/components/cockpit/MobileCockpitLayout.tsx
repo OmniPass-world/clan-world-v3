@@ -265,7 +265,7 @@ function CollapseToggle({ collapsed, onToggle, accent }: CollapseToggleProps) {
       aria-expanded={!collapsed}
       style={{
         position: 'absolute',
-        bottom: 'calc(8px + env(safe-area-inset-bottom))',
+        bottom: '8px',
         left: '50%',
         transform: 'translateX(-50%)',
         height: '28px',

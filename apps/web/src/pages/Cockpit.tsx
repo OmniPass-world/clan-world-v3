@@ -38,11 +38,12 @@ export function Cockpit() {
   return (
     <main
       data-testid="cockpit-root"
+      className="cw-fullheight"
       style={{
         background: tokens.bg.void,
         width: '100vw',
-        height: '100dvh',
         paddingBottom: 'env(safe-area-inset-bottom)',
+        boxSizing: 'border-box',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',

@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { ConvexProvider, ConvexReactClient } from 'convex/react';
 import { App } from './App';
+import './styles/viewport.css';
 
 // Telegram Mini App fullscreen: hide the platform top chrome (the bar that
 // shows the app title + V down-arrow). Available in Telegram Mini App API
@@ -72,9 +73,9 @@ if (!convexUrl && !isStandalonePath) {
   console.error('VITE_CONVEX_URL is not set — rendering degraded fallback');
   root.render(
     <main
+      className="cw-fullheight-min"
       style={{
         background: '#0d1a0d',
-        minHeight: '100dvh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

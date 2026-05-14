@@ -1,0 +1,18 @@
+/**
+ * Viewport height utility classes with dvh fallback.
+ *
+ * `100dvh` is supported from iOS Safari 15.4 and Chrome 108.
+ * Older browsers silently drop the property leaving the element with
+ * 0 height. These classes cascade the fallback first so browsers that
+ * understand `100dvh` override the `100vh` declaration.
+ */
+
+.cw-fullheight {
+  height: 100vh;   /* fallback: iOS Safari ≤15.3, Chrome ≤107 */
+  height: 100dvh;  /* iOS 15.4+, Chrome 108+ */
+}
+
+.cw-fullheight-min {
+  min-height: 100vh;   /* fallback: iOS Safari ≤15.3, Chrome ≤107 */
+  min-height: 100dvh;  /* iOS 15.4+, Chrome 108+ */
+}
