@@ -168,8 +168,12 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     // hydration path regresses (wrong key, schema mismatch, validator
     // rejecting a valid payload), the shell renders but no <img> per
     // clan does — this catches that.
-    const ironBase = page.getByTestId('map-ghost-base-clan-iron');
-    await expect(ironBase).toBeVisible({ timeout: 2000 });
+    //
+    // testid is `map-ghost-base-${clan.id}` (see MapGhostLayer.tsx L390),
+    // where clan.id is the chain ID string from the cached payload —
+    // `'1'` here, matching FOUR_CLAN_PAYLOAD.data.clans[0].id.
+    const firstClanBase = page.getByTestId('map-ghost-base-1');
+    await expect(firstClanBase).toBeVisible({ timeout: 2000 });
 
     // While Pixi is still warming up, the ghost stays at opacity:1 (the inline
     // style is `opacity: pixiReady ? 0 : 1`). Verify the pre-flip state — this
@@ -198,19 +202,21 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     await expect(ghost).toHaveCount(0, { timeout: 15_000 });
   });
 
-  test('primed cache + WS dropout: placeholder never flashes during 4s gap', async ({ page }) => {
+  test('primed cache + WS dropout: placeholder never flashes across 6s window', async ({ page }) => {
     // The contract under test: a cached snapshot keeps `hasClans=true` even
     // when the live Convex query goes briefly undefined (e.g. websocket
     // dropout). That keeps the grace-period useEffect's early return
     // engaged, so `showNoChainDataPlaceholder` never flips true.
     //
-    // We assert by primed-cache load + WS intercept + a 4s wait (well under
-    // the 5s grace). If the placeholder ever appears in those 4s, the test
-    // fails. The WS interception itself is largely cosmetic in the
-    // dev-server flow — there's no real Convex backend, so no real socket
-    // will be opened. But routing the pattern proves the test still passes
-    // when a real dropout WOULD occur (the route handler force-closes any
-    // matching socket attempt).
+    // We assert by primed-cache load + WS intercept + a 6s sample window
+    // that straddles the 5s grace boundary. If the cache ejected
+    // mid-window the placeholder would have fired by t=5.5s and the loop
+    // catches it. A pure 4s wait (codex review MUST FIX) would have passed
+    // even if the grace timer simply hadn't fired yet. The WS interception
+    // is largely cosmetic in the dev-server flow — no real Convex backend
+    // means no real socket — but routing the pattern proves the test still
+    // exercises the dropout path when a real WS exists (the handler
+    // force-closes any matching socket attempt).
 
     await primeSnapshotCache(page, CACHE_KEY, {
       ...FOUR_CLAN_PAYLOAD,
@@ -247,16 +253,23 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     // shell renders even with an empty cache, so we need the base sprite
     // assertion to prove the cache was actually read into the ghost layer.
     await expect(page.getByTestId('map-ghost-layer')).toBeVisible({ timeout: 2000 });
-    await expect(page.getByTestId('map-ghost-base-clan-iron')).toBeVisible({ timeout: 2000 });
+    await expect(page.getByTestId('map-ghost-base-1')).toBeVisible({ timeout: 2000 });
 
-    const SAMPLES = 8;
-    const STEP_MS = 500; // 8 * 500 = 4000ms total
+    // Sampling strategy: assert the placeholder stays absent across BOTH
+    // sides of the 5s grace boundary. 4s alone (codex MUST FIX) would also
+    // pass if the cache somehow ejected mid-test and the grace timer just
+    // hadn't fired yet — extending past 6s proves the cache actually masked
+    // the entire grace window. Total samples: 12 × 500ms = 6000ms.
+    const SAMPLES = 12;
+    const STEP_MS = 500;
     for (let i = 0; i < SAMPLES; i++) {
-      await expect(placeholder, `placeholder must not appear at sample ${i + 1}/${SAMPLES}`).toHaveCount(0);
+      await expect(placeholder, `placeholder must not appear at sample ${i + 1}/${SAMPLES} (~t=${i * STEP_MS}ms)`).toHaveCount(0);
       await page.waitForTimeout(STEP_MS);
     }
 
-    // Final assert at t≈4s (still inside the 5s grace).
+    // Final assert at t≈6s (well past the 5s grace boundary). The cache
+    // is the only thing keeping hasClans=true; if it ever lost validity
+    // mid-test the placeholder would have fired by now.
     await expect(placeholder).toHaveCount(0);
   });
 });
