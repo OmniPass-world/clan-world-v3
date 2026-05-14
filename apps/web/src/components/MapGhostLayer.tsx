@@ -9,6 +9,11 @@ import {
   FALLBACK_HOME_REGION_BY_INDEX,
   baseVisualScale as _baseVisualScale,
 } from './mapGeometry';
+import {
+  CACHE_KEY as SNAPSHOT_CACHE_KEY,
+  PAYLOAD_VERSION as SNAPSHOT_PAYLOAD_VERSION,
+  MAX_CACHE_AGE_MS as SNAPSHOT_MAX_AGE_MS,
+} from '../hooks/snapshotCacheConstants';
 
 /**
  * MapGhostLayer — static HTML+CSS "ghost" of the world map rendered ABOVE the
@@ -45,12 +50,10 @@ import {
  */
 
 const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
-// Matches the same key derivation used by useCachedSnapshot.ts so the ghost
-// reads the exact same payload that the canvas will hydrate from.
-const ENV_SCOPE = (import.meta.env.VITE_CONVEX_URL as string | undefined) ?? 'no-backend';
-const SNAPSHOT_CACHE_KEY = `cw-snapshot-v1:${ENV_SCOPE}`;
-const SNAPSHOT_PAYLOAD_VERSION = 1;
-const SNAPSHOT_MAX_AGE_MS = 60 * 60 * 1000; // 1 hour (matches useCachedSnapshot)
+// Snapshot cache key / payload version / max age are imported from the shared
+// `hooks/snapshotCacheConstants` module so the ghost reads the EXACT same
+// payload that `useCachedSnapshot` writes. Previously these were duplicated
+// here — a schema-migration footgun if PAYLOAD_VERSION ever drifted.
 
 // Fade duration matches PixiJS's first-frame budget on mobile. Long enough
 // that the eye reads the swap as a cross-fade, short enough not to feel
