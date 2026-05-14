@@ -13,6 +13,7 @@ import {
   CACHE_KEY as SNAPSHOT_CACHE_KEY,
   PAYLOAD_VERSION as SNAPSHOT_PAYLOAD_VERSION,
   MAX_CACHE_AGE_MS as SNAPSHOT_MAX_AGE_MS,
+  VIEWPORT_STORAGE_KEY,
 } from '../hooks/snapshotCacheConstants';
 import { isValidSnapshotShape } from '../hooks/useCachedSnapshot';
 
@@ -33,7 +34,8 @@ import { isValidSnapshotShape } from '../hooks/useCachedSnapshot';
  * the map should be. This component fills that gap with plain <img> tags
  * (map background + clan base sprites) positioned using the same viewport
  * (cx, cy, scale) state that pixi-viewport already persists to
- * sessionStorage as `cw-viewport-v1`.
+ * sessionStorage under the shared env+diamond-scoped `VIEWPORT_STORAGE_KEY`
+ * (see `hooks/snapshotCacheConstants` and issue #300).
  *
  * The ghost is purely additive — it never touches the PixiJS pipeline and
  * does not depend on Pixi being present. When `pixiReady` flips true the
@@ -50,11 +52,12 @@ import { isValidSnapshotShape } from '../hooks/useCachedSnapshot';
  * pixi-viewport's projection.
  */
 
-const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
-// Snapshot cache key / payload version / max age are imported from the shared
-// `hooks/snapshotCacheConstants` module so the ghost reads the EXACT same
-// payload that `useCachedSnapshot` writes. Previously these were duplicated
-// here — a schema-migration footgun if PAYLOAD_VERSION ever drifted.
+// Snapshot cache key / payload version / max age AND the viewport storage key
+// are imported from the shared `hooks/snapshotCacheConstants` module so the
+// ghost reads the EXACT same payload + viewport state that `useCachedSnapshot`
+// and `WorldMap.tsx` write. Previously these were duplicated here — a
+// schema-migration footgun if PAYLOAD_VERSION ever drifted, and a per-realm
+// state-leak hazard once the viewport key got env+diamond scoped (issue #300).
 
 // Fade duration matches PixiJS's first-frame budget on mobile. Long enough
 // that the eye reads the swap as a cross-fade, short enough not to feel
