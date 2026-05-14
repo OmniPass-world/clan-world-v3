@@ -42,7 +42,7 @@ export function Cockpit() {
       style={{
         background: tokens.bg.void,
         width: '100vw',
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         boxSizing: 'border-box',
         overflow: 'hidden',
         display: 'flex',
