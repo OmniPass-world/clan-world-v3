@@ -314,6 +314,7 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
     <div
       ref={rootRef}
       aria-hidden="true"
+      data-testid="map-ghost-layer"
       style={{
         position: 'absolute',
         inset: 0,
