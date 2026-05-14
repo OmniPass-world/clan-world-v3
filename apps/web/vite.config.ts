@@ -61,7 +61,7 @@ function mapBgPreloadPlugin(): Plugin {
           // middle of the hash); requiring a single `-` then non-hyphen chars
           // then `.png` is enough to disambiguate from `world-map-winter-*`.
           const key = Object.keys(ctx.bundle).find((p) =>
-            /(^|\/)assets\/world-map(?:-[A-Za-z0-9_]+)?\.png$/.test(p),
+            /(^|\/)assets\/world-map(?!-winter)(?:-[A-Za-z0-9_-]+)?\.png$/.test(p),
           );
           if (key) {
             href = `/${key}`;
