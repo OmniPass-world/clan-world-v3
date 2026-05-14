@@ -5357,6 +5357,9 @@ export function WorldMap() {
           inset: 0,
           width: '100%',
           height: '100%',
+          // Scope the ghost/canvas z-index stacking to this container so it
+          // cannot compete with grand-sibling overlays (HUD, scoreboard, etc).
+          isolation: 'isolate',
         }}
       >
         {/* Static HTML "ghost" of the map — visible briefly while PixiJS

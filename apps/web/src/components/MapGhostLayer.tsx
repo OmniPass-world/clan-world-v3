@@ -234,12 +234,18 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
   // inset: 0 inside the same canvasWrapRef container, so its bounding-box
   // equals the canvas's bounding-box.
   const rootRef = useRef<HTMLDivElement>(null);
-  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  // Init synchronously from window.innerWidth/Height so the first paint uses
+  // real screen dimensions instead of 0x0 (ResizeObserver fires post-paint).
+  const [dims, setDims] = useState<{ w: number; h: number }>(() => ({
+    w: typeof window !== 'undefined' ? (window.innerWidth || 1) : 1,
+    h: typeof window !== 'undefined' ? (window.innerHeight || 1) : 1,
+  }));
 
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
-    // Initial measure
+    // Refine to the actual container dimensions once mounted (may differ from
+    // window dims if the map occupies a sub-region of the viewport).
     setDims({ w: el.clientWidth || 1, h: el.clientHeight || 1 });
     if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(() => {
@@ -265,14 +271,16 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
       setFullyHidden(false);
       return;
     }
-    const t = window.setTimeout(() => setFullyHidden(true), FADE_OUT_MS);
+    // Add 50ms headroom above the CSS transition duration so the browser
+    // compositor always delivers the final opacity=0 frame before we unmount.
+    const t = window.setTimeout(() => setFullyHidden(true), FADE_OUT_MS + 50);
     return () => window.clearTimeout(t);
   }, [pixiReady]);
 
   if (fullyHidden) return null;
 
-  const screenW = dims?.w ?? 0;
-  const screenH = dims?.h ?? 0;
+  const screenW = dims.w;
+  const screenH = dims.h;
 
   // Compute viewport (cx, cy, scale) once per mount + when screen dims
   // settle. We don't subscribe to viewport changes during the ghost's
@@ -319,22 +327,18 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
       style={{
         position: 'absolute',
         inset: 0,
-        // Under the PixiJS canvas. WorldMap's Pixi init code pins the
-        // canvas at position: absolute; inset: 0; z-index: 1 (see
-        // app.canvas.style.* assignments around the appendChild call) —
-        // so this layer (z-index 0) stays beneath the canvas in the same
-        // stacking context. Without the explicit z-index on both, the
-        // absolutely-positioned ghost would paint OVER the
-        // statically-positioned canvas, defeating the swap.
-        zIndex: 0,
+        // ABOVE the PixiJS canvas. WorldMap pins the canvas at z-index: 1;
+        // we sit at z-index: 2 so the ghost is visible on every frame from
+        // mount until `pixiReady` triggers the fade-out. pointer-events: none
+        // (already set below) ensures the ghost never intercepts taps.
+        zIndex: 2,
         overflow: 'hidden',
         pointerEvents: 'none',
         background: '#1a2a1a', // matches PixiJS init background color
-        // Fade out + remove from layout once the canvas takes over.
+        // Fade out once the canvas takes over; unmount after transition
+        // (handled by the fullyHidden → return null above).
         opacity: pixiReady ? 0 : 1,
         transition: `opacity ${FADE_OUT_MS}ms ease-out`,
-        // Hide from a11y tree + remove from compositor work after fade.
-        visibility: pixiReady && fullyHidden ? 'hidden' : 'visible',
       }}
     >
       {/* World-space wrapper — applies the same projection pixi-viewport
@@ -359,7 +363,7 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
         <img
           src={worldMapBg}
           alt=""
-          decoding="async"
+          decoding="sync"
           draggable={false}
           style={{
             position: 'absolute',
@@ -367,10 +371,9 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
             left: 0,
             width: MAP_WIDTH,
             height: MAP_HEIGHT,
-            // Don't let img scaling interpolate weirdly while the canvas
-            // takes over — pixel-art-like crisp scaling matches the PixiJS
-            // Sprite which uses Nearest by default for the map.
-            imageRendering: 'auto',
+            // pixelated matches PixiJS's Nearest-filter rendering so there
+            // is no visual change when the canvas takes over.
+            imageRendering: 'pixelated',
             userSelect: 'none',
             // Prevent iOS Safari's long-press image menu from popping if
             // the ghost happens to be visible during the user's tap.
