@@ -9,7 +9,14 @@ import {
   useWaitForTransactionReceipt,
 } from 'wagmi';
 import { baseSepolia } from 'wagmi/chains';
-import { encodeFunctionData, type Abi, type Address, type AbiFunction, isAddress } from 'viem';
+import {
+  encodeFunctionData,
+  decodeFunctionResult,
+  type Abi,
+  type Address,
+  type AbiFunction,
+  isAddress,
+} from 'viem';
 
 // ABIs are imported from @clan-world/contracts as JSON modules. Source of truth lives at
 // packages/contracts/abi/*.json and is regenerated from forge artifacts by `pnpm codegen`.
@@ -163,7 +170,35 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
         method: 'eth_call',
         params: [{ to: diamond, data }, 'latest'],
       });
-      setReadResult(typeof res === 'string' ? res : JSON.stringify(res));
+      const rawHex = typeof res === 'string' ? res : JSON.stringify(res);
+      // Decode via viem so users see addresses / numbers / structs rather than zero-padded hex.
+      // BigInt values aren't JSON-stringifiable by default, so coerce them with a replacer.
+      try {
+        const decoded = decodeFunctionResult({
+          abi: COMBINED_ABI,
+          functionName: fn.name,
+          data: rawHex as `0x${string}`,
+        });
+        const isScalar =
+          decoded === null ||
+          (typeof decoded !== 'object' && typeof decoded !== 'bigint');
+        if (isScalar) {
+          setReadResult(String(decoded));
+        } else if (typeof decoded === 'bigint') {
+          setReadResult(decoded.toString());
+        } else {
+          setReadResult(
+            JSON.stringify(
+              decoded,
+              (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+              2,
+            ),
+          );
+        }
+      } catch (decodeErr: unknown) {
+        const dmsg = decodeErr instanceof Error ? decodeErr.message : String(decodeErr);
+        setReadResult(`${rawHex}\n\n(decode failed: ${dmsg})`);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setReadError(msg);
