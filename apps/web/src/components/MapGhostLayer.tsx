@@ -277,8 +277,6 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
     return () => window.clearTimeout(t);
   }, [pixiReady]);
 
-  if (fullyHidden) return null;
-
   const screenW = dims.w;
   const screenH = dims.h;
 
@@ -286,10 +284,14 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
   // settle. We don't subscribe to viewport changes during the ghost's
   // lifetime — it's only on-screen for ~500ms and the user can't pan a
   // canvas that hasn't rendered yet.
+  // NOTE: must stay above the `if (fullyHidden) return null` guard so
+  // the hook call count is constant across renders (Rules of Hooks).
   const viewport = useMemo(
     () => readViewportState(screenW || 1, screenH || 1),
     [screenW, screenH],
   );
+
+  if (fullyHidden) return null;
 
   // CSS transform that mirrors pixi-viewport's moveCenter(cx,cy) + setZoom(s).
   // transform-origin defaults to 50% 50% — we explicitly set 0 0 below so

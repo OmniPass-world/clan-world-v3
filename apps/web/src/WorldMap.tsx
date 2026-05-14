@@ -1646,11 +1646,11 @@ export function WorldMap() {
         if (!mounted || !isMountedRef.current || !canvasWrapRef.current) return;
         canvasWrapRef.current.appendChild(app.canvas);
         pixiCanvas = app.canvas;
-        // CSS: stretch to wrapper. We pin the canvas as `position: absolute;
-        // inset: 0` with an explicit z-index ABOVE the MapGhostLayer (which
-        // sits at z-index 0 in the same container). Without explicit
-        // positioning + z-index the absolutely-positioned ghost would paint
-        // on top of the static-positioned canvas, defeating the swap.
+        // CSS: stretch to wrapper. The ghost (MapGhostLayer) sits at z-index 2
+        // so it covers the canvas during warmup; the canvas sits at z-index 1
+        // BELOW the ghost. Once `pixiReady` fires the ghost fades out and
+        // unmounts, leaving only the canvas. pointer-events:none on the ghost
+        // ensures taps reach the canvas even before the fade completes.
         app.canvas.style.display = 'block';
         app.canvas.style.position = 'absolute';
         app.canvas.style.inset = '0';
