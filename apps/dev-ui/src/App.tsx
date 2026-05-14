@@ -166,18 +166,20 @@ function ConnectButton() {
 // Source: GH #281 (super-swarm finding from PR #272). Keep this list close to the
 // write handler so it stays visible during diamond changes.
 //
-// `/^init.*/` (broader than the literal `initialize`) covers ABI surfaces like
+// `/^init([A-Z]|$)/` (tightened from broader `/^init.*/`) covers ABI surfaces like
 // `initTreasury(...)` — one-shot setup functions that are as destructive as
 // `initialize` if re-fired. `seedPools` is the other current one-shot setup write.
 // Confirmed against packages/contracts/abi/IClanWorld.json on 2026-05-14 after a
-// codex tier-2 finding flagged both as unguarded.
+// codex tier-2 finding flagged both as unguarded. The CamelCase-or-end anchor avoids
+// over-matching view getters like `initialized`, `initialState`, `initData` while
+// still catching future destructive `init<X>` functions. Source: GH #299.
 const DANGEROUS_FN_NAMES: ReadonlySet<string> = new Set([
   'diamondCut',
   'transferOwnership',
   'seedPools',
 ]);
 const DANGEROUS_FN_PATTERNS: readonly RegExp[] = [
-  /^init.*/,
+  /^init([A-Z]|$)/,
   /^set.*Address$/,
   /^upgrade.*/,
 ];
