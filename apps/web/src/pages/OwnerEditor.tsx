@@ -229,8 +229,8 @@ export function OwnerEditor() {
 
   return (
     <main
+      className="cw-fullheight-min"
       style={{
-        minHeight: '100vh',
         background: '#15120e',
         color: '#f2ead8',
         fontFamily: '"Inter", system-ui, sans-serif',
