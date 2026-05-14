@@ -49,6 +49,23 @@ const COMBINED_ABI = [
 
 type FnAbi = AbiFunction & { stateMutability: string };
 
+// Canonical Solidity signature for an ABI item — handles tuple expansion so
+// overloads like `Foo((uint256))` vs `Foo((address))` get distinct dedup keys.
+// (`i.type` alone collapses both to `Foo(tuple)`.) viem uses this same canonical
+// form internally for selector / topic hashing.
+type AbiParamMin = { type: string; components?: readonly AbiParamMin[] };
+function canonicalParamType(p: AbiParamMin): string {
+  if (p.type === 'tuple' || p.type.startsWith('tuple')) {
+    const suffix = p.type === 'tuple' ? '' : p.type.slice('tuple'.length); // '' or '[]' or '[N]'
+    const inner = (p.components ?? []).map(canonicalParamType).join(',');
+    return `(${inner})${suffix}`;
+  }
+  return p.type;
+}
+function canonicalSignature(name: string, inputs: readonly AbiParamMin[] | undefined): string {
+  return `${name}(${(inputs ?? []).map(canonicalParamType).join(',')})`;
+}
+
 function dedupAbi(abi: readonly unknown[]): FnAbi[] {
   const seen = new Set<string>();
   const out: FnAbi[] = [];
@@ -57,7 +74,7 @@ function dedupAbi(abi: readonly unknown[]): FnAbi[] {
     const obj = item as { type?: string };
     if (obj.type !== 'function') continue;
     const fn = item as FnAbi;
-    const sig = `${fn.name}(${fn.inputs.map((i) => i.type).join(',')})`;
+    const sig = canonicalSignature(fn.name, fn.inputs as readonly AbiParamMin[]);
     if (seen.has(sig)) continue;
     seen.add(sig);
     out.push(fn);
@@ -69,17 +86,17 @@ const ALL_FUNCTIONS = dedupAbi(COMBINED_ABI as unknown as readonly unknown[]);
 
 // Pass-through dedup for errors + events. Same overlap risk as functions
 // (DiamondNotOwner from OwnershipFacet, etc. could repeat across interfaces).
-// Keying by `${name}(${inputs.map(i => i.type).join(',')})` matches the function
-// dedup convention and gives viem enough to dispatch by selector.
+// Uses the canonical (tuple-expanded) signature so overloads with tuple inputs
+// of different shapes do not collapse to the same key.
 function dedupErrorsAndEvents(abi: readonly unknown[]): unknown[] {
   const seenErrors = new Set<string>();
   const seenEvents = new Set<string>();
   const out: unknown[] = [];
   for (const item of abi) {
     if (!item || typeof item !== 'object') continue;
-    const obj = item as { type?: string; name?: string; inputs?: { type: string }[] };
+    const obj = item as { type?: string; name?: string; inputs?: readonly AbiParamMin[] };
     if (obj.type !== 'error' && obj.type !== 'event') continue;
-    const sig = `${obj.name}(${(obj.inputs ?? []).map((i) => i.type).join(',')})`;
+    const sig = canonicalSignature(obj.name ?? '', obj.inputs);
     const seen = obj.type === 'error' ? seenErrors : seenEvents;
     if (seen.has(sig)) continue;
     seen.add(sig);
