@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
+import { useCachedSnapshot } from './hooks/useCachedSnapshot';
 import { Application, Assets, BlurFilter, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
 import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
+import { MapGhostLayer } from './components/MapGhostLayer';
+import { MAP_WIDTH, MAP_HEIGHT, LIVE_CLAN_REGION_BY_ID } from './components/mapGeometry';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import worldMapWinterBg from './assets/world-map-winter.png';
@@ -27,16 +30,17 @@ import {
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
 // at native resolution. The viewport scales/pans this world inside the screen.
-const MAP_WIDTH = 1086;
-const MAP_HEIGHT = 1448;
+// Re-exported from mapGeometry below (pure-data shared module).
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
 
 // Debug overlay: render REGIONS[*].polygon as a colored fill + stroke so the
 // hand-tuned region polygons are visible against the new map background. Lets
-// us iterate the polygon coords visually with the map in view. Flip OFF for
-// release; ON during region authoring / map redesigns.
-const SHOW_REGION_POLYGONS = true;
+// us iterate the polygon coords visually with the map in view. Gated to
+// `pnpm dev` only via `import.meta.env.DEV` so production builds never ship
+// the debug fills + raw (x,y) vertex labels, while keeping the tooling on
+// for future region authoring / map redesigns.
+const SHOW_REGION_POLYGONS = import.meta.env.DEV;
 
 // Winter map-overlay fade timings. The base map (`world-map.png`) stays fully
 // opaque at all times; we modulate the alpha of a second Sprite
@@ -220,7 +224,7 @@ const REGIONS: RegionDef[] = [
     nx: 280 / REF_W,
     ny: 245 / REF_H,
     color: 0x228822,
-    polygon: [[0, 0], [573, 0], [673, 165], [600, 355], [380, 500], [0, 555]],
+    polygon: [[0, 0], [573, 0], [523, 165], [475, 355], [330, 430], [185, 520], [10, 555]],
   },
   {
     id: 'mountains',
@@ -228,15 +232,15 @@ const REGIONS: RegionDef[] = [
     nx: 854 / REF_W,
     ny: 245 / REF_H,
     color: 0x888888,
-    polygon: [[687, 0], [1086, 0], [1086, 510], [880, 535], [700, 420], [634, 255], [607, 135]],
+    polygon: [[687, 0], [1086, 0], [1086, 535], [840, 555], [700, 420], [615, 270], [530, 190]],
   },
   {
     id: 'unicorn-town',
     name: 'Unicorn Town',
-    nx: 567 / REF_W,
+    nx: 482 / REF_W,
     ny: 500 / REF_H,
     color: 0xcc88cc,
-    polygon: [[533, 375], [681, 375], [814, 500], [714, 585], [547, 585], [474, 520]],
+    polygon: [[498, 395], [596, 395], [679, 453], [679, 543], [629, 585], [462, 585], [389, 520], [429, 421]],
   },
   {
     id: 'west-farms',
@@ -244,7 +248,7 @@ const REGIONS: RegionDef[] = [
     nx: 280 / REF_W,
     ny: 760 / REF_H,
     color: 0xaacc44,
-    polygon: [[0, 555], [480, 520], [607, 760], [440, 960], [0, 985]],
+    polygon: [[0, 595], [280, 550], [420, 600], [500, 700], [500, 880], [440, 960], [200, 940], [10, 840]],
   },
   {
     id: 'east-farms',
@@ -252,7 +256,7 @@ const REGIONS: RegionDef[] = [
     nx: 834 / REF_W,
     ny: 760 / REF_H,
     color: 0x88bb33,
-    polygon: [[674, 625], [1086, 570], [1086, 985], [674, 970], [527, 785]],
+    polygon: [[690, 580], [850, 625], [1086, 650], [1086, 905], [900, 970], [630, 970], [570, 925], [530, 750], [580, 670]],
   },
   {
     id: 'west-docks',
@@ -260,7 +264,7 @@ const REGIONS: RegionDef[] = [
     nx: 293 / REF_W,
     ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[140, 985], [487, 985], [520, 1130], [347, 1270], [127, 1235], [73, 1085]],
+    polygon: [[155, 980], [400, 1030], [420, 1125], [390, 1160], [460, 1200], [430, 1270], [300, 1280], [150, 1270], [200, 1200], [145, 1150], [155, 1065], [100, 1040], [30, 935], [35, 890]],
   },
   {
     id: 'east-docks',
@@ -268,15 +272,15 @@ const REGIONS: RegionDef[] = [
     nx: 874 / REF_W,
     ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[747, 985], [1086, 985], [1086, 1235], [867, 1260], [720, 1135]],
+    polygon: [[720, 1020], [1010, 1010], [1060, 1035], [910, 1100], [980, 1170], [980, 1210], [880, 1300], [800, 1240], [680, 1280], [650, 1210], [670, 1130]],
   },
   {
     id: 'deep-sea',
     name: 'Deep Sea',
-    nx: 667 / REF_W,
+    nx: 540 / REF_W,
     ny: 1095 / REF_H,
     color: 0x1144aa,
-    polygon: [[540, 1015], [714, 1015], [774, 1145], [667, 1230], [520, 1165]],
+    polygon: [[415, 1035], [587, 1015], [670, 1040], [645, 1130], [540, 1230], [480, 1130], [410, 1080]],
   },
 ];
 
@@ -317,14 +321,7 @@ const MOCK_CLANS: ClanDef[] = [
   { id: 'clan-storm', spriteSheetId: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
 ];
 
-const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
-  1: 'forest',
-  2: 'mountains',
-  4: 'west-farms',
-  5: 'east-farms',
-  6: 'west-docks',
-  7: 'east-docks',
-};
+// LIVE_CLAN_REGION_BY_ID is imported from ./components/mapGeometry — shared with MapGhostLayer.
 
 function clansmanPngForClanId(clanId: string): string | null {
   return MOCK_CLANS.find((clan) => clan.id === clanId)?.clansmanPng ?? null;
@@ -1146,6 +1143,10 @@ export function WorldMap() {
      *  Indexes align with REGIONS[]. Each is a Graphics on terrainBackground
      *  (above bg image, below clanZones/sprites). Cleared + redrawn per layout. */
     regionPolygons: Graphics[];
+    /** Per-region per-vertex Text labels showing polygon coords (visible when
+     *  SHOW_REGION_POLYGONS). Outer index aligns with REGIONS[], inner index
+     *  aligns with REGIONS[i].polygon[v]. Used for polygon-tuning UAT. */
+    regionVertexLabels: Text[][];
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
@@ -1178,6 +1179,7 @@ export function WorldMap() {
     regions: [],
     regionLabels: [],
     regionPolygons: [],
+    regionVertexLabels: [],
     clanZones: [],
     bases: [],
     levelBadges: [],
@@ -1322,7 +1324,19 @@ export function WorldMap() {
   const [selectedClanId, setSelectedClanId] = useState<string | null>(null);
 
   const logs = useAgentLogs();
-  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
+  // Cache the snapshot in localStorage so iOS Safari (and other browsers that
+  // pause background tabs) can render the last-known world state instantly on
+  // PWA return — instead of flashing the "no chain data yet" placeholder
+  // while Convex's websocket reconnects.
+  const snapshot = useCachedSnapshot(liveSnapshot);
+  // Stable boolean: true only when the snapshot contains at least one deployed
+  // clan. Used as the sole dep of the grace-period useEffect so we don't reset
+  // the 5s timer on every heartbeat tick (snapshot object changes every tick).
+  const hasClans = !!snapshot?.clans && snapshot.clans.length > 0;
+  // Grace period before showing the "no chain data yet" placeholder — see the
+  // useEffect a few hooks below for the 5s debounce.
+  const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
   const rawChainEvents = useQuery(api.events.getRecentChainEvents) as ChainEvent[] | undefined;
 
   // Derived live tick counter — the worldSnapshot.tick field is currently
@@ -1372,6 +1386,21 @@ export function WorldMap() {
       tickClockRef.current = { tick: rawTick, seenAtMs: Date.now() };
     }
   }, [snapshot]);
+
+  // 5-second grace period before showing the "no chain data yet" placeholder.
+  // If chain data is present, hide immediately. If it's empty, wait 5s before
+  // flipping the placeholder on — so fast Convex reconnects (e.g. iOS Safari
+  // PWA returns) never reveal the bare-terrain overlay. Combined with the
+  // localStorage cache in useCachedSnapshot above, most reconnects render the
+  // last-known state immediately and never trip this timer at all.
+  useEffect(() => {
+    if (DEMO_MODE || hasClans) {
+      setShowNoChainDataPlaceholder(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowNoChainDataPlaceholder(true), 5000);
+    return () => window.clearTimeout(timer);
+  }, [hasClans]);
 
   // Snapshot-diff: derive bandit resolution outcome the moment the chain transitions
   // out of Camped. See docs/planning/bandit-animation-impl-plan.md §"Snapshot diff
@@ -1612,8 +1641,15 @@ export function WorldMap() {
         if (!mounted || !isMountedRef.current || !canvasWrapRef.current) return;
         canvasWrapRef.current.appendChild(app.canvas);
         pixiCanvas = app.canvas;
-        // CSS: stretch to wrapper
+        // CSS: stretch to wrapper. The ghost (MapGhostLayer) sits at z-index 2
+        // so it covers the canvas during warmup; the canvas sits at z-index 1
+        // BELOW the ghost. Once `pixiReady` fires the ghost fades out and
+        // unmounts, leaving only the canvas. pointer-events:none on the ghost
+        // ensures taps reach the canvas even before the fade completes.
         app.canvas.style.display = 'block';
+        app.canvas.style.position = 'absolute';
+        app.canvas.style.inset = '0';
+        app.canvas.style.zIndex = '1';
         app.canvas.style.width = '100%';
         app.canvas.style.height = '100%';
         // Round-6 pinch fix: pixi-viewport handles multi-touch internally, so
@@ -1685,6 +1721,41 @@ export function WorldMap() {
         viewport.setZoom(initialFitScale, true);
         viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
         viewportRef.current = viewport;
+
+        // Persist + restore pan/zoom so iOS Safari tab eviction (or HMR full
+        // reload during dev) doesn't lose the user's current view. Keyed in
+        // sessionStorage so it's tab-scoped — closing the tab resets to fit.
+        const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
+        try {
+          const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
+          if (raw) {
+            const saved = JSON.parse(raw) as { cx: number; cy: number; scale: number };
+            if (
+              Number.isFinite(saved.cx) &&
+              Number.isFinite(saved.cy) &&
+              Number.isFinite(saved.scale) &&
+              saved.scale >= initialFitScale &&
+              saved.scale <= initialFitScale * 4
+            ) {
+              viewport.setZoom(saved.scale, true);
+              viewport.moveCenter(saved.cx, saved.cy);
+            }
+          }
+        } catch {
+          // malformed state or storage disabled — fall back to fit-cover default
+        }
+        const saveViewportState = () => {
+          try {
+            sessionStorage.setItem(
+              VIEWPORT_STORAGE_KEY,
+              JSON.stringify({ cx: viewport.center.x, cy: viewport.center.y, scale: viewport.scale.x }),
+            );
+          } catch {
+            // quota / private-mode — swallow
+          }
+        };
+        viewport.on('moved', saveViewportState);
+        viewport.on('zoomed', saveViewportState);
 
         const layers = createWorldLayers();
         const backgroundHitArea = new Graphics();
@@ -2235,6 +2306,7 @@ export function WorldMap() {
         regions: [],
         regionLabels: [],
         regionPolygons: [],
+        regionVertexLabels: [],
         clanZones: [],
         bases: [],
         levelBadges: [],
@@ -3981,6 +4053,28 @@ export function WorldMap() {
       const g = new Graphics();
       layers.terrainBackground.addChild(g);
       drawn.regionPolygons.push(g);
+
+      // One Text per polygon vertex, showing its (x,y) polygon coords. Added to
+      // terrainBackground AFTER the Graphics so labels render on top of the fill.
+      const vertexLabels: Text[] = [];
+      const regionDef = REGIONS[i];
+      if (SHOW_REGION_POLYGONS && regionDef) {
+        for (const [px, py] of regionDef.polygon) {
+          const t = new Text({
+            text: `(${px},${py})`,
+            style: {
+              fill: 0xffffff,
+              fontSize: 10,
+              fontFamily: 'monospace',
+              stroke: { color: 0x000000, width: 3 },
+            },
+          });
+          t.anchor.set(0.5, 0.5);
+          layers.terrainBackground.addChild(t);
+          vertexLabels.push(t);
+        }
+      }
+      drawn.regionVertexLabels.push(vertexLabels);
     }
 
     for (const region of REGIONS) {
@@ -4146,6 +4240,19 @@ export function WorldMap() {
       g.fill({ color: region.color, alpha: 0.30 });
       g.poly(pts);
       g.stroke({ color: region.color, width: 2, alpha: 0.85 });
+
+      // Position each vertex label at its projected screen coord. Polygon
+      // dimensions can change (region.polygon mutated during tuning), so we
+      // tolerate label-array length drift by skipping out-of-range entries.
+      const vertexLabels = drawn.regionVertexLabels[i] ?? [];
+      region.polygon.forEach(([px, py], v) => {
+        const t = vertexLabels[v];
+        if (!t) return;
+        t.text = `(${px},${py})`;
+        t.x = projX(px / REF_W);
+        t.y = projY(py / REF_H);
+        t.style.fontSize = Math.max(8, Math.round(10 * cappedSizeScale));
+      });
     });
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
@@ -5245,8 +5352,19 @@ export function WorldMap() {
           inset: 0,
           width: '100%',
           height: '100%',
+          // Scope the ghost/canvas z-index stacking to this container so it
+          // cannot compete with grand-sibling overlays (HUD, scoreboard, etc).
+          isolation: 'isolate',
         }}
-      />
+      >
+        {/* Static HTML "ghost" of the map — visible briefly while PixiJS
+            warms up WebGL (~500ms-1s on cold mobile Safari). Renders the
+            cached map background + clan bases using the same viewport
+            (cx, cy, scale) state pixi-viewport already persists. Fades
+            out once `pixiReady` flips true.
+            See: apps/web/src/components/MapGhostLayer.tsx. */}
+        <MapGhostLayer pixiReady={pixiReady} />
+      </div>
 
       {/* Top HUD bar — tick clock, season progress, status chips */}
       <TopHud liveTick={liveTick} />
@@ -5327,9 +5445,11 @@ export function WorldMap() {
       })()}
 
       {/* "No chain data yet" placeholder — shown when DEMO_MODE is off and no
-          live snapshot clans are present. Centered overlay so it reads clearly
-          on the bare terrain map. */}
-      {!DEMO_MODE && (!snapshot?.clans || snapshot.clans.length === 0) && (
+          snapshot clans are present, *after* a 5-second grace period managed
+          by `showNoChainDataPlaceholder` (see the useEffect declared with the
+          snapshot hooks above). Centered overlay so it reads clearly on the
+          bare terrain map. */}
+      {!DEMO_MODE && showNoChainDataPlaceholder && (
         <div
           data-testid="no-chain-data-placeholder"
           style={{
