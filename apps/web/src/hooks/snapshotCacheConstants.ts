@@ -1,14 +1,19 @@
 /**
  * Shared cache key + payload-version + max-age constants for the WorldMap
- * snapshot localStorage cache. Imported by BOTH `useCachedSnapshot.ts` (the
- * hook that writes the cache) and `components/MapGhostLayer.tsx` (the static
- * ghost that reads it before PixiJS warms up).
+ * snapshot localStorage cache, plus the env+diamond-scoped viewport storage
+ * key used by both `WorldMap.tsx` (writer) and `components/MapGhostLayer.tsx`
+ * (reader). Imported by BOTH `useCachedSnapshot.ts` (the hook that writes
+ * the snapshot cache) and `components/MapGhostLayer.tsx` (the static ghost
+ * that reads it before PixiJS warms up).
  *
  * Why a shared module: these constants were previously duplicated across the
  * two files. If `PAYLOAD_VERSION` were bumped in the hook for a schema
  * migration but not in the ghost, the ghost would read stale data as if it
  * matched the new shape — silent corruption with no runtime error. Extracting
- * to one source of truth eliminates that drift hazard.
+ * to one source of truth eliminates that drift hazard. The same reasoning
+ * applies to `VIEWPORT_STORAGE_KEY`: WorldMap.tsx writes it, MapGhostLayer.tsx
+ * reads it, and they must agree on the exact scoped key to avoid the ghost
+ * rendering a different viewport than the canvas.
  *
  * Pure constants. NO imports from React, Pixi, Convex, or anything else —
  * keeps the module trivially tree-shakeable and safe to import from any layer.
@@ -33,6 +38,25 @@ const DIAMOND_SCOPE =
  * when the version doesn't match.
  */
 export const CACHE_KEY = `cw-snapshot-v1:${ENV_SCOPE}:${DIAMOND_SCOPE}`;
+
+/**
+ * sessionStorage key under which the WorldMap pan/zoom viewport state lives.
+ * Env+diamond scoped so switching backends in the same tab (or rolling out a
+ * new realm via the full-game-reset runbook) doesn't surface stale viewport
+ * state from the previous realm. Mirrors `CACHE_KEY`'s scoping pattern — see
+ * issue #300 / PR #275 for the diamond-scope rationale.
+ *
+ * Note: this lives in sessionStorage (tab-scoped, cleared on tab close) while
+ * `CACHE_KEY` lives in localStorage (origin-scoped, persists across tabs).
+ * The two scope discriminators are still applied identically so the keys
+ * stay logically consistent.
+ *
+ * One-time cost on the deploy that introduces this scoping: any user with an
+ * existing `cw-viewport-v1` sessionStorage entry will get a cache miss on
+ * first load (key changes) and fall back to fit-cover default. Same one-time
+ * cold-cache cost as PR #275's diamond-scope addition to `CACHE_KEY`.
+ */
+export const VIEWPORT_STORAGE_KEY = `cw-viewport-v1:${ENV_SCOPE}:${DIAMOND_SCOPE}`;
 
 /**
  * Increment when the cached payload SHAPE changes (Convex schema migration,

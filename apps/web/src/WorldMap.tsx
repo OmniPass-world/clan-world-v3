@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { useCachedSnapshot } from './hooks/useCachedSnapshot';
+import { VIEWPORT_STORAGE_KEY } from './hooks/snapshotCacheConstants';
 import { Application, Assets, BlurFilter, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
@@ -1725,12 +1726,13 @@ export function WorldMap() {
         // Persist + restore pan/zoom so iOS Safari tab eviction (or HMR full
         // reload during dev) doesn't lose the user's current view. Keyed in
         // sessionStorage so it's tab-scoped — closing the tab resets to fit.
-        const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
+        // `VIEWPORT_STORAGE_KEY` is env+diamond scoped (see issue #300) so
+        // switching backends or realms doesn't surface stale viewport state.
         try {
           const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
           if (raw) {
             const saved = JSON.parse(raw) as { cx: number; cy: number; scale: number };
-            // Bounds-clamp: a poisoned `cw-viewport-v1` entry (e.g. cx=99999,
+            // Bounds-clamp: a poisoned viewport entry (e.g. cx=99999,
             // cy=99999 from a since-shrunk world or storage corruption) would
             // restore the viewport to an off-world center and the user would
             // see a mostly-blank canvas. Reject out-of-range coords entirely
