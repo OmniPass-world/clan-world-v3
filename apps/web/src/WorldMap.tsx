@@ -7,6 +7,8 @@ import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
 import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
+import { MapGhostLayer } from './components/MapGhostLayer';
+import { MAP_WIDTH, MAP_HEIGHT, LIVE_CLAN_REGION_BY_ID } from './components/mapGeometry';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import worldMapWinterBg from './assets/world-map-winter.png';
@@ -28,8 +30,7 @@ import {
 // World dimensions used by pixi-viewport for pan/clamp/center math.
 // Matches the actual hand-curated bg PNG (apps/web/src/assets/world-map.png)
 // at native resolution. The viewport scales/pans this world inside the screen.
-const MAP_WIDTH = 1086;
-const MAP_HEIGHT = 1448;
+// Re-exported from mapGeometry below (pure-data shared module).
 const WORLD_WIDTH = MAP_WIDTH;
 const WORLD_HEIGHT = MAP_HEIGHT;
 
@@ -318,14 +319,7 @@ const MOCK_CLANS: ClanDef[] = [
   { id: 'clan-storm', spriteSheetId: 'clan-storm', name: 'Storm Riders', homeRegion: 'east-farms', color: 0x44aacc, sigil: '/sigils/storm-riders-sigil.png', portrait: '/portraits/mira-portrait.png',   archetype: 'Trader',     basePng: '/bases/tide-wardens.png',  clansmanPng: '/clansmen/clan-storm.png' },
 ];
 
-const LIVE_CLAN_REGION_BY_ID: Record<number, string> = {
-  1: 'forest',
-  2: 'mountains',
-  4: 'west-farms',
-  5: 'east-farms',
-  6: 'west-docks',
-  7: 'east-docks',
-};
+// LIVE_CLAN_REGION_BY_ID is imported from ./components/mapGeometry — shared with MapGhostLayer.
 
 function clansmanPngForClanId(clanId: string): string | null {
   return MOCK_CLANS.find((clan) => clan.id === clanId)?.clansmanPng ?? null;
@@ -1645,8 +1639,15 @@ export function WorldMap() {
         if (!mounted || !isMountedRef.current || !canvasWrapRef.current) return;
         canvasWrapRef.current.appendChild(app.canvas);
         pixiCanvas = app.canvas;
-        // CSS: stretch to wrapper
+        // CSS: stretch to wrapper. The ghost (MapGhostLayer) sits at z-index 2
+        // so it covers the canvas during warmup; the canvas sits at z-index 1
+        // BELOW the ghost. Once `pixiReady` fires the ghost fades out and
+        // unmounts, leaving only the canvas. pointer-events:none on the ghost
+        // ensures taps reach the canvas even before the fade completes.
         app.canvas.style.display = 'block';
+        app.canvas.style.position = 'absolute';
+        app.canvas.style.inset = '0';
+        app.canvas.style.zIndex = '1';
         app.canvas.style.width = '100%';
         app.canvas.style.height = '100%';
         // Round-6 pinch fix: pixi-viewport handles multi-touch internally, so
@@ -4054,8 +4055,9 @@ export function WorldMap() {
       // One Text per polygon vertex, showing its (x,y) polygon coords. Added to
       // terrainBackground AFTER the Graphics so labels render on top of the fill.
       const vertexLabels: Text[] = [];
-      if (SHOW_REGION_POLYGONS) {
-        for (const [px, py] of REGIONS[i].polygon) {
+      const regionDef = REGIONS[i];
+      if (SHOW_REGION_POLYGONS && regionDef) {
+        for (const [px, py] of regionDef.polygon) {
           const t = new Text({
             text: `(${px},${py})`,
             style: {
@@ -5348,8 +5350,19 @@ export function WorldMap() {
           inset: 0,
           width: '100%',
           height: '100%',
+          // Scope the ghost/canvas z-index stacking to this container so it
+          // cannot compete with grand-sibling overlays (HUD, scoreboard, etc).
+          isolation: 'isolate',
         }}
-      />
+      >
+        {/* Static HTML "ghost" of the map — visible briefly while PixiJS
+            warms up WebGL (~500ms-1s on cold mobile Safari). Renders the
+            cached map background + clan bases using the same viewport
+            (cx, cy, scale) state pixi-viewport already persists. Fades
+            out once `pixiReady` flips true.
+            See: apps/web/src/components/MapGhostLayer.tsx. */}
+        <MapGhostLayer pixiReady={pixiReady} />
+      </div>
 
       {/* Top HUD bar — tick clock, season progress, status chips */}
       <TopHud liveTick={liveTick} />
