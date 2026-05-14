@@ -14,6 +14,7 @@ import {
   PAYLOAD_VERSION as SNAPSHOT_PAYLOAD_VERSION,
   MAX_CACHE_AGE_MS as SNAPSHOT_MAX_AGE_MS,
 } from '../hooks/snapshotCacheConstants';
+import { isValidSnapshotShape } from '../hooks/useCachedSnapshot';
 
 /**
  * MapGhostLayer — static HTML+CSS "ghost" of the world map rendered ABOVE the
@@ -99,6 +100,10 @@ function readCachedClans(): GhostClan[] {
     if (!parsed || typeof parsed.ts !== 'number') return [];
     if (parsed.v !== SNAPSHOT_PAYLOAD_VERSION) return [];
     if (Date.now() - parsed.ts > SNAPSHOT_MAX_AGE_MS) return [];
+    // Apply the same inner-shape guard `useCachedSnapshot` uses, so a payload
+    // that the hook would reject (e.g. schema migration without PAYLOAD_VERSION
+    // bump) is also rejected here. Keeps the two cache readers in lockstep.
+    if (!isValidSnapshotShape(parsed.data)) return [];
     const clans = parsed.data?.clans;
     if (!Array.isArray(clans) || clans.length === 0) return [];
     const out: GhostClan[] = [];

@@ -20,18 +20,21 @@ import {
  * data yet" placeholder than hydrate a malformed object and crash downstream
  * `clan.foo` reads.
  *
- * Exported for unit tests + for `MapGhostLayer`'s parallel cache read path
- * which currently relies on a duck-typed inline check.
+ * Validates EVERY clan entry (not just the first) — the clans array is small
+ * (~5 entries in the current world) so the O(N) cost is trivial, and catches
+ * the case where a poisoned cache has a valid first entry but a malformed
+ * second that would crash downstream `clan.foo` loops.
+ *
+ * Exported so `MapGhostLayer`'s parallel cache read path can apply the same
+ * envelope check before iterating clans (kept in lockstep with this hook).
  */
 export function isValidSnapshotShape(data: unknown): boolean {
   if (data === null || typeof data !== 'object') return false;
   const obj = data as Record<string, unknown>;
   if (typeof obj.tick !== 'number') return false;
   if (!Array.isArray(obj.clans)) return false;
-  // Don't iterate the whole array — first entry is enough to detect a
-  // schema shift, and keeps the guard O(1) on the hot path.
-  if (obj.clans.length > 0) {
-    const c = obj.clans[0];
+  for (let i = 0; i < obj.clans.length; i++) {
+    const c = obj.clans[i];
     if (c === null || typeof c !== 'object') return false;
     const clan = c as Record<string, unknown>;
     if (typeof clan.id !== 'string') return false;
@@ -63,7 +66,17 @@ export function isValidSnapshotShape(data: unknown): boolean {
 // can block the main thread on mobile Safari.
 const WRITE_THROTTLE_MS = 30 * 1000; // 30 seconds
 
-export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
+/**
+ * The shape validator that runs on the cached `data` payload before the hook
+ * hydrates state with it. Defaults to `isValidSnapshotShape` because today's
+ * only caller hydrates `api.getSnapshot.getSnapshot`. Callers that wrap a
+ * different shape can pass their own predicate to override; pass `() => true`
+ * to opt out of inner-shape validation entirely (envelope checks still apply).
+ */
+export function useCachedSnapshot<T>(
+  live: T | undefined,
+  validate: (data: unknown) => boolean = isValidSnapshotShape,
+): T | undefined {
   const [cached, setCached] = useState<T | undefined>(() => {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
@@ -75,7 +88,7 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
       // Inner-shape guard — catches schema migrations that landed without a
       // PAYLOAD_VERSION bump. Cache miss is safe; the live Convex query
       // overwrites within a frame or two.
-      if (!isValidSnapshotShape(parsed.data)) return undefined;
+      if (!validate(parsed.data)) return undefined;
       return parsed.data;
     } catch {
       return undefined;
