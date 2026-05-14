@@ -9,7 +9,14 @@ import {
   useWaitForTransactionReceipt,
 } from 'wagmi';
 import { baseSepolia } from 'wagmi/chains';
-import { encodeFunctionData, type Abi, type Address, type AbiFunction, isAddress } from 'viem';
+import {
+  encodeFunctionData,
+  decodeFunctionResult,
+  type Abi,
+  type Address,
+  type AbiFunction,
+  isAddress,
+} from 'viem';
 
 // ABIs are imported from @clan-world/contracts as JSON modules. Source of truth lives at
 // packages/contracts/abi/*.json and is regenerated from forge artifacts by `pnpm codegen`.
@@ -102,6 +109,33 @@ function ConnectButton() {
   );
 }
 
+// Hardcoded danger-list for destructive diamond operations. Clicking "send tx (write)"
+// on any of these surfaces a native confirm() dialog before firing the wallet popup —
+// the dev-ui's `DEFAULT_DIAMOND` pre-populates the address input, so an admin connected
+// with the owner wallet could otherwise mis-click into an irreversible facet change.
+// Source: GH #281 (super-swarm finding from PR #272). Keep this list close to the
+// write handler so it stays visible during diamond changes.
+//
+// `/^init.*/` (broader than the literal `initialize`) covers ABI surfaces like
+// `initTreasury(...)` — one-shot setup functions that are as destructive as
+// `initialize` if re-fired. `seedPools` is the other current one-shot setup write.
+// Confirmed against packages/contracts/abi/IClanWorld.json on 2026-05-14 after a
+// codex tier-2 finding flagged both as unguarded.
+const DANGEROUS_FN_NAMES: ReadonlySet<string> = new Set([
+  'diamondCut',
+  'transferOwnership',
+  'seedPools',
+]);
+const DANGEROUS_FN_PATTERNS: readonly RegExp[] = [
+  /^init.*/,
+  /^set.*Address$/,
+  /^upgrade.*/,
+];
+function isDangerousFn(name: string): boolean {
+  if (DANGEROUS_FN_NAMES.has(name)) return true;
+  return DANGEROUS_FN_PATTERNS.some((re) => re.test(name));
+}
+
 function defaultInputForType(t: string): string {
   if (t === 'address') return '';
   if (t === 'bool') return 'false';
@@ -163,7 +197,35 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
         method: 'eth_call',
         params: [{ to: diamond, data }, 'latest'],
       });
-      setReadResult(typeof res === 'string' ? res : JSON.stringify(res));
+      const rawHex = typeof res === 'string' ? res : JSON.stringify(res);
+      // Decode via viem so users see addresses / numbers / structs rather than zero-padded hex.
+      // BigInt values aren't JSON-stringifiable by default, so coerce them with a replacer.
+      try {
+        const decoded = decodeFunctionResult({
+          abi: COMBINED_ABI,
+          functionName: fn.name,
+          data: rawHex as `0x${string}`,
+        });
+        const isScalar =
+          decoded === null ||
+          (typeof decoded !== 'object' && typeof decoded !== 'bigint');
+        if (isScalar) {
+          setReadResult(String(decoded));
+        } else if (typeof decoded === 'bigint') {
+          setReadResult(decoded.toString());
+        } else {
+          setReadResult(
+            JSON.stringify(
+              decoded,
+              (_k, v) => (typeof v === 'bigint' ? v.toString() : v),
+              2,
+            ),
+          );
+        }
+      } catch (decodeErr: unknown) {
+        const dmsg = decodeErr instanceof Error ? decodeErr.message : String(decodeErr);
+        setReadResult(`${rawHex}\n\n(decode failed: ${dmsg})`);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setReadError(msg);
@@ -173,7 +235,21 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
   const onWrite = () => {
     try {
       setReadError(null);
+      // Parse inputs FIRST so an invalid address/etc. surfaces as a normal error
+      // instead of being suppressed by the confirm() dialog.
       const args = fn.inputs.map((i, idx) => parseInputValue(i.type, inputs[idx]));
+      // Destructive-op guardrail: native confirm() before firing the wallet popup.
+      // See DANGEROUS_FN_NAMES / DANGEROUS_FN_PATTERNS above. GH #281.
+      if (isDangerousFn(fn.name)) {
+        const msg =
+          `This is a destructive operation that will modify the diamond.\n\n` +
+          `Function: ${fn.name}\n` +
+          `Diamond: ${diamond}\n\n` +
+          `Are you sure?`;
+        if (!window.confirm(msg)) {
+          return;
+        }
+      }
       writeContract.writeContract({
         address: diamond,
         abi: COMBINED_ABI,
