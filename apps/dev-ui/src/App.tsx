@@ -15,6 +15,7 @@ import {
   type Abi,
   type Address,
   type AbiFunction,
+  type AbiParameter,
   isAddress,
 } from 'viem';
 
@@ -65,6 +66,14 @@ function dedupAbi(abi: readonly unknown[]): FnAbi[] {
 }
 
 const ALL_FUNCTIONS = dedupAbi(COMBINED_ABI as unknown as readonly unknown[]);
+
+// Deduped ABI for encode/write paths. The raw COMBINED_ABI concatenates four source
+// ABIs and can carry duplicate selectors (e.g. owner(), facets() across overlapping
+// interface fragments). Passing the raw concatenation to viem's encodeFunctionData /
+// writeContract risks AbiFunctionNameNotFoundError or non-deterministic selection on
+// collisions. ALL_FUNCTIONS is already deduped for display — reuse it as the source
+// of truth for the wire path too.
+const DEDUPED_ABI = ALL_FUNCTIONS as unknown as Abi;
 
 function classifyMutability(fn: FnAbi): 'read' | 'write' {
   if (fn.stateMutability === 'view' || fn.stateMutability === 'pure') return 'read';
@@ -145,7 +154,74 @@ function defaultInputForType(t: string): string {
   return '0';
 }
 
-function parseInputValue(t: string, raw: string): unknown {
+// AbiParameter-driven recursive parser. `input` carries the canonical Solidity type plus
+// (for tuples) the `components` schema. We MUST recurse through components for tuple
+// and tuple[] — JSON.stringify on an arbitrary nested value is not enough because the
+// previous code path collapsed objects to "[object Object]" via String(x). With this
+// shape, viem receives the correctly-shaped object/array and encoding succeeds.
+function parseInputValue(input: AbiParameter, raw: string): unknown {
+  const t = input.type;
+
+  if (t === 'tuple') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(
+        `tuple ${input.name || ''}: invalid JSON — ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`tuple ${input.name || ''}: expected object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`);
+    }
+    const components = (input as { components?: readonly AbiParameter[] }).components ?? [];
+    if (components.length === 0) {
+      throw new Error(`tuple ${input.name || ''}: ABI is missing components metadata`);
+    }
+    const obj = parsed as Record<string, unknown>;
+    const result: Record<string, unknown> = {};
+    for (let ci = 0; ci < components.length; ci++) {
+      const component = components[ci];
+      // AbiParameter.name is technically optional; struct components from
+      // Solidity always have names but we defend against tuples-of-unnamed-fields
+      // (e.g. parsed dynamic ABIs) by falling back to positional keys.
+      const fieldKey = component.name && component.name.length > 0 ? component.name : String(ci);
+      if (!(fieldKey in obj)) {
+        throw new Error(
+          `tuple ${input.name || ''}: missing field "${fieldKey}" (expected ${component.type})`,
+        );
+      }
+      // Re-serialize so the recursive call can JSON.parse the leaf value via its own
+      // type-specific branch. For strings/addresses/bytes we route the raw string
+      // through the primitive branches below.
+      const fieldRaw =
+        typeof obj[fieldKey] === 'string'
+          ? (obj[fieldKey] as string)
+          : JSON.stringify(obj[fieldKey]);
+      result[fieldKey] = parseInputValue(component, fieldRaw);
+    }
+    return result;
+  }
+
+  if (t === 'tuple[]') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(
+        `tuple[] ${input.name || ''}: invalid JSON — ${e instanceof Error ? e.message : String(e)}`,
+        { cause: e },
+      );
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error(`tuple[] ${input.name || ''}: expected array, got ${typeof parsed}`);
+    }
+    // Recurse each element as a `tuple` with the same components.
+    const tupleElem: AbiParameter = { ...input, type: 'tuple' } as AbiParameter;
+    return parsed.map((item) => parseInputValue(tupleElem, JSON.stringify(item)));
+  }
+
   const v = raw.trim();
   if (t === 'address') {
     if (!isAddress(v)) throw new Error(`invalid address: ${v}`);
@@ -158,7 +234,10 @@ function parseInputValue(t: string, raw: string): unknown {
     const inner = t.slice(0, -2);
     const parsed = JSON.parse(v);
     if (!Array.isArray(parsed)) throw new Error(`expected array for ${t}`);
-    return parsed.map((x) => parseInputValue(inner, String(x)));
+    // Build a synthetic AbiParameter for the inner element type. Primitive arrays
+    // never carry components so an unnamed inner param is sufficient.
+    const innerParam: AbiParameter = { ...input, type: inner, name: '' } as AbiParameter;
+    return parsed.map((x) => parseInputValue(innerParam, typeof x === 'string' ? x : JSON.stringify(x)));
   }
   if (t.startsWith('uint') || t.startsWith('int')) {
     return BigInt(v);
@@ -185,9 +264,9 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
     try {
       setReadError(null);
       setReadResult(null);
-      const args = fn.inputs.map((i, idx) => parseInputValue(i.type, inputs[idx]));
+      const args = fn.inputs.map((i, idx) => parseInputValue(i, inputs[idx]));
       const data = encodeFunctionData({
-        abi: COMBINED_ABI,
+        abi: DEDUPED_ABI,
         functionName: fn.name,
         args,
       } as never);
@@ -237,7 +316,8 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
       setReadError(null);
       // Parse inputs FIRST so an invalid address/etc. surfaces as a normal error
       // instead of being suppressed by the confirm() dialog.
-      const args = fn.inputs.map((i, idx) => parseInputValue(i.type, inputs[idx]));
+      // Uses the AbiParameter-driven parser (#276) so tuple / tuple[] decode correctly.
+      const args = fn.inputs.map((i, idx) => parseInputValue(i, inputs[idx]));
       // Destructive-op guardrail: native confirm() before firing the wallet popup.
       // See DANGEROUS_FN_NAMES / DANGEROUS_FN_PATTERNS above. GH #281.
       if (isDangerousFn(fn.name)) {
@@ -252,7 +332,7 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
       }
       writeContract.writeContract({
         address: diamond,
-        abi: COMBINED_ABI,
+        abi: DEDUPED_ABI,
         functionName: fn.name as never,
         args: args as never,
       });
@@ -362,12 +442,15 @@ function App() {
       const { toFunctionSelector } = await import('viem');
       const map = new Map<string, string>();
       for (const fn of ALL_FUNCTIONS) {
-        const sig = `${fn.name}(${fn.inputs.map((i) => i.type).join(',')})`;
         try {
-          const sel = toFunctionSelector(sig);
+          // Pass the AbiFunction object directly. viem expands tuple components into
+          // their canonical inner form for selector hashing (e.g. diamondCut becomes
+          // diamondCut((address,uint8,bytes4[])[],address,bytes) — NOT
+          // diamondCut(tuple[],address,bytes), which was the previous buggy form).
+          const sel = toFunctionSelector(fn);
           map.set(`${fn.name}/${fn.inputs.length}`, sel.toLowerCase());
         } catch {
-          // tuple types may need different normalization; skip
+          // Defensive: a malformed ABI entry shouldn't break the whole filter.
         }
       }
       setSelectorMap(map);
