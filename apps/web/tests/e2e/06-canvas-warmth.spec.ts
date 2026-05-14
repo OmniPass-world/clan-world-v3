@@ -163,6 +163,14 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     const ghost = page.getByTestId('map-ghost-layer');
     await expect(ghost).toBeVisible({ timeout: 2000 });
 
+    // Load-bearing: assert the ghost is actually rendering CACHE-DERIVED
+    // content (per-clan base sprites), not just the shell. If the cache
+    // hydration path regresses (wrong key, schema mismatch, validator
+    // rejecting a valid payload), the shell renders but no <img> per
+    // clan does — this catches that.
+    const ironBase = page.getByTestId('map-ghost-base-clan-iron');
+    await expect(ironBase).toBeVisible({ timeout: 2000 });
+
     // While Pixi is still warming up, the ghost stays at opacity:1 (the inline
     // style is `opacity: pixiReady ? 0 : 1`). Verify the pre-flip state — this
     // is the load-bearing check that the ghost is acting as a bridge to canvas
@@ -235,9 +243,11 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     await page.goto('/');
 
     // First, confirm we got past mount with a primed cache by checking the
-    // ghost is present — this proves the cache was actually read. If this
-    // fails, the test isn't really exercising the WS-dropout scenario.
+    // ghost is present AND rendering cache-derived per-clan content. The
+    // shell renders even with an empty cache, so we need the base sprite
+    // assertion to prove the cache was actually read into the ghost layer.
     await expect(page.getByTestId('map-ghost-layer')).toBeVisible({ timeout: 2000 });
+    await expect(page.getByTestId('map-ghost-base-clan-iron')).toBeVisible({ timeout: 2000 });
 
     const SAMPLES = 8;
     const STEP_MS = 500; // 8 * 500 = 4000ms total

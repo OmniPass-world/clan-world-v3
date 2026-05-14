@@ -387,6 +387,7 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
           return (
             <img
               key={clan.id}
+              data-testid={`map-ghost-base-${clan.id}`}
               src={src}
               alt=""
               decoding="async"
