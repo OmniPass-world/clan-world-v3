@@ -357,7 +357,15 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
         <img
           src={worldMapBg}
           alt=""
-          decoding="sync"
+          // decoding="async" pairs with the <link rel="preload" as="image">
+          // injected by the `inject-map-bg-preload` Vite plugin (see
+          // apps/web/vite.config.ts). The preload tag in index.html starts
+          // the fetch+decode during HTML parse — before React mounts — so by
+          // the time this <img> renders the decoded bitmap is usually already
+          // available, avoiding the blank-ghost flash codex flagged in
+          // PR #270. `async` is then the safe choice: it never blocks the
+          // surrounding paint on cold first-ever load (closes #271, #298).
+          decoding="async"
           draggable={false}
           style={{
             position: 'absolute',
