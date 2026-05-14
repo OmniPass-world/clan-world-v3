@@ -380,7 +380,7 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
       // BigInt values aren't JSON-stringifiable by default, so coerce them with a replacer.
       try {
         const decoded = decodeFunctionResult({
-          abi: COMBINED_ABI,
+          abi: DEDUPED_ABI,
           functionName: fn.name,
           data: rawHex as `0x${string}`,
         });
