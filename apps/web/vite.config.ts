@@ -32,16 +32,24 @@ const DEFAULT_PORT = (() => {
  * mount. See issues #271, #298.
  *
  * Vite hashes the asset at build time (`world-map.<hash>.png`), so the link
- * href can't be static. This `transformIndexHtml` hook computes the right href
- * for both dev (unhashed) and build (hashed) modes:
- *   - In build: `ctx.bundle` is populated → scan for the emitted asset whose
- *     filename matches `world-map-*.png` (or `world-map.png` if hash disabled)
- *     and use its bundle key as the href.
+ * href can't be static. We compute the right href for both modes:
+ *   - In build: `ctx.bundle` is populated → find the emitted asset by its
+ *     ORIGINAL name (`output.name === 'world-map.png'`) rather than regex over
+ *     the hashed key. This is hash-shape independent (a Vite hash containing
+ *     hyphens won't break the lookup, per gemini-flash review on PR #303) and
+ *     cleanly excludes sibling assets like `world-map-winter.png` without
+ *     needing a fragile character-class.
  *   - In dev: `ctx.bundle` is undefined → use the source path so the dev
  *     server's middleware resolves it via the import graph.
  *
- * `order: 'pre'` ensures the link is injected before Vite's own asset
- * transforms run on index.html.
+ * We return Vite tag descriptors (`{ tag, attrs, injectTo: 'head' }`) rather
+ * than doing a string `replace` on `</head>`. The descriptor path is what
+ * Vite's own preload helper uses, so injection is insensitive to surrounding
+ * whitespace, case (`</HEAD>`), or other transforms reshaping the HTML —
+ * closing the "string-replace fragility" LOW from codex review on PR #303.
+ *
+ * `order: 'pre'` keeps the tag toward the top of `<head>`, before other
+ * Vite-injected script/style links.
  */
 function mapBgPreloadPlugin(): Plugin {
   return {
@@ -49,30 +57,36 @@ function mapBgPreloadPlugin(): Plugin {
     transformIndexHtml: {
       order: 'pre',
       handler(html, ctx) {
+        // Honor a custom `base` if/when one is configured (e.g. deploying
+        // under a subpath). Defaults to '/' which is the current setup.
+        const base = ctx.server?.config.base ?? '/';
         let href: string | null = null;
         if (ctx.bundle) {
-          // Build: find the emitted hashed asset. Match `world-map` followed
-          // by EITHER `.png` (no hash) or `-<hash>.png` (Vite's default
-          // emitFileName scheme: name-hash.ext). Restrict to the assets dir
-          // and forbid additional name segments after `world-map` — otherwise
-          // sibling assets like `world-map-winter-*.png` would also match.
-          // The hash itself is base64url-ish ([A-Za-z0-9_-]+) but never
-          // contains a hyphen at the start (Vite uses underscores in the
-          // middle of the hash); requiring a single `-` then non-hyphen chars
-          // then `.png` is enough to disambiguate from `world-map-winter-*`.
-          const key = Object.keys(ctx.bundle).find((p) =>
-            /(^|\/)assets\/world-map(?!-winter)(?:-[A-Za-z0-9_-]+)?\.png$/.test(p),
-          );
-          if (key) {
-            href = `/${key}`;
+          // Build: locate by original source filename. Vite/Rollup populates
+          // `output.name` with the pre-hash basename for asset outputs, so
+          // this is hash-shape independent. Restrict to type==='asset' so we
+          // don't accidentally match a chunk that happens to be named the same.
+          for (const [key, output] of Object.entries(ctx.bundle)) {
+            if (output.type === 'asset' && output.name === 'world-map.png') {
+              href = `${base}${key}`.replace(/\/{2,}/g, '/');
+              break;
+            }
           }
         } else {
           // Dev: Vite serves the source asset directly via /src/assets/...
-          href = '/src/assets/world-map.png';
+          href = `${base}src/assets/world-map.png`.replace(/\/{2,}/g, '/');
         }
         if (!href) return html;
-        const preloadTag = `    <link rel="preload" as="image" href="${href}" />`;
-        return html.replace('</head>', `${preloadTag}\n  </head>`);
+        return {
+          html,
+          tags: [
+            {
+              tag: 'link',
+              attrs: { rel: 'preload', as: 'image', href },
+              injectTo: 'head',
+            },
+          ],
+        };
       },
     },
   };
