@@ -149,9 +149,39 @@ function defaultInputForType(t: string): string {
   if (t === 'address') return '';
   if (t === 'bool') return 'false';
   if (t === 'bytes' || t.startsWith('bytes')) return '0x';
+  if (t === 'tuple') return '{}';
+  if (t === 'tuple[]') return '[]';
   if (t.endsWith('[]')) return '[]';
   if (t === 'string') return '';
   return '0';
+}
+
+// JSON numeric literals are parsed as JS doubles, which silently round any uint/int
+// value larger than Number.MAX_SAFE_INTEGER (2^53-1). For a dev-ui that admins a
+// diamond — token amounts, time-locked deposits, fee bps mantissas — that's a
+// real data-corruption hazard. Users must enter big integers as JSON strings:
+//   {"amount": "123456789012345678901234567890"}
+// This helper detects the failure mode at parse-time and throws a clear error.
+function assertSafeNumericForType(
+  component: AbiParameter,
+  value: unknown,
+  context: string,
+): void {
+  if (typeof value !== 'number') return;
+  if (!(component.type.startsWith('uint') || component.type.startsWith('int'))) return;
+  if (!Number.isFinite(value)) {
+    throw new Error(`${context}: ${component.type} value is not finite`);
+  }
+  if (!Number.isInteger(value)) {
+    throw new Error(
+      `${context}: ${component.type} value ${value} is not an integer — wrap as a JSON string instead`,
+    );
+  }
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(
+      `${context}: ${component.type} value ${value} exceeds Number.MAX_SAFE_INTEGER; pass as a JSON string (e.g. "${value}") to preserve precision`,
+    );
+  }
 }
 
 // AbiParameter-driven recursive parser. `input` carries the canonical Solidity type plus
@@ -172,22 +202,46 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
         { cause: e },
       );
     }
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error(`tuple ${input.name || ''}: expected object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`);
-    }
     const components = (input as { components?: readonly AbiParameter[] }).components ?? [];
     if (components.length === 0) {
       throw new Error(`tuple ${input.name || ''}: ABI is missing components metadata`);
     }
+    // If any component lacks a name, viem can't read fields by name — the value
+    // MUST be encoded positionally as an array. Otherwise the canonical shape is
+    // an object keyed by component.name.
+    const allNamed = components.every((c) => c.name && c.name.length > 0);
+
+    if (!allNamed) {
+      if (!Array.isArray(parsed)) {
+        throw new Error(
+          `tuple ${input.name || ''}: components are unnamed; expected JSON array of length ${components.length}, got ${typeof parsed}`,
+        );
+      }
+      if (parsed.length !== components.length) {
+        throw new Error(
+          `tuple ${input.name || ''}: expected array of length ${components.length}, got ${parsed.length}`,
+        );
+      }
+      return parsed.map((item, idx) => {
+        const component = components[idx];
+        assertSafeNumericForType(component, item, `tuple ${input.name || ''}[${idx}]`);
+        const itemRaw = typeof item === 'string' ? item : JSON.stringify(item);
+        return parseInputValue(component, itemRaw);
+      });
+    }
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(
+        `tuple ${input.name || ''}: expected object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`,
+      );
+    }
     const obj = parsed as Record<string, unknown>;
     const result: Record<string, unknown> = {};
-    for (let ci = 0; ci < components.length; ci++) {
-      const component = components[ci];
-      // AbiParameter.name is technically optional; struct components from
-      // Solidity always have names but we defend against tuples-of-unnamed-fields
-      // (e.g. parsed dynamic ABIs) by falling back to positional keys.
-      const fieldKey = component.name && component.name.length > 0 ? component.name : String(ci);
-      if (!(fieldKey in obj)) {
+    for (const component of components) {
+      // Use Object.hasOwn to avoid prototype-chain lookups (e.g. a field named
+      // `toString` would otherwise resolve to Object.prototype.toString).
+      const fieldKey = component.name as string;
+      if (!Object.hasOwn(obj, fieldKey)) {
         throw new Error(
           `tuple ${input.name || ''}: missing field "${fieldKey}" (expected ${component.type})`,
         );
@@ -195,6 +249,7 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
       // Re-serialize so the recursive call can JSON.parse the leaf value via its own
       // type-specific branch. For strings/addresses/bytes we route the raw string
       // through the primitive branches below.
+      assertSafeNumericForType(component, obj[fieldKey], `tuple ${input.name || ''}.${fieldKey}`);
       const fieldRaw =
         typeof obj[fieldKey] === 'string'
           ? (obj[fieldKey] as string)
@@ -237,7 +292,10 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
     // Build a synthetic AbiParameter for the inner element type. Primitive arrays
     // never carry components so an unnamed inner param is sufficient.
     const innerParam: AbiParameter = { ...input, type: inner, name: '' } as AbiParameter;
-    return parsed.map((x) => parseInputValue(innerParam, typeof x === 'string' ? x : JSON.stringify(x)));
+    return parsed.map((x, idx) => {
+      assertSafeNumericForType(innerParam, x, `${input.name || t}[${idx}]`);
+      return parseInputValue(innerParam, typeof x === 'string' ? x : JSON.stringify(x));
+    });
   }
   if (t.startsWith('uint') || t.startsWith('int')) {
     return BigInt(v);
