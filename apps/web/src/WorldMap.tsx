@@ -7,6 +7,7 @@ import { useAgentLogs, type AgentLog } from './useAgentLogs';
 import { WorldNoticePanel } from './WorldNoticePanel';
 import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
+import { MapGhostLayer } from './components/MapGhostLayer';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
 import worldMapWinterBg from './assets/world-map-winter.png';
@@ -1645,8 +1646,15 @@ export function WorldMap() {
         if (!mounted || !isMountedRef.current || !canvasWrapRef.current) return;
         canvasWrapRef.current.appendChild(app.canvas);
         pixiCanvas = app.canvas;
-        // CSS: stretch to wrapper
+        // CSS: stretch to wrapper. We pin the canvas as `position: absolute;
+        // inset: 0` with an explicit z-index ABOVE the MapGhostLayer (which
+        // sits at z-index 0 in the same container). Without explicit
+        // positioning + z-index the absolutely-positioned ghost would paint
+        // on top of the static-positioned canvas, defeating the swap.
         app.canvas.style.display = 'block';
+        app.canvas.style.position = 'absolute';
+        app.canvas.style.inset = '0';
+        app.canvas.style.zIndex = '1';
         app.canvas.style.width = '100%';
         app.canvas.style.height = '100%';
         // Round-6 pinch fix: pixi-viewport handles multi-touch internally, so
@@ -4054,8 +4062,9 @@ export function WorldMap() {
       // One Text per polygon vertex, showing its (x,y) polygon coords. Added to
       // terrainBackground AFTER the Graphics so labels render on top of the fill.
       const vertexLabels: Text[] = [];
-      if (SHOW_REGION_POLYGONS) {
-        for (const [px, py] of REGIONS[i].polygon) {
+      const regionDef = REGIONS[i];
+      if (SHOW_REGION_POLYGONS && regionDef) {
+        for (const [px, py] of regionDef.polygon) {
           const t = new Text({
             text: `(${px},${py})`,
             style: {
@@ -5349,7 +5358,15 @@ export function WorldMap() {
           width: '100%',
           height: '100%',
         }}
-      />
+      >
+        {/* Static HTML "ghost" of the map — visible briefly while PixiJS
+            warms up WebGL (~500ms-1s on cold mobile Safari). Renders the
+            cached map background + clan bases using the same viewport
+            (cx, cy, scale) state pixi-viewport already persists. Fades
+            out once `pixiReady` flips true.
+            See: apps/web/src/components/MapGhostLayer.tsx. */}
+        <MapGhostLayer pixiReady={pixiReady} />
+      </div>
 
       {/* Top HUD bar — tick clock, season progress, status chips */}
       <TopHud liveTick={liveTick} />
