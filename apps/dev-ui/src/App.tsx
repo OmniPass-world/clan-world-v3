@@ -49,6 +49,23 @@ const COMBINED_ABI = [
 
 type FnAbi = AbiFunction & { stateMutability: string };
 
+// Canonical Solidity signature for an ABI item — handles tuple expansion so
+// overloads like `Foo((uint256))` vs `Foo((address))` get distinct dedup keys.
+// (`i.type` alone collapses both to `Foo(tuple)`.) viem uses this same canonical
+// form internally for selector / topic hashing.
+type AbiParamMin = { type: string; components?: readonly AbiParamMin[] };
+function canonicalParamType(p: AbiParamMin): string {
+  if (p.type === 'tuple' || p.type.startsWith('tuple')) {
+    const suffix = p.type === 'tuple' ? '' : p.type.slice('tuple'.length); // '' or '[]' or '[N]'
+    const inner = (p.components ?? []).map(canonicalParamType).join(',');
+    return `(${inner})${suffix}`;
+  }
+  return p.type;
+}
+function canonicalSignature(name: string, inputs: readonly AbiParamMin[] | undefined): string {
+  return `${name}(${(inputs ?? []).map(canonicalParamType).join(',')})`;
+}
+
 function dedupAbi(abi: readonly unknown[]): FnAbi[] {
   const seen = new Set<string>();
   const out: FnAbi[] = [];
@@ -57,7 +74,7 @@ function dedupAbi(abi: readonly unknown[]): FnAbi[] {
     const obj = item as { type?: string };
     if (obj.type !== 'function') continue;
     const fn = item as FnAbi;
-    const sig = `${fn.name}(${fn.inputs.map((i) => i.type).join(',')})`;
+    const sig = canonicalSignature(fn.name, fn.inputs as readonly AbiParamMin[]);
     if (seen.has(sig)) continue;
     seen.add(sig);
     out.push(fn);
@@ -67,13 +84,37 @@ function dedupAbi(abi: readonly unknown[]): FnAbi[] {
 
 const ALL_FUNCTIONS = dedupAbi(COMBINED_ABI as unknown as readonly unknown[]);
 
+// Pass-through dedup for errors + events. Same overlap risk as functions
+// (DiamondNotOwner from OwnershipFacet, etc. could repeat across interfaces).
+// Uses the canonical (tuple-expanded) signature so overloads with tuple inputs
+// of different shapes do not collapse to the same key.
+function dedupErrorsAndEvents(abi: readonly unknown[]): unknown[] {
+  const seenErrors = new Set<string>();
+  const seenEvents = new Set<string>();
+  const out: unknown[] = [];
+  for (const item of abi) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as { type?: string; name?: string; inputs?: readonly AbiParamMin[] };
+    if (obj.type !== 'error' && obj.type !== 'event') continue;
+    const sig = canonicalSignature(obj.name ?? '', obj.inputs);
+    const seen = obj.type === 'error' ? seenErrors : seenEvents;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    out.push(item);
+  }
+  return out;
+}
+
+const ALL_ERRORS_AND_EVENTS = dedupErrorsAndEvents(COMBINED_ABI as unknown as readonly unknown[]);
+
 // Deduped ABI for encode/write paths. The raw COMBINED_ABI concatenates four source
 // ABIs and can carry duplicate selectors (e.g. owner(), facets() across overlapping
 // interface fragments). Passing the raw concatenation to viem's encodeFunctionData /
 // writeContract risks AbiFunctionNameNotFoundError or non-deterministic selection on
-// collisions. ALL_FUNCTIONS is already deduped for display — reuse it as the source
-// of truth for the wire path too.
-const DEDUPED_ABI = ALL_FUNCTIONS as unknown as Abi;
+// collisions. Reuse the already-deduped function list AND keep deduped errors+events
+// so viem can decode custom Solidity errors (e.g. `DiamondNotOwner(address)`) on revert
+// — without this, users see a generic "execution reverted" instead of the named error.
+const DEDUPED_ABI = [...ALL_FUNCTIONS, ...ALL_ERRORS_AND_EVENTS] as unknown as Abi;
 
 function classifyMutability(fn: FnAbi): 'read' | 'write' {
   if (fn.stateMutability === 'view' || fn.stateMutability === 'pure') return 'read';
@@ -149,9 +190,39 @@ function defaultInputForType(t: string): string {
   if (t === 'address') return '';
   if (t === 'bool') return 'false';
   if (t === 'bytes' || t.startsWith('bytes')) return '0x';
+  if (t === 'tuple') return '{}';
+  if (t === 'tuple[]') return '[]';
   if (t.endsWith('[]')) return '[]';
   if (t === 'string') return '';
   return '0';
+}
+
+// JSON numeric literals are parsed as JS doubles, which silently round any uint/int
+// value larger than Number.MAX_SAFE_INTEGER (2^53-1). For a dev-ui that admins a
+// diamond — token amounts, time-locked deposits, fee bps mantissas — that's a
+// real data-corruption hazard. Users must enter big integers as JSON strings:
+//   {"amount": "123456789012345678901234567890"}
+// This helper detects the failure mode at parse-time and throws a clear error.
+function assertSafeNumericForType(
+  component: AbiParameter,
+  value: unknown,
+  context: string,
+): void {
+  if (typeof value !== 'number') return;
+  if (!(component.type.startsWith('uint') || component.type.startsWith('int'))) return;
+  if (!Number.isFinite(value)) {
+    throw new Error(`${context}: ${component.type} value is not finite`);
+  }
+  if (!Number.isInteger(value)) {
+    throw new Error(
+      `${context}: ${component.type} value ${value} is not an integer — wrap as a JSON string instead`,
+    );
+  }
+  if (!Number.isSafeInteger(value)) {
+    throw new Error(
+      `${context}: ${component.type} value ${value} exceeds Number.MAX_SAFE_INTEGER; pass as a JSON string (e.g. "${value}") to preserve precision`,
+    );
+  }
 }
 
 // AbiParameter-driven recursive parser. `input` carries the canonical Solidity type plus
@@ -172,22 +243,46 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
         { cause: e },
       );
     }
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error(`tuple ${input.name || ''}: expected object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`);
-    }
     const components = (input as { components?: readonly AbiParameter[] }).components ?? [];
     if (components.length === 0) {
       throw new Error(`tuple ${input.name || ''}: ABI is missing components metadata`);
     }
+    // If any component lacks a name, viem can't read fields by name — the value
+    // MUST be encoded positionally as an array. Otherwise the canonical shape is
+    // an object keyed by component.name.
+    const allNamed = components.every((c) => c.name && c.name.length > 0);
+
+    if (!allNamed) {
+      if (!Array.isArray(parsed)) {
+        throw new Error(
+          `tuple ${input.name || ''}: components are unnamed; expected JSON array of length ${components.length}, got ${typeof parsed}`,
+        );
+      }
+      if (parsed.length !== components.length) {
+        throw new Error(
+          `tuple ${input.name || ''}: expected array of length ${components.length}, got ${parsed.length}`,
+        );
+      }
+      return parsed.map((item, idx) => {
+        const component = components[idx];
+        assertSafeNumericForType(component, item, `tuple ${input.name || ''}[${idx}]`);
+        const itemRaw = typeof item === 'string' ? item : JSON.stringify(item);
+        return parseInputValue(component, itemRaw);
+      });
+    }
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      const got =
+        parsed === null ? 'null' : Array.isArray(parsed) ? 'array' : typeof parsed;
+      throw new Error(`tuple ${input.name || ''}: expected object, got ${got}`);
+    }
     const obj = parsed as Record<string, unknown>;
     const result: Record<string, unknown> = {};
-    for (let ci = 0; ci < components.length; ci++) {
-      const component = components[ci];
-      // AbiParameter.name is technically optional; struct components from
-      // Solidity always have names but we defend against tuples-of-unnamed-fields
-      // (e.g. parsed dynamic ABIs) by falling back to positional keys.
-      const fieldKey = component.name && component.name.length > 0 ? component.name : String(ci);
-      if (!(fieldKey in obj)) {
+    for (const component of components) {
+      // Use Object.hasOwn to avoid prototype-chain lookups (e.g. a field named
+      // `toString` would otherwise resolve to Object.prototype.toString).
+      const fieldKey = component.name as string;
+      if (!Object.hasOwn(obj, fieldKey)) {
         throw new Error(
           `tuple ${input.name || ''}: missing field "${fieldKey}" (expected ${component.type})`,
         );
@@ -195,6 +290,7 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
       // Re-serialize so the recursive call can JSON.parse the leaf value via its own
       // type-specific branch. For strings/addresses/bytes we route the raw string
       // through the primitive branches below.
+      assertSafeNumericForType(component, obj[fieldKey], `tuple ${input.name || ''}.${fieldKey}`);
       const fieldRaw =
         typeof obj[fieldKey] === 'string'
           ? (obj[fieldKey] as string)
@@ -237,7 +333,10 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
     // Build a synthetic AbiParameter for the inner element type. Primitive arrays
     // never carry components so an unnamed inner param is sufficient.
     const innerParam: AbiParameter = { ...input, type: inner, name: '' } as AbiParameter;
-    return parsed.map((x) => parseInputValue(innerParam, typeof x === 'string' ? x : JSON.stringify(x)));
+    return parsed.map((x, idx) => {
+      assertSafeNumericForType(innerParam, x, `${input.name || t}[${idx}]`);
+      return parseInputValue(innerParam, typeof x === 'string' ? x : JSON.stringify(x));
+    });
   }
   if (t.startsWith('uint') || t.startsWith('int')) {
     return BigInt(v);
