@@ -173,6 +173,13 @@ function ConnectButton() {
 // codex tier-2 finding flagged both as unguarded. The CamelCase-or-end anchor avoids
 // over-matching view getters like `initialized`, `initialState`, `initData` while
 // still catching future destructive `init<X>` functions. Source: GH #299.
+//
+// `initialize` is exact-matched in DANGEROUS_FN_NAMES below because the regex
+// (correctly) only matches `init` + CamelCase boundary or end-of-string — a literal
+// `initialize` has a lowercase `i` after `init` and would slip through the regex.
+// No `initialize` function exists in the current diamond ABI surface, but the exact
+// name is preserved as defense-in-depth for any future facet upgrade. Caught by the
+// PR #301 swarm (gemini-flash HIGH, codex MED).
 const DANGEROUS_FN_NAMES: ReadonlySet<string> = new Set([
   'diamondCut',
   'transferOwnership',
