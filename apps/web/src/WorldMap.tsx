@@ -36,9 +36,11 @@ const WORLD_HEIGHT = MAP_HEIGHT;
 
 // Debug overlay: render REGIONS[*].polygon as a colored fill + stroke so the
 // hand-tuned region polygons are visible against the new map background. Lets
-// us iterate the polygon coords visually with the map in view. Flip OFF for
-// release; ON during region authoring / map redesigns.
-const SHOW_REGION_POLYGONS = true;
+// us iterate the polygon coords visually with the map in view. Gated to
+// `pnpm dev` only via `import.meta.env.DEV` so production builds never ship
+// the debug fills + raw (x,y) vertex labels, while keeping the tooling on
+// for future region authoring / map redesigns.
+const SHOW_REGION_POLYGONS = import.meta.env.DEV;
 
 // Winter map-overlay fade timings. The base map (`world-map.png`) stays fully
 // opaque at all times; we modulate the alpha of a second Sprite
