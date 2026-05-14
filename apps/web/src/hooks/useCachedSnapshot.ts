@@ -14,12 +14,19 @@ import { useEffect, useState } from 'react';
  * this hook — keeps it framework-agnostic and easy to unit-test.
  */
 
+// Scope the cache key per environment so dev and prod (served from the same
+// localhost origin during development) never share a localStorage slot.
+const ENV_SCOPE = (import.meta.env.VITE_CONVEX_URL as string | undefined) ?? 'no-backend';
 // Bump this on snapshot shape changes (Convex schema migrations).
-const CACHE_KEY = 'cw-snapshot-v1';
+const CACHE_KEY = `cw-snapshot-v1:${ENV_SCOPE}`;
 // Drop cache older than this — avoids surfacing wildly stale state.
 const MAX_CACHE_AGE_MS = 60 * 60 * 1000; // 1 hour
 
-type Cached<T> = { ts: number; data: T };
+// Version discriminant — increment when the cached payload shape changes so
+// stale entries from previous versions are silently dropped on read instead of
+// causing runtime errors or surfacing corrupt state.
+const PAYLOAD_VERSION = 1;
+type Cached<T> = { v: number; ts: number; data: T };
 
 export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
   const [cached, setCached] = useState<T | undefined>(() => {
@@ -28,6 +35,7 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
       if (!raw) return undefined;
       const parsed = JSON.parse(raw) as Cached<T>;
       if (!parsed || typeof parsed.ts !== 'number') return undefined;
+      if (parsed.v !== PAYLOAD_VERSION) return undefined;
       if (Date.now() - parsed.ts > MAX_CACHE_AGE_MS) return undefined;
       return parsed.data;
     } catch {
@@ -38,7 +46,7 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
   useEffect(() => {
     if (live === undefined) return;
     try {
-      const payload: Cached<T> = { ts: Date.now(), data: live };
+      const payload: Cached<T> = { v: PAYLOAD_VERSION, ts: Date.now(), data: live };
       localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
     } catch {
       // quota or private-mode — ignore
