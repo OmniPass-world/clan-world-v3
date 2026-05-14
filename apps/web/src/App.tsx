@@ -21,7 +21,7 @@ class CockpitErrorBoundary extends Component<{ children: ReactNode }, { hasError
           style={{
             background: '#0a0a0a',
             width: '100vw',
-            height: '100vh',
+            height: '100dvh',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -129,7 +129,7 @@ function MainApp() {
       style={{
         background: '#0a0a0a',
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',

@@ -74,7 +74,7 @@ if (!convexUrl && !isStandalonePath) {
     <main
       style={{
         background: '#0d1a0d',
-        minHeight: '100vh',
+        minHeight: '100dvh',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

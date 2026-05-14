@@ -230,7 +230,7 @@ export function OwnerEditor() {
   return (
     <main
       style={{
-        minHeight: '100vh',
+        minHeight: '100dvh',
         background: '#15120e',
         color: '#f2ead8',
         fontFamily: '"Inter", system-ui, sans-serif',

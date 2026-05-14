@@ -41,7 +41,8 @@ export function Cockpit() {
       style={{
         background: tokens.bg.void,
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
+        paddingBottom: 'env(safe-area-inset-bottom)',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
