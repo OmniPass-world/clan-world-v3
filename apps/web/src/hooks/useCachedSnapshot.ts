@@ -55,10 +55,12 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
     if (live === undefined) return;
     const now = Date.now();
     if (now - lastWriteTsRef.current >= WRITE_THROTTLE_MS) {
+      // Update timestamp BEFORE attempting the write so failed writes
+      // (private-mode / quota) are also throttled, not retried every tick.
+      lastWriteTsRef.current = now;
       try {
         const payload: Cached<T> = { v: PAYLOAD_VERSION, ts: now, data: live };
         localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
-        lastWriteTsRef.current = now;
       } catch {
         // quota or private-mode — ignore
       }
