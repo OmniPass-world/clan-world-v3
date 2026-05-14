@@ -102,6 +102,26 @@ function ConnectButton() {
   );
 }
 
+// Hardcoded danger-list for destructive diamond operations. Clicking "send tx (write)"
+// on any of these surfaces a native confirm() dialog before firing the wallet popup —
+// the dev-ui's `DEFAULT_DIAMOND` pre-populates the address input, so an admin connected
+// with the owner wallet could otherwise mis-click into an irreversible facet change.
+// Source: GH #281 (super-swarm finding from PR #272). Keep this list close to the
+// write handler so it stays visible during diamond changes.
+const DANGEROUS_FN_NAMES: ReadonlySet<string> = new Set([
+  'diamondCut',
+  'transferOwnership',
+  'initialize',
+]);
+const DANGEROUS_FN_PATTERNS: readonly RegExp[] = [
+  /^set.*Address$/,
+  /^upgrade.*/,
+];
+function isDangerousFn(name: string): boolean {
+  if (DANGEROUS_FN_NAMES.has(name)) return true;
+  return DANGEROUS_FN_PATTERNS.some((re) => re.test(name));
+}
+
 function defaultInputForType(t: string): string {
   if (t === 'address') return '';
   if (t === 'bool') return 'false';
@@ -173,7 +193,21 @@ function FunctionCard({ fn, diamond }: { fn: FnAbi; diamond: Address }) {
   const onWrite = () => {
     try {
       setReadError(null);
+      // Parse inputs FIRST so an invalid address/etc. surfaces as a normal error
+      // instead of being suppressed by the confirm() dialog.
       const args = fn.inputs.map((i, idx) => parseInputValue(i.type, inputs[idx]));
+      // Destructive-op guardrail: native confirm() before firing the wallet popup.
+      // See DANGEROUS_FN_NAMES / DANGEROUS_FN_PATTERNS above. GH #281.
+      if (isDangerousFn(fn.name)) {
+        const msg =
+          `This is a destructive operation that will modify the diamond.\n\n` +
+          `Function: ${fn.name}\n` +
+          `Diamond: ${diamond}\n\n` +
+          `Are you sure?`;
+        if (!window.confirm(msg)) {
+          return;
+        }
+      }
       writeContract.writeContract({
         address: diamond,
         abi: COMBINED_ABI,
