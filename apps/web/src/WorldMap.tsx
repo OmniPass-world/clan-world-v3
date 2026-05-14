@@ -1730,12 +1730,19 @@ export function WorldMap() {
           const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
           if (raw) {
             const saved = JSON.parse(raw) as { cx: number; cy: number; scale: number };
+            // Bounds-clamp: a poisoned `cw-viewport-v1` entry (e.g. cx=99999,
+            // cy=99999 from a since-shrunk world or storage corruption) would
+            // restore the viewport to an off-world center and the user would
+            // see a mostly-blank canvas. Reject out-of-range coords entirely
+            // and fall through to the fit-cover default just below.
             if (
               Number.isFinite(saved.cx) &&
               Number.isFinite(saved.cy) &&
               Number.isFinite(saved.scale) &&
               saved.scale >= initialFitScale &&
-              saved.scale <= initialFitScale * 4
+              saved.scale <= initialFitScale * 4 &&
+              saved.cx >= 0 && saved.cx <= WORLD_WIDTH &&
+              saved.cy >= 0 && saved.cy <= WORLD_HEIGHT
             ) {
               viewport.setZoom(saved.scale, true);
               viewport.moveCenter(saved.cx, saved.cy);
