@@ -14,6 +14,7 @@ import {
   PAYLOAD_VERSION as SNAPSHOT_PAYLOAD_VERSION,
   MAX_CACHE_AGE_MS as SNAPSHOT_MAX_AGE_MS,
 } from '../hooks/snapshotCacheConstants';
+import { isValidSnapshotShape } from '../hooks/useCachedSnapshot';
 
 /**
  * MapGhostLayer — static HTML+CSS "ghost" of the world map rendered ABOVE the
@@ -99,6 +100,10 @@ function readCachedClans(): GhostClan[] {
     if (!parsed || typeof parsed.ts !== 'number') return [];
     if (parsed.v !== SNAPSHOT_PAYLOAD_VERSION) return [];
     if (Date.now() - parsed.ts > SNAPSHOT_MAX_AGE_MS) return [];
+    // Apply the same inner-shape guard `useCachedSnapshot` uses, so a payload
+    // that the hook would reject (e.g. schema migration without PAYLOAD_VERSION
+    // bump) is also rejected here. Keeps the two cache readers in lockstep.
+    if (!isValidSnapshotShape(parsed.data)) return [];
     const clans = parsed.data?.clans;
     if (!Array.isArray(clans) || clans.length === 0) return [];
     const out: GhostClan[] = [];
@@ -164,12 +169,19 @@ function readViewportState(screenW: number, screenH: number): ViewportState {
     const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
     if (!raw) return fallback;
     const saved = JSON.parse(raw) as Partial<ViewportState>;
+    // Bounds-clamp: a poisoned saved center (cx=99999, cy=99999) would render
+    // the ghost off-world while the canvas independently does the same — the
+    // user sees a persisted blank-screen state. Reject out-of-range coords
+    // and fall through to fit-cover so the ghost matches the canvas's own
+    // post-clamp behavior (WorldMap.tsx L1730-1750).
     if (
       typeof saved.cx === 'number' && Number.isFinite(saved.cx) &&
       typeof saved.cy === 'number' && Number.isFinite(saved.cy) &&
       typeof saved.scale === 'number' && Number.isFinite(saved.scale) &&
       saved.scale >= fitScale &&
-      saved.scale <= fitScale * 4
+      saved.scale <= fitScale * 4 &&
+      saved.cx >= 0 && saved.cx <= MAP_WIDTH &&
+      saved.cy >= 0 && saved.cy <= MAP_HEIGHT
     ) {
       return { cx: saved.cx, cy: saved.cy, scale: saved.scale };
     }
