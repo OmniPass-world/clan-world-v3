@@ -177,6 +177,7 @@ const DANGEROUS_FN_NAMES: ReadonlySet<string> = new Set([
   'diamondCut',
   'transferOwnership',
   'seedPools',
+  'initialize',
 ]);
 const DANGEROUS_FN_PATTERNS: readonly RegExp[] = [
   /^init([A-Z]|$)/,
