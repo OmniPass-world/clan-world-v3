@@ -108,12 +108,19 @@ function ConnectButton() {
 // with the owner wallet could otherwise mis-click into an irreversible facet change.
 // Source: GH #281 (super-swarm finding from PR #272). Keep this list close to the
 // write handler so it stays visible during diamond changes.
+//
+// `/^init.*/` (broader than the literal `initialize`) covers ABI surfaces like
+// `initTreasury(...)` — one-shot setup functions that are as destructive as
+// `initialize` if re-fired. `seedPools` is the other current one-shot setup write.
+// Confirmed against packages/contracts/abi/IClanWorld.json on 2026-05-14 after a
+// codex tier-2 finding flagged both as unguarded.
 const DANGEROUS_FN_NAMES: ReadonlySet<string> = new Set([
   'diamondCut',
   'transferOwnership',
-  'initialize',
+  'seedPools',
 ]);
 const DANGEROUS_FN_PATTERNS: readonly RegExp[] = [
+  /^init.*/,
   /^set.*Address$/,
   /^upgrade.*/,
 ];
