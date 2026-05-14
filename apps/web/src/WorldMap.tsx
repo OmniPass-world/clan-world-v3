@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
+import { useCachedSnapshot } from './hooks/useCachedSnapshot';
 import { Application, Assets, BlurFilter, ColorMatrixFilter, Container, Graphics, Rectangle, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { useAgentLogs, type AgentLog } from './useAgentLogs';
@@ -1322,7 +1323,15 @@ export function WorldMap() {
   const [selectedClanId, setSelectedClanId] = useState<string | null>(null);
 
   const logs = useAgentLogs();
-  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  const liveSnapshot = useQuery(api.getSnapshot.getSnapshot);
+  // Cache the snapshot in localStorage so iOS Safari (and other browsers that
+  // pause background tabs) can render the last-known world state instantly on
+  // PWA return — instead of flashing the "no chain data yet" placeholder
+  // while Convex's websocket reconnects.
+  const snapshot = useCachedSnapshot(liveSnapshot);
+  // Grace period before showing the "no chain data yet" placeholder — see the
+  // useEffect a few hooks below for the 5s debounce.
+  const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
   const rawChainEvents = useQuery(api.events.getRecentChainEvents) as ChainEvent[] | undefined;
 
   // Derived live tick counter — the worldSnapshot.tick field is currently
@@ -1371,6 +1380,23 @@ export function WorldMap() {
     if (typeof rawTick === 'number' && Number.isFinite(rawTick)) {
       tickClockRef.current = { tick: rawTick, seenAtMs: Date.now() };
     }
+  }, [snapshot]);
+
+  // 5-second grace period before showing the "no chain data yet" placeholder.
+  // If chain data is present, hide immediately. If it's empty, wait 5s before
+  // flipping the placeholder on — so fast Convex reconnects (e.g. iOS Safari
+  // PWA returns) never reveal the bare-terrain overlay. Combined with the
+  // localStorage cache in useCachedSnapshot above, most reconnects render the
+  // last-known state immediately and never trip this timer at all.
+  useEffect(() => {
+    if (DEMO_MODE) return;
+    const hasClans = !!snapshot?.clans && snapshot.clans.length > 0;
+    if (hasClans) {
+      setShowNoChainDataPlaceholder(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setShowNoChainDataPlaceholder(true), 5000);
+    return () => window.clearTimeout(timer);
   }, [snapshot]);
 
   // Snapshot-diff: derive bandit resolution outcome the moment the chain transitions
@@ -5327,9 +5353,11 @@ export function WorldMap() {
       })()}
 
       {/* "No chain data yet" placeholder — shown when DEMO_MODE is off and no
-          live snapshot clans are present. Centered overlay so it reads clearly
-          on the bare terrain map. */}
-      {!DEMO_MODE && (!snapshot?.clans || snapshot.clans.length === 0) && (
+          snapshot clans are present, *after* a 5-second grace period managed
+          by `showNoChainDataPlaceholder` (see the useEffect declared with the
+          snapshot hooks above). Centered overlay so it reads clearly on the
+          bare terrain map. */}
+      {!DEMO_MODE && showNoChainDataPlaceholder && (
         <div
           data-testid="no-chain-data-placeholder"
           style={{
