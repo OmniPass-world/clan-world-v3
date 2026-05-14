@@ -4,24 +4,17 @@
  * freshly compiled artifact in `out/`. Pulls the target list from the shared
  * `scripts/abi-targets.mjs` so it cannot drift from `gen-contract-abi.mjs`.
  *
- * Usage: from `packages/contracts/`, run `pnpm check:abi`. Assumes `forge build`
- * has already been invoked by the calling script for the required sources.
+ * Usage: from `packages/contracts/`, run `pnpm check:abi`. Builds the canonical
+ * sources via forge, then JSON-diffs each artifact's `.abi` against the
+ * committed JSON entirely in Node — no shell interpolation of paths.
  */
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { abiTargets, repoRoot } from '../../../scripts/abi-targets.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const contractsRoot = path.resolve(__dirname, '..');
-
-const jqCheck = spawnSync('bash', ['-c', 'command -v jq >/dev/null 2>&1'], { stdio: 'ignore' });
-if (jqCheck.status !== 0) {
-  console.error('jq not installed; cannot check ABI');
-  process.exit(1);
-}
+const contractsRoot = path.join(repoRoot, 'packages/contracts');
 
 // Build every source that has a committed ABI target.
 const sources = abiTargets.map(({ sourcePath }) => sourcePath);
@@ -34,14 +27,28 @@ if (build.status !== 0) {
   process.exit(build.status ?? 1);
 }
 
+function readAbi(filePath, kind) {
+  const raw = fs.readFileSync(filePath, 'utf8');
+  const parsed = JSON.parse(raw);
+  if (!Array.isArray(parsed.abi)) {
+    throw new Error(`${kind} ${path.relative(repoRoot, filePath)} is missing an "abi" array`);
+  }
+  return parsed.abi;
+}
+
 let failed = false;
 
-for (const { artifactPath, targetPath } of abiTargets) {
+for (const { sourcePath, artifactPath, targetPath } of abiTargets) {
   const artifactRel = path.relative(repoRoot, artifactPath);
   const targetRel = path.relative(repoRoot, targetPath);
 
   if (!fs.existsSync(artifactPath)) {
-    console.error(`MISSING artifact: ${artifactRel} (run forge build)`);
+    console.error(
+      `MISSING artifact: ${artifactRel}\n` +
+        `  forge built but did not emit this artifact. Likely cause: ` +
+        `sourcePath="${sourcePath}" in scripts/abi-targets.mjs does not match the actual ` +
+        `Solidity source file. Verify the file exists under packages/contracts/.`,
+    );
     failed = true;
     continue;
   }
@@ -51,13 +58,20 @@ for (const { artifactPath, targetPath } of abiTargets) {
     continue;
   }
 
-  const diff = spawnSync(
-    'bash',
-    ['-c', `diff <(jq ".abi" "${artifactPath}") <(jq ".abi" "${targetPath}")`],
-    { stdio: 'inherit' },
-  );
+  let artifactAbi;
+  let committedAbi;
+  try {
+    artifactAbi = readAbi(artifactPath, 'artifact');
+    committedAbi = readAbi(targetPath, 'committed ABI');
+  } catch (err) {
+    console.error(err.message);
+    failed = true;
+    continue;
+  }
 
-  if (diff.status !== 0) {
+  const artifactJson = JSON.stringify(artifactAbi);
+  const committedJson = JSON.stringify(committedAbi);
+  if (artifactJson !== committedJson) {
     console.error(`ABI MISMATCH: ${targetRel} differs from ${artifactRel}`);
     console.error('Run `pnpm codegen` from the repo root to refresh committed ABIs.');
     failed = true;

@@ -10,7 +10,7 @@
     "./abi/OwnershipFacet.json": "./abi/OwnershipFacet.json"
   },
   "scripts": {
-    "build": "bash scripts/forge.sh build script/DeployDiamond.s.sol src/IClanWorld.sol src/IClanWorldLens.sol",
+    "build": "bash scripts/forge.sh build script/DeployDiamond.s.sol src/IClanWorld.sol src/IClanWorldLens.sol src/diamond/IDiamondLoupe.sol src/diamond/IDiamondCut.sol src/diamond/facets/OwnershipFacet.sol",
     "codegen": "node ../../scripts/gen-contract-abi.mjs --build",
     "gen:enums": "pnpm --dir ../.. gen:enums",
     "check:abi": "node scripts/check-contract-abi.mjs",
