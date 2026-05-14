@@ -203,12 +203,20 @@ export function MapGhostLayer({ pixiReady }: MapGhostLayerProps) {
   // inset: 0 inside the same canvasWrapRef container, so its bounding-box
   // equals the canvas's bounding-box.
   const rootRef = useRef<HTMLDivElement>(null);
-  // Init synchronously from window.innerWidth/Height so the first paint uses
-  // real screen dimensions instead of 0x0 (ResizeObserver fires post-paint).
-  const [dims, setDims] = useState<{ w: number; h: number }>(() => ({
-    w: typeof window !== 'undefined' ? (window.innerWidth || 1) : 1,
-    h: typeof window !== 'undefined' ? (window.innerHeight || 1) : 1,
-  }));
+  // Init synchronously from visualViewport (falling back to innerWidth/Height)
+  // so the first paint uses real screen dimensions instead of 0x0
+  // (ResizeObserver fires post-paint). On iOS Safari window.innerHeight
+  // returns the largest viewport (URL bar hidden); visualViewport.height
+  // gives the actual visible viewport, excluding URL bar and on-screen
+  // keyboard. Safari 13+ supports visualViewport; we fall back gracefully.
+  const [dims, setDims] = useState<{ w: number; h: number }>(() => {
+    if (typeof window === 'undefined') return { w: 1, h: 1 };
+    const vv = window.visualViewport;
+    return {
+      w: (vv?.width ?? window.innerWidth) || 1,
+      h: (vv?.height ?? window.innerHeight) || 1,
+    };
+  });
 
   useEffect(() => {
     const el = rootRef.current;
