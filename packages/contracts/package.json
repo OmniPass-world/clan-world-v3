@@ -10,10 +10,10 @@
     "./abi/OwnershipFacet.json": "./abi/OwnershipFacet.json"
   },
   "scripts": {
-    "build": "bash scripts/forge.sh build script/DeployDiamond.s.sol src/IClanWorld.sol src/IClanWorldLens.sol",
-    "codegen": "bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol src/IDiamondLoupe.sol src/IDiamondCut.sol src/OwnershipFacet.sol && node ../../scripts/gen-contract-abi.mjs",
+    "build": "bash scripts/forge.sh build script/DeployDiamond.s.sol src/IClanWorld.sol src/IClanWorldLens.sol src/diamond/IDiamondLoupe.sol src/diamond/IDiamondCut.sol src/diamond/facets/OwnershipFacet.sol",
+    "codegen": "node ../../scripts/gen-contract-abi.mjs --build",
     "gen:enums": "pnpm --dir ../.. gen:enums",
-    "check:abi": "bash -c 'command -v jq >/dev/null 2>&1 || { echo \"jq not installed; cannot check ABI\"; exit 1; }; bash scripts/forge.sh build src/IClanWorld.sol src/IClanWorldLens.sol && diff <(jq \".abi\" out/IClanWorld.sol/IClanWorld.json) <(jq \".abi\" abi/IClanWorld.json) && diff <(jq \".abi\" out/IClanWorldLens.sol/IClanWorldLens.json) <(jq \".abi\" abi/IClanWorldLens.json)'",
+    "check:abi": "node scripts/check-contract-abi.mjs",
     "check:sizes": "node scripts/check-contract-sizes.mjs",
     "test": "pnpm run check:abi && bash scripts/forge.sh test",
     "typecheck": "echo 'no TS in contracts package'",

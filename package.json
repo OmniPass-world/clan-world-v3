@@ -8,7 +8,7 @@
     "codegen": "pnpm gen:constants && turbo run codegen",
     "dev": "turbo run dev",
     "gen:chainclient-abi": "node scripts/gen-chainclient-abi.mjs",
-    "gen:contract-abi": "node scripts/gen-contract-abi.mjs",
+    "gen:contract-abi": "node scripts/gen-contract-abi.mjs --build",
     "gen:constants": "node scripts/gen-constants.mjs",
     "gen:enums": "node scripts/gen-enums.mjs",
     "check:abi": "pnpm --dir packages/contracts run check:abi && pnpm test:chainclient-abi",

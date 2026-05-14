@@ -43,6 +43,9 @@ pnpm --filter @clan-world/dev-ui build    # tsc + vite build
 | Env var | Default | Purpose |
 |---|---|---|
 | `VITE_DEFAULT_DIAMOND` | `0x14392f8276c6234064395e74f0741e26f1613c1e` | Pre-populates the diamond address input on load |
+| `VITE_WALLETCONNECT_PROJECT_ID` | _(unset — WC disabled)_ | WalletConnect Cloud project ID. When unset, the WalletConnect connector is skipped and only injected wallets (MetaMask/Rabby/etc.) are offered. Get one at <https://cloud.walletconnect.com>. WC project IDs aren't secrets, but use your own per-deployment to keep quota attribution clean. |
+
+Both vars are also listed in the root `.env.template` (`# --- dev-ui ---` section).
 
 ## Tech stack
 

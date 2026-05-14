@@ -3,8 +3,46 @@ import {
   CACHE_KEY,
   PAYLOAD_VERSION,
   MAX_CACHE_AGE_MS,
+  FRESHNESS_THRESHOLD_MS,
   type CachedSnapshot,
 } from './snapshotCacheConstants';
+
+/**
+ * Lightweight runtime check that a parsed cache payload's `data` field matches
+ * the shape the rest of the app expects from `getSnapshot`. We deliberately
+ * keep this thin: `tick` (number) + a `clans` array whose entries each have a
+ * string `id` and string `name`. That's enough to catch the major shape
+ * changes (field rename, table swap, schema-migration without `PAYLOAD_VERSION`
+ * bump) without becoming a maintenance burden as the snapshot grows new
+ * optional fields.
+ *
+ * On false, `useCachedSnapshot` returns `undefined` from its initializer —
+ * cache miss → the live Convex query takes over. Better to flash the "no chain
+ * data yet" placeholder than hydrate a malformed object and crash downstream
+ * `clan.foo` reads.
+ *
+ * Validates EVERY clan entry (not just the first) — the clans array is small
+ * (~5 entries in the current world) so the O(N) cost is trivial, and catches
+ * the case where a poisoned cache has a valid first entry but a malformed
+ * second that would crash downstream `clan.foo` loops.
+ *
+ * Exported so `MapGhostLayer`'s parallel cache read path can apply the same
+ * envelope check before iterating clans (kept in lockstep with this hook).
+ */
+export function isValidSnapshotShape(data: unknown): boolean {
+  if (data === null || typeof data !== 'object') return false;
+  const obj = data as Record<string, unknown>;
+  if (typeof obj.tick !== 'number') return false;
+  if (!Array.isArray(obj.clans)) return false;
+  for (let i = 0; i < obj.clans.length; i++) {
+    const c = obj.clans[i];
+    if (c === null || typeof c !== 'object') return false;
+    const clan = c as Record<string, unknown>;
+    if (typeof clan.id !== 'string') return false;
+    if (typeof clan.name !== 'string') return false;
+  }
+  return true;
+}
 
 /**
  * Snapshot cache for the WorldMap's Convex `getSnapshot` query.
@@ -22,6 +60,18 @@ import {
  * Cache key + payload version + max age live in `./snapshotCacheConstants`
  * because `MapGhostLayer.tsx` reads the same cache before PixiJS warms up
  * and the two MUST stay in lockstep on schema migrations.
+ *
+ * "Last known good" guard (issue #283 / PR #272 super-swarm):
+ * During a websocket reconnect or post-reset indexing window the live
+ * payload can briefly be `{ clans: [] }` even though the previously-cached
+ * payload had clans. Writing that transient empty payload through would
+ * (a) immediately flip the UI into "no clans" placeholder mode and
+ * (b) destroy the very cache that masks the NEXT reconnect gap. So when
+ * live has zero clans, cached has clans, and the cached payload is younger
+ * than `FRESHNESS_THRESHOLD_MS`, we keep the cached state and skip the
+ * write. Once the cache ages past the freshness window we yield to the
+ * live empty state — a real post-reset realm should not be resurrected
+ * indefinitely.
  */
 
 // Throttle localStorage writes — Convex emits a fresh snapshot every heartbeat
@@ -29,8 +79,50 @@ import {
 // can block the main thread on mobile Safari.
 const WRITE_THROTTLE_MS = 30 * 1000; // 30 seconds
 
-export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
-  const [cached, setCached] = useState<T | undefined>(() => {
+/**
+ * Duck-type check for "this snapshot has a clans array with at least one
+ * entry." Kept loose on purpose — the hook is generic over the snapshot
+ * shape, and the `.clans` property is the only field we need to reason
+ * about for the last-known-good guard. Anything without a clans array
+ * falls through to the normal write path (the guard simply doesn't fire).
+ */
+function snapshotHasClans(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const clans = (value as { clans?: unknown }).clans;
+  return Array.isArray(clans) && clans.length > 0;
+}
+
+/**
+ * Inverse of `snapshotHasClans` for "the snapshot definitively has zero
+ * clans" — i.e. the `.clans` property exists and is an empty array.
+ * Crucially this returns false for snapshots that don't carry `.clans`
+ * at all, so a snapshot shape without that field never trips the guard.
+ */
+function snapshotHasEmptyClans(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const clans = (value as { clans?: unknown }).clans;
+  return Array.isArray(clans) && clans.length === 0;
+}
+
+type CachedEntry<T> = { data: T; ts: number };
+
+/**
+ * The shape validator that runs on the cached `data` payload before the hook
+ * hydrates state with it. Defaults to `isValidSnapshotShape` because today's
+ * only caller hydrates `api.getSnapshot.getSnapshot`. Callers that wrap a
+ * different shape can pass their own predicate to override; pass `() => true`
+ * to opt out of inner-shape validation entirely (envelope checks still apply).
+ */
+export function useCachedSnapshot<T>(
+  live: T | undefined,
+  validate: (data: unknown) => boolean = isValidSnapshotShape,
+): T | undefined {
+  // Track the cached payload's original timestamp alongside the data so the
+  // last-known-good guard can reason about cache age without a separate
+  // localStorage re-read. The companion ref mirrors the latest committed
+  // value so the live-update useEffect can read it without taking a
+  // dependency on `cachedEntry` (which would cause re-render loops).
+  const [cachedEntry, setCachedEntry] = useState<CachedEntry<T> | undefined>(() => {
     try {
       const raw = localStorage.getItem(CACHE_KEY);
       if (!raw) return undefined;
@@ -38,18 +130,43 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
       if (!parsed || typeof parsed.ts !== 'number') return undefined;
       if (parsed.v !== PAYLOAD_VERSION) return undefined;
       if (Date.now() - parsed.ts > MAX_CACHE_AGE_MS) return undefined;
-      return parsed.data;
+      // Inner-shape guard — catches schema migrations that landed without a
+      // PAYLOAD_VERSION bump. Cache miss is safe; the live Convex query
+      // overwrites within a frame or two.
+      if (!validate(parsed.data)) return undefined;
+      return { data: parsed.data, ts: parsed.ts };
     } catch {
       return undefined;
     }
   });
+  const cachedEntryRef = useRef<CachedEntry<T> | undefined>(cachedEntry);
 
-  // Track last write timestamp across renders without triggering re-renders.
+  // Track last localStorage write timestamp across renders without
+  // triggering re-renders. Separate from cachedEntry.ts because the
+  // throttle is about write frequency, not cache age.
   const lastWriteTsRef = useRef<number>(0);
 
   useEffect(() => {
     if (live === undefined) return;
     const now = Date.now();
+
+    // Last-known-good guard. If live is an empty-clans payload, cached has
+    // clans, AND the cached payload is still inside the freshness window,
+    // treat the live empty as a transient reconnect artifact. We skip BOTH
+    // the localStorage write and the setState call — the existing cache
+    // stays exactly as-is (same data, same ts), so the freshness window
+    // continues to run from the original write, not from "now".
+    const currentCached = cachedEntryRef.current;
+    const lastKnownGoodGuardActive = (
+      snapshotHasEmptyClans(live)
+      && currentCached !== undefined
+      && snapshotHasClans(currentCached.data)
+      && now - currentCached.ts < FRESHNESS_THRESHOLD_MS
+    );
+    if (lastKnownGoodGuardActive) {
+      return;
+    }
+
     if (now - lastWriteTsRef.current >= WRITE_THROTTLE_MS) {
       // Update timestamp BEFORE attempting the write so failed writes
       // (private-mode / quota) are also throttled, not retried every tick.
@@ -61,8 +178,30 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
         // quota or private-mode — ignore
       }
     }
-    setCached(live);
+    const nextEntry: CachedEntry<T> = { data: live, ts: now };
+    cachedEntryRef.current = nextEntry;
+    setCachedEntry(nextEntry);
   }, [live]);
 
-  return live ?? cached;
+  // Return semantics:
+  //  - If live is undefined (typical reconnect gap), serve the cached data
+  //    so the UI renders instantly instead of flashing the "no chain data"
+  //    placeholder.
+  //  - If live is defined AND the last-known-good guard would fire for it,
+  //    ALSO serve the cached data — surfacing a transient `{ clans: [] }`
+  //    to the consumer would flip the WorldMap's `hasClans` derivation to
+  //    false and trip the 5-second placeholder timer (defeats the guard).
+  //    The guard re-evaluates from the live useEffect on every tick, so as
+  //    soon as live recovers (non-empty clans) we return live again.
+  //  - Otherwise return live verbatim.
+  if (live === undefined) return cachedEntry?.data;
+  if (
+    cachedEntry !== undefined
+    && snapshotHasEmptyClans(live)
+    && snapshotHasClans(cachedEntry.data)
+    && Date.now() - cachedEntry.ts < FRESHNESS_THRESHOLD_MS
+  ) {
+    return cachedEntry.data;
+  }
+  return live;
 }
