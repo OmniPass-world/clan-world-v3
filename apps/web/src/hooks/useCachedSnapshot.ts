@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * Snapshot cache for the WorldMap's Convex `getSnapshot` query.
@@ -28,6 +28,11 @@ const MAX_CACHE_AGE_MS = 60 * 60 * 1000; // 1 hour
 const PAYLOAD_VERSION = 1;
 type Cached<T> = { v: number; ts: number; data: T };
 
+// Throttle localStorage writes — Convex emits a fresh snapshot every heartbeat
+// tick so without throttling we'd JSON.stringify + setItem on every tick, which
+// can block the main thread on mobile Safari.
+const WRITE_THROTTLE_MS = 30 * 1000; // 30 seconds
+
 export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
   const [cached, setCached] = useState<T | undefined>(() => {
     try {
@@ -43,13 +48,20 @@ export function useCachedSnapshot<T>(live: T | undefined): T | undefined {
     }
   });
 
+  // Track last write timestamp across renders without triggering re-renders.
+  const lastWriteTsRef = useRef<number>(0);
+
   useEffect(() => {
     if (live === undefined) return;
-    try {
-      const payload: Cached<T> = { v: PAYLOAD_VERSION, ts: Date.now(), data: live };
-      localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
-    } catch {
-      // quota or private-mode — ignore
+    const now = Date.now();
+    if (now - lastWriteTsRef.current >= WRITE_THROTTLE_MS) {
+      try {
+        const payload: Cached<T> = { v: PAYLOAD_VERSION, ts: now, data: live };
+        localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+        lastWriteTsRef.current = now;
+      } catch {
+        // quota or private-mode — ignore
+      }
     }
     setCached(live);
   }, [live]);

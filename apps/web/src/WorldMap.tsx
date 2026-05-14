@@ -1329,6 +1329,10 @@ export function WorldMap() {
   // PWA return — instead of flashing the "no chain data yet" placeholder
   // while Convex's websocket reconnects.
   const snapshot = useCachedSnapshot(liveSnapshot);
+  // Stable boolean: true only when the snapshot contains at least one deployed
+  // clan. Used as the sole dep of the grace-period useEffect so we don't reset
+  // the 5s timer on every heartbeat tick (snapshot object changes every tick).
+  const hasClans = !!snapshot?.clans && snapshot.clans.length > 0;
   // Grace period before showing the "no chain data yet" placeholder — see the
   // useEffect a few hooks below for the 5s debounce.
   const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
@@ -1389,15 +1393,13 @@ export function WorldMap() {
   // localStorage cache in useCachedSnapshot above, most reconnects render the
   // last-known state immediately and never trip this timer at all.
   useEffect(() => {
-    if (DEMO_MODE) return;
-    const hasClans = !!snapshot?.clans && snapshot.clans.length > 0;
-    if (hasClans) {
+    if (DEMO_MODE || hasClans) {
       setShowNoChainDataPlaceholder(false);
       return;
     }
     const timer = window.setTimeout(() => setShowNoChainDataPlaceholder(true), 5000);
     return () => window.clearTimeout(timer);
-  }, [snapshot]);
+  }, [hasClans]);
 
   // Snapshot-diff: derive bandit resolution outcome the moment the chain transitions
   // out of Camped. See docs/planning/bandit-animation-impl-plan.md §"Snapshot diff
