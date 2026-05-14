@@ -220,7 +220,7 @@ const REGIONS: RegionDef[] = [
     nx: 280 / REF_W,
     ny: 245 / REF_H,
     color: 0x228822,
-    polygon: [[0, 0], [573, 0], [673, 165], [600, 355], [380, 500], [0, 555]],
+    polygon: [[0, 0], [573, 0], [523, 165], [475, 355], [330, 430], [185, 520], [10, 555]],
   },
   {
     id: 'mountains',
@@ -228,15 +228,15 @@ const REGIONS: RegionDef[] = [
     nx: 854 / REF_W,
     ny: 245 / REF_H,
     color: 0x888888,
-    polygon: [[687, 0], [1086, 0], [1086, 510], [880, 535], [700, 420], [634, 255], [607, 135]],
+    polygon: [[687, 0], [1086, 0], [1086, 535], [840, 555], [700, 420], [615, 270], [530, 190]],
   },
   {
     id: 'unicorn-town',
     name: 'Unicorn Town',
-    nx: 567 / REF_W,
+    nx: 482 / REF_W,
     ny: 500 / REF_H,
     color: 0xcc88cc,
-    polygon: [[533, 375], [681, 375], [814, 500], [714, 585], [547, 585], [474, 520]],
+    polygon: [[498, 395], [596, 395], [679, 453], [679, 543], [629, 585], [462, 585], [389, 520], [429, 421]],
   },
   {
     id: 'west-farms',
@@ -244,7 +244,7 @@ const REGIONS: RegionDef[] = [
     nx: 280 / REF_W,
     ny: 760 / REF_H,
     color: 0xaacc44,
-    polygon: [[0, 555], [480, 520], [607, 760], [440, 960], [0, 985]],
+    polygon: [[0, 595], [280, 550], [420, 600], [500, 700], [500, 880], [440, 960], [200, 940], [10, 840]],
   },
   {
     id: 'east-farms',
@@ -252,7 +252,7 @@ const REGIONS: RegionDef[] = [
     nx: 834 / REF_W,
     ny: 760 / REF_H,
     color: 0x88bb33,
-    polygon: [[674, 625], [1086, 570], [1086, 985], [674, 970], [527, 785]],
+    polygon: [[690, 580], [850, 625], [1086, 650], [1086, 905], [900, 970], [630, 970], [570, 925], [530, 750], [580, 670]],
   },
   {
     id: 'west-docks',
@@ -260,7 +260,7 @@ const REGIONS: RegionDef[] = [
     nx: 293 / REF_W,
     ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[140, 985], [487, 985], [520, 1130], [347, 1270], [127, 1235], [73, 1085]],
+    polygon: [[155, 995], [400, 1030], [420, 1125], [390, 1160], [460, 1200], [430, 1270], [300, 1280], [150, 1270], [200, 1200], [145, 1150], [60, 940], [100, 930]],
   },
   {
     id: 'east-docks',
@@ -268,15 +268,15 @@ const REGIONS: RegionDef[] = [
     nx: 874 / REF_W,
     ny: 1115 / REF_H,
     color: 0x336688,
-    polygon: [[747, 985], [1086, 985], [1086, 1235], [867, 1260], [720, 1135]],
+    polygon: [[720, 1020], [990, 1010], [1000, 1050], [910, 1100], [980, 1170], [980, 1210], [880, 1300], [800, 1240], [680, 1280], [650, 1210], [670, 1130]],
   },
   {
     id: 'deep-sea',
     name: 'Deep Sea',
-    nx: 667 / REF_W,
+    nx: 540 / REF_W,
     ny: 1095 / REF_H,
     color: 0x1144aa,
-    polygon: [[540, 1015], [714, 1015], [774, 1145], [667, 1230], [520, 1165]],
+    polygon: [[415, 1035], [587, 1015], [670, 1040], [645, 1130], [540, 1230], [480, 1130], [410, 1080]],
   },
 ];
 
@@ -1146,6 +1146,10 @@ export function WorldMap() {
      *  Indexes align with REGIONS[]. Each is a Graphics on terrainBackground
      *  (above bg image, below clanZones/sprites). Cleared + redrawn per layout. */
     regionPolygons: Graphics[];
+    /** Per-region per-vertex Text labels showing polygon coords (visible when
+     *  SHOW_REGION_POLYGONS). Outer index aligns with REGIONS[], inner index
+     *  aligns with REGIONS[i].polygon[v]. Used for polygon-tuning UAT. */
+    regionVertexLabels: Text[][];
     /** Big translucent zone halos per CLAN at their home region (breathing, hackathon-visual). */
     clanZones: { gfx: Graphics; clan: ClanDef }[];
     /** Per-clan base sprite (96x96 PNG: tower / longhouse / dock keep). */
@@ -1178,6 +1182,7 @@ export function WorldMap() {
     regions: [],
     regionLabels: [],
     regionPolygons: [],
+    regionVertexLabels: [],
     clanZones: [],
     bases: [],
     levelBadges: [],
@@ -1685,6 +1690,41 @@ export function WorldMap() {
         viewport.setZoom(initialFitScale, true);
         viewport.moveCenter(WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
         viewportRef.current = viewport;
+
+        // Persist + restore pan/zoom so iOS Safari tab eviction (or HMR full
+        // reload during dev) doesn't lose the user's current view. Keyed in
+        // sessionStorage so it's tab-scoped — closing the tab resets to fit.
+        const VIEWPORT_STORAGE_KEY = 'cw-viewport-v1';
+        try {
+          const raw = sessionStorage.getItem(VIEWPORT_STORAGE_KEY);
+          if (raw) {
+            const saved = JSON.parse(raw) as { cx: number; cy: number; scale: number };
+            if (
+              Number.isFinite(saved.cx) &&
+              Number.isFinite(saved.cy) &&
+              Number.isFinite(saved.scale) &&
+              saved.scale >= initialFitScale &&
+              saved.scale <= initialFitScale * 4
+            ) {
+              viewport.setZoom(saved.scale, true);
+              viewport.moveCenter(saved.cx, saved.cy);
+            }
+          }
+        } catch {
+          // malformed state or storage disabled — fall back to fit-cover default
+        }
+        const saveViewportState = () => {
+          try {
+            sessionStorage.setItem(
+              VIEWPORT_STORAGE_KEY,
+              JSON.stringify({ cx: viewport.center.x, cy: viewport.center.y, scale: viewport.scale.x }),
+            );
+          } catch {
+            // quota / private-mode — swallow
+          }
+        };
+        viewport.on('moved', saveViewportState);
+        viewport.on('zoomed', saveViewportState);
 
         const layers = createWorldLayers();
         const backgroundHitArea = new Graphics();
@@ -2235,6 +2275,7 @@ export function WorldMap() {
         regions: [],
         regionLabels: [],
         regionPolygons: [],
+        regionVertexLabels: [],
         clanZones: [],
         bases: [],
         levelBadges: [],
@@ -3981,6 +4022,27 @@ export function WorldMap() {
       const g = new Graphics();
       layers.terrainBackground.addChild(g);
       drawn.regionPolygons.push(g);
+
+      // One Text per polygon vertex, showing its (x,y) polygon coords. Added to
+      // terrainBackground AFTER the Graphics so labels render on top of the fill.
+      const vertexLabels: Text[] = [];
+      if (SHOW_REGION_POLYGONS) {
+        for (const [px, py] of REGIONS[i].polygon) {
+          const t = new Text({
+            text: `(${px},${py})`,
+            style: {
+              fill: 0xffffff,
+              fontSize: 10,
+              fontFamily: 'monospace',
+              stroke: { color: 0x000000, width: 3 },
+            },
+          });
+          t.anchor.set(0.5, 0.5);
+          layers.terrainBackground.addChild(t);
+          vertexLabels.push(t);
+        }
+      }
+      drawn.regionVertexLabels.push(vertexLabels);
     }
 
     for (const region of REGIONS) {
@@ -4146,6 +4208,19 @@ export function WorldMap() {
       g.fill({ color: region.color, alpha: 0.30 });
       g.poly(pts);
       g.stroke({ color: region.color, width: 2, alpha: 0.85 });
+
+      // Position each vertex label at its projected screen coord. Polygon
+      // dimensions can change (region.polygon mutated during tuning), so we
+      // tolerate label-array length drift by skipping out-of-range entries.
+      const vertexLabels = drawn.regionVertexLabels[i] ?? [];
+      region.polygon.forEach(([px, py], v) => {
+        const t = vertexLabels[v];
+        if (!t) return;
+        t.text = `(${px},${py})`;
+        t.x = projX(px / REF_W);
+        t.y = projY(py / REF_H);
+        t.style.fontSize = Math.max(8, Math.round(10 * cappedSizeScale));
+      });
     });
 
     // Region dots — small, just to mark non-clan locations (mountains, deep sea, town).
