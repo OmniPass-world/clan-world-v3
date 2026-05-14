@@ -67,13 +67,37 @@ function dedupAbi(abi: readonly unknown[]): FnAbi[] {
 
 const ALL_FUNCTIONS = dedupAbi(COMBINED_ABI as unknown as readonly unknown[]);
 
+// Pass-through dedup for errors + events. Same overlap risk as functions
+// (DiamondNotOwner from OwnershipFacet, etc. could repeat across interfaces).
+// Keying by `${name}(${inputs.map(i => i.type).join(',')})` matches the function
+// dedup convention and gives viem enough to dispatch by selector.
+function dedupErrorsAndEvents(abi: readonly unknown[]): unknown[] {
+  const seenErrors = new Set<string>();
+  const seenEvents = new Set<string>();
+  const out: unknown[] = [];
+  for (const item of abi) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as { type?: string; name?: string; inputs?: { type: string }[] };
+    if (obj.type !== 'error' && obj.type !== 'event') continue;
+    const sig = `${obj.name}(${(obj.inputs ?? []).map((i) => i.type).join(',')})`;
+    const seen = obj.type === 'error' ? seenErrors : seenEvents;
+    if (seen.has(sig)) continue;
+    seen.add(sig);
+    out.push(item);
+  }
+  return out;
+}
+
+const ALL_ERRORS_AND_EVENTS = dedupErrorsAndEvents(COMBINED_ABI as unknown as readonly unknown[]);
+
 // Deduped ABI for encode/write paths. The raw COMBINED_ABI concatenates four source
 // ABIs and can carry duplicate selectors (e.g. owner(), facets() across overlapping
 // interface fragments). Passing the raw concatenation to viem's encodeFunctionData /
 // writeContract risks AbiFunctionNameNotFoundError or non-deterministic selection on
-// collisions. ALL_FUNCTIONS is already deduped for display — reuse it as the source
-// of truth for the wire path too.
-const DEDUPED_ABI = ALL_FUNCTIONS as unknown as Abi;
+// collisions. Reuse the already-deduped function list AND keep deduped errors+events
+// so viem can decode custom Solidity errors (e.g. `DiamondNotOwner(address)`) on revert
+// — without this, users see a generic "execution reverted" instead of the named error.
+const DEDUPED_ABI = [...ALL_FUNCTIONS, ...ALL_ERRORS_AND_EVENTS] as unknown as Abi;
 
 function classifyMutability(fn: FnAbi): 'read' | 'write' {
   if (fn.stateMutability === 'view' || fn.stateMutability === 'pure') return 'read';
@@ -231,9 +255,9 @@ function parseInputValue(input: AbiParameter, raw: string): unknown {
     }
 
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      throw new Error(
-        `tuple ${input.name || ''}: expected object, got ${Array.isArray(parsed) ? 'array' : typeof parsed}`,
-      );
+      const got =
+        parsed === null ? 'null' : Array.isArray(parsed) ? 'array' : typeof parsed;
+      throw new Error(`tuple ${input.name || ''}: expected object, got ${got}`);
     }
     const obj = parsed as Record<string, unknown>;
     const result: Record<string, unknown> = {};
