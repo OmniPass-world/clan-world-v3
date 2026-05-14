@@ -168,7 +168,7 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     // hydration path regresses (wrong key, schema mismatch, validator
     // rejecting a valid payload), the shell renders but no <img> per
     // clan does — this catches that.
-    const ironBase = page.getByTestId('map-ghost-base-clan-iron');
+    const ironBase = page.getByTestId('map-ghost-base-1');
     await expect(ironBase).toBeVisible({ timeout: 2000 });
 
     // While Pixi is still warming up, the ghost stays at opacity:1 (the inline
@@ -247,7 +247,7 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     // shell renders even with an empty cache, so we need the base sprite
     // assertion to prove the cache was actually read into the ghost layer.
     await expect(page.getByTestId('map-ghost-layer')).toBeVisible({ timeout: 2000 });
-    await expect(page.getByTestId('map-ghost-base-clan-iron')).toBeVisible({ timeout: 2000 });
+    await expect(page.getByTestId('map-ghost-base-1')).toBeVisible({ timeout: 2000 });
 
     const SAMPLES = 8;
     const STEP_MS = 500; // 8 * 500 = 4000ms total
