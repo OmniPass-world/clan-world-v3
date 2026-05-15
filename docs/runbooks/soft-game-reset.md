@@ -24,6 +24,16 @@ Use the **full** reset (`docs/runbooks/full-game-reset.md`) when ANY of the foll
 
 Run these steps **in this order**. Skipping or reordering the pause/heartbeat steps is what causes most failed soft-resets.
 
+### Env setup (run once at the start of the procedure)
+
+These defaults let the rest of the runbook stay portable across hosts. Override any of them in your shell before running the commands below if your layout differs.
+
+```bash
+export CLAN_WORLD_REPO="${CLAN_WORLD_REPO:-$HOME/code/clan-world/clan-world-game}"
+export ELDER_RUNTIME_ROOT="${ELDER_RUNTIME_ROOT:-$HOME/clan-world}"
+export PATH="$HOME/.foundry/bin:$HOME/bin:$PATH"   # gives access to cast/forge + clanworld-heartbeat-with-finalize
+```
+
 ## 1. Stop the off-chain heartbeat loop
 
 The heartbeat loop calls `heartbeat()` every ~5s. While running, it consumes resources (starvation, bandit attacks, cold damage) on every tick. Revives + injects that complete during a heartbeat window will be eaten before you can verify them.
@@ -53,19 +63,30 @@ This prevents `heartbeat()` from running — so even if the off-chain loop is st
 
 ## 3. Revive + inject per clan
 
+> **Wei warning — read before running `injectClanResources`.**
+> All six resource amounts are `uint256` values **in wei** (1 token = 10^18 wei). Passing a raw integer like `100` results in 100 wei = 1e-16 tokens, i.e. effectively zero balance. To inject "100 wheat" you must pass `100000000000000000000` (`100e18`). Use `cast to-wei <amount> ether` to compute the scaled value safely instead of hand-counting zeros.
+
 For each clan ID (typically 1..4):
 
 ```bash
+# Compute wei-scaled amounts ONCE up front. Adjust the integer values to taste.
+WOOD_WEI=$(cast to-wei 0 ether)
+IRON_WEI=$(cast to-wei 0 ether)
+WHEAT_WEI=$(cast to-wei 100 ether)   # = 100000000000000000000
+FISH_WEI=$(cast to-wei 0 ether)
+GOLD_WEI=$(cast to-wei 0 ether)
+BLUEPRINT_WEI=$(cast to-wei 0 ether)
+
 for clan in 1 2 3 4; do
   cast send "$DIAMOND" "reviveDeadClansmen(uint32)" "$clan" \
     --rpc-url "$RPC" --private-key "$DEPLOYER_KEY"
   cast send "$DIAMOND" "injectClanResources(uint32,uint256,uint256,uint256,uint256,uint256,uint256)" \
-    "$clan" <wood> <iron> <wheat> <fish> <gold> <blueprint> \
+    "$clan" "$WOOD_WEI" "$IRON_WEI" "$WHEAT_WEI" "$FISH_WEI" "$GOLD_WEI" "$BLUEPRINT_WEI" \
     --rpc-url "$RPC" --private-key "$DEPLOYER_KEY"
 done
 ```
 
-**Argument order matters:** `(clanId, wood, iron, wheat, fish, gold, blueprint)` — all uint256, all raw integer counts (NOT e18-scaled).
+**Argument order matters:** `(clanId, wood, iron, wheat, fish, gold, blueprint)` — `clanId` is `uint32`, resources are `uint256`, all in wei (10^18 base units). 1 token = 10^18 wei; a raw integer like `100` is 1e-16 tokens, not 100 tokens.
 
 The functions are owner-gated. Pre-check the deployer key matches the diamond owner: `cast call "$DIAMOND" "owner()(address)" --rpc-url "$RPC"` should equal `cast wallet address $(cat ~/.secrets/clanworld-v3-deployer.key)`.
 
@@ -128,23 +149,25 @@ cast call "$DIAMOND" "isWorldPaused()(bool)" --rpc-url "$RPC"
 
 ## 7. Restart off-chain processes
 
+These commands rely on the env-setup block at the top of the runbook (`CLAN_WORLD_REPO`, `ELDER_RUNTIME_ROOT`, and `~/bin` on `PATH`). Re-export them in this shell if you've started a new session.
+
 ```bash
-# Heartbeat
+# Heartbeat — runs from the repo root so it picks up .env.local
 tmux new-session -d -s clanworld-heartbeat \
-  -c ~/code/clan-world/clan-world-game \
-  ~/bin/clanworld-heartbeat-with-finalize
+  -c "$CLAN_WORLD_REPO" \
+  clanworld-heartbeat-with-finalize
 
 # Elder runner v2 (tick-driven, Convex polling)
 # Skip if already running: pgrep -f clanworld-elder-runner-v2
 tmux new-session -d -s clanworld-elder-runner \
-  -c ~ \
-  ~/bin/clanworld-elder-runner-v2
+  -c "$HOME" \
+  clanworld-elder-runner-v2
 
 # Elders themselves should already be in tmux (elder-1..4).
 # If they're stuck on "Dead. Holding." stale state, restart each:
 for n in 1 2 3 4; do
   tmux kill-session -t "elder-$n" 2>/dev/null
-  tmux new-session -d -s "elder-$n" -c ~/clan-world/elder-$n "bash run.sh"
+  tmux new-session -d -s "elder-$n" -c "$ELDER_RUNTIME_ROOT/elder-$n" "bash run.sh"
 done
 ```
 
