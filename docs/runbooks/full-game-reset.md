@@ -2,6 +2,8 @@
 
 Use this when we want a totally fresh live realm: new Base Sepolia diamond, backup diamond, empty Convex state, regenerated contract artifacts, restarted heartbeat/runner/Elder sessions, and a fresh frontend deploy.
 
+> **Considering a less invasive reset?** If the diamond ABI hasn't changed and you only need to revive dead clansmen + restock vaults mid-season, use `docs/runbooks/soft-game-reset.md` instead. That's faster and preserves clan IDs / owner addresses / season number.
+
 This is the "do the whole reset now" checklist. For deeper setup details, see:
 
 - `docs/runbooks/fresh-vps-bootstrap.md`
