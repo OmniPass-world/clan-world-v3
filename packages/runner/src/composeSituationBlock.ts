@@ -6,7 +6,7 @@ export interface ComposeArgs {
   tick: number;
 }
 
-export const CONTEXT_RESET_INTERVAL_TICKS = 10;
+export const CONTEXT_RESET_INTERVAL_TICKS = 50;
 
 export function isContextResetWarningTick(tick: number): boolean {
   return tick % CONTEXT_RESET_INTERVAL_TICKS === CONTEXT_RESET_INTERVAL_TICKS - 1;
@@ -32,8 +32,9 @@ export function isRichBriefingTick(tick: number): boolean {
  *
  * Stable instructions live in the Elder runtime's CLAUDE.md/AGENTS.md. The
  * runner only nudges the live session when a tick starts. Two exceptions:
- *   - context-reset warning + final ticks (T9, T10 of each cycle)
- *   - rich briefing on the first tick after reset (T1, T11, T21, ...)
+ *   - context-reset warning + final ticks (T49, T50 of each cycle for the
+ *     50-tick interval — generally T(N-1), TN where N == CONTEXT_RESET_INTERVAL_TICKS)
+ *   - rich briefing on the first tick after reset (T1, T51, T101, ...)
  */
 export function composeSituationBlock(args: ComposeArgs): string {
   const lines: string[] = [];
