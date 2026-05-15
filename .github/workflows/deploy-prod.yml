@@ -38,6 +38,9 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_WEB }}
+          # Stamp the build with the release tag for the VersionBadge overlay.
+          # Surfaces stale-build regressions during UAT (issue #312).
+          VITE_APP_VERSION: ${{ github.ref_name }}
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy (production)
         working-directory: apps/web
@@ -70,6 +73,9 @@ jobs:
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID_LANDING }}
+          # Stamp the build with the release tag (parity with apps/web; safe
+          # no-op if landing doesn't read VITE_APP_VERSION). Issue #312.
+          VITE_APP_VERSION: ${{ github.ref_name }}
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy (production)
         working-directory: apps/landing

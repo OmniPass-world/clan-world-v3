@@ -92,6 +92,13 @@ function mapBgPreloadPlugin(): Plugin {
   };
 }
 
+// VITE_APP_VERSION: stamped at build time from the GitHub release tag (set by
+// `.github/workflows/deploy-prod.yml` to `${{ github.ref_name }}`). The
+// VersionBadge overlay displays this so deployed builds are visibly tagged
+// and stale-deploy regressions are obvious during UAT. Locally we fall back
+// to 'dev' so the badge is never empty. See issue #312.
+const APP_VERSION = process.env.VITE_APP_VERSION ?? 'dev';
+
 // envDir: load .env.local from the monorepo root, not the web app folder.
 // .env.local lives at <repo-root>/.env.local and is shared with server/agents.
 // Without this, VITE_* values are undefined at build time and the prod bundle
@@ -99,6 +106,9 @@ function mapBgPreloadPlugin(): Plugin {
 export default defineConfig({
   plugins: [react(), mapBgPreloadPlugin()],
   envDir: path.resolve(__dirname, '../..'),
+  define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(APP_VERSION),
+  },
   server: {
     port: DEFAULT_PORT,
     host: '127.0.0.1',
