@@ -86,7 +86,7 @@ for clan in 1 2 3 4; do
 done
 ```
 
-**Argument order matters:** `(clanId, wood, iron, wheat, fish, gold, blueprint)` — all `uint256`, all in wei (10^18 base units). 1 token = 10^18 wei; a raw integer like `100` is 1e-16 tokens, not 100 tokens.
+**Argument order matters:** `(clanId, wood, iron, wheat, fish, gold, blueprint)` — `clanId` is `uint32`, resources are `uint256`, all in wei (10^18 base units). 1 token = 10^18 wei; a raw integer like `100` is 1e-16 tokens, not 100 tokens.
 
 The functions are owner-gated. Pre-check the deployer key matches the diamond owner: `cast call "$DIAMOND" "owner()(address)" --rpc-url "$RPC"` should equal `cast wallet address $(cat ~/.secrets/clanworld-v3-deployer.key)`.
 
