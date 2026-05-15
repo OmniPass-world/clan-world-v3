@@ -2752,7 +2752,7 @@ export function WorldMap() {
       halo = makeHaloGraphics();
       container.addChildAt(halo, 0);
     }
-    applyDeadVisualState(body, isDead);
+    applyDeadVisualState(body, isDead, clanId);
     const carry = makeCarryIndicator();
     carry.container.y = -24;
     container.addChild(carry.container);
@@ -2826,9 +2826,31 @@ export function WorldMap() {
    * For the inverse transition (dead→alive), use applyAliveVisualState — it
    * restores the feet-anchor (0.5, 0.82) and clears tint/rotation/alpha.
    */
-  function applyDeadVisualState(body: Sprite | Graphics | null, isDead: boolean) {
+  function applyDeadVisualState(body: Sprite | Graphics | null, isDead: boolean, clanId?: string) {
     if (!body) return;
     if (isDead) {
+      // The walk-sheet PNGs ship as RGB (no alpha channel) so tinting one to
+      // 0x808080 renders the entire 280×280 frame rect as a solid grey
+      // rectangle instead of just the figure silhouette. The legacy single-
+      // PNG sprites are RGBA with proper transparency — swap to one for the
+      // dead pose so the tint darkens the silhouette only. A corpse never
+      // animates so the walk-sheet's only advantage (frame cycling) is
+      // moot here.
+      if (clanId && 'texture' in body) {
+        const legacyTex = clansmanTextureCache[clanId];
+        if (legacyTex && (body as Sprite).texture !== legacyTex) {
+          const sprite = body as Sprite;
+          sprite.texture = legacyTex;
+          // Re-establish target size against the new texture — sprite.height
+          // = 34 puts scale.y = 34 / texture.height; swapping texture
+          // mid-flight without this leaves scale at the walk-sheet ratio
+          // (~34/280 = 0.12) applied to the 64-px legacy texture, shrinking
+          // the corpse to ~8px tall.
+          const targetH = 34;
+          sprite.height = targetH;
+          sprite.width = sprite.texture.width * (targetH / sprite.texture.height);
+        }
+      }
       // Anchor BEFORE rotation so the 90° flip pivots around the body
       // center, not the feet. Graphics fallback (circle drawn at origin)
       // has no .anchor — guard with `'anchor' in body`.
@@ -2857,8 +2879,29 @@ export function WorldMap() {
    * Note: the caller is responsible for restoring `halo.visible = true` on
    * the marker container — halo lives at marker level, not on `body`.
    */
-  function applyAliveVisualState(body: Sprite | Graphics | null) {
+  function applyAliveVisualState(body: Sprite | Graphics | null, spriteSheetId?: string) {
     if (!body) return;
+    // Symmetric inverse of applyDeadVisualState's texture swap: if the body
+    // currently shows the legacy single-PNG (left over from dead state) but
+    // a walk-sheet frame is available, restore it here so the revived
+    // clansman picks up the animation cycle again. `advanceClansmanAnimation`
+    // re-assigns sprite.texture per tick once it sees motion, but the FIRST
+    // frame post-revive (before any movement delta) would otherwise render
+    // the legacy texture standing-up — which looks wrong against the
+    // walk-sheet style.
+    if (spriteSheetId && 'texture' in body) {
+      const frameSet = getClansmanFrameSet(spriteSheetId);
+      if (frameSet) {
+        const sprite = body as Sprite;
+        const startTex = frameSet.rows.S[0]!;
+        if (sprite.texture !== startTex) {
+          sprite.texture = startTex;
+          const targetH = 34;
+          sprite.height = targetH;
+          sprite.width = sprite.texture.width * (targetH / sprite.texture.height);
+        }
+      }
+    }
     if ('anchor' in body) {
       (body as Sprite).anchor.set(0.5, 0.82);
     }
@@ -2908,7 +2951,7 @@ export function WorldMap() {
         // otherwise an alive→dead→alive cycle leaks state.
         if (wasDead !== marker.isDead) {
           if (marker.isDead) {
-            applyDeadVisualState(existing.body, true);
+            applyDeadVisualState(existing.body, true, marker.clanId);
             if (existing.halo) existing.halo.visible = false;
             if (existing.route) {
               // A corpse doesn't travel — drop the route line. We keep
@@ -2919,7 +2962,7 @@ export function WorldMap() {
               existing.route = undefined;
             }
           } else {
-            applyAliveVisualState(existing.body);
+            applyAliveVisualState(existing.body, marker.spriteSheetId);
             // Body size tracks missionActive too — a revived clansman with
             // missionActive=true needs the 42px body (not the 34px idle
             // size). Without this, the dead→alive revive restored anchor
