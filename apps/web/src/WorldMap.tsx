@@ -9,6 +9,7 @@ import { WorldNoticePanel } from './WorldNoticePanel';
 import { TopHud } from './TopHud';
 import { EventTicker } from './EventTicker';
 import { MapGhostLayer } from './components/MapGhostLayer';
+import { VersionBadge } from './components/cockpit/VersionBadge';
 import { MAP_WIDTH, MAP_HEIGHT, LIVE_CLAN_REGION_BY_ID } from './components/mapGeometry';
 import { api } from '../../server/convex/_generated/api';
 import worldMapBg from './assets/world-map.png';
@@ -5494,6 +5495,10 @@ export function WorldMap() {
           WORLD events (bandits, raids, weather). Distinct from per-clan
           speech bubbles. */}
       <WorldNoticePanel />
+
+      {/* Build-version badge — top-right corner. Source: VITE_APP_VERSION
+          baked at build time from the release tag. See issue #312. */}
+      <VersionBadge />
     </div>
   );
 }
