@@ -1,6 +1,7 @@
 name: Contracts
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -43,5 +44,5 @@ jobs:
       - name: Dry-run diamond deploy script
         working-directory: packages/contracts
         env:
-          DEPLOYER_PRIVATE_KEY: 0x59c6995e998f97a5a0044966f094538a006b364ed7ced4d55405b87ae35b0b2a
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
         run: bash scripts/forge.sh script script/DeployDiamond.s.sol:DeployDiamond
