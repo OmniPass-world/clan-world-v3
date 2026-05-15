@@ -125,7 +125,7 @@ describe('tickLoop', () => {
     expect(logs.error).toEqual([]);
   });
 
-  it('waits for ack-clear and resets every elder on tick 10', async () => {
+  it('waits for ack-clear and resets every elder on tick 50', async () => {
     const abort = new AbortController();
     const delivered: Array<{ elder: ElderId; tick: number; block: string }> = [];
     const resets: Array<{ elder: ElderId; timeoutMs: number }> = [];
@@ -161,7 +161,7 @@ describe('tickLoop', () => {
     };
 
     await tickLoop({
-      convex: fakeConvex(10),
+      convex: fakeConvex(50),
       perElder,
       config: config(),
       signal: abort.signal,
@@ -175,8 +175,8 @@ describe('tickLoop', () => {
     expect(delivered).toEqual(
       ELDER_IDS.map(elder => ({
         elder,
-        tick: 10,
-        block: composeSituationBlock({ elder, clanId: String(elder), tick: 10 }),
+        tick: 50,
+        block: composeSituationBlock({ elder, clanId: String(elder), tick: 50 }),
       })),
     );
     expect(resets).toEqual(ELDER_IDS.map(elder => ({ elder, timeoutMs: 100 })));
@@ -184,7 +184,7 @@ describe('tickLoop', () => {
     expect(logs.warn.flat().join('\n')).toContain('elder 1: ack-clear timeout');
   });
 
-  it('does not reset on the tick-9 warning', async () => {
+  it('does not reset on the tick-49 warning', async () => {
     const abort = new AbortController();
     const resets: ElderId[] = [];
     const perElder = {} as Record<ElderId, PerElderDeps>;
@@ -207,7 +207,7 @@ describe('tickLoop', () => {
     }
 
     await tickLoop({
-      convex: fakeConvex(9),
+      convex: fakeConvex(49),
       perElder,
       config: config(),
       signal: abort.signal,

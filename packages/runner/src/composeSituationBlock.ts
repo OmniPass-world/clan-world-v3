@@ -6,7 +6,7 @@ export interface ComposeArgs {
   tick: number;
 }
 
-export const CONTEXT_RESET_INTERVAL_TICKS = 10;
+export const CONTEXT_RESET_INTERVAL_TICKS = 50;
 
 export function isContextResetWarningTick(tick: number): boolean {
   return tick % CONTEXT_RESET_INTERVAL_TICKS === CONTEXT_RESET_INTERVAL_TICKS - 1;
