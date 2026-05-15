@@ -422,21 +422,30 @@ contract BanditAttackResolutionTest is Test {
 
         _advanceTick();
 
+        // 7 contributing defenders (1 explicit per clan + 3 waiting in target clan).
+        // Drop = 50% of 100e18 = 50e18. Per-defender share = floor(50e18 / 7)
+        // = 7142857142857142857 wei (~7.143e18). Remainder (1 wei × resource) is
+        // burned in the bandit's carry, not redistributed.
+        uint256 perDefender = uint256(50e18) / 7; // 7142857142857142857
         for (uint256 i = 0; i < clanIds.length; i++) {
             Clan memory clan = world.getClan(clanIds[i]);
             assertEq(clan.vaultWood, woodBefore[i], "wood stays out of vault");
             assertEq(clan.vaultWheat, wheatBefore[i] > 4e18 ? wheatBefore[i] - 4e18 : 0, "wheat pays heartbeat upkeep");
             assertEq(clan.vaultFish, fishBefore[i] > 4e17 ? fishBefore[i] - 4e17 : 0, "fish pays heartbeat upkeep");
             assertEq(clan.vaultIron, ironBefore[i], "iron stays out of vault");
-            assertEq(clan.goldBalance, goldBefore[i] + (i == 0 ? 29e18 : 7e18), "gold share");
+            // Target clan (i==0) collects 4 shares (1 explicit + 3 waiting) + 1e18 defeat reward;
+            // helper clans each collect 1 share.
+            uint256 expectedGoldDelta = (i == 0 ? 4 * perDefender + 1e18 : perDefender);
+            assertEq(clan.goldBalance, goldBefore[i] + expectedGoldDelta, "gold share");
         }
         for (uint256 i = 0; i < clanIds.length; i++) {
-            assertEq(world.getClansman(_csId(clanIds[i], 0)).carryWood, 7e18, "explicit wood share");
+            assertEq(world.getClansman(_csId(clanIds[i], 0)).carryWood, perDefender, "explicit wood share");
         }
-        assertEq(world.getClansman(_csId(clanIds[0], 1)).carryWood, 7e18, "waiting wood share 1");
-        assertEq(world.getClansman(_csId(clanIds[0], 2)).carryWood, 7e18, "waiting wood share 2");
-        assertEq(world.getClansman(_csId(clanIds[0], 3)).carryWood, 7e18, "waiting wood share 3");
+        assertEq(world.getClansman(_csId(clanIds[0], 1)).carryWood, perDefender, "waiting wood share 1");
+        assertEq(world.getClansman(_csId(clanIds[0], 2)).carryWood, perDefender, "waiting wood share 2");
+        assertEq(world.getClansman(_csId(clanIds[0], 3)).carryWood, perDefender, "waiting wood share 3");
         for (uint256 i = 0; i < clanIds.length; i++) {
+            // Iron share (~7.14e18) exceeds IRON_CAP (5e18) and is capped.
             assertEq(world.getClansman(_csId(clanIds[i], 0)).carryIron, 5e18, "iron capped");
         }
     }
@@ -595,15 +604,26 @@ contract BanditAttackResolutionTest is Test {
 
         _advanceTick();
 
+        // 6 contributing defenders (1 explicit per clan + 3 waiting in target clan).
+        // Drop = 50% of 100e18 = 50e18. Per-defender share = floor(50e18 / 6)
+        // = 8333333333333333333 wei (~8.333e18). Remainders (50e18 - 6 * share = 2 wei
+        // per resource) are burned in the bandit's carry, not redistributed.
+        uint256 perDefender = uint256(50e18) / 6; // 8333333333333333333
         uint256 goldAfterTotal;
         for (uint256 i = 0; i < clanIds.length; i++) {
             Clan memory clan = world.getClan(clanIds[i]);
-            assertEq(clan.goldBalance, 3e18 + (i == 0 ? 33e18 : 8e18), "gold share");
+            // Target clan (i==0) collects 4 shares (1 explicit + 3 waiting) + 1e18 defeat reward;
+            // helper clans each collect 1 share. 3e18 is the clan-mint starting gold.
+            uint256 expectedShare = (i == 0 ? 4 * perDefender + 1e18 : perDefender);
+            assertEq(clan.goldBalance, 3e18 + expectedShare, "gold share");
             goldAfterTotal += clan.goldBalance;
         }
-        assertEq(goldAfterTotal - goldBeforeTotal, 49e18, "undropped gold plus defeat reward");
-        assertEq(world.getClansman(_csId(clanIds[0], 0)).carryWood, 8e18, "target explicit wood");
+        // Total distributed gold = 6 * perDefender + 1e18 defeat reward.
+        assertEq(goldAfterTotal - goldBeforeTotal, 6 * perDefender + 1e18, "distributed gold plus defeat reward");
+        assertEq(world.getClansman(_csId(clanIds[0], 0)).carryWood, perDefender, "target explicit wood");
+        // Iron share (~8.33e18) exceeds IRON_CAP (5e18) and is capped.
         assertEq(world.getClansman(_csId(clanIds[0], 1)).carryIron, 5e18, "target waiting iron capped");
+        // Fish share (~8.33e18) exceeds FISH_CAP (8e18) and is capped.
         assertEq(world.getClansman(_csId(clanIds[1], 0)).carryFish, 8e18, "helper fish capped");
     }
 
