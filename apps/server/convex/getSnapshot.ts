@@ -84,6 +84,7 @@ export interface PersistedSnapshotSeasonFields {
   currentSeasonNumber?: number;
   seasonStartTick?: number;
   seasonEndTick?: number;
+  seasonFinalized?: boolean;
   winterActive?: boolean;
   winterStartsAtTick?: number;
   winterEndsAtTick?: number;
@@ -103,12 +104,24 @@ export function resolveSeasonStateForSnap(
 ): DerivedSeasonState {
   const derived = deriveSeasonState(snap.tick);
   return {
-    currentSeasonNumber: snap.currentSeasonNumber ?? derived.currentSeasonNumber,
-    seasonStartTick: snap.seasonStartTick ?? derived.seasonStartTick,
-    seasonEndTick: snap.seasonEndTick ?? derived.seasonEndTick,
-    winterActive: snap.winterActive ?? derived.winterActive,
-    winterStartsAtTick: snap.winterStartsAtTick ?? derived.winterStartsAtTick,
-    winterEndsAtTick: snap.winterEndsAtTick ?? derived.winterEndsAtTick,
+    currentSeasonNumber: snap.currentSeasonNumber !== undefined
+      ? snap.currentSeasonNumber
+      : derived.currentSeasonNumber,
+    seasonStartTick: snap.seasonStartTick !== undefined
+      ? snap.seasonStartTick
+      : derived.seasonStartTick,
+    seasonEndTick: snap.seasonEndTick !== undefined
+      ? snap.seasonEndTick
+      : derived.seasonEndTick,
+    winterActive: snap.winterActive !== undefined
+      ? snap.winterActive
+      : derived.winterActive,
+    winterStartsAtTick: snap.winterStartsAtTick !== undefined
+      ? snap.winterStartsAtTick
+      : derived.winterStartsAtTick,
+    winterEndsAtTick: snap.winterEndsAtTick !== undefined
+      ? snap.winterEndsAtTick
+      : derived.winterEndsAtTick,
   };
 }
 

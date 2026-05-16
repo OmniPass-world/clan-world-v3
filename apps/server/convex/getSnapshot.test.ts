@@ -26,6 +26,7 @@ describe("resolveSeasonStateForSnap (issue #435 regression)", () => {
       currentSeasonNumber: 1,
       seasonStartTick: 0,
       seasonEndTick: SEASON_LEN,
+      seasonFinalized: false,
       winterActive: false,
       winterStartsAtTick: WINTER_START,
       winterEndsAtTick: WINTER_START + WINTER_DUR,
