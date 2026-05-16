@@ -602,14 +602,10 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
-    const tickEpochStartedAt =
-      previousWorldSnapshot?.tick === tick
-        ? previousWorldSnapshot.tickEpochStartedAt
-        : Math.floor(now / 1000);
     const worldSnapshot = {
       tick,
-      tickEpochStartedAt,
-      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      tickEpochStartedAt: tickClockData.tickEpochStartedAt,
+      tickEpochDurationMs: tickClockData.tickEpochDurationMs,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
