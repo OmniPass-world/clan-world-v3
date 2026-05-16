@@ -10,6 +10,25 @@ export class UsageError extends Error {}
 
 const RESTRICTED_FILE_MODE = 0o600;
 
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${ms}ms`)),
+      ms,
+    );
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 function writeRestrictedFileSync(
   file: string,
   data: string,
@@ -646,13 +665,42 @@ export async function runCommand(
     const [clanId, ...msgParts] = rest;
     if (!clanId || msgParts.length === 0) throw new UsageError('usage: elder peer whisper <clanId> <msg>');
     const n = getElderN(env);
+    const fromClanId = Number(n);
+    const toClanIdNumeric = Number(clanId);
+    const canMirrorToCockpit =
+      Number.isFinite(toClanIdNumeric) && Number.isInteger(toClanIdNumeric) && toClanIdNumeric > 0;
     const msg = msgParts.join(' ');
+
+    // Durable local write first — guarantees elder-to-elder delivery even if chain/convex are down.
+    // Local transport accepts any safe inbox key (numeric or string identifier per assertSafeInboxKey).
     const entry = JSON.stringify({ from: n, to: clanId, msg, ts: new Date().toISOString() });
     const file = recipientInboxFile(clanId, homeBase);
     fs.mkdirSync(path.dirname(file), { recursive: true });
     appendRestrictedFileSync(file, entry + '\n', {
       encoding: 'utf8',
     });
+
+    // Best-effort cockpit mirror — only when clanId is a valid numeric clan, and bounded so a
+    // chain or convex hang cannot pin the CLI past 10s total.
+    if (canMirrorToCockpit) {
+      try {
+        const tick = await withTimeout(deps.chain.getCurrentTick(), 5000, 'chain.getCurrentTick');
+        const msgId = `${fromClanId}:${tick}:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+        await withTimeout(
+          deps.convex.postWhisper({
+            tick,
+            fromClanId,
+            toClanIds: [toClanIdNumeric],
+            body: msg,
+            msgId,
+          }),
+          5000,
+          'convex.postWhisper',
+        );
+      } catch (err) {
+        console.warn('[elder peer whisper] cockpit mirror failed (non-fatal):', err);
+      }
+    }
     return 'whisper sent\n';
   }
 

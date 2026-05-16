@@ -1,5 +1,5 @@
 import { ConvexHttpClient } from 'convex/browser';
-import type { ClanFullView, Whisper, WorldSnapshot } from '../types';
+import type { ClanFullView, WorldSnapshot } from '../types';
 import { readEnv } from './_env';
 import { convexApiRefs } from './convexApiRefs';
 
@@ -7,7 +7,6 @@ export interface IConvexClient {
   getSnapshot(): Promise<WorldSnapshot>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
   postLog(level: 'info' | 'warn' | 'error', message: string): Promise<void>;
-  subscribeWhispers(clanId: string, onWhisper: (w: Whisper) => void): () => void;
 
   // Cockpit Comms write-side. Each method is best-effort: callers wrap in
   // try/catch + treat failures as non-fatal so the cockpit display stays
@@ -18,7 +17,7 @@ export interface IConvexClient {
     fromClanId: number;
     toClanIds: number[];
     body: string;
-    txHash?: string;
+    msgId?: string;
   }): Promise<void>;
   postOrchEvent(args: {
     tick: number;
@@ -61,20 +60,15 @@ class StubConvexClient implements IConvexClient {
   async postLog(_level: 'info' | 'warn' | 'error', _message: string): Promise<void> {
     // no-op stub
   }
-  subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void {
-    return () => {
-      // no-op unsubscribe
-    };
-  }
 
-  async postWhisper(_args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; txHash?: string }): Promise<void> {}
+  async postWhisper(_args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string }): Promise<void> {}
   async postOrchEvent(_args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {}
   async postHumanSteering(_args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {}
   async postBulletin(_args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {}
 }
 
 const getSnapshotRef = convexApiRefs.getSnapshot.getSnapshot;
-const seedWhisperRef = convexApiRefs.comms.seedWhisper;
+const sendWhisperRef = convexApiRefs.comms.sendWhisper;
 const seedOrchEventRef = convexApiRefs.comms.seedOrchEvent;
 const seedHumanSteeringRef = convexApiRefs.comms.seedHumanSteering;
 const seedBulletinRef = convexApiRefs.bulletins.seedBulletin;
@@ -112,11 +106,6 @@ class RealConvexClient implements IConvexClient {
     // Phase 4: postLog via Convex not yet used by CLI path
   }
 
-  subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void {
-    // ConvexHttpClient is non-reactive; WebSocket subscriptions need ConvexClient
-    return () => {};
-  }
-
   // Cockpit Comms write-side — best-effort, swallow + warn on failure so the
   // domain operation that triggered the post (chain whisper, orchestrator
   // tick, etc.) is never blocked by a Convex outage.
@@ -129,14 +118,14 @@ class RealConvexClient implements IConvexClient {
     return readEnv('INDEXER_SECRET');
   }
 
-  async postWhisper(args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; txHash?: string }): Promise<void> {
+  async postWhisper(args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string }): Promise<void> {
     const secret = this.indexerSecret();
     if (!secret) {
       console.warn('[ConvexClient] postWhisper skipped: INDEXER_SECRET not set');
       return;
     }
     try {
-      await this.http.mutation(seedWhisperRef, { secret, ...args });
+      await this.http.mutation(sendWhisperRef, { secret, ...args });
     } catch (err) {
       console.warn('[ConvexClient] postWhisper failed (non-fatal):', err);
     }
