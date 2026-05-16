@@ -21,7 +21,17 @@ function withTimeout<T>(
       controller.abort();
       reject(new Error(`${label} timed out after ${ms}ms`));
     }, ms);
-    factory(controller.signal).then(
+    let promise: Promise<T>;
+    try {
+      promise = factory(controller.signal);
+    } catch (err) {
+      // Factory threw synchronously before returning a promise — clear the
+      // timer eagerly so we don't leak a node handle past rejection.
+      clearTimeout(timer);
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+    promise.then(
       (v) => {
         clearTimeout(timer);
         resolve(v);

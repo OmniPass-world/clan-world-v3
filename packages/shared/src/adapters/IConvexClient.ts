@@ -3,6 +3,21 @@ import type { ClanFullView, WorldSnapshot } from '../types';
 import { readEnv } from './_env';
 import { convexApiRefs } from './convexApiRefs';
 
+// Module augmentation: `setFetchOptions` is a real public method on the
+// `ConvexHttpClient` runtime class (see `convex@1.17.4` source at
+// `dist/esm/browser/http_client.js` → `setFetchOptions(opts)`), used by the
+// official `convex/nextjs` helpers to thread `cache: 'no-store'` and other
+// `RequestInit` fields through to `fetch`. The SDK does not declare it in
+// its `.d.ts`, so this augmentation patches the typing gap rather than
+// reaching through with an `as unknown as` cast. If a future SDK version
+// removes the runtime method, the augmentation will keep compiling but
+// calls will throw at runtime — surfacing the breakage immediately.
+declare module 'convex/browser' {
+  interface ConvexHttpClient {
+    setFetchOptions(options: RequestInit): void;
+  }
+}
+
 export interface IConvexClient {
   getSnapshot(): Promise<WorldSnapshot>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
@@ -76,9 +91,23 @@ const seedBulletinRef = convexApiRefs.bulletins.seedBulletin;
 
 class RealConvexClient implements IConvexClient {
   private readonly http: ConvexHttpClient;
+  private readonly url: string;
 
   constructor(url: string) {
+    this.url = url;
     this.http = new ConvexHttpClient(url);
+  }
+
+  // Per-call client for signal-bearing mutations. `ConvexHttpClient.setFetchOptions`
+  // mutates instance state, so calling it on the shared `this.http` creates a race
+  // when two callers issue concurrent signal-bearing mutations (call B overwrites
+  // call A's signal, then A's `finally` clears B's). A fresh client per call
+  // isolates the fetch options per signal. Cheap — only constructed when a signal
+  // is provided.
+  private clientForSignal(signal: AbortSignal): ConvexHttpClient {
+    const c = new ConvexHttpClient(this.url);
+    c.setFetchOptions({ signal });
+    return c;
   }
 
   async getSnapshot(): Promise<WorldSnapshot> {
@@ -126,17 +155,12 @@ class RealConvexClient implements IConvexClient {
       return;
     }
     const { signal, ...mutationArgs } = args;
+    signal?.throwIfAborted();
+    const client = signal ? this.clientForSignal(signal) : this.http;
     try {
-      if (signal) {
-        (this.http as unknown as { setFetchOptions(fetchOptions: RequestInit): void }).setFetchOptions({ signal });
-      }
-      await this.http.mutation(sendWhisperRef, { secret, ...mutationArgs });
+      await client.mutation(sendWhisperRef, { secret, ...mutationArgs });
     } catch (err) {
       console.warn('[ConvexClient] postWhisper failed (non-fatal):', err);
-    } finally {
-      if (signal) {
-        (this.http as unknown as { setFetchOptions(fetchOptions: RequestInit): void }).setFetchOptions({});
-      }
     }
   }
 
