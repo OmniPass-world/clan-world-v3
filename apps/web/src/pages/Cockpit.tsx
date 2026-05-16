@@ -2,7 +2,7 @@ import { tokens, ELDERS } from '../styles/cockpit-tokens';
 import { MiniCockpit } from '../components/cockpit/MiniCockpit';
 import { CockpitHeader } from '../components/cockpit/CockpitHeader';
 import { MobileCockpitLayout } from '../components/cockpit/MobileCockpitLayout';
-import { WorldMapEmbed } from '../components/WorldMapEmbed';
+import { WorldMapIframe } from '../components/WorldMapIframe';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 /**
@@ -169,7 +169,7 @@ function DesktopCockpitLayout() {
             background: '#000',
           }}
         >
-          <WorldMapEmbed />
+          <WorldMapIframe />
         </div>
       </div>
     </>
