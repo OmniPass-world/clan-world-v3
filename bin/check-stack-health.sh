@@ -106,7 +106,7 @@ done
 
 section "elder supervisor processes"
 for e in "${ELDERS[@]}"; do
-    if docker compose exec -T "$e" pgrep -f /opt/elder-runtime/main.js >/dev/null 2>&1; then
+    if docker compose exec -T "$e" pgrep -f 'tsx.*elder-runtime/src/main.ts' >/dev/null 2>&1; then
         pass "$e supervisor running"
     else
         fail "$e supervisor NOT running"

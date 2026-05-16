@@ -79,6 +79,9 @@ secrets:
   # Operator secret for enqueueing commands into the Convex bus.
   bus-operator:
     file: ./agents/secrets/bus-operator.key
+  # Deployer private key for heartbeat on-chain tx signing.
+  deployer-private-key:
+    file: ./agents/secrets/deployer-private.key
 
 # Shared building blocks (YAML anchors, NOT compose services).
 # Profiles let us reuse the same elder service block in both dev and prod with
@@ -268,8 +271,10 @@ services:
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       CLAN_WORLD_CONTRACT_ADDRESS: ${CLAN_WORLD_CONTRACT_ADDRESS:?CLAN_WORLD_CONTRACT_ADDRESS required}
       WEBHOOK_SHARED_SECRET_FILE: /run/secrets/webhook-shared
+      DEPLOYER_PRIVATE_KEY_FILE: /run/secrets/deployer-private-key
     secrets:
       - webhook-shared
+      - deployer-private-key
     # NOTE: host crontab mount removed per cloud-reviewer security finding.
     # Single-caller preflight (Finding 29) now relies on docker compose
     # `restart: on-failure:0` instead — a second instance can't be started
@@ -313,7 +318,7 @@ services:
       - path: ./agents/elder-1/.env
         required: false
     ports:
-      - "${ELDER_1_TTYD_PORT:-7681}:7681"
+      - "127.0.0.1:${ELDER_1_TTYD_PORT:-7681}:7681"
     secrets:
       - bus-elder-1
     volumes:
@@ -344,7 +349,7 @@ services:
       - path: ./agents/elder-2/.env
         required: false
     ports:
-      - "${ELDER_2_TTYD_PORT:-7682}:7681"
+      - "127.0.0.1:${ELDER_2_TTYD_PORT:-7682}:7681"
     secrets:
       - bus-elder-2
     volumes:
@@ -375,7 +380,7 @@ services:
       - path: ./agents/elder-3/.env
         required: false
     ports:
-      - "${ELDER_3_TTYD_PORT:-7683}:7681"
+      - "127.0.0.1:${ELDER_3_TTYD_PORT:-7683}:7681"
     secrets:
       - bus-elder-3
     volumes:
@@ -406,7 +411,7 @@ services:
       - path: ./agents/elder-4/.env
         required: false
     ports:
-      - "${ELDER_4_TTYD_PORT:-7684}:7681"
+      - "127.0.0.1:${ELDER_4_TTYD_PORT:-7684}:7681"
     secrets:
       - bus-elder-4
     volumes:

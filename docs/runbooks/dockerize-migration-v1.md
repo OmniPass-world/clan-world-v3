@@ -51,6 +51,12 @@ grep -E "CONVEX_(BACKEND|DASHBOARD|CLI_PINNED)_" .env
 make -C agents bootstrap-convex-admin-key
 make -C agents bootstrap-bus-secrets
 make -C agents oauth-bootstrap
+# Inject bus secrets into self-hosted Convex (required for elder command-bus auth)
+make -C agents bootstrap-convex-bus-secrets
+```
+
+```bash
+# Verify: make -C agents smoke-test
 ```
 
 **Verify:**
@@ -298,6 +304,21 @@ make -C agents smoke-test
 Smoke test script: `bin/check-stack-health.sh`. Checks: container health, tmux session alive, supervisor process alive, Convex reachable, heartbeat row updated within last 120s.
 
 **Verify:** command exits 0 with no FAIL lines.
+
+**⚠️ ADDITIONAL GATE — game-state assertion required before Step 9:**
+
+The `agents/elder` binary is currently a stub (`exit 0`). Do NOT proceed to Step 9 until you have also verified **actual game-state changes** in the new stack:
+
+```bash
+# Example: cast read of clan vault balance (replace with actual contract address + slot)
+cast call $CLAN_WORLD_CONTRACT "totalResources()(uint256)" --rpc-url $RPC_URL
+
+# Confirm elder agents are updating Convex world state:
+# Check worldSnapshot.tick is advancing in the Convex dashboard
+# Check agentLogs table shows recent Elder activity (within last 5 min)
+```
+
+A smoke test that only checks process liveness (containers up, tmux session alive) is not sufficient. You must see evidence that Elders are reading chain state and writing back to Convex. If `agents/elder` is still a stub, this gate cannot be passed — file a follow-up issue to implement the real CLI first.
 
 **Rollback:** do NOT proceed to Step 9. Investigate the failing assertion. Re-run `make smoke-test` after fixing. Do not time-box this step — a failed smoke test means the new stack is not ready.
 

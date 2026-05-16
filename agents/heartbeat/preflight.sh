@@ -27,6 +27,17 @@ set -euo pipefail
 log() { printf '[preflight] %s\n' "$*"; }
 err() { printf '[preflight] ERROR: %s\n' "$*" >&2; }
 
+# Support file-based secrets (Docker secret mounts). entrypoint.sh hydrates
+# these before calling preflight, but handle them here too for standalone use.
+if [[ -z "${DEPLOYER_PRIVATE_KEY:-}" && -n "${DEPLOYER_PRIVATE_KEY_FILE:-}" && -r "${DEPLOYER_PRIVATE_KEY_FILE}" ]]; then
+  DEPLOYER_PRIVATE_KEY="$(cat "${DEPLOYER_PRIVATE_KEY_FILE}")"
+  export DEPLOYER_PRIVATE_KEY
+fi
+if [[ -z "${WEBHOOK_SHARED_SECRET:-}" && -n "${WEBHOOK_SHARED_SECRET_FILE:-}" && -r "${WEBHOOK_SHARED_SECRET_FILE}" ]]; then
+  WEBHOOK_SHARED_SECRET="$(cat "${WEBHOOK_SHARED_SECRET_FILE}")"
+  export WEBHOOK_SHARED_SECRET
+fi
+
 # ---------------------------------------------------------------------------
 # 1. Required env vars
 # ---------------------------------------------------------------------------

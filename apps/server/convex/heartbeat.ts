@@ -123,21 +123,48 @@ export function parseHeartbeatEngineEvents(engineLogs: readonly Log[]) {
 export const heartbeatWebhook = httpAction(async (ctx, request) => {
   if (request.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
-      status: 405,
-      headers: { "Content-Type": "application/json", Allow: "POST" },
+      status: 405, headers: { "Content-Type": "application/json", Allow: "POST" },
     });
   }
 
-  const secret = process.env.WEBHOOK_SHARED_SECRET;
-  const auth = request.headers.get("Authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
+  const sig = request.headers.get("x-heartbeat-signature");
+  if (!sig) return new Response(JSON.stringify({ error: "missing signature" }), { status: 401, headers: { "Content-Type": "application/json" } });
+
+  const parts = Object.fromEntries(sig.split(",").map(p => { const i = p.indexOf("="); return [p.slice(0,i), p.slice(i+1)]; }));
+  const t = parseInt(parts["t"] ?? "0", 10);
+  const v1 = parts["v1"] ?? "";
+  if (!t || !v1) return new Response(JSON.stringify({ error: "malformed signature" }), { status: 401, headers: { "Content-Type": "application/json" } });
+
+  const REPLAY_WINDOW_S = 60;
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - t) > REPLAY_WINDOW_S) {
+    return new Response(JSON.stringify({ error: "timestamp outside replay window" }), { status: 401, headers: { "Content-Type": "application/json" } });
   }
 
-  const payload = (await request.json()) as HeartbeatWebhookPayload;
+  const secret = process.env.WEBHOOK_SHARED_SECRET ?? "";
+  if (!secret) return new Response(JSON.stringify({ error: "server misconfigured" }), { status: 500, headers: { "Content-Type": "application/json" } });
+
+  const body = await request.text();
+  const payload_str = `${t}.${body}`;
+  // Use subtle crypto (Convex runtime — no node:crypto)
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(payload_str));
+  const expected = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2,"0")).join("");
+
+  // Constant-time compare
+  if (expected.length !== v1.length || expected !== v1) {
+    return new Response(JSON.stringify({ error: "invalid signature" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
+
+  // Parse body as JSON now (already read as text above)
+  let parsedPayload: HeartbeatWebhookPayload;
+  try {
+    parsedPayload = JSON.parse(body) as HeartbeatWebhookPayload;
+  } catch {
+    return new Response(JSON.stringify({ error: "invalid JSON body" }), { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+  const payload = parsedPayload;
   const txData = {
     txHash: payload.txHash,
     blockNumber: payload.blockNumber,
