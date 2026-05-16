@@ -1,5 +1,6 @@
 import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 
 /**
  * Vault movement feed for a single clan.
@@ -73,7 +74,7 @@ function pushDelta(
 }
 
 export function projectAttributed(
-  event: { eventName: string; args: Record<string, unknown>; tick?: number; decodedAt: number; clanId?: number },
+  event: { eventName: IClanWorldAbiEventName; args: Record<string, unknown>; tick?: number; decodedAt: number; clanId?: number },
   _clanId: number,
   out: Movement[],
 ) {
@@ -142,7 +143,7 @@ export function projectAttributed(
 }
 
 export function projectBroadcast(
-  event: { eventName: string; args: Record<string, unknown>; tick?: number; decodedAt: number },
+  event: { eventName: IClanWorldAbiEventName; args: Record<string, unknown>; tick?: number; decodedAt: number },
   clanId: number,
   out: Movement[],
 ) {
@@ -218,12 +219,12 @@ export const getVaultMovements = query({
     //    on the sender side (or at all for LootDistributed), so we issue per-
     //    event-name lookups via `by_event_block` so unrelated chain churn
     //    can't push transfers out of our scan window.
-    const broadcastEventNames = [
+    const broadcastEventNames: IClanWorldAbiEventName[] = [
       "GoldTransferred",
       "VaultResourceTransferred",
       "LootDistributed",
       "BlueprintTransferred",
-    ] as const;
+    ];
     const broadcastBuckets = await Promise.all(
       broadcastEventNames.map(name =>
         ctx.db
@@ -236,7 +237,7 @@ export const getVaultMovements = query({
     const broadcast = broadcastBuckets.flat();
 
     type SourceEvent = {
-      eventName: string;
+      eventName: IClanWorldAbiEventName;
       args: Record<string, unknown>;
       tick?: number;
       decodedAt: number;
@@ -254,7 +255,7 @@ export const getVaultMovements = query({
     for (const e of attributed) {
       collect(
         {
-          eventName: e.eventName,
+          eventName: e.eventName as IClanWorldAbiEventName,
           args: (e.args ?? {}) as Record<string, unknown>,
           tick: e.tick,
           decodedAt: e.decodedAt,
@@ -272,7 +273,7 @@ export const getVaultMovements = query({
     for (const e of broadcast) {
       collect(
         {
-          eventName: e.eventName,
+          eventName: e.eventName as IClanWorldAbiEventName,
           args: (e.args ?? {}) as Record<string, unknown>,
           tick: e.tick,
           decodedAt: e.decodedAt,

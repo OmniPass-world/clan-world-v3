@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { projectAttributed, projectBroadcast, type Movement } from "./vault";
+import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 
 const WEI = "1000000000000000000"; // 1e18
 const wei = (n: number) => `${n}${"0".repeat(18)}`;
 
-const baseAttributed = (eventName: string, args: Record<string, unknown>, tick = 5) => ({
+const baseAttributed = (eventName: IClanWorldAbiEventName, args: Record<string, unknown>, tick = 5) => ({
   eventName,
   args,
   tick,
@@ -12,7 +13,7 @@ const baseAttributed = (eventName: string, args: Record<string, unknown>, tick =
   clanId: 7,
 });
 
-const baseBroadcast = (eventName: string, args: Record<string, unknown>, tick = 5) => ({
+const baseBroadcast = (eventName: IClanWorldAbiEventName, args: Record<string, unknown>, tick = 5) => ({
   eventName,
   args,
   tick,
