@@ -21,7 +21,12 @@ TTYD_PORT="${TTYD_PORT:-7681}"
 # operator can debug. Production compose MUST set cap_add: [NET_ADMIN].
 if [[ -x /opt/clan-world/init-firewall.sh ]]; then
   if ! sudo /opt/clan-world/init-firewall.sh; then
-    echo "[entrypoint] WARNING: init-firewall.sh failed (likely missing CAP_NET_ADMIN). Continuing — egress NOT locked down." >&2
+    if [[ "${CHAIN_NETWORK:-}" = "prod" ]]; then
+      echo "[entrypoint] FATAL: init-firewall.sh failed and CHAIN_NETWORK=prod — refusing to start unisolated container" >&2
+      exit 1
+    else
+      echo "[entrypoint] WARNING: init-firewall.sh failed (likely missing CAP_NET_ADMIN); continuing because CHAIN_NETWORK!=prod" >&2
+    fi
   fi
 fi
 

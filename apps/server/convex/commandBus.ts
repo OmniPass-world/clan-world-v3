@@ -1,7 +1,7 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
-const LEASE_MS = 5 * 60 * 1000; // 5 minutes
+const LEASE_MS = 6 * 60 * 1000; // 6 min — 60s grace past nonceTimeoutMs (300s default)
 const MAX_RETRIES = 3;
 
 function checkOperatorAuth(secret: string) {
@@ -77,16 +77,37 @@ export const enqueueCommand = mutation({
 });
 
 // 2. claimNext — elder claims oldest queued command
+// Control verbs (reset/unfreeze/freeze) always take priority over data commands.
 export const claimNext = mutation({
   args: { secret: v.string(), agentId: v.string() },
   handler: async (ctx, args) => {
     checkElderAuth(args.secret, args.agentId);
-    const cmd = await ctx.db.query("agentCommands")
+
+    // Pass 1: claim a control verb first (priority over data commands)
+    let cmd = await ctx.db
+      .query("agentCommands")
       .withIndex("by_target_status", q =>
         q.eq("targetAgentId", args.agentId).eq("status", "queued"),
       )
+      .filter(q => q.or(
+        q.eq(q.field("kind"), "reset"),
+        q.eq(q.field("kind"), "unfreeze"),
+        q.eq(q.field("kind"), "freeze"),
+      ))
       .order("asc")
       .first();
+
+    if (!cmd) {
+      // Pass 2: regular FIFO — no control verbs pending
+      cmd = await ctx.db
+        .query("agentCommands")
+        .withIndex("by_target_status", q =>
+          q.eq("targetAgentId", args.agentId).eq("status", "queued"),
+        )
+        .order("asc")
+        .first();
+    }
+
     if (!cmd) return null;
     const now = Date.now();
     await ctx.db.patch(cmd._id, {

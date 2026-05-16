@@ -51,6 +51,12 @@ grep -E "CONVEX_(BACKEND|DASHBOARD|CLI_PINNED)_" .env
 make -C agents bootstrap-convex-admin-key
 make -C agents bootstrap-bus-secrets
 make -C agents oauth-bootstrap
+# Inject bus secrets into self-hosted Convex (required for elder command-bus auth)
+make -C agents bootstrap-convex-bus-secrets
+```
+
+```bash
+# Verify: make -C agents smoke-test
 ```
 
 **Verify:**

@@ -82,6 +82,9 @@ function createDb(tables: Record<string, any[]> = {}) {
                   const bVal = typeof b === "function" ? (b as any)(row) : b;
                   return aVal === bVal;
                 },
+                or(...args: boolean[]) {
+                  return args.some(Boolean);
+                },
                 field(name: string) {
                   return row[name];
                 },
@@ -560,6 +563,91 @@ describe("auth", () => {
         },
       ),
     ).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("claimNext control-verb priority", () => {
+  it("claims reset before queued user_message", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:1",
+          _creationTime: 1,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "reset",
+          createdAt: 2000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const claimed = await (claimNext as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    // reset (createdAt=2000) must beat user_message (createdAt=1000)
+    expect(claimed?._id).toBe("agentCommands:1");
+    expect(claimed?.kind).toBe("reset");
+    expect(tables.agentCommands![1].status).toBe("leased");
+  });
+
+  it("claims unfreeze before queued user_messages", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:1",
+          _creationTime: 1,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 2000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:2",
+          _creationTime: 2,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "user_message",
+          createdAt: 3000,
+          retryCount: 0,
+        },
+        {
+          _id: "agentCommands:3",
+          _creationTime: 3,
+          targetAgentId: "elder-1",
+          status: "queued",
+          kind: "unfreeze",
+          createdAt: 4000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const claimed = await (claimNext as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    expect(claimed?._id).toBe("agentCommands:3");
+    expect(claimed?.kind).toBe("unfreeze");
+    expect(tables.agentCommands![3].status).toBe("leased");
   });
 });
 

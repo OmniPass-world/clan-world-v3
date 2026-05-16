@@ -27,6 +27,12 @@ set -euo pipefail
 log() { printf '[preflight] %s\n' "$*"; }
 err() { printf '[preflight] ERROR: %s\n' "$*" >&2; }
 
+# Support file-based secret (Docker secret mount)
+if [[ -z "${DEPLOYER_PRIVATE_KEY:-}" && -n "${DEPLOYER_PRIVATE_KEY_FILE:-}" && -r "${DEPLOYER_PRIVATE_KEY_FILE}" ]]; then
+  DEPLOYER_PRIVATE_KEY="$(cat "${DEPLOYER_PRIVATE_KEY_FILE}")"
+  export DEPLOYER_PRIVATE_KEY
+fi
+
 # ---------------------------------------------------------------------------
 # 1. Required env vars
 # ---------------------------------------------------------------------------

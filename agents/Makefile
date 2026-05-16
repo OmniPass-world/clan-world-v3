@@ -29,6 +29,9 @@ ELDERS := elder-1 elder-2 elder-3 elder-4
 # PROFILE is REQUIRED. No default — fail loud.
 PROFILE ?=
 
+# Pinned Convex CLI version — used by bootstrap-convex-bus-secrets.
+CONVEX_CLI_PINNED_VERSION ?= 1.17.4
+
 # wipe-elder-N LEVEL default = session (matches prior CC --continue behavior)
 LEVEL ?= session
 
@@ -41,6 +44,7 @@ LEVEL ?= session
         reset-anvil \
         link-mounts \
         bootstrap-convex-admin-key bootstrap-bus-secrets bootstrap-convex-dashboard-auth \
+        bootstrap-deployer-key bootstrap-convex-bus-secrets \
         oauth-bootstrap oauth-bootstrap-% \
         install-caddy-snippet uninstall-caddy-snippet check-caddy-snippet \
         smoke-test build
@@ -83,6 +87,8 @@ help:
 	@echo "BOOTSTRAP (one-time per stack — re-run with FORCE=1 to overwrite)"
 	@echo "  bootstrap-convex-admin-key     generate + persist Convex admin key (chmod 0600)"
 	@echo "  bootstrap-bus-secrets          generate BUS operator + per-elder secrets (chmod 0600)"
+	@echo "  bootstrap-deployer-key         paste deployer private key → agents/secrets/deployer-private.key"
+	@echo "  bootstrap-convex-bus-secrets   inject bus secrets into self-hosted Convex via npx convex env set"
 	@echo "  bootstrap-convex-dashboard-auth generate basic-auth credentials for dashboard"
 	@echo "  oauth-bootstrap                walk every elder through OAuth flow"
 	@echo "  oauth-bootstrap-elder-1        single-elder OAuth flow"
@@ -135,8 +141,19 @@ setup: check-profile
 	@echo "[setup] bootstrapping ClanWorld stack for PROFILE=$(PROFILE)"
 	@mkdir -p $(REPO_ROOT)/agents/secrets
 	@chmod 0700 $(REPO_ROOT)/agents/secrets
+	@echo "[setup] creating + chowning per-elder bind-mount dirs (requires sudo)"
+	@for n in 1 2 3 4; do \
+	  for d in home-claude workspace; do \
+	    sudo mkdir -p /var/lib/clan-world/agents/elder-$$n/$$d; \
+	    sudo chown 1000:1000 /var/lib/clan-world/agents/elder-$$n/$$d; \
+	  done; \
+	done
+	@echo "[setup] bind-mount dirs created"
 	$(MAKE) bootstrap-convex-admin-key
 	$(MAKE) bootstrap-bus-secrets
+	@if [ ! -s "$(REPO_ROOT)/agents/secrets/deployer-private.key" ]; then \
+		$(MAKE) bootstrap-deployer-key; \
+	fi
 	@echo "[setup] done."
 	@echo "[setup] Next:"
 	@echo "  1. make oauth-bootstrap                  # per-elder OAuth credentials"
@@ -156,7 +173,7 @@ status:
 		echo -n "$$e tmux:       "; \
 		$(DC) exec -T $$e tmux ls 2>/dev/null | head -1 || echo DEAD; \
 		echo -n "$$e supervisor: "; \
-		$(DC) exec -T $$e pgrep -f /opt/elder-runtime/main.js > /dev/null 2>&1 \
+		$(DC) exec -T $$e pgrep -f 'tsx.*elder-runtime/src/main.ts' > /dev/null 2>&1 \
 			&& echo OK || echo DEAD; \
 	done
 
@@ -174,10 +191,10 @@ logs:
 # keeps tmux + ttyd alive so the operator can still attach + inspect.
 # ---------------------------------------------------------------------------
 pause-elder-%:
-	$(DC) exec -T $* sh -c 'kill -STOP $$(pgrep -f /opt/elder-runtime/main.js)'
+	$(DC) exec -T $* sh -c 'kill -STOP $$(pgrep -f 'tsx.*elder-runtime/src/main.ts')'
 
 unpause-elder-%:
-	$(DC) exec -T $* sh -c 'kill -CONT $$(pgrep -f /opt/elder-runtime/main.js)'
+	$(DC) exec -T $* sh -c 'kill -CONT $$(pgrep -f 'tsx.*elder-runtime/src/main.ts')'
 
 pause:
 	@for e in $(ELDERS); do $(MAKE) pause-elder-$$e || true; done
@@ -350,6 +367,45 @@ bootstrap-convex-dashboard-auth:
 	printf '{"username":"%s","password_sha256":"%s"}\n' "$$u" "$$HASH" > "$$DEST"; \
 	chmod 0600 "$$DEST"; \
 	echo "[bootstrap] convex-dashboard-auth.json saved to $$DEST"
+
+bootstrap-deployer-key:
+	@mkdir -p $(REPO_ROOT)/agents/secrets
+	@chmod 0700 $(REPO_ROOT)/agents/secrets
+	@DEST=$(REPO_ROOT)/agents/secrets/deployer-private.key; \
+	if [ -s "$$DEST" ] && [ "$(FORCE)" != "1" ]; then \
+		echo "[bootstrap] $$DEST exists; skipping. Re-run with FORCE=1 to overwrite."; \
+		exit 0; \
+	fi; \
+	echo "[bootstrap] Paste the deployer private key (0x-prefixed hex, input hidden):" >&2; \
+	stty -echo 2>/dev/null || true; \
+	read key; \
+	stty echo 2>/dev/null || true; \
+	echo >&2; \
+	if [ -z "$$key" ]; then \
+		echo "ERROR: empty key" >&2; \
+		exit 1; \
+	fi; \
+	printf '%s\n' "$$key" > "$$DEST"; \
+	chmod 0600 "$$DEST"; \
+	echo "[bootstrap] deployer-private.key saved to $$DEST"
+
+bootstrap-convex-bus-secrets:
+	@INSTANCE_URL="$${CONVEX_SELF_HOSTED_URL:-http://localhost:38046}"; \
+	ADMIN_KEY="$$(cat $(REPO_ROOT)/agents/secrets/convex-admin.key 2>/dev/null)"; \
+	if [ -z "$$ADMIN_KEY" ]; then \
+		echo "ERROR: agents/secrets/convex-admin.key not found — run bootstrap-convex-admin-key first" >&2; \
+		exit 1; \
+	fi; \
+	echo "[bootstrap] injecting bus secrets into self-hosted Convex at $$INSTANCE_URL"; \
+	npx convex@$(CONVEX_CLI_PINNED_VERSION) env set BUS_OPERATOR_SECRET \
+		"$$(cat $(REPO_ROOT)/agents/secrets/bus-operator.key)" \
+		--instance-url "$$INSTANCE_URL" --admin-key "$$ADMIN_KEY"; \
+	for n in 1 2 3 4; do \
+		npx convex@$(CONVEX_CLI_PINNED_VERSION) env set BUS_ELDER_SECRET_$$n \
+			"$$(cat $(REPO_ROOT)/agents/secrets/bus-elder-$$n.key)" \
+			--instance-url "$$INSTANCE_URL" --admin-key "$$ADMIN_KEY"; \
+	done; \
+	echo "[bootstrap] bus secrets injected (5 vars: BUS_OPERATOR_SECRET + BUS_ELDER_SECRET_1..4)"
 
 # Per-elder OAuth bootstrap. Writes to agents/elder-N/.env (already gitignored
 # by agents/.gitignore line `elder-*/.env`). The container's run.sh sources

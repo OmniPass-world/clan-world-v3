@@ -376,6 +376,7 @@ export default defineSchema({
     broadcastSequence: v.optional(v.number()),
   })
     .index("by_target_status", ["targetAgentId", "status"])
+    .index("by_target_status_kind", ["targetAgentId", "status", "kind"])
     .index("by_status_lease", ["status", "leaseExpiresAt"])
     .index("by_broadcast_sequence", ["broadcastSequence"]),
 
