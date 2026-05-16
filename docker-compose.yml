@@ -326,7 +326,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f claude"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-${ELDER_N} 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -357,7 +357,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f claude"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-${ELDER_N} 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -388,7 +388,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f claude"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-${ELDER_N} 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -419,7 +419,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f claude"]
+      test: ["CMD-SHELL", "tmux has-session -t elder-${ELDER_N} 2>/dev/null && pgrep -f 'ttyd' > /dev/null && pgrep -f 'tsx.*main.ts' > /dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
