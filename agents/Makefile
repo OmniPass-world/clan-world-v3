@@ -405,7 +405,10 @@ bootstrap-convex-bus-secrets:
 			"$$(cat $(REPO_ROOT)/agents/secrets/bus-elder-$$n.key)" \
 			--instance-url "$$INSTANCE_URL" --admin-key "$$ADMIN_KEY"; \
 	done; \
-	echo "[bootstrap] bus secrets injected (5 vars: BUS_OPERATOR_SECRET + BUS_ELDER_SECRET_1..4)"
+	npx convex@$(CONVEX_CLI_PINNED_VERSION) env set WEBHOOK_SHARED_SECRET \
+		"$$(cat $(REPO_ROOT)/agents/secrets/webhook-shared.key)" \
+		--instance-url "$$INSTANCE_URL" --admin-key "$$ADMIN_KEY"; \
+	echo "[bootstrap] bus secrets injected (6 vars: BUS_OPERATOR_SECRET + BUS_ELDER_SECRET_1..4 + WEBHOOK_SHARED_SECRET)"
 
 # Per-elder OAuth bootstrap. Writes to agents/elder-N/.env (already gitignored
 # by agents/.gitignore line `elder-*/.env`). The container's run.sh sources

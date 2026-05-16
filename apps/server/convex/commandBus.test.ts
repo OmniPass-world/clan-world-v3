@@ -306,7 +306,35 @@ describe("completeCommand", () => {
 });
 
 describe("completeCommand (lease-expiry)", () => {
-  it("throws on expired lease when completing", async () => {
+  it("succeeds when lease is expired but within 30s grace window", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "acked",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() - 15_000, // expired 15s ago — within 30s grace
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await (completeCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+        resultPayload: { ok: true },
+        tookMs: 42,
+      },
+    );
+    expect(tables.agentCommands![0].status).toBe("completed");
+  });
+
+  it("throws when lease is expired beyond 30s grace window", async () => {
     const { db } = createDb({
       agentCommands: [
         {
@@ -315,7 +343,7 @@ describe("completeCommand (lease-expiry)", () => {
           targetAgentId: "elder-1",
           status: "acked",
           leaseOwner: "elder-1",
-          leaseExpiresAt: Date.now() - 1000, // expired
+          leaseExpiresAt: Date.now() - 60_000, // expired 60s ago — past grace
           createdAt: 1000,
           retryCount: 0,
         },
@@ -332,7 +360,34 @@ describe("completeCommand (lease-expiry)", () => {
           tookMs: 42,
         },
       ),
-    ).rejects.toThrow("Lease expired");
+    ).rejects.toThrow("Lease expired beyond grace");
+  });
+
+  it("returns no-op when command already completed (idempotency)", async () => {
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "completed",
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await (completeCommand as any)._handler(
+      { db },
+      {
+        secret: "elder-1-secret",
+        agentId: "elder-1",
+        commandId: "agentCommands:0",
+        resultPayload: { ok: true },
+        tookMs: 42,
+      },
+    );
+    // No second commandResults row inserted
+    expect(tables.commandResults ?? []).toHaveLength(0);
   });
 });
 

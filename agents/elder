@@ -14,6 +14,12 @@ elder CLI not yet implemented — this is a v1 stub.
 
 Use the MCP tools or `cast` directly for chain interactions until the
 elder CLI is filled in. Tracking issue: TBD (Phase 2+ scope).
+
+⚠️  CUTOVER GATE: DO NOT enable dockerized cutover (Step 9 of
+docs/runbooks/dockerize-migration-v1.md) until this stub is replaced
+with a real implementation. The smoke test (Step 8) must include actual
+game-state assertions (cast read of clan vault, clansman positions) —
+not just `exit 0` checks — before Step 9 proceeds.
 EOF
 
 exit 0

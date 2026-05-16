@@ -2,6 +2,7 @@ import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 const LEASE_MS = 6 * 60 * 1000; // 6 min — 60s grace past nonceTimeoutMs (300s default)
+const COMPLETION_GRACE_MS = 30 * 1000; // 30s extra grace for slow-but-real completions
 const MAX_RETRIES = 3;
 
 function checkOperatorAuth(secret: string) {
@@ -144,11 +145,15 @@ export const completeCommand = mutation({
   handler: async (ctx, args) => {
     checkElderAuth(args.secret, args.agentId);
     const cmd = await ctx.db.get(args.commandId);
-    if (!cmd || (cmd.status !== "acked" && cmd.status !== "leased") || cmd.leaseOwner !== args.agentId) {
+    if (!cmd) throw new Error("Command not found");
+    // Idempotency: already completed by us → success no-op (prevents double-result on retry)
+    if (cmd.status === "completed" && cmd.leaseOwner === undefined) return;
+    if ((cmd.status !== "acked" && cmd.status !== "leased") || cmd.leaseOwner !== args.agentId) {
       throw new Error("Command not found or not owned by this elder");
     }
-    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt <= Date.now()) {
-      throw new Error("Lease expired — re-claim the command before completing");
+    // 30s grace window: slow-but-real completions (CC latency, network blip) still land.
+    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt + COMPLETION_GRACE_MS <= Date.now()) {
+      throw new Error("Lease expired beyond grace — re-claim the command before completing");
     }
     const now = Date.now();
     await ctx.db.patch(args.commandId, { status: "completed", completedAt: now, leaseOwner: undefined, leaseExpiresAt: undefined });
