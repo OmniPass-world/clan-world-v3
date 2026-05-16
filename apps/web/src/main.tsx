@@ -40,26 +40,32 @@ const Provider = ConvexProvider as React.ComponentType<{
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
 
-// `/cockpit` is a standalone judge view — always render it, even if Convex
-// env is missing. The Phase-A panels are pure placeholders; the embedded
+// The cockpit (now at `/`), `/map`, `/owner`, and `/agents/:id` are all
+// standalone surfaces that render without real Convex data — the embedded
 // WorldMap consumes Convex via useQuery which returns undefined when no
 // data is available, so a stub client is enough to satisfy the provider.
+// Without these exemptions, screenshot/dev environments without
+// VITE_CONVEX_URL render "Backend not configured" instead of the actual
+// page.
 //
-// `/agents/:id` (PR #9) + `/owner` (PR #14) are also Convex-free: they
-// render without any useQuery/useMutation calls, so the stub provider is
-// sufficient. Without these exemptions, screenshot/dev environments
-// without VITE_CONVEX_URL render "Backend not configured" instead of the
-// actual page.
+// `/cockpit*` is kept as a standalone path so the legacy URL doesn't trip
+// the "Backend not configured" fallback during the 30-day back-compat
+// window — App.tsx redirects it to `/` after mount.
 const pathname =
   typeof window !== 'undefined' ? window.location.pathname : '';
 // Match the actual route shapes defined in App.tsx:
-//   /cockpit          → isCockpitRoute (startsWith '/cockpit')
+//   /                 → Cockpit (root)
+//   /map              → MainApp / WorldMap
+//   /cockpit          → legacy alias → redirect to /
 //   /owner            → isOwnerRoute   (startsWith '/owner')
 //   /agents/:digits   → parseAgentRoute (regex /^\/agents\/(\d+)\/?$/)
 // Bare `/agents` is NOT a real route in App.tsx — it falls through to
-// MainApp (the WorldMap), which DOES need Convex. So `/agents` must only
-// be treated as standalone when followed by a digit segment.
+// the cockpit (which uses Convex). So `/agents` must only be treated as
+// standalone when followed by a digit segment.
 const isStandalonePath =
+  pathname === '/' ||
+  pathname === '/map' ||
+  pathname.startsWith('/map/') ||
   pathname === '/cockpit' ||
   pathname.startsWith('/cockpit/') ||
   pathname === '/owner' ||
