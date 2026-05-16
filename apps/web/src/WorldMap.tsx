@@ -2829,13 +2829,16 @@ export function WorldMap() {
   function applyDeadVisualState(body: Sprite | Graphics | null, isDead: boolean, clanId?: string) {
     if (!body) return;
     if (isDead) {
-      // The walk-sheet PNGs ship as RGB (no alpha channel) so tinting one to
-      // 0x808080 renders the entire 280×280 frame rect as a solid grey
-      // rectangle instead of just the figure silhouette. The legacy single-
-      // PNG sprites are RGBA with proper transparency — swap to one for the
-      // dead pose so the tint darkens the silhouette only. A corpse never
-      // animates so the walk-sheet's only advantage (frame cycling) is
-      // moot here.
+      // Historically the walk-sheet PNGs shipped as RGB (no alpha channel),
+      // so tinting one to 0x808080 painted the entire 280×280 frame rect as
+      // a solid grey rectangle instead of just the figure silhouette (see
+      // PR #320). Issue #325 fixed that at source — the sheets are now RGBA
+      // with transparent backgrounds — but we still swap to the legacy
+      // single-PNG for the dead pose: a corpse doesn't animate, the legacy
+      // 48×64 texture is ~7KB vs ~1.6MB for a walk-sheet, and the swap
+      // path is the established #320 contract. Keeping the swap also leaves
+      // a clean fallback if a future asset re-export regresses the alpha
+      // channel.
       if (clanId && 'texture' in body) {
         const legacyTex = clansmanTextureCache[clanId];
         if (legacyTex && (body as Sprite).texture !== legacyTex) {
