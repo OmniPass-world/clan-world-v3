@@ -1,0 +1,67 @@
+name: Typechain CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - dev
+      - main
+
+jobs:
+  contract-types-freshness:
+    name: Contract types are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: pnpm install --frozen-lockfile
+      # codegen:check reads the ABI JSON and exits non-zero if the committed
+      # output in packages/contract-types/src/ is stale — no files are written.
+      - name: Check @clan-world/contract-types output is current
+        run: pnpm --filter @clan-world/contract-types run codegen:check
+
+  convex-types-freshness:
+    name: Convex generated types are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Regenerate Convex types
+        working-directory: apps/server
+        run: pnpm run codegen
+      - name: Verify no working-tree changes in _generated
+        run: git diff --exit-code apps/server/convex/_generated/
+
+  no-as-abi-casts:
+    name: No raw as-Abi casts in source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Grep for as-Abi casts
+        run: |
+          if grep -rEn "as[[:space:]]+Abi\b" \
+            --include="*.ts" \
+            --include="*.tsx" \
+            --exclude-dir="_generated" \
+            --exclude-dir="node_modules" \
+            --exclude-dir="dev-ui" \
+            apps/ packages/shared/src/ packages/runner/src/ packages/agents/src/ 2>/dev/null; then
+            echo "::error::Found raw 'as Abi' cast(s). Import the generated iClanWorldAbi / iClanWorldLensAbi from @clan-world/contract-types instead."
+            exit 1
+          fi
+          echo "No raw as-Abi casts found."
