@@ -71,10 +71,11 @@ export function TopHud({ liveTick }: { liveTick: number }) {
     return () => window.clearInterval(id);
   }, []);
 
-  const { seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick } = useMemo(() => {
-    // getSnapshot derives season fields from tick via deriveSeasonState() — all four
-    // fields are present in the return type.
+  const { currentSeasonNumber, seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick } = useMemo(() => {
+    // getSnapshot returns persisted chain season fields when present and
+    // derives only legacy missing fields server-side.
     return {
+      currentSeasonNumber: typeof snapshot?.currentSeasonNumber === 'number' ? snapshot.currentSeasonNumber : null,
       seasonStartTick: typeof snapshot?.seasonStartTick === 'number' ? snapshot.seasonStartTick : null,
       seasonEndTick: typeof snapshot?.seasonEndTick === 'number' ? snapshot.seasonEndTick : null,
       winterActive: snapshot?.winterActive === true,
@@ -92,11 +93,9 @@ export function TopHud({ liveTick }: { liveTick: number }) {
   }, [liveTick, seasonStartTick, seasonEndTick]);
 
   const seasonNumber = useMemo(() => {
-    if (seasonStartTick !== null && seasonEndTick !== null) {
-      return Math.floor(liveTick / TICKS_PER_SEASON) + 1;
-    }
+    if (currentSeasonNumber !== null) return currentSeasonNumber;
     return Math.floor(liveTick / TICKS_PER_SEASON) + 1;
-  }, [liveTick, seasonStartTick, seasonEndTick]);
+  }, [currentSeasonNumber, liveTick]);
 
   // Winter approaching warning: within 20 ticks
   const winterWarning = useMemo(() => {

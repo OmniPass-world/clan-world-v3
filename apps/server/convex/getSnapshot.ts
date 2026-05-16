@@ -125,6 +125,22 @@ export function resolveSeasonStateForSnap(
   };
 }
 
+export function normalizePausedAtTs(pausedAtTs: unknown): number | null {
+  return typeof pausedAtTs === "number" && Number.isFinite(pausedAtTs) && pausedAtTs > 0
+    ? pausedAtTs
+    : null;
+}
+
+export function resolvePauseStateForSnap(snap: {
+  worldPaused?: unknown;
+  pausedAtTs?: unknown;
+}): { worldPaused: boolean; pausedAtTs: number | null } {
+  return {
+    worldPaused: snap.worldPaused === true,
+    pausedAtTs: normalizePausedAtTs(snap.pausedAtTs),
+  };
+}
+
 export const getSnapshot = query({
   handler: async (ctx) => {
     const snap = await ctx.db.query("worldSnapshot").order("desc").first();
@@ -177,8 +193,7 @@ export const getSnapshot = query({
       clans: snap.clans,
       activeBanditId,
       bandit,
-      worldPaused: snap.worldPaused === true,
-      pausedAtTs: typeof snap.pausedAtTs === "number" ? snap.pausedAtTs : null,
+      ...resolvePauseStateForSnap(snap),
       ...resolveSeasonStateForSnap(snap),
     };
   },

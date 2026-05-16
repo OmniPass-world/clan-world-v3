@@ -3028,6 +3028,9 @@ export function WorldMap() {
   function currentTickFloat() {
     const snap = snapshotRef.current;
     const tick = typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current;
+    if (snap?.worldPaused === true) {
+      return tick;
+    }
     const epoch = snap?.tickEpoch;
     if (!epoch || typeof epoch.startedAt !== 'number' || typeof epoch.durationMs !== 'number' || epoch.durationMs <= 0) {
       return tick;
