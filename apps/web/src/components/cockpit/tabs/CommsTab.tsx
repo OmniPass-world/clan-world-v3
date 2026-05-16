@@ -97,7 +97,7 @@ function useCurrentWorldTick(): number {
 }
 
 export function fadeOpacity(tick: number, currentTick: number): number {
-  const distance = 0;
+  const distance = Math.max(0, currentTick - tick);
   return Math.max(0.4, 1 - distance * 0.12);
 }
 
@@ -447,8 +447,8 @@ function BulletinView({ elder, testIdPrefix }: Props) {
   }));
 
   const accent = CLAN_ACCENT[elder.clanId] ?? '#5a8aa8';
-  const visible = posts;
-  const old: typeof posts = [];
+  const visible = posts.filter(p => currentTick - p.tick <= VISIBLE_TICKS);
+  const old = posts.filter(p => currentTick - p.tick > VISIBLE_TICKS);
 
   return (
     <div
@@ -510,7 +510,7 @@ export function OldBulletinSeparator() {
 function BulletinPostRow({
   post, accent, elder, index, currentTick,
 }: { post: BulletinPost; accent: string; elder: ElderDef; index: number; currentTick: number }) {
-  const isVisible = true;
+  const isVisible = currentTick - post.tick <= VISIBLE_TICKS;
   const opacity = fadeOpacity(post.tick, currentTick);
   return (
     <li
