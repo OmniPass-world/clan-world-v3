@@ -4,6 +4,8 @@
   "private": true,
   "description": "Generated TypeScript literal-type ABIs for ClanWorld contracts",
   "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
   "exports": {
     ".": "./index.ts"
   },
