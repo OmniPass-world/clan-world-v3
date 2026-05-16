@@ -289,10 +289,7 @@ const SCROLL_PX_PER_SEC = 48;
 
 export function EventTicker() {
   const agentLogs = useAgentLogs();
-  // Capped to 10 events (issue #336). The pre-split version pulled the last
-  // 60 events on every chainEvents insert (~36 KB × N-clients). 10 keeps the
-  // ticker visually full while cutting per-tick egress ~6×.
-  const rawChainEvents = useQuery(api.events.getEventTickerFeed, { limit: 10 });
+  const rawChainEvents = useQuery(api.events.getRecentChainEvents);
 
   const entries = useMemo<TickerEntry[]>(() => {
     if (!DEMO_MODE && rawChainEvents && rawChainEvents.length > 0) {

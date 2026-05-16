@@ -21,7 +21,7 @@ const BACKOFF_MS = [2_000, 4_000, 8_000];
  * Phase B may revisit by adding a Convex query that the server polls.
  */
 export const HEARTBEAT_URL =
-  'https://app.clan-world.com/elder-1/';
+  'https://cockpit.clan-world.com/elder-1-tty/';
 
 interface Options {
   /** Override the heartbeat URL (for tests). */

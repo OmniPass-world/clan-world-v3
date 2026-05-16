@@ -69,32 +69,13 @@ export { DEMO_MODE };
 /**
  * Top-level route decision. Lightweight path-based routing avoids a router
  * dep for a single side route. Reading window.location once at render is
- * fine here — the cockpit is the default surface and the world map lives
- * on `/map`, so we never need client-side navigation between them.
- *
- * Phase 1.11 (issue #354) URL rename:
- *   - `/`         → Cockpit (was `/cockpit`)
- *   - `/map`      → World map (was `/`); also embedded as an iframe inside
- *                   the cockpit for Android parity
- *   - `/cockpit`  → 301-style client redirect to `/` for a 30-day back-compat
- *                   window
- *   - `/elder-N`  → ttyd (Caddy-handled, no React route — see #348)
- *   - `/owner`    → owner editor (unchanged)
- *   - `/agents/:id` → single-agent control page (unchanged)
+ * fine here — the cockpit is a standalone judge view, not a SPA tab inside
+ * the main app, so we never need to navigate between them client-side.
  */
-function isMapRoute(): boolean {
+function isCockpitRoute(): boolean {
   return (
     typeof window !== 'undefined' &&
-    (window.location.pathname === '/map' ||
-      window.location.pathname.startsWith('/map/'))
-  );
-}
-
-function isLegacyCockpitRoute(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    (window.location.pathname === '/cockpit' ||
-      window.location.pathname.startsWith('/cockpit/'))
+    window.location.pathname.startsWith('/cockpit')
   );
 }
 
@@ -120,26 +101,12 @@ function parseAgentRoute(): number | null {
 }
 
 export function App() {
-  // Back-compat: `/cockpit*` is the V2-era cockpit URL. After the #354
-  // rename it lives at root. We do a client-side redirect (replace, no
-  // history entry) so existing bookmarks + PWA installs continue to work.
-  // The Caddy front door also serves a 301 for the same path; this branch
-  // covers any client-side navigation that bypasses Caddy (e.g. local dev).
-  if (isLegacyCockpitRoute()) {
-    if (typeof window !== 'undefined') {
-      const suffix =
-        window.location.pathname === '/cockpit'
-          ? '/'
-          : window.location.pathname.replace(/^\/cockpit/, '') || '/';
-      const dest = suffix + window.location.search + window.location.hash;
-      window.location.replace(dest);
-    }
-    // Render nothing during the redirect — the location.replace above
-    // tears down this tree immediately.
-    return null;
-  }
-  if (isMapRoute()) {
-    return <MainApp />;
+  if (isCockpitRoute()) {
+    return (
+      <CockpitErrorBoundary>
+        <Cockpit />
+      </CockpitErrorBoundary>
+    );
   }
   const agentId = parseAgentRoute();
   if (agentId !== null) {
@@ -152,22 +119,9 @@ export function App() {
   if (isOwnerRoute()) {
     return <OwnerEditor />;
   }
-  // Default route (`/`) is now the cockpit. Map content is embedded inside
-  // it as an iframe pointing at `/map` to match Android-webview parity.
-  return (
-    <CockpitErrorBoundary>
-      <Cockpit />
-    </CockpitErrorBoundary>
-  );
+  return <MainApp />;
 }
 
-/**
- * `/map` — raw world-map surface (no cockpit chrome).
- *
- * This is the route the cockpit iframes for web/Android parity. It is also
- * directly reachable for users who want the full-bleed map view without
- * the cockpit panels.
- */
 function MainApp() {
   return (
     <main

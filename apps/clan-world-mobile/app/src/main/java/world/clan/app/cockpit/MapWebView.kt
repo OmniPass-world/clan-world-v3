@@ -14,17 +14,12 @@ import world.clan.app.BuildConfig
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
- * Loads the canonical world-map surface configured by [BuildConfig.MAP_URL].
- *
- * As of issue #354 (URL scheme rename) the web app serves the raw map at
- * `/map`. The Android webview is expected to point at that path directly —
- * e.g. `https://app.clan-world.com/map` — so this surface and the iframe
- * embedded inside the web cockpit share the exact same render pipeline
- * (one Pixi canvas + version badge + ghost layer + HUD + event ticker).
- *
- * Operators set `CLAN_WORLD_MAP_URL` (env) or `clanWorldMapUrl` (Gradle
- * property) to override at build time. See `app/build.gradle.kts` for the
- * resolution order and `README.md` for the production value.
+ * Loads the full web cockpit route configured by [BuildConfig.MAP_URL]
+ * (defaults to https://app.clan-world.com). After issue #326 unified the
+ * map across `/`, `/cockpit`, and the Android webview, the root route
+ * mounts the same canonical `WorldMap` surface as `/cockpit`, so any URL
+ * served by the production web app surfaces the full world map plus
+ * shared overlays (version badge, ghost layer, HUD, event ticker).
  *
  * JS + DOM storage are required by the Pixi map; everything else is left
  * at WebView defaults.

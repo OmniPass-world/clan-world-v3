@@ -50,7 +50,7 @@ private const val RETRY_DELAY_MS = 3_000L
 
 /**
  * Terminal tab — read-only WebView mirroring the live ttyd iframe used in
- * the web cockpit (`https://app.clan-world.com/elder-{N}/`).
+ * the web cockpit (`https://cockpit.clan-world.com/elder-{N}-tty/`).
  *
  *  - **Tap blocker** — a [pointerInteropFilter] wrapper consumes all touch
  *    events so the user can't focus the WebView (which would pop up the
@@ -70,7 +70,7 @@ fun TerminalTab(
   modifier: Modifier = Modifier,
 ) {
   val url = remember(elder.clanId) {
-    "${BuildConfig.TERMINAL_BASE_URL.trimEnd('/')}/elder-${elder.clanId}/"
+    "${BuildConfig.TERMINAL_BASE_URL.trimEnd('/')}/elder-${elder.clanId}-tty/"
   }
 
   var isReconnecting by remember(elder.clanId) { mutableStateOf(false) }
