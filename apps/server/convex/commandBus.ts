@@ -34,6 +34,11 @@ export const enqueueCommand = mutation({
   },
   handler: async (ctx, args) => {
     checkOperatorAuth(args.secret);
+    const validElderIds = (process.env.ELDER_IDS ?? "elder-1,elder-2,elder-3,elder-4")
+      .split(",").map(s => s.trim()).filter(Boolean);
+    if (args.targetAgentId !== "*" && !validElderIds.includes(args.targetAgentId)) {
+      throw new Error(`Invalid targetAgentId: ${args.targetAgentId}`);
+    }
     let broadcastSequence: number | undefined;
     if (args.targetAgentId === "*") {
       const last = await ctx.db.query("agentCommands")
@@ -41,10 +46,8 @@ export const enqueueCommand = mutation({
         .order("desc")
         .first();
       broadcastSequence = (last?.broadcastSequence ?? 0) + 1;
-      const elderIds = (process.env.ELDER_IDS ?? "elder-1,elder-2,elder-3,elder-4")
-        .split(",").map(s => s.trim()).filter(Boolean);
       const ids: string[] = [];
-      for (const elderId of elderIds) {
+      for (const elderId of validElderIds) {
         ids.push(await ctx.db.insert("agentCommands", {
           targetAgentId: elderId,
           kind: args.kind,
@@ -150,19 +153,29 @@ export const failCommand = mutation({
       throw new Error("Command not found or not owned by this elder");
     }
     const newRetryCount = cmd.retryCount + 1;
+    const now = Date.now();
+    await ctx.db.insert("commandResults", {
+      commandId: args.commandId,
+      agentId: args.agentId,
+      resultPayload: { reason: args.reason, retryCount: newRetryCount },
+      tookMs: 0,
+      createdAt: now,
+    });
     await ctx.db.patch(args.commandId, {
       status: newRetryCount >= MAX_RETRIES ? "failed" : "queued",
       retryCount: newRetryCount,
       leaseOwner: undefined,
       leaseExpiresAt: undefined,
+      ackedAt: undefined,
     });
   },
 });
 
 // 6. getQueuedFor — reactive query for elder's queue
 export const getQueuedFor = query({
-  args: { agentId: v.string() },
+  args: { secret: v.string(), agentId: v.string() },
   handler: async (ctx, args) => {
+    checkElderAuth(args.secret, args.agentId);
     return await ctx.db.query("agentCommands")
       .withIndex("by_target_status", q =>
         q.eq("targetAgentId", args.agentId).eq("status", "queued"),
@@ -176,11 +189,17 @@ export const sweepStaleDelivered = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const expired = await ctx.db.query("agentCommands")
+    const expiredLeased = await ctx.db.query("agentCommands")
       .withIndex("by_status_lease", q =>
         q.eq("status", "leased").lt("leaseExpiresAt", now)
       )
       .collect();
+    const expiredAcked = await ctx.db.query("agentCommands")
+      .withIndex("by_status_lease", q =>
+        q.eq("status", "acked").lt("leaseExpiresAt", now)
+      )
+      .collect();
+    const expired = [...expiredLeased, ...expiredAcked];
     let swept = 0;
     for (const cmd of expired) {
       const newRetryCount = cmd.retryCount + 1;
@@ -189,6 +208,7 @@ export const sweepStaleDelivered = internalMutation({
         retryCount: newRetryCount,
         leaseOwner: undefined,
         leaseExpiresAt: undefined,
+        ackedAt: undefined,
       });
       swept++;
     }

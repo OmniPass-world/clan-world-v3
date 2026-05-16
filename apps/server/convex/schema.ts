@@ -364,11 +364,9 @@ export default defineSchema({
     status: v.union(
       v.literal("queued"),
       v.literal("leased"),
-      v.literal("delivered"),
       v.literal("acked"),
       v.literal("completed"),
       v.literal("failed"),
-      v.literal("skipped"),
     ),
     leaseOwner: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),

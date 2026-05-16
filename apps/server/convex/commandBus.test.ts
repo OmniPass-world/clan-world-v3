@@ -5,6 +5,7 @@ import {
   ackCommand,
   completeCommand,
   failCommand,
+  getQueuedFor,
   sweepStaleDelivered,
   heartbeat,
 } from "./commandBus";
@@ -142,6 +143,16 @@ describe("enqueueCommand", () => {
         },
       ),
     ).rejects.toThrow("Unauthorized");
+  });
+
+  it("throws on invalid targetAgentId", async () => {
+    const { db } = createDb();
+    await expect(
+      (enqueueCommand as any)._handler(
+        { db },
+        { secret: "op-secret", targetAgentId: "elder-99", kind: "reset", payload: {}, source: "orchestrator" },
+      ),
+    ).rejects.toThrow("Invalid targetAgentId");
   });
 
   it("fan-out: inserts one row per elder for targetAgentId='*'", async () => {
@@ -300,10 +311,12 @@ describe("failCommand", () => {
           targetAgentId: "elder-1",
           status: "leased",
           leaseOwner: "elder-1",
+          ackedAt: 999,
           createdAt: 1000,
           retryCount: 1,
         },
       ],
+      commandResults: [],
     });
     await (failCommand as any)._handler(
       { db },
@@ -317,6 +330,9 @@ describe("failCommand", () => {
     expect(tables.agentCommands![0].status).toBe("queued");
     expect(tables.agentCommands![0].retryCount).toBe(2);
     expect(tables.agentCommands![0].leaseOwner).toBeUndefined();
+    expect(tables.agentCommands![0].ackedAt).toBeUndefined();
+    expect(tables.commandResults).toHaveLength(1);
+    expect(tables.commandResults![0].resultPayload.reason).toBe("timeout");
   });
 
   it("marks failed if retryCount reaches MAX_RETRIES (3)", async () => {
@@ -378,6 +394,52 @@ describe("sweepStaleDelivered", () => {
     expect(result.swept).toBe(1);
     expect(tables.agentCommands![0].status).toBe("queued");
     expect(tables.agentCommands![1].status).toBe("leased"); // untouched
+  });
+
+  it("re-queues expired acked commands (stuck after elder crash)", async () => {
+    const now = Date.now();
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "acked",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: now - 1000,
+          ackedAt: now - 2000,
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const result = await (sweepStaleDelivered as any)._handler({ db }, {});
+    expect(result.swept).toBe(1);
+    expect(tables.agentCommands![0].status).toBe("queued");
+    expect(tables.agentCommands![0].leaseOwner).toBeUndefined();
+    expect(tables.agentCommands![0].ackedAt).toBeUndefined();
+  });
+});
+
+describe("getQueuedFor", () => {
+  it("returns queued commands for agentId", async () => {
+    const { db } = createDb({
+      agentCommands: [
+        { _id: "agentCommands:0", _creationTime: 0, targetAgentId: "elder-1", status: "queued", createdAt: 1000, retryCount: 0 },
+      ],
+    });
+    const result = await (getQueuedFor as any)._handler(
+      { db },
+      { secret: "elder-1-secret", agentId: "elder-1" },
+    );
+    expect(result).toHaveLength(1);
+  });
+
+  it("rejects wrong secret", async () => {
+    const { db } = createDb();
+    await expect(
+      (getQueuedFor as any)._handler({ db }, { secret: "wrong", agentId: "elder-1" }),
+    ).rejects.toThrow("Unauthorized");
   });
 });
 
