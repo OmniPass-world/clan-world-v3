@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -15,7 +15,16 @@ export class TmuxSink {
   }
 
   async loadBuffer(name: string, content: string): Promise<void> {
-    await execFileAsync("tmux", ["load-buffer", "-b", name, "-"], { input: content } as any);
+    // execFile does not support stdin piping; use spawn + stdin.end() instead.
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn("tmux", ["load-buffer", "-b", name, "-"]);
+      proc.stdin.end(content);
+      proc.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`tmux load-buffer exited with code ${code}`));
+      });
+      proc.on("error", reject);
+    });
   }
 
   async pasteBuffer(name: string, target: string, opts: { bracketed: boolean }): Promise<void> {

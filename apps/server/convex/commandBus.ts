@@ -146,8 +146,8 @@ export const completeCommand = mutation({
     checkElderAuth(args.secret, args.agentId);
     const cmd = await ctx.db.get(args.commandId);
     if (!cmd) throw new Error("Command not found");
-    // Idempotency: already completed by us → success no-op (prevents double-result on retry)
-    if (cmd.status === "completed" && cmd.leaseOwner === undefined) return;
+    // Idempotency: any completed command is terminal → success no-op (prevents double-result on retry)
+    if (cmd.status === "completed") return;
     if ((cmd.status !== "acked" && cmd.status !== "leased") || cmd.leaseOwner !== args.agentId) {
       throw new Error("Command not found or not owned by this elder");
     }
@@ -244,14 +244,17 @@ export const sweepStaleDelivered = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
+    // Sweep at leaseExpiresAt + COMPLETION_GRACE_MS so a slow-but-real completeCommand
+    // (within the 30s grace window) doesn't race with the sweeper re-queuing.
+    const sweepBefore = now - COMPLETION_GRACE_MS;
     const expiredLeased = await ctx.db.query("agentCommands")
       .withIndex("by_status_lease", q =>
-        q.eq("status", "leased").lt("leaseExpiresAt", now)
+        q.eq("status", "leased").lt("leaseExpiresAt", sweepBefore)
       )
       .collect();
     const expiredAcked = await ctx.db.query("agentCommands")
       .withIndex("by_status_lease", q =>
-        q.eq("status", "acked").lt("leaseExpiresAt", now)
+        q.eq("status", "acked").lt("leaseExpiresAt", sweepBefore)
       )
       .collect();
     const expired = [...expiredLeased, ...expiredAcked];

@@ -482,7 +482,7 @@ describe("failCommand", () => {
 });
 
 describe("sweepStaleDelivered", () => {
-  it("re-queues expired leases", async () => {
+  it("re-queues expired leases past the 30s grace window", async () => {
     const now = Date.now();
     const { db, tables } = createDb({
       agentCommands: [
@@ -492,7 +492,7 @@ describe("sweepStaleDelivered", () => {
           targetAgentId: "elder-1",
           status: "leased",
           leaseOwner: "elder-1",
-          leaseExpiresAt: now - 1000, // expired
+          leaseExpiresAt: now - 60_000, // expired 60s ago — past grace
           createdAt: 1000,
           retryCount: 0,
         },
@@ -514,6 +514,27 @@ describe("sweepStaleDelivered", () => {
     expect(tables.agentCommands![1].status).toBe("leased"); // untouched
   });
 
+  it("does NOT sweep leases expired within the 30s grace window", async () => {
+    const now = Date.now();
+    const { db, tables } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: now - 15_000, // expired 15s ago — within 30s grace
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    const result = await (sweepStaleDelivered as any)._handler({ db }, {});
+    expect(result.swept).toBe(0);
+    expect(tables.agentCommands![0].status).toBe("leased"); // untouched
+  });
+
   it("re-queues expired acked commands (stuck after elder crash)", async () => {
     const now = Date.now();
     const { db, tables } = createDb({
@@ -524,7 +545,7 @@ describe("sweepStaleDelivered", () => {
           targetAgentId: "elder-1",
           status: "acked",
           leaseOwner: "elder-1",
-          leaseExpiresAt: now - 1000,
+          leaseExpiresAt: now - 60_000, // expired 60s ago — past grace
           ackedAt: now - 2000,
           createdAt: 1000,
           retryCount: 0,
