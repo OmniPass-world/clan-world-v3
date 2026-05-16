@@ -3773,9 +3773,7 @@ export function WorldMap() {
       REGION_KEY_BY_CHAIN_ID,
     );
 
-    // TODO(backend): worldPaused is not yet returned by getSnapshot. Wire up when
-    // pause support lands in the schema; until then animations advance during pause.
-    const worldPaused = false;
+    const worldPaused = snap?.worldPaused === true;
 
     // Hide everything by default, then enable per-phase.
     hideBanditAnimSprites();
