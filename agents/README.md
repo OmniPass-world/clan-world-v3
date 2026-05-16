@@ -52,6 +52,10 @@ At runtime, each `elder-N` container sees:
 The R/W host paths are created by `make bootstrap` (#355). The R/O overlays shadow individual
 files inside the R/W directory so shared CC config is always up-to-date without copying.
 
+> **Ownership:** The Makefile bootstrap (`make bootstrap`) creates these host paths and sets `elder:elder`
+> (uid/gid 1000) ownership before `docker compose up`. Without this step, the container's `elder` user
+> cannot write to `/home/elder/.claude` or `/workspace`.
+
 ## Dev workflow
 
 1. Copy each `elder-N/.env.template` → `elder-N/.env`, fill in `ANTHROPIC_OAUTH_TOKEN` and `BUS_ELDER_SECRET`.

@@ -70,6 +70,8 @@ x-elder-common: &elder-common
   depends_on:
     convex-backend:
       condition: service_healthy
+  volumes:
+    - ./agents/shared:/opt/clan-world/shared:ro
 
 services:
   # ---------------------------------------------------------------------------
@@ -203,7 +205,9 @@ services:
       ELDER_N: "1"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
-    env_file: ./agents/elder-1/.env
+    env_file:
+      - path: ./agents/elder-1/.env
+        required: false
     ports:
       - "${ELDER_1_TTYD_PORT:-7681}:7681"
     secrets:
@@ -214,7 +218,6 @@ services:
       - /var/lib/clan-world/agents/elder-1/workspace:/workspace
       # R/O shared overlays — inject shared CC config into per-elder home.
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
-      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-1 && pgrep -f /opt/elder-runtime/main.js"]
@@ -231,7 +234,9 @@ services:
       ELDER_N: "2"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
-    env_file: ./agents/elder-2/.env
+    env_file:
+      - path: ./agents/elder-2/.env
+        required: false
     ports:
       - "${ELDER_2_TTYD_PORT:-7682}:7681"
     secrets:
@@ -242,7 +247,6 @@ services:
       - /var/lib/clan-world/agents/elder-2/workspace:/workspace
       # R/O shared overlays — inject shared CC config into per-elder home.
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
-      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-2 && pgrep -f /opt/elder-runtime/main.js"]
@@ -259,7 +263,9 @@ services:
       ELDER_N: "3"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
-    env_file: ./agents/elder-3/.env
+    env_file:
+      - path: ./agents/elder-3/.env
+        required: false
     ports:
       - "${ELDER_3_TTYD_PORT:-7683}:7681"
     secrets:
@@ -270,7 +276,6 @@ services:
       - /var/lib/clan-world/agents/elder-3/workspace:/workspace
       # R/O shared overlays — inject shared CC config into per-elder home.
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
-      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-3 && pgrep -f /opt/elder-runtime/main.js"]
@@ -287,7 +292,9 @@ services:
       ELDER_N: "4"
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
-    env_file: ./agents/elder-4/.env
+    env_file:
+      - path: ./agents/elder-4/.env
+        required: false
     ports:
       - "${ELDER_4_TTYD_PORT:-7684}:7681"
     secrets:
@@ -298,7 +305,6 @@ services:
       - /var/lib/clan-world/agents/elder-4/workspace:/workspace
       # R/O shared overlays — inject shared CC config into per-elder home.
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
-      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-4 && pgrep -f /opt/elder-runtime/main.js"]
