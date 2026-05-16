@@ -125,6 +125,15 @@ export function projectAttributed(
       pushDelta(out, tick, "gain", whole(args.fish), "fish", "defender loot", ts);
       return;
     }
+    case "ResourcesInjected": {
+      pushDelta(out, tick, "gain", whole(args.wood), "wood", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.iron), "iron", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.wheat), "wheat", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.fish), "fish", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.gold), "gold", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.blueprint), "blueprint", "admin inject", ts);
+      return;
+    }
     case "ImmediateMarketActionExecuted":
     case "ScheduledMarketActionExecuted": {
       // Market trade: the clan spends `amountIn` of `resourceIn` and receives
@@ -255,6 +264,7 @@ export const getVaultMovements = query({
     for (const e of attributed) {
       collect(
         {
+          // Safe: unknown names fall through to `default: return` in projectAttributed.
           eventName: e.eventName as IClanWorldAbiEventName,
           args: (e.args ?? {}) as Record<string, unknown>,
           tick: e.tick,
@@ -273,6 +283,7 @@ export const getVaultMovements = query({
     for (const e of broadcast) {
       collect(
         {
+          // Safe: unknown names fall through to `default: return` in projectBroadcast.
           eventName: e.eventName as IClanWorldAbiEventName,
           args: (e.args ?? {}) as Record<string, unknown>,
           tick: e.tick,
