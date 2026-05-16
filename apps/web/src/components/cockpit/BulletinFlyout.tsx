@@ -5,7 +5,6 @@ import { tokens, ELDERS } from '../../styles/cockpit-tokens';
 import type { ElderDef } from '../../styles/cockpit-tokens';
 import {
   CLAN_ACCENT,
-  CURRENT_TICK,
   VISIBLE_TICKS,
   VisibilityChip,
   OldBulletinSeparator,
@@ -52,6 +51,13 @@ const STUB_BY_CLAN: Record<number, BulletinPost[]> = {
 function getInitialOpen(): boolean {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('bulletin-open') === '1';
+}
+
+function useCurrentWorldTick(): number {
+  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  return typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
+    ? snapshot.tick
+    : 0;
 }
 
 /**
@@ -198,6 +204,7 @@ function PanelHeader({ onClose }: { onClose: () => void }) {
 
 function ClanBulletinCard({ elder }: { elder: ElderDef }) {
   const accent = CLAN_ACCENT[elder.clanId] ?? '#5a8aa8';
+  const currentTick = useCurrentWorldTick();
   // Live per-clan bulletins; stub fallback when feed is cold (initial load
   // or empty backend during demo prep).
   const live = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
@@ -205,8 +212,8 @@ function ClanBulletinCard({ elder }: { elder: ElderDef }) {
     live === undefined || live.length === 0
       ? (STUB_BY_CLAN[elder.clanId] ?? [])
       : live.map(b => ({ tick: b.slot, body: b.body }));
-  const visible = posts.filter(p => CURRENT_TICK - p.tick <= VISIBLE_TICKS);
-  const old = posts.filter(p => CURRENT_TICK - p.tick > VISIBLE_TICKS);
+  const visible = posts.filter(p => currentTick - p.tick <= VISIBLE_TICKS);
+  const old = posts.filter(p => currentTick - p.tick > VISIBLE_TICKS);
 
   return (
     <div
@@ -281,7 +288,7 @@ function ClanBulletinCard({ elder }: { elder: ElderDef }) {
       >
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {visible.map((p, i) => (
-            <BulletinCardRow key={`v-${i}`} post={p} accent={accent} />
+            <BulletinCardRow key={`v-${i}`} post={p} accent={accent} currentTick={currentTick} />
           ))}
         </ul>
         {old.length > 0 && (
@@ -289,7 +296,7 @@ function ClanBulletinCard({ elder }: { elder: ElderDef }) {
             <OldBulletinSeparator />
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '4px' }}>
               {old.map((p, i) => (
-                <BulletinCardRow key={`o-${i}`} post={p} accent={accent} />
+                <BulletinCardRow key={`o-${i}`} post={p} accent={accent} currentTick={currentTick} />
               ))}
             </ul>
           </>
@@ -299,9 +306,9 @@ function ClanBulletinCard({ elder }: { elder: ElderDef }) {
   );
 }
 
-function BulletinCardRow({ post, accent }: { post: BulletinPost; accent: string }) {
-  const isVisible = (CURRENT_TICK - post.tick) <= VISIBLE_TICKS;
-  const opacity = fadeOpacity(post.tick);
+function BulletinCardRow({ post, accent, currentTick }: { post: BulletinPost; accent: string; currentTick: number }) {
+  const isVisible = (currentTick - post.tick) <= VISIBLE_TICKS;
+  const opacity = fadeOpacity(post.tick, currentTick);
   return (
     <li
       data-visible={isVisible}
