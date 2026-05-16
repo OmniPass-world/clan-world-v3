@@ -59,6 +59,8 @@ export const getSnapshot = query({
         clans: [],
         activeBanditId: undefined,
         bandit: null,
+        worldPaused: false,
+        pausedAtTs: null,
         ...deriveSeasonState(0),
       };
     }
@@ -98,6 +100,8 @@ export const getSnapshot = query({
       clans: snap.clans,
       activeBanditId,
       bandit,
+      worldPaused: snap.worldPaused === true,
+      pausedAtTs: typeof snap.pausedAtTs === "number" ? snap.pausedAtTs : null,
       ...deriveSeasonState(snap.tick),
     };
   },

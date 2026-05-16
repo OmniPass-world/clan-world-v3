@@ -563,6 +563,8 @@ export const commitSnapshot = internalMutation({
       winterActive: asBool(world.winterActive),
       winterStartsAtTick: asNumber(world.winterStartsAtTick),
       winterEndsAtTick: asNumber(world.winterEndsAtTick),
+      worldPaused: asBool(world.worldPaused),
+      pausedAtTs: asNumber(world.pausedAtTs),
       nextHeartbeatAtTick: asNumber(world.nextHeartbeatAtTick),
       regions: LEGACY_REGIONS,
       clans: legacyClans,
