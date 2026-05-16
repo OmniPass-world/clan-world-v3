@@ -6,7 +6,8 @@
  * the handler calls this helper before doing any writes. If INDEXER_SECRET is
  * unset on the Convex deployment, mutations reject all writes (fail-closed).
  *
- * Used by: bulletins.seedBulletin, comms.seed{Whisper,OrchEvent,HumanSteering}.
+ * Used by: bulletins.seedBulletin, comms.sendWhisper,
+ * comms.seed{OrchEvent,HumanSteering}.
  *
  * For mutations that have NO external callers (memory.seedEntry,
  * memory.seedEvent, clansmen.seedClansmen) we use `internalMutation` instead;

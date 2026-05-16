@@ -81,19 +81,25 @@ export const getCombinedComms = query({
 // but ALONE is not sufficient — without the secret gate, anyone with the
 // deployment URL could deface the cockpit-visible feed.
 
-export const seedWhisper = mutation({
+export const sendWhisper = mutation({
   args: {
     secret: v.string(),
     tick: v.number(),
     fromClanId: v.number(),
     toClanIds: v.array(v.number()),
     body: v.string(),
-    // Optional on-chain transaction hash from the whisper write — useful
-    // provenance for the cockpit feed. Optional in the whispers table.
-    txHash: v.optional(v.string()),
+    msgId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
+    if (args.msgId) {
+      const existing = await ctx.db
+        .query("whispers")
+        .withIndex("by_from_clan_tick_msgid", q =>
+          q.eq("fromClanId", args.fromClanId).eq("tick", args.tick).eq("msgId", args.msgId))
+        .first();
+      if (existing) return;
+    }
     const { secret: _omit, ...row } = args;
     await ctx.db.insert("whispers", { ...row, timestamp: Date.now() });
   },

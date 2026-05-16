@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { IConvexClient, IChainClient } from '@clan-world/shared/adapters';
-import type { WorldSnapshot, ClanFullView, Whisper, Tick } from '@clan-world/shared';
+import type { WorldSnapshot, ClanFullView, Tick } from '@clan-world/shared';
 import { runCommand, UsageError, inboxFile, recipientInboxFile, ackFile, resolveHelp } from '../src/cli.js';
 
 // ---------------------------------------------------------------------------
@@ -33,7 +33,6 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
     async getSnapshot() { return STUB_SNAPSHOT; },
     async getClanFullView() { return STUB_CLAN_VIEW; },
     async postLog() {},
-    subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void { return () => {}; },
     async postWhisper() {},
     async postOrchEvent() {},
     async postHumanSteering() {},
@@ -45,7 +44,7 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
 function makeChain(overrides: Partial<IChainClient> = {}): IChainClient {
   return {
     async submitOrders() { return { txHash: '0xdeadbeef', results: [] }; },
-    async getCurrentTick(): Promise<Tick> { return 0; },
+    async getCurrentTick(_signal?: AbortSignal): Promise<Tick> { return 0; },
     async getClanFullView(clanId: string): Promise<ClanFullView> {
       return {
         clan: { id: clanId, name: `chain-${clanId}`, treasury: '0' },
@@ -214,6 +213,112 @@ describe('peer whisper', () => {
     expect(entry.from).toBe(2);
     expect(entry.to).toBe('5');
     expect(entry.msg).toBe('attack at dawn');
+  });
+
+  it('mirrors successful local whispers to Convex best-effort', async () => {
+    const postWhisper = vi.fn().mockResolvedValue(undefined);
+    const getCurrentTick = vi.fn().mockResolvedValue(42);
+    deps = {
+      convex: makeConvex({ postWhisper }),
+      chain: makeChain({ getCurrentTick }),
+    };
+
+    await runCommand('peer', 'whisper', ['5', 'attack at dawn'], deps, { ELDER_N: '2' }, tmpDir);
+
+    expect(postWhisper).toHaveBeenCalledWith(expect.objectContaining({
+      tick: 42,
+      fromClanId: 2,
+      toClanIds: [5],
+      body: 'attack at dawn',
+    }));
+    expect(postWhisper.mock.calls[0]?.[0].msgId).toMatch(/^2:42:/);
+  });
+
+  it('keeps the local whisper when Convex mirroring fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    deps = {
+      convex: makeConvex({ postWhisper: vi.fn().mockRejectedValue(new Error('convex down')) }),
+      chain: makeChain(),
+    };
+
+    await expect(
+      runCommand('peer', 'whisper', ['5', 'attack at dawn'], deps, { ELDER_N: '2' }, tmpDir),
+    ).resolves.toBe('whisper sent\n');
+    expect(fs.existsSync(recipientInboxFile('5', tmpDir))).toBe(true);
+
+    warn.mockRestore();
+  });
+
+  it('skips cockpit mirror entirely for non-numeric clan ids (local-only inbox key)', async () => {
+    const postWhisper = vi.fn().mockResolvedValue(undefined);
+    const getCurrentTick = vi.fn().mockResolvedValue(7);
+    deps = {
+      convex: makeConvex({ postWhisper }),
+      chain: makeChain({ getCurrentTick }),
+    };
+
+    await expect(
+      runCommand('peer', 'whisper', ['valid-clan', 'hold position'], deps, { ELDER_N: '2' }, tmpDir),
+    ).resolves.toBe('whisper sent\n');
+
+    expect(fs.existsSync(recipientInboxFile('valid-clan', tmpDir))).toBe(true);
+    expect(postWhisper).not.toHaveBeenCalled();
+    expect(getCurrentTick).not.toHaveBeenCalled();
+  });
+
+  it('keeps the local whisper when chain.getCurrentTick hangs (mirror bounded by timeout)', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const postWhisper = vi.fn().mockResolvedValue(undefined);
+    // getCurrentTick stays pending until the timeout aborts it — must not pin the CLI.
+    const getCurrentTick = vi.fn().mockImplementation((signal?: AbortSignal) => new Promise<number>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }));
+    deps = {
+      convex: makeConvex({ postWhisper }),
+      chain: makeChain({ getCurrentTick }),
+    };
+
+    const runPromise = runCommand('peer', 'whisper', ['5', 'attack at dawn'], deps, { ELDER_N: '2' }, tmpDir);
+
+    // Advance fake timers past the 5s withTimeout window so the mirror rejects + falls into catch.
+    await vi.advanceTimersByTimeAsync(5_001);
+
+    await expect(runPromise).resolves.toBe('whisper sent\n');
+    expect(fs.existsSync(recipientInboxFile('5', tmpDir))).toBe(true);
+    expect(postWhisper).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('cockpit mirror failed'),
+      expect.objectContaining({ message: expect.stringContaining('timed out') }),
+    );
+
+    warn.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('aborts the underlying chain call when timeout fires', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let receivedSignal: AbortSignal | undefined;
+    const getCurrentTick = vi.fn().mockImplementation((signal?: AbortSignal) => {
+      receivedSignal = signal;
+      return new Promise<number>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+    });
+    deps = {
+      convex: makeConvex(),
+      chain: makeChain({ getCurrentTick }),
+    };
+
+    const runPromise = runCommand('peer', 'whisper', ['5', 'attack'], deps, { ELDER_N: '2' }, tmpDir);
+    await vi.advanceTimersByTimeAsync(5_001);
+    await runPromise;
+
+    expect(receivedSignal?.aborted).toBe(true);
+
+    warn.mockRestore();
+    vi.useRealTimers();
   });
 });
 

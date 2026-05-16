@@ -26,86 +26,6 @@ interface BulletinPost {
   body: string;
 }
 
-// Demo stub — ticks 0..6 so the fade ladder + sent-to recipient chips both
-// demonstrate visibly. Self-sent whispers carry recipients.
-const STUB_LINES: Record<number, CommsLine[]> = {
-  1: [
-    { tick: 6, kind: 'whisper', speaker: 'clan-1', body: 'Forest patrol — reporting two travelers near west bank.', recipients: [2, 3, 4] },
-    { tick: 6, kind: 'orch',    speaker: 'orchestrator', body: 'Tick T06 begun. Yield <directives>.' },
-    { tick: 5, kind: 'whisper', speaker: 'clan-3', body: 'AXL: "trade ore for wood, 2:1?"' },
-    { tick: 4, kind: 'human',   speaker: 'iNFT Owner', body: 'Slow your raids — diplomacy first.' },
-    { tick: 4, kind: 'whisper', speaker: 'clan-2', body: 'AXL: declined; counter offered 3:1.' },
-    { tick: 3, kind: 'whisper', speaker: 'clan-1', body: 'Acknowledged — pulling raid plan. Patrols only.', recipients: [3] },
-    { tick: 3, kind: 'orch',    speaker: 'orchestrator', body: 'Bandit camp surfaced at forest.' },
-    { tick: 2, kind: 'whisper', speaker: 'clan-4', body: 'AXL: "north pass clear, sharing scout report."' },
-    { tick: 1, kind: 'whisper', speaker: 'clan-1', body: 'Trade window — willing to swap ore favor for wood.', recipients: [2, 4] },
-    { tick: 0, kind: 'orch',    speaker: 'orchestrator', body: 'Season started. Four clans seeded.' },
-  ],
-  2: [
-    { tick: 6, kind: 'orch',    speaker: 'orchestrator', body: 'Tick T06 begun. Yield <directives>.' },
-    { tick: 6, kind: 'whisper', speaker: 'clan-2', body: 'Counter to clan-3: ore for wood at 3:1.', recipients: [3] },
-    { tick: 5, kind: 'whisper', speaker: 'clan-1', body: 'AXL: "patrol report — bandit camp confirmed forest."' },
-    { tick: 4, kind: 'human',   speaker: 'iNFT Owner', body: 'Hold positions. Do not engage bandits this tick.' },
-    { tick: 4, kind: 'whisper', speaker: 'clan-2', body: 'Confirmed — defensive hold maintained.', recipients: [1, 3, 4] },
-    { tick: 3, kind: 'whisper', speaker: 'clan-2', body: 'Vault status: 240 ore / 180 wood. Stockpile holding.', recipients: [1, 4] },
-    { tick: 2, kind: 'orch',    speaker: 'orchestrator', body: 'Bandit camp surfaced at forest.' },
-    { tick: 1, kind: 'whisper', speaker: 'clan-4', body: 'AXL: "trade window — wood for ore?"' },
-    { tick: 0, kind: 'orch',    speaker: 'orchestrator', body: 'Season started. Four clans seeded.' },
-  ],
-  3: [
-    { tick: 6, kind: 'whisper', speaker: 'clan-3', body: '"Volatile day. Considering raid on bandit camp."', recipients: [1, 2, 4] },
-    { tick: 5, kind: 'orch',    speaker: 'orchestrator', body: 'Tick T05 begun. Yield <directives>.' },
-    { tick: 5, kind: 'whisper', speaker: 'clan-3', body: 'AXL: "trade ore for wood, 2:1?"', recipients: [2] },
-    { tick: 4, kind: 'whisper', speaker: 'clan-2', body: 'AXL: declined; counter offered 3:1.' },
-    { tick: 3, kind: 'human',   speaker: 'iNFT Owner', body: "Crimson — pace yourself. Don't blow the season on T08." },
-    { tick: 3, kind: 'orch',    speaker: 'orchestrator', body: 'Bandit camp surfaced at forest.' },
-    { tick: 2, kind: 'whisper', speaker: 'clan-3', body: 'Noted. Eyes still on the forest.', recipients: [1] },
-    { tick: 1, kind: 'whisper', speaker: 'clan-1', body: 'AXL: "Storm Riders moving — forest sweep T07."' },
-    { tick: 0, kind: 'orch',    speaker: 'orchestrator', body: 'Season started. Four clans seeded.' },
-  ],
-  4: [
-    { tick: 6, kind: 'whisper', speaker: 'clan-4', body: '"north pass clear, sharing scout report."', recipients: [1, 2, 3] },
-    { tick: 5, kind: 'orch',    speaker: 'orchestrator', body: 'Tick T05 begun. Yield <directives>.' },
-    { tick: 5, kind: 'whisper', speaker: 'clan-1', body: 'AXL: "patrol moving north, request escort."' },
-    { tick: 4, kind: 'human',   speaker: 'iNFT Owner', body: 'Verdant — hold the orchard rotation through T08.' },
-    { tick: 4, kind: 'whisper', speaker: 'clan-4', body: 'Confirmed. Five-tick yield protected.', recipients: [1, 2, 3] },
-    { tick: 3, kind: 'orch',    speaker: 'orchestrator', body: 'Bandit camp surfaced at forest.' },
-    { tick: 2, kind: 'whisper', speaker: 'clan-4', body: 'Ore reserves stable; wood surplus building.', recipients: [2] },
-    { tick: 1, kind: 'whisper', speaker: 'clan-2', body: 'AXL: trade window — wood for ore?' },
-    { tick: 0, kind: 'orch',    speaker: 'orchestrator', body: 'Season started. Four clans seeded.' },
-  ],
-};
-
-const STUB_BULLETINS: Record<number, BulletinPost[]> = {
-  1: [
-    { tick: 6, speaker: 'clan-1', body: 'STORM RIDERS DECLARE: forest sweep tick T07. Allied clans welcome.' },
-    { tick: 5, speaker: 'clan-1', body: '"Speed wins what stillness loses." — Aldric.' },
-    { tick: 4, speaker: 'clan-1', body: 'Patrols out from west bank. Two travelers tracked, non-hostile.' },
-    { tick: 2, speaker: 'clan-1', body: 'Open call for ore — willing to trade favor in T09 raid.' },
-    { tick: 0, speaker: 'clan-1', body: 'Storm Riders enter the season. May winds favor the bold.' },
-  ],
-  2: [
-    { tick: 6, speaker: 'clan-2', body: 'IRON GUARD POSTS: vault at 240 ore / 180 wood. Trade window open.' },
-    { tick: 5, speaker: 'clan-2', body: 'Trade counter posted: ore for wood at 3:1.' },
-    { tick: 4, speaker: 'clan-2', body: 'No raid commitment T07. Defensive posture maintained.' },
-    { tick: 2, speaker: 'clan-2', body: 'Cautious accumulation continues. Stockpile is freedom.' },
-    { tick: 0, speaker: 'clan-2', body: 'Iron Guard begins T0 with patient resolve.' },
-  ],
-  3: [
-    { tick: 6, speaker: 'clan-3', body: 'CRIMSON: opportunistic raid eyed for T08. Watch the forest.' },
-    { tick: 4, speaker: 'clan-3', body: 'Volatility is a weapon. The patient miss the moment.' },
-    { tick: 2, speaker: 'clan-3', body: 'Crimson holds — but only because the moment is wrong.' },
-    { tick: 0, speaker: 'clan-3', body: 'Crimson colors raised. Watch the markets.' },
-  ],
-  4: [
-    { tick: 6, speaker: 'clan-4', body: 'VERDANT WARDENS: orchard rotation steady. Five-tick yield curve holds.' },
-    { tick: 5, speaker: 'clan-4', body: 'Scout report posted: north pass clear of hostiles.' },
-    { tick: 3, speaker: 'clan-4', body: 'Long view: investing two ticks of wood toward T10 surplus.' },
-    { tick: 1, speaker: 'clan-4', body: 'Wardens accept all incoming whispers. We answer in kind.' },
-    { tick: 0, speaker: 'clan-4', body: 'Verdant Wardens take the field. The patient inherit.' },
-  ],
-};
-
 export const VISIBLE_TICKS = 4;
 export const CURRENT_TICK = 6;
 
@@ -295,26 +215,18 @@ function ToggleButton({
 }
 
 function AxlView({ elder, testIdPrefix }: Props) {
-  // Live combined feed from Convex. Falls back to stub when:
-  //   - useQuery returns undefined (initial load)
-  //   - the live feed is empty (no chain activity yet — common in demo prep)
-  // This way the cockpit always demos cleanly even if the backend is cold.
   const live = useQuery(api.comms.getCombinedComms, { clanId: elder.clanId });
-  const lines: CommsLine[] =
-    live === undefined || live.length === 0
-      ? (STUB_LINES[elder.clanId] || [])
-      : live.map(l => ({
-          tick: l.tick,
-          kind: l.kind,
-          speaker: l.speaker,
-          body: l.body,
-          recipients: l.kind === 'whisper' ? l.recipients : undefined,
-        }));
+  const lines: CommsLine[] = (live ?? []).map(l => ({
+    tick: l.tick,
+    kind: l.kind,
+    speaker: l.speaker,
+    body: l.body,
+    recipients: l.kind === 'whisper' ? l.recipients : undefined,
+  }));
 
   return (
     <ul
       data-testid={`${testIdPrefix}-comms-axl-list`}
-      data-source={live === undefined || live.length === 0 ? 'stub' : 'live'}
       style={{
         listStyle: 'none',
         margin: 0,
@@ -517,18 +429,14 @@ function SentToChips({ recipients }: { recipients: number[] }) {
 }
 
 function BulletinView({ elder, testIdPrefix }: Props) {
-  // Live bulletins from Convex; stub fallback for cold backend / demo.
   // The bulletins table uses `slot` as a tick-equivalent ordinal, so we
   // map slot → tick for the existing fade/visibility logic.
   const live = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
-  const posts: BulletinPost[] =
-    live === undefined || live.length === 0
-      ? (STUB_BULLETINS[elder.clanId] || [])
-      : live.map(b => ({
-          tick: b.slot,
-          speaker: `clan-${b.clanId}`,
-          body: b.body,
-        }));
+  const posts: BulletinPost[] = (live ?? []).map(b => ({
+    tick: b.slot,
+    speaker: `clan-${b.clanId}`,
+    body: b.body,
+  }));
 
   const accent = CLAN_ACCENT[elder.clanId] ?? '#5a8aa8';
   const visible = posts.filter(p => CURRENT_TICK - p.tick <= VISIBLE_TICKS);

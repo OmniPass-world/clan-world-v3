@@ -101,7 +101,7 @@ export function validateSubmitOrderPayload(order: ClanOrder, submitterClanId: nu
 }
 
 export interface IChainClient {
-  getCurrentTick(): Promise<Tick>;
+  getCurrentTick(signal?: AbortSignal): Promise<Tick>;
   submitOrders(clanId: string, orders: ClanOrder[]): Promise<SubmitOrdersResult>;
   getClanFullView(clanId: string): Promise<ClanFullView>;
   getWallUpgradeCost(currentLevel: number): Promise<{ wood: bigint; iron: bigint }>;
@@ -4035,7 +4035,7 @@ export function parseClanId(clanId: string, fnName: string): number {
 }
 
 class StubChainClient implements IChainClient {
-  async getCurrentTick(): Promise<Tick> {
+  async getCurrentTick(_signal?: AbortSignal): Promise<Tick> {
     return 0;
   }
   async submitOrders(_clanId: string, _orders: ClanOrder[]): Promise<SubmitOrdersResult> {
@@ -4076,15 +4076,14 @@ class RealChainClient implements IChainClient {
   private readonly transport:
     | ReturnType<typeof http>
     | ReturnType<typeof fallback>;
+  private readonly primaryRpc: string | undefined;
+  private readonly fallbackRpc: string | undefined;
 
   constructor() {
-    const primaryRpc = readEnv('RPC_URL_PRIMARY');
-    const fallbackRpc = readEnv('RPC_URL_FALLBACK');
+    this.primaryRpc = readEnv('RPC_URL_PRIMARY');
+    this.fallbackRpc = readEnv('RPC_URL_FALLBACK');
 
-    this.transport =
-      primaryRpc && fallbackRpc
-        ? fallback([http(primaryRpc), http(fallbackRpc)])
-        : http(primaryRpc ?? fallbackRpc);
+    this.transport = this.createTransport();
 
     const configuredContractAddress = readEnv('CLAN_WORLD_CONTRACT_ADDRESS')?.trim();
     const configuredLensAddress = readEnv('CLAN_WORLD_LENS_ADDRESS');
@@ -4106,12 +4105,27 @@ class RealChainClient implements IChainClient {
     });
   }
 
-  async getCurrentTick(): Promise<Tick> {
-    const snapshot = await this.client.readContract({
+  private createTransport(signal?: AbortSignal): ReturnType<typeof http> | ReturnType<typeof fallback> {
+    const httpConfig = signal ? { fetchOptions: { signal } } : undefined;
+    return this.primaryRpc && this.fallbackRpc
+      ? fallback([http(this.primaryRpc, httpConfig), http(this.fallbackRpc, httpConfig)])
+      : http(this.primaryRpc ?? this.fallbackRpc, httpConfig);
+  }
+
+  async getCurrentTick(signal?: AbortSignal): Promise<Tick> {
+    signal?.throwIfAborted();
+    const client = signal
+      ? createPublicClient({
+          chain: baseSepolia,
+          transport: this.createTransport(signal),
+        })
+      : this.client;
+    const snapshot = await client.readContract({
       address: this.lensAddress,
       abi: CLAN_WORLD_LENS_ABI,
       functionName: 'getWorldSnapshot',
     }) as { currentTick: number | bigint };
+    signal?.throwIfAborted();
     return Number(snapshot.currentTick); // safe: tick values are small enough to fit Number precisely in Wave 0
   }
 

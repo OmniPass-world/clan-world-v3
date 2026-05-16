@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { IChainClient, IConvexClient } from '@clan-world/shared/adapters';
-import type { ClanFullView, Tick, Whisper, WorldSnapshot } from '@clan-world/shared';
+import type { ClanFullView, Tick, WorldSnapshot } from '@clan-world/shared';
 import { callElderTool } from '../src/mcp.js';
 
 const STUB_SNAPSHOT: WorldSnapshot = {
@@ -25,7 +25,6 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
     async getSnapshot() { return STUB_SNAPSHOT; },
     async getClanFullView() { return STUB_CLAN_VIEW; },
     async postLog() {},
-    subscribeWhispers(_clanId: string, _onWhisper: (w: Whisper) => void): () => void { return () => {}; },
     async postWhisper() {},
     async postOrchEvent() {},
     async postHumanSteering() {},
