@@ -25,6 +25,7 @@ if (process.env.CLANWORLD_USE_REAL_INDEXER === "true") {
 crons.interval("gold-quote-refresh", { minutes: 5 }, internal.goldQuote.refreshGoldQuote, {});
 crons.interval("kickstart-leaderboard-refresh", { minutes: 5 }, internal.kickstart.refreshKickstartLeaderboard, {});
 crons.interval("kickstart-watched-candles-refresh", { minutes: 1 }, internal.kickstart.refreshWatchedTokenCandles, {});
+crons.interval("bus-sweep-stale-delivered", { seconds: 60 }, internal.commandBus.sweepStaleDelivered, {});
 
 // Issue #337: nightly storage retention purge. 04:00 UTC is low-traffic for
 // the game (early-morning EU / late-night Americas). Convex cron schedules
