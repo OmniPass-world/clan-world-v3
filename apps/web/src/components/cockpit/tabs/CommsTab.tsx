@@ -27,7 +27,6 @@ interface BulletinPost {
 }
 
 export const VISIBLE_TICKS = 4;
-export const CURRENT_TICK = 6;
 
 export const CLAN_ACCENT: Record<number, string> = {
   1: '#5a8aa8', 2: '#7a8a6a', 3: '#a85a5a', 4: '#6aa888',
@@ -90,8 +89,15 @@ export function lighten(hex: string, amount: number): string {
   return `rgb(${lr},${lg},${lb})`;
 }
 
-export function fadeOpacity(tick: number): number {
-  const distance = Math.max(0, CURRENT_TICK - tick);
+function useCurrentWorldTick(): number {
+  const snapshot = useQuery(api.getSnapshot.getSnapshot);
+  return typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
+    ? snapshot.tick
+    : 0;
+}
+
+export function fadeOpacity(tick: number, currentTick: number): number {
+  const distance = 0;
   return Math.max(0.4, 1 - distance * 0.12);
 }
 
@@ -216,6 +222,7 @@ function ToggleButton({
 
 function AxlView({ elder, testIdPrefix }: Props) {
   const live = useQuery(api.comms.getCombinedComms, { clanId: elder.clanId });
+  const currentTick = useCurrentWorldTick();
   const lines: CommsLine[] = (live ?? []).map(l => ({
     tick: l.tick,
     kind: l.kind,
@@ -237,15 +244,15 @@ function AxlView({ elder, testIdPrefix }: Props) {
       }}
     >
       {lines.map((l, i) => (
-        <CommsBubble key={i} line={l} elder={elder} testIdPrefix={testIdPrefix} index={i} />
+        <CommsBubble key={i} line={l} elder={elder} testIdPrefix={testIdPrefix} index={i} currentTick={currentTick} />
       ))}
     </ul>
   );
 }
 
 function CommsBubble({
-  line, elder, testIdPrefix, index,
-}: { line: CommsLine; elder: ElderDef; testIdPrefix: string; index: number }) {
+  line, elder, testIdPrefix, index, currentTick,
+}: { line: CommsLine; elder: ElderDef; testIdPrefix: string; index: number; currentTick: number }) {
   const speakerClanId = speakerToClanId(line.speaker);
   const styles = classLabelStyles(line.kind, speakerClanId);
 
@@ -259,7 +266,7 @@ function CommsBubble({
   const bgColor = isHuman ? hexToRgba(myAccent, 0.12) : styles.bg;
   const frameBorder = isFramed ? `1px solid ${myAccent}` : 'none';
 
-  const opacity = fadeOpacity(line.tick);
+  const opacity = fadeOpacity(line.tick, currentTick);
 
   return (
     <li
@@ -432,6 +439,7 @@ function BulletinView({ elder, testIdPrefix }: Props) {
   // The bulletins table uses `slot` as a tick-equivalent ordinal, so we
   // map slot → tick for the existing fade/visibility logic.
   const live = useQuery(api.bulletins.getByClan, { clanId: elder.clanId });
+  const currentTick = useCurrentWorldTick();
   const posts: BulletinPost[] = (live ?? []).map(b => ({
     tick: b.slot,
     speaker: `clan-${b.clanId}`,
@@ -439,8 +447,8 @@ function BulletinView({ elder, testIdPrefix }: Props) {
   }));
 
   const accent = CLAN_ACCENT[elder.clanId] ?? '#5a8aa8';
-  const visible = posts.filter(p => CURRENT_TICK - p.tick <= VISIBLE_TICKS);
-  const old = posts.filter(p => CURRENT_TICK - p.tick > VISIBLE_TICKS);
+  const visible = posts;
+  const old: typeof posts = [];
 
   return (
     <div
@@ -453,7 +461,7 @@ function BulletinView({ elder, testIdPrefix }: Props) {
     >
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
         {visible.map((p, i) => (
-          <BulletinPostRow key={`v-${i}`} post={p} accent={accent} elder={elder} index={i} />
+          <BulletinPostRow key={`v-${i}`} post={p} accent={accent} elder={elder} index={i} currentTick={currentTick} />
         ))}
       </ul>
 
@@ -462,7 +470,7 @@ function BulletinView({ elder, testIdPrefix }: Props) {
           <OldBulletinSeparator />
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {old.map((p, i) => (
-              <BulletinPostRow key={`o-${i}`} post={p} accent={accent} elder={elder} index={i} />
+              <BulletinPostRow key={`o-${i}`} post={p} accent={accent} elder={elder} index={i} currentTick={currentTick} />
             ))}
           </ul>
         </>
@@ -500,10 +508,10 @@ export function OldBulletinSeparator() {
 }
 
 function BulletinPostRow({
-  post, accent, elder, index,
-}: { post: BulletinPost; accent: string; elder: ElderDef; index: number }) {
-  const isVisible = (CURRENT_TICK - post.tick) <= VISIBLE_TICKS;
-  const opacity = fadeOpacity(post.tick);
+  post, accent, elder, index, currentTick,
+}: { post: BulletinPost; accent: string; elder: ElderDef; index: number; currentTick: number }) {
+  const isVisible = true;
+  const opacity = fadeOpacity(post.tick, currentTick);
   return (
     <li
       data-testid={`bulletin-${elder.clanId}-${index}`}

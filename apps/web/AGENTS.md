@@ -5,7 +5,7 @@ Vite + React frontend. The user-facing surface for the live game, cockpit, and o
 ## What this package does
 
 - Renders the world map (8 regions), clan panels, mission queue, whisper feed.
-- Subscribes to Convex queries via `IConvexClient` for live snapshot + whispers.
+- Subscribes to Convex queries via `IConvexClient` for live snapshot + `getCombinedComms`.
 - Calls `IChainClient` for any direct chain reads (rare — most reads go through Convex).
 - Renders cockpit and owner-editor routes without a platform-specific gate.
 
@@ -31,7 +31,7 @@ The app renders the live Pixi map/cockpit surfaces and can fall back to explicit
 
 - **`IConvexClient`** — primary data source. Frontend imports `createConvexClient()` from `@clan-world/shared/adapters` and subscribes via the returned interface. Stub mode returns mock data so the frontend can render before Convex is wired.
 - **`IChainClient`** — used only for direct reads where Convex hasn't indexed yet (e.g., the very first tick before the indexer cron runs). Stub returns hardcoded `tick=0`.
-- **`ILLMClient`** — never used by the frontend. Whisper text comes from the chain via Convex.
+- **`ILLMClient`** — never used by the frontend. Whisper text is elder-direct via the `sendWhisper` mutation and read through Convex.
 - **`IKeeper`** — never used by the frontend.
 
 ## Running
