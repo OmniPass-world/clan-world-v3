@@ -167,4 +167,18 @@ describe("normalizePausedAtTs", () => {
     expect(normalizePausedAtTs(undefined)).toBeNull();
     expect(normalizePausedAtTs(0)).toBeNull();
   });
+
+  it("paused row: normalizes zero pausedAtTs to null", () => {
+    expect(resolvePauseStateForSnap({ worldPaused: true, pausedAtTs: 0 })).toEqual({
+      worldPaused: true,
+      pausedAtTs: null,
+    });
+  });
+
+  it("unpaused row: hides stale positive pausedAtTs", () => {
+    expect(resolvePauseStateForSnap({ worldPaused: false, pausedAtTs: 12345 })).toEqual({
+      worldPaused: false,
+      pausedAtTs: null,
+    });
+  });
 });

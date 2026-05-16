@@ -583,11 +583,14 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
+    const worldPaused = asBool(world.worldPaused);
+    const sameTickAsPrevious = previousWorldSnapshot?.tick === tick;
+    const wasPausedNowUnpaused =
+      previousWorldSnapshot?.worldPaused === true && !worldPaused;
     const tickEpochStartedAt =
-      previousWorldSnapshot?.tick === tick
+      previousWorldSnapshot && sameTickAsPrevious && !wasPausedNowUnpaused
         ? previousWorldSnapshot.tickEpochStartedAt
         : Math.floor(now / 1000);
-    const worldPaused = asBool(world.worldPaused);
     const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
     const pausedAtTs =
       Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)

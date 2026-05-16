@@ -68,6 +68,22 @@ function createDb(tables: Record<string, any[]> = {}) {
   };
 }
 
+type CommitSnapshotTestHandler = (
+  ctx: { db: ReturnType<typeof createDb>["db"] },
+  args: {
+    snapshot: {
+      blockNumber: number;
+      txHash?: string;
+      world: Record<string, unknown>;
+      clans: unknown[];
+    };
+  },
+) => Promise<{ tick?: number; clans?: number; skipped?: string }>;
+
+const runCommitSnapshot = (
+  commitSnapshot as unknown as { _handler: CommitSnapshotTestHandler }
+)._handler;
+
 function eventAbi(name: string) {
   const event = CLAN_WORLD_ABI.find(
     (item) => item.type === "event" && item.name === name,
@@ -369,7 +385,7 @@ describe("legacy snapshot backfill", () => {
   it("commitSnapshot writes non-empty legacy clans from clanView rows", async () => {
     const { db, tables } = createDb();
 
-    await (commitSnapshot as any)._handler(
+    await runCommitSnapshot(
       { db },
       {
         snapshot: {
@@ -425,7 +441,7 @@ describe("legacy snapshot backfill", () => {
     const now = vi.spyOn(Date, "now");
     now.mockReturnValue(1_000_000);
 
-    await (commitSnapshot as any)._handler(
+    await runCommitSnapshot(
       { db },
       {
         snapshot: {
@@ -437,7 +453,7 @@ describe("legacy snapshot backfill", () => {
     );
 
     now.mockReturnValue(1_015_000);
-    await (commitSnapshot as any)._handler(
+    await runCommitSnapshot(
       { db },
       {
         snapshot: {
@@ -453,7 +469,7 @@ describe("legacy snapshot backfill", () => {
     expect(sameTickSnapshot.tickEpochDurationMs).toBe(60_000);
 
     now.mockReturnValue(1_060_000);
-    await (commitSnapshot as any)._handler(
+    await runCommitSnapshot(
       { db },
       {
         snapshot: {
@@ -467,6 +483,41 @@ describe("legacy snapshot backfill", () => {
     const advancedTickSnapshot = tables.worldSnapshot?.[0];
     expect(advancedTickSnapshot.tickEpochStartedAt).toBe(1_060);
     expect(advancedTickSnapshot.tickEpochDurationMs).toBe(60_000);
+
+    now.mockRestore();
+  });
+
+  it("refreshes tick epoch start when same-tick snapshot unpauses", async () => {
+    const { db, tables } = createDb({
+      worldSnapshot: [
+        {
+          _id: "worldSnapshot:0",
+          _creationTime: 0,
+          tick: 12,
+          tickEpochStartedAt: 1_000,
+          tickEpochDurationMs: 60_000,
+          worldPaused: true,
+          pausedAtTs: 1_000,
+          clans: [],
+        },
+      ],
+    });
+    const now = vi.spyOn(Date, "now");
+    now.mockReturnValue(1_015_000);
+
+    await runCommitSnapshot(
+      { db },
+      {
+        snapshot: {
+          blockNumber: 100,
+          world: { currentTick: 12, worldPaused: false },
+          clans: [],
+        },
+      },
+    );
+
+    expect(tables.worldSnapshot?.[0]?.tickEpochStartedAt).toBe(1_015);
+    expect(tables.worldSnapshot?.[0]?.worldPaused).toBe(false);
 
     now.mockRestore();
   });
@@ -486,7 +537,7 @@ describe("legacy snapshot backfill", () => {
       ],
     });
 
-    const result = await (commitSnapshot as any)._handler(
+    const result = await runCommitSnapshot(
       { db },
       {
         snapshot: {
