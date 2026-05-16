@@ -37,7 +37,14 @@ function createDb(tables: Record<string, any[]> = {}) {
       async patch(id: string, value: Record<string, unknown>) {
         for (const rows of Object.values(tables)) {
           const index = rows.findIndex((row) => row._id === id);
-          if (index >= 0) rows[index] = { ...rows[index], ...value };
+          if (index >= 0) {
+            const updated = { ...rows[index] };
+            for (const [k, v] of Object.entries(value)) {
+              if (v === undefined) delete (updated as any)[k];
+              else (updated as any)[k] = v;
+            }
+            rows[index] = updated;
+          }
         }
       },
       query(table: string) {
@@ -45,16 +52,22 @@ function createDb(tables: Record<string, any[]> = {}) {
         const builder = {
           withIndex(_name: string, apply?: (q: any) => unknown) {
             if (apply) {
-              const clauses: Array<{ field: string; value: unknown }> = [];
+              const eqClauses: Array<{ field: string; value: unknown }> = [];
+              const ltClauses: Array<{ field: string; value: unknown }> = [];
               const q = {
                 eq(field: string, value: unknown) {
-                  clauses.push({ field, value });
+                  eqClauses.push({ field, value });
+                  return q;
+                },
+                lt(field: string, value: unknown) {
+                  ltClauses.push({ field, value });
                   return q;
                 },
               };
               apply(q);
               rows = rows.filter((row) =>
-                clauses.every((clause) => row[clause.field] === clause.value),
+                eqClauses.every((clause) => row[clause.field] === clause.value) &&
+                ltClauses.every((clause) => (row[clause.field] as number) < (clause.value as number)),
               );
             }
             return builder;
@@ -130,6 +143,27 @@ describe("enqueueCommand", () => {
       ),
     ).rejects.toThrow("Unauthorized");
   });
+
+  it("fan-out: inserts one row per elder for targetAgentId='*'", async () => {
+    vi.stubEnv("ELDER_IDS", "elder-1,elder-2,elder-3,elder-4");
+    const { db, tables } = createDb();
+    const result = await (enqueueCommand as any)._handler(
+      { db },
+      {
+        secret: "op-secret",
+        targetAgentId: "*",
+        kind: "system_message",
+        payload: { text: "freeze" },
+        source: "orchestrator",
+      },
+    );
+    expect(Array.isArray(result)).toBe(true);
+    expect(tables.agentCommands).toHaveLength(4);
+    const targets = tables.agentCommands!.map((c: any) => c.targetAgentId);
+    expect(targets).toEqual(["elder-1", "elder-2", "elder-3", "elder-4"]);
+    const seqs = tables.agentCommands!.map((c: any) => c.broadcastSequence);
+    expect(new Set(seqs).size).toBe(1); // all same broadcastSequence
+  });
 });
 
 describe("claimNext", () => {
@@ -172,16 +206,17 @@ describe("claimNext", () => {
     expect(result).toBeNull();
   });
 
-  it("claims broadcast (*) if no targeted commands", async () => {
+  it("claims fan-out broadcast row targeted at this elder", async () => {
     const { db, tables } = createDb({
       agentCommands: [
         {
           _id: "agentCommands:0",
           _creationTime: 0,
-          targetAgentId: "*",
+          targetAgentId: "elder-1",
           status: "queued",
           createdAt: 1000,
           retryCount: 0,
+          broadcastSequence: 1,
         },
       ],
     });

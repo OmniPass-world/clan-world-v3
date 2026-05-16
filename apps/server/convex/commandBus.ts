@@ -41,6 +41,23 @@ export const enqueueCommand = mutation({
         .order("desc")
         .first();
       broadcastSequence = (last?.broadcastSequence ?? 0) + 1;
+      const elderIds = (process.env.ELDER_IDS ?? "elder-1,elder-2,elder-3,elder-4")
+        .split(",").map(s => s.trim()).filter(Boolean);
+      const ids: string[] = [];
+      for (const elderId of elderIds) {
+        ids.push(await ctx.db.insert("agentCommands", {
+          targetAgentId: elderId,
+          kind: args.kind,
+          payload: args.payload,
+          payloadVersion: 1,
+          source: args.source,
+          createdAt: Date.now(),
+          status: "queued",
+          retryCount: 0,
+          broadcastSequence,
+        }));
+      }
+      return ids;
     }
     return await ctx.db.insert("agentCommands", {
       targetAgentId: args.targetAgentId,
@@ -61,23 +78,12 @@ export const claimNext = mutation({
   args: { secret: v.string(), agentId: v.string() },
   handler: async (ctx, args) => {
     checkElderAuth(args.secret, args.agentId);
-    // Check targeted commands first, then broadcasts
-    const targeted = await ctx.db.query("agentCommands")
+    const cmd = await ctx.db.query("agentCommands")
       .withIndex("by_target_status", q =>
         q.eq("targetAgentId", args.agentId).eq("status", "queued"),
       )
       .order("asc")
       .first();
-    const broadcast = await ctx.db.query("agentCommands")
-      .withIndex("by_target_status", q =>
-        q.eq("targetAgentId", "*").eq("status", "queued"),
-      )
-      .order("asc")
-      .first();
-    // Pick the older of the two (lower createdAt)
-    const cmd = !targeted ? broadcast
-      : !broadcast ? targeted
-      : targeted.createdAt <= broadcast.createdAt ? targeted : broadcast;
     if (!cmd) return null;
     const now = Date.now();
     await ctx.db.patch(cmd._id, {
@@ -118,7 +124,7 @@ export const completeCommand = mutation({
       throw new Error("Command not found or not owned by this elder");
     }
     const now = Date.now();
-    await ctx.db.patch(args.commandId, { status: "completed", completedAt: now });
+    await ctx.db.patch(args.commandId, { status: "completed", completedAt: now, leaseOwner: undefined, leaseExpiresAt: undefined });
     await ctx.db.insert("commandResults", {
       commandId: args.commandId,
       agentId: args.agentId,
@@ -140,7 +146,7 @@ export const failCommand = mutation({
   handler: async (ctx, args) => {
     checkElderAuth(args.secret, args.agentId);
     const cmd = await ctx.db.get(args.commandId);
-    if (!cmd || cmd.leaseOwner !== args.agentId) {
+    if (!cmd || (cmd.status !== "leased" && cmd.status !== "acked") || cmd.leaseOwner !== args.agentId) {
       throw new Error("Command not found or not owned by this elder");
     }
     const newRetryCount = cmd.retryCount + 1;
@@ -157,17 +163,11 @@ export const failCommand = mutation({
 export const getQueuedFor = query({
   args: { agentId: v.string() },
   handler: async (ctx, args) => {
-    const targeted = await ctx.db.query("agentCommands")
+    return await ctx.db.query("agentCommands")
       .withIndex("by_target_status", q =>
         q.eq("targetAgentId", args.agentId).eq("status", "queued"),
       )
       .collect();
-    const broadcast = await ctx.db.query("agentCommands")
-      .withIndex("by_target_status", q =>
-        q.eq("targetAgentId", "*").eq("status", "queued"),
-      )
-      .collect();
-    return [...targeted, ...broadcast].sort((a, b) => a.createdAt - b.createdAt);
   },
 });
 
@@ -176,12 +176,11 @@ export const sweepStaleDelivered = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const leased = await ctx.db.query("agentCommands")
-      .filter(q => q.eq(q.field("status"), "leased"))
+    const expired = await ctx.db.query("agentCommands")
+      .withIndex("by_status_lease", q =>
+        q.eq("status", "leased").lt("leaseExpiresAt", now)
+      )
       .collect();
-    const expired = leased.filter(cmd =>
-      cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt < now
-    );
     let swept = 0;
     for (const cmd of expired) {
       const newRetryCount = cmd.retryCount + 1;
