@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { tokens, ELDERS, type ElderDef } from '../../styles/cockpit-tokens';
 import { MiniCockpit } from './MiniCockpit';
-import { WorldMapEmbed } from '../WorldMapEmbed';
+import { WorldMapIframe } from '../WorldMapIframe';
 
 const STORAGE_KEY_CLAN = 'cockpit-mobile-active-clan';
 const STORAGE_KEY_COLLAPSED = 'cockpit-mobile-collapsed';
@@ -166,7 +166,7 @@ export function MobileCockpitLayout() {
           background: '#000',
         }}
       >
-        <WorldMapEmbed />
+        <WorldMapIframe />
         <CollapseToggle collapsed={collapsed} onToggle={toggleCollapsed} accent={accent} />
       </div>
 
