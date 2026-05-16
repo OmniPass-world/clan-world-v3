@@ -36,6 +36,16 @@ fi
 export HOME=/home/elder
 export CLAUDE_CONFIG_DIR=/home/elder/.claude
 
+# --- settings seed -----------------------------------------------------------
+# Copy shared settings.json into per-elder home on every start.
+# Ensures CC permission deny rules are always current. Agent may mutate during
+# session; reset on next restart (intentional — avoids stale overrides).
+SHARED_SETTINGS="/opt/clan-world/shared/home-claude/settings.json"
+if [ -f "$SHARED_SETTINGS" ]; then
+  cp "$SHARED_SETTINGS" "$CLAUDE_CONFIG_DIR/settings.json.tmp.$$"
+  mv "$CLAUDE_CONFIG_DIR/settings.json.tmp.$$" "$CLAUDE_CONFIG_DIR/settings.json"
+fi
+
 # --- session detection -----------------------------------------------------
 
 # CC encodes the project path by replacing `/` with `-`, so /workspace -> -workspace.
