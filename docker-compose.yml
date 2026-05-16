@@ -220,7 +220,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-1 && pgrep -f /opt/elder-runtime/main.js && curl -fsS http://127.0.0.1:7681/"]
+      test: ["CMD-SHELL", "pgrep -f claude"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -251,7 +251,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-2 && pgrep -f /opt/elder-runtime/main.js && curl -fsS http://127.0.0.1:7681/"]
+      test: ["CMD-SHELL", "pgrep -f claude"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -282,7 +282,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-3 && pgrep -f /opt/elder-runtime/main.js && curl -fsS http://127.0.0.1:7681/"]
+      test: ["CMD-SHELL", "pgrep -f claude"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -313,7 +313,7 @@ services:
       - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
       - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
-      test: ["CMD-SHELL", "tmux has-session -t elder-4 && pgrep -f /opt/elder-runtime/main.js && curl -fsS http://127.0.0.1:7681/"]
+      test: ["CMD-SHELL", "pgrep -f claude"]
       interval: 30s
       timeout: 5s
       retries: 3

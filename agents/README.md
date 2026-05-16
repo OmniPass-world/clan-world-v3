@@ -46,11 +46,13 @@ At runtime, each `elder-N` container sees:
 | `/var/lib/clan-world/agents/elder-N/home-claude` | `/home/elder/.claude` | R/W |
 | `/var/lib/clan-world/agents/elder-N/workspace` | `/workspace` | R/W |
 | `./agents/shared/home-claude/CLAUDE.md` | `/home/elder/.claude/CLAUDE.md` | R/O overlay |
-| `./agents/shared/home-claude/settings.json` | `/home/elder/.claude/settings.json` | R/O overlay |
 | `./agents/shared/home-claude/skills/` | `/home/elder/.claude/skills/` | R/O overlay |
 
-The R/W host paths are created by `make bootstrap` (#355). The R/O overlays shadow individual
-files inside the R/W directory so shared CC config is always up-to-date without copying.
+The R/W host paths are created by `make bootstrap` (#355). The R/O overlays shadow `CLAUDE.md`
+and `skills/` inside the R/W home directory.
+`settings.json` is instead seeded by `run.sh` at every container start (atomic cp from
+`/opt/clan-world/shared/home-claude/settings.json`); it remains mutable during the session
+and resets on restart.
 
 > **Ownership:** The Makefile bootstrap (`make bootstrap`) creates these host paths and sets `elder:elder`
 > (uid/gid 1000) ownership before `docker compose up`. Without this step, the container's `elder` user
@@ -75,10 +77,10 @@ The Makefile lives next to what it orchestrates. See issue #355 for the full tar
 ## Relationship to host `~/.claude/`
 
 The container's `/home/elder/.claude/` is **independent** of any human developer's `~/.claude/`. The container mounts:
-- `agents/shared/home-claude/settings.json` → `/home/elder/.claude/settings.json` (R/O)
 - `agents/shared/home-claude/CLAUDE.md` → `/home/elder/.claude/CLAUDE.md` (R/O)
 - `agents/shared/home-claude/skills/` → `/opt/clan-world/shared/skills/` (R/O — runtime-merged into per-elder skills via the seed manifest)
 - `runtime/elder-N/.claude/` → `/home/elder/.claude/projects/` and `/home/elder/.claude/.credentials.json` (R/W, per-elder)
+- `settings.json` is seeded by `run.sh` at container start (not a bind mount — mutable during session, resets on restart)
 
 This keeps a clean separation: shared base files are version-controlled and inspectable; per-elder runtime state is mutable and gitignored.
 

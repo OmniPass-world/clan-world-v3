@@ -42,7 +42,8 @@ export CLAUDE_CONFIG_DIR=/home/elder/.claude
 # session; reset on next restart (intentional — avoids stale overrides).
 SHARED_SETTINGS="/opt/clan-world/shared/home-claude/settings.json"
 if [ -f "$SHARED_SETTINGS" ]; then
-  cp "$SHARED_SETTINGS" "$CLAUDE_CONFIG_DIR/settings.json"
+  cp "$SHARED_SETTINGS" "$CLAUDE_CONFIG_DIR/settings.json.tmp.$$"
+  mv "$CLAUDE_CONFIG_DIR/settings.json.tmp.$$" "$CLAUDE_CONFIG_DIR/settings.json"
 fi
 
 # --- session detection -----------------------------------------------------
