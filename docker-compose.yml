@@ -35,16 +35,6 @@ volumes:
   convex_data: {}
   # anvil-fork persisted fork state (dev profile only) — wired up in #346
   anvil_data: {}
-  # Per-Elder R/W volumes — wired up in #349. Declared here so `docker compose
-  # config` can resolve mount references early.
-  elder-1-home: {}
-  elder-1-workspace: {}
-  elder-2-home: {}
-  elder-2-workspace: {}
-  elder-3-home: {}
-  elder-3-workspace: {}
-  elder-4-home: {}
-  elder-4-workspace: {}
 
 secrets:
   # Plan revision (Finding 10): admin key lives in a file mounted as a Docker
@@ -211,17 +201,21 @@ services:
     container_name: clan-world-elder-1
     environment:
       ELDER_N: "1"
-      ELDER_ID: ${ELDER_1_CLAN_ID:-1}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-1
-      ANTHROPIC_API_KEY: ${ELDER_1_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_1_CLAUDE_CODE_OAUTH_TOKEN:-}
+    env_file: ./agents/elder-1/.env
+    ports:
+      - "${ELDER_1_TTYD_PORT:-7681}:7681"
     secrets:
       - bus-elder-1
     volumes:
-      # Per-Elder R/W runtime state — survives container restart.
-      - elder-1-home:/home/elder/.claude
-      - elder-1-workspace:/workspace
+      # Per-elder R/W state — host paths created by Makefile bootstrap (#355).
+      - /var/lib/clan-world/agents/elder-1/home-claude:/home/elder/.claude
+      - /var/lib/clan-world/agents/elder-1/workspace:/workspace
+      # R/O shared overlays — inject shared CC config into per-elder home.
+      - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
+      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
+      - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-1 && pgrep -f /opt/elder-runtime/main.js"]
       interval: 30s
@@ -235,16 +229,21 @@ services:
     container_name: clan-world-elder-2
     environment:
       ELDER_N: "2"
-      ELDER_ID: ${ELDER_2_CLAN_ID:-2}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-2
-      ANTHROPIC_API_KEY: ${ELDER_2_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_2_CLAUDE_CODE_OAUTH_TOKEN:-}
+    env_file: ./agents/elder-2/.env
+    ports:
+      - "${ELDER_2_TTYD_PORT:-7682}:7681"
     secrets:
       - bus-elder-2
     volumes:
-      - elder-2-home:/home/elder/.claude
-      - elder-2-workspace:/workspace
+      # Per-elder R/W state — host paths created by Makefile bootstrap (#355).
+      - /var/lib/clan-world/agents/elder-2/home-claude:/home/elder/.claude
+      - /var/lib/clan-world/agents/elder-2/workspace:/workspace
+      # R/O shared overlays — inject shared CC config into per-elder home.
+      - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
+      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
+      - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-2 && pgrep -f /opt/elder-runtime/main.js"]
       interval: 30s
@@ -258,16 +257,21 @@ services:
     container_name: clan-world-elder-3
     environment:
       ELDER_N: "3"
-      ELDER_ID: ${ELDER_3_CLAN_ID:-3}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-3
-      ANTHROPIC_API_KEY: ${ELDER_3_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_3_CLAUDE_CODE_OAUTH_TOKEN:-}
+    env_file: ./agents/elder-3/.env
+    ports:
+      - "${ELDER_3_TTYD_PORT:-7683}:7681"
     secrets:
       - bus-elder-3
     volumes:
-      - elder-3-home:/home/elder/.claude
-      - elder-3-workspace:/workspace
+      # Per-elder R/W state — host paths created by Makefile bootstrap (#355).
+      - /var/lib/clan-world/agents/elder-3/home-claude:/home/elder/.claude
+      - /var/lib/clan-world/agents/elder-3/workspace:/workspace
+      # R/O shared overlays — inject shared CC config into per-elder home.
+      - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
+      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
+      - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-3 && pgrep -f /opt/elder-runtime/main.js"]
       interval: 30s
@@ -281,16 +285,21 @@ services:
     container_name: clan-world-elder-4
     environment:
       ELDER_N: "4"
-      ELDER_ID: ${ELDER_4_CLAN_ID:-4}
       CONVEX_DEPLOY_URL: http://convex-backend:3210
       BUS_ELDER_SECRET_FILE: /run/secrets/bus-elder-4
-      ANTHROPIC_API_KEY: ${ELDER_4_ANTHROPIC_API_KEY:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${ELDER_4_CLAUDE_CODE_OAUTH_TOKEN:-}
+    env_file: ./agents/elder-4/.env
+    ports:
+      - "${ELDER_4_TTYD_PORT:-7684}:7681"
     secrets:
       - bus-elder-4
     volumes:
-      - elder-4-home:/home/elder/.claude
-      - elder-4-workspace:/workspace
+      # Per-elder R/W state — host paths created by Makefile bootstrap (#355).
+      - /var/lib/clan-world/agents/elder-4/home-claude:/home/elder/.claude
+      - /var/lib/clan-world/agents/elder-4/workspace:/workspace
+      # R/O shared overlays — inject shared CC config into per-elder home.
+      - ./agents/shared/home-claude/CLAUDE.md:/home/elder/.claude/CLAUDE.md:ro
+      - ./agents/shared/home-claude/settings.json:/home/elder/.claude/settings.json:ro
+      - ./agents/shared/home-claude/skills:/home/elder/.claude/skills:ro
     healthcheck:
       test: ["CMD-SHELL", "tmux has-session -t elder-4 && pgrep -f /opt/elder-runtime/main.js"]
       interval: 30s

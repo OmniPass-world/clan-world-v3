@@ -28,6 +28,7 @@ agents/
 
   elder-1/                    # per-elder
     .env.template                       # template — copy to .env (gitignored) and fill in secrets
+    .env                                  # GITIGNORED — copy .env.template, fill in secrets, docker compose reads this
     seed/                               # OPTIONAL per-elder bootstrap overrides
       .gitkeep
   elder-2/  ...  elder-3/  ...  elder-4/
@@ -35,6 +36,21 @@ agents/
   # runtime/ — gitignored, created by docker compose at bring-up
   # .docker-mounts/ — gitignored, created by `make link-mounts` for inspectability
 ```
+
+## Mount layout (per-elder)
+
+At runtime, each `elder-N` container sees:
+
+| Host path | Container path | Mode |
+|-----------|---------------|------|
+| `/var/lib/clan-world/agents/elder-N/home-claude` | `/home/elder/.claude` | R/W |
+| `/var/lib/clan-world/agents/elder-N/workspace` | `/workspace` | R/W |
+| `./agents/shared/home-claude/CLAUDE.md` | `/home/elder/.claude/CLAUDE.md` | R/O overlay |
+| `./agents/shared/home-claude/settings.json` | `/home/elder/.claude/settings.json` | R/O overlay |
+| `./agents/shared/home-claude/skills/` | `/home/elder/.claude/skills/` | R/O overlay |
+
+The R/W host paths are created by `make bootstrap` (#355). The R/O overlays shadow individual
+files inside the R/W directory so shared CC config is always up-to-date without copying.
 
 ## Dev workflow
 
