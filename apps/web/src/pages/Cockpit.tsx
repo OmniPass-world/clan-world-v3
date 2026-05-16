@@ -2,8 +2,7 @@ import { tokens, ELDERS } from '../styles/cockpit-tokens';
 import { MiniCockpit } from '../components/cockpit/MiniCockpit';
 import { CockpitHeader } from '../components/cockpit/CockpitHeader';
 import { MobileCockpitLayout } from '../components/cockpit/MobileCockpitLayout';
-import { WorldMap } from '../WorldMap';
-import { WorldMapBoundary } from '../components/cockpit/shared/WorldMapBoundary';
+import { WorldMapEmbed } from '../components/WorldMapEmbed';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 
 /**
@@ -170,14 +169,7 @@ function DesktopCockpitLayout() {
             background: '#000',
           }}
         >
-          {/* WorldMap is full-bleed; sits inside the center cell.
-              The component handles its own pixi canvas sizing via ResizeObserver.
-              Wrapped in a boundary so a backend-less load (judge route in plain
-              browser) renders a degraded placeholder instead of unmounting the
-              whole cockpit tree. */}
-          <WorldMapBoundary>
-            <WorldMap />
-          </WorldMapBoundary>
+          <WorldMapEmbed />
         </div>
       </div>
     </>
