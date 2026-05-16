@@ -5,13 +5,13 @@ import type { WorldSnapshot } from '../types';
 type PublicQuery<Args extends Record<string, unknown>, Result> = FunctionReference<'query', 'public', Args, Result>;
 type PublicMutation<Args extends Record<string, unknown>, Result = null> = FunctionReference<'mutation', 'public', Args, Result>;
 
-type SeedWhisperArgs = {
+type SendWhisperArgs = {
   secret: string;
   tick: number;
   fromClanId: number;
   toClanIds: number[];
   body: string;
-  txHash?: string;
+  msgId?: string;
 };
 
 type SeedOrchEventArgs = {
@@ -44,7 +44,7 @@ type ClanWorldConvexApi = {
     getSnapshot: PublicQuery<Record<string, never>, WorldSnapshot>;
   };
   comms: {
-    seedWhisper: PublicMutation<SeedWhisperArgs>;
+    sendWhisper: PublicMutation<SendWhisperArgs>;
     seedOrchEvent: PublicMutation<SeedOrchEventArgs>;
     seedHumanSteering: PublicMutation<SeedHumanSteeringArgs>;
   };

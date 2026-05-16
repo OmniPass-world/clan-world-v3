@@ -29,9 +29,6 @@ function fakeConvex(tick: number): IConvexClient {
       };
     },
     async postLog() {},
-    subscribeWhispers() {
-      return () => {};
-    },
     async postWhisper() {},
     async postOrchEvent() {},
     async postHumanSteering() {},

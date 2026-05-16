@@ -298,18 +298,19 @@ export default defineSchema({
   // These three feed the per-elder "AXL" view; bulletins (above) feeds the
   // "0G Bulletin" view + the cross-clan flyout.
 
-  /** AXL chain whispers between clans. Recorded by the chain indexer. */
+  /** AXL direct whispers between clans. Recorded by elder CLI via Convex. */
   whispers: defineTable({
     tick: v.number(),
     fromClanId: v.number(),
     /** Recipient clan IDs. Whispers are point-to-point or broadcast. */
     toClanIds: v.array(v.number()),
     body: v.string(),
-    txHash: v.optional(v.string()),
+    msgId: v.optional(v.string()),
     timestamp: v.number(),
   })
     .index("by_tick", ["tick"])
-    .index("by_from_clan", ["fromClanId", "tick"]),
+    .index("by_from_clan", ["fromClanId", "tick"])
+    .index("by_from_clan_tick_msgid", ["fromClanId", "tick", "msgId"]),
 
   /** Orchestrator-emitted world events surfaced to the cockpit Comms tab. */
   orchEvents: defineTable({

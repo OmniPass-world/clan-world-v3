@@ -4,7 +4,7 @@ Convex backend. Hosts game-state queries, the indexer cron, and the post-tick we
 
 ## What this package does
 
-- **Queries:** `getSnapshot`, `getClanFullView`, `subscribeWhispers` — the read surface for the frontend.
+- **Queries:** `getSnapshot`, `getClanFullView`, `getCombinedComms` — the read surface for the frontend. (`subscribeWhispers` deleted in PR #401 — whisper writes are now elder-direct via `sendWhisper`.)
 - **Mutations:** internal-only state writes from the indexer.
 - **Indexer cron:** runs every 5s as a safety net; the primary trigger is the post-tick webhook (per addendum §4).
 - **Post-tick webhook:** HTTP action at `/api/heartbeat-webhook` — re-runs both event indexer and state snapshot refresh.
