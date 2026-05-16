@@ -1235,6 +1235,7 @@ export function WorldMap() {
   const seenCombatEventKeysRef = useRef<Set<string>>(new Set());
   const combatEventsInitializedRef = useRef(false);
   const liveTickClockRef = useRef<{ tick: number; seenAtMs: number }>({ tick: 0, seenAtMs: Date.now() });
+  const tickClockEpochRef = useRef<{ tick: number; startedAt: number; durationMs: number } | null>(null);
   const liveTickRef = useRef(0);
 
   // Zone-pulse ticker (visual heartbeat for clan zone halos).
@@ -1384,6 +1385,16 @@ export function WorldMap() {
       liveTickClockRef.current = { tick: liveTick, seenAtMs: Date.now() };
     }
   }, [liveTick]);
+
+  useEffect(() => {
+    if (tickClock) {
+      tickClockEpochRef.current = {
+        tick: tickClock.tick,
+        startedAt: tickClock.tickEpochStartedAt,
+        durationMs: tickClock.tickEpochDurationMs,
+      };
+    }
+  }, [tickClock]);
 
   useEffect(() => {
     snapshotRef.current = snapshot;
@@ -3032,9 +3043,12 @@ export function WorldMap() {
   }
 
   function currentTickFloat() {
+    const clockEpoch = tickClockEpochRef.current;
     const snap = snapshotRef.current;
-    const tick = typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current;
-    const epoch = snap?.tickEpoch;
+    const tick = clockEpoch?.tick ?? (typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current);
+    const epoch = clockEpoch
+      ? { startedAt: clockEpoch.startedAt, durationMs: clockEpoch.durationMs }
+      : snap?.tickEpoch;
     if (!epoch || typeof epoch.startedAt !== 'number' || typeof epoch.durationMs !== 'number' || epoch.durationMs <= 0) {
       return tick;
     }
