@@ -60,7 +60,9 @@ jobs:
             --exclude-dir="_generated" \
             --exclude-dir="node_modules" \
             --exclude-dir="dev-ui" \
-            apps/ packages/shared/src/ packages/runner/src/ packages/agents/src/ 2>/dev/null; then
+            apps/ packages/shared/src/ packages/shared/test/ \
+            packages/runner/src/ packages/runner/test/ \
+            packages/agents/src/ packages/agents/test/ 2>/dev/null; then
             echo "::error::Found raw 'as Abi' cast(s). Import the generated iClanWorldAbi / iClanWorldLensAbi from @clan-world/contract-types instead."
             exit 1
           fi
