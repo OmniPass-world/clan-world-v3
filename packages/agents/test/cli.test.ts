@@ -44,7 +44,7 @@ function makeConvex(overrides: Partial<IConvexClient> = {}): IConvexClient {
 function makeChain(overrides: Partial<IChainClient> = {}): IChainClient {
   return {
     async submitOrders() { return { txHash: '0xdeadbeef', results: [] }; },
-    async getCurrentTick(): Promise<Tick> { return 0; },
+    async getCurrentTick(_signal?: AbortSignal): Promise<Tick> { return 0; },
     async getClanFullView(clanId: string): Promise<ClanFullView> {
       return {
         clan: { id: clanId, name: `chain-${clanId}`, treasury: '0' },
@@ -270,8 +270,10 @@ describe('peer whisper', () => {
     vi.useFakeTimers();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const postWhisper = vi.fn().mockResolvedValue(undefined);
-    // getCurrentTick never resolves — must not pin the CLI.
-    const getCurrentTick = vi.fn().mockImplementation(() => new Promise<number>(() => {}));
+    // getCurrentTick stays pending until the timeout aborts it — must not pin the CLI.
+    const getCurrentTick = vi.fn().mockImplementation((signal?: AbortSignal) => new Promise<number>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }));
     deps = {
       convex: makeConvex({ postWhisper }),
       chain: makeChain({ getCurrentTick }),
@@ -289,6 +291,31 @@ describe('peer whisper', () => {
       expect.stringContaining('cockpit mirror failed'),
       expect.objectContaining({ message: expect.stringContaining('timed out') }),
     );
+
+    warn.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('aborts the underlying chain call when timeout fires', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let receivedSignal: AbortSignal | undefined;
+    const getCurrentTick = vi.fn().mockImplementation((signal?: AbortSignal) => {
+      receivedSignal = signal;
+      return new Promise<number>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+    });
+    deps = {
+      convex: makeConvex(),
+      chain: makeChain({ getCurrentTick }),
+    };
+
+    const runPromise = runCommand('peer', 'whisper', ['5', 'attack'], deps, { ELDER_N: '2' }, tmpDir);
+    await vi.advanceTimersByTimeAsync(5_001);
+    await runPromise;
+
+    expect(receivedSignal?.aborted).toBe(true);
 
     warn.mockRestore();
     vi.useRealTimers();

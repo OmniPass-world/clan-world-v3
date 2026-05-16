@@ -10,13 +10,18 @@ export class UsageError extends Error {}
 
 const RESTRICTED_FILE_MODE = 0o600;
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+function withTimeout<T>(
+  factory: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+  label: string,
+): Promise<T> {
+  const controller = new AbortController();
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`${label} timed out after ${ms}ms`)),
-      ms,
-    );
-    p.then(
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    factory(controller.signal).then(
       (v) => {
         clearTimeout(timer);
         resolve(v);
@@ -684,15 +689,20 @@ export async function runCommand(
     // chain or convex hang cannot pin the CLI past 10s total.
     if (canMirrorToCockpit) {
       try {
-        const tick = await withTimeout(deps.chain.getCurrentTick(), 5000, 'chain.getCurrentTick');
+        const tick = await withTimeout(
+          (signal) => deps.chain.getCurrentTick(signal),
+          5000,
+          'chain.getCurrentTick',
+        );
         const msgId = `${fromClanId}:${tick}:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
         await withTimeout(
-          deps.convex.postWhisper({
+          (signal) => deps.convex.postWhisper({
             tick,
             fromClanId,
             toClanIds: [toClanIdNumeric],
             body: msg,
             msgId,
+            signal,
           }),
           5000,
           'convex.postWhisper',

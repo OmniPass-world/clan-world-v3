@@ -18,6 +18,7 @@ export interface IConvexClient {
     toClanIds: number[];
     body: string;
     msgId?: string;
+    signal?: AbortSignal;
   }): Promise<void>;
   postOrchEvent(args: {
     tick: number;
@@ -61,7 +62,7 @@ class StubConvexClient implements IConvexClient {
     // no-op stub
   }
 
-  async postWhisper(_args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string }): Promise<void> {}
+  async postWhisper(_args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string; signal?: AbortSignal }): Promise<void> {}
   async postOrchEvent(_args: { tick: number; kind: 'world_event' | 'directive' | 'narration'; body: string; targetClanId?: number }): Promise<void> {}
   async postHumanSteering(_args: { tick: number; targetClanId: number; body: string; sentBy?: string }): Promise<void> {}
   async postBulletin(_args: { clanId: number; slot: number; body: string; dataHash?: string; txHash?: string }): Promise<void> {}
@@ -118,16 +119,24 @@ class RealConvexClient implements IConvexClient {
     return readEnv('INDEXER_SECRET');
   }
 
-  async postWhisper(args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string }): Promise<void> {
+  async postWhisper(args: { tick: number; fromClanId: number; toClanIds: number[]; body: string; msgId?: string; signal?: AbortSignal }): Promise<void> {
     const secret = this.indexerSecret();
     if (!secret) {
       console.warn('[ConvexClient] postWhisper skipped: INDEXER_SECRET not set');
       return;
     }
+    const { signal, ...mutationArgs } = args;
     try {
-      await this.http.mutation(sendWhisperRef, { secret, ...args });
+      if (signal) {
+        (this.http as unknown as { setFetchOptions(fetchOptions: RequestInit): void }).setFetchOptions({ signal });
+      }
+      await this.http.mutation(sendWhisperRef, { secret, ...mutationArgs });
     } catch (err) {
       console.warn('[ConvexClient] postWhisper failed (non-fatal):', err);
+    } finally {
+      if (signal) {
+        (this.http as unknown as { setFetchOptions(fetchOptions: RequestInit): void }).setFetchOptions({});
+      }
     }
   }
 
