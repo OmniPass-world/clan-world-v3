@@ -370,7 +370,6 @@ export default defineSchema({
     ),
     leaseOwner: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
-    deliveredAt: v.optional(v.number()),
     ackedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     retryCount: v.number(),

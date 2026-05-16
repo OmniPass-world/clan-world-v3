@@ -126,6 +126,9 @@ export const completeCommand = mutation({
     if (!cmd || (cmd.status !== "acked" && cmd.status !== "leased") || cmd.leaseOwner !== args.agentId) {
       throw new Error("Command not found or not owned by this elder");
     }
+    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt <= Date.now()) {
+      throw new Error("Lease expired — re-claim the command before completing");
+    }
     const now = Date.now();
     await ctx.db.patch(args.commandId, { status: "completed", completedAt: now, leaseOwner: undefined, leaseExpiresAt: undefined });
     await ctx.db.insert("commandResults", {
@@ -151,6 +154,9 @@ export const failCommand = mutation({
     const cmd = await ctx.db.get(args.commandId);
     if (!cmd || (cmd.status !== "leased" && cmd.status !== "acked") || cmd.leaseOwner !== args.agentId) {
       throw new Error("Command not found or not owned by this elder");
+    }
+    if (cmd.leaseExpiresAt !== undefined && cmd.leaseExpiresAt <= Date.now()) {
+      throw new Error("Lease expired — re-claim the command before failing");
     }
     const newRetryCount = cmd.retryCount + 1;
     const now = Date.now();

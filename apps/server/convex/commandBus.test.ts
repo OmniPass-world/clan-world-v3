@@ -301,6 +301,37 @@ describe("completeCommand", () => {
   });
 });
 
+describe("completeCommand (lease-expiry)", () => {
+  it("throws on expired lease when completing", async () => {
+    const { db } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "acked",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() - 1000, // expired
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await expect(
+      (completeCommand as any)._handler(
+        { db },
+        {
+          secret: "elder-1-secret",
+          agentId: "elder-1",
+          commandId: "agentCommands:0",
+          resultPayload: { ok: true },
+          tookMs: 42,
+        },
+      ),
+    ).rejects.toThrow("Lease expired");
+  });
+});
+
 describe("failCommand", () => {
   it("increments retryCount and re-queues if < MAX_RETRIES", async () => {
     const { db, tables } = createDb({
@@ -360,6 +391,34 @@ describe("failCommand", () => {
     );
     expect(tables.agentCommands![0].status).toBe("failed");
     expect(tables.agentCommands![0].retryCount).toBe(3);
+  });
+
+  it("throws on expired lease when failing", async () => {
+    const { db } = createDb({
+      agentCommands: [
+        {
+          _id: "agentCommands:0",
+          _creationTime: 0,
+          targetAgentId: "elder-1",
+          status: "leased",
+          leaseOwner: "elder-1",
+          leaseExpiresAt: Date.now() - 1000, // expired
+          createdAt: 1000,
+          retryCount: 0,
+        },
+      ],
+    });
+    await expect(
+      (failCommand as any)._handler(
+        { db },
+        {
+          secret: "elder-1-secret",
+          agentId: "elder-1",
+          commandId: "agentCommands:0",
+          reason: "timeout",
+        },
+      ),
+    ).rejects.toThrow("Lease expired");
   });
 });
 
