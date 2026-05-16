@@ -1,0 +1,18 @@
+{
+  "name": "@clan-world/contract-types",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Generated TypeScript literal-type ABIs for ClanWorld contracts",
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "scripts": {
+    "codegen": "node scripts/generate.mjs",
+    "codegen:check": "node scripts/generate.mjs --check",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@clan-world/contracts": "workspace:*"
+  }
+}

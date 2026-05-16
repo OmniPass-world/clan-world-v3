@@ -26,7 +26,9 @@
         "src/adapters/IChainClient.ts",
         "src/generated/constants.ts",
         "src/generated/enums.ts",
-        "convex/_generated/**"
+        "convex/_generated/**",
+        "src/IClanWorld.ts",
+        "src/IClanWorldLens.ts"
       ]
     },
     "dev": {
