@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSafeQuery as useQuery } from '../../hooks/useSafeQuery';
+import { useCurrentWorldTick } from '../../hooks/useCurrentWorldTick';
 import { api } from '../../../../server/convex/_generated/api';
 import { tokens, ELDERS } from '../../styles/cockpit-tokens';
 import type { ElderDef } from '../../styles/cockpit-tokens';
@@ -51,13 +52,6 @@ const STUB_BY_CLAN: Record<number, BulletinPost[]> = {
 function getInitialOpen(): boolean {
   if (typeof window === 'undefined') return false;
   return new URLSearchParams(window.location.search).get('bulletin-open') === '1';
-}
-
-function useCurrentWorldTick(): number {
-  const snapshot = useQuery(api.getSnapshot.getSnapshot);
-  return typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
-    ? snapshot.tick
-    : 0;
 }
 
 /**
