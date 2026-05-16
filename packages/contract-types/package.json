@@ -12,9 +12,12 @@
   "scripts": {
     "codegen": "node scripts/generate.mjs",
     "codegen:check": "node scripts/generate.mjs --check",
-    "build": "tsc --noEmit"
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run test/*.test.ts"
   },
   "devDependencies": {
-    "@clan-world/contracts": "workspace:*"
+    "@clan-world/contracts": "workspace:*",
+    "vitest": "3.2.4"
   }
 }

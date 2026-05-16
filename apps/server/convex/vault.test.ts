@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { projectAttributed, projectBroadcast, type Movement } from "./vault";
-import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
+import {
+  isClanWorldEventName,
+  type IClanWorldAbiEventName,
+} from "@clan-world/contract-types";
 
 const WEI = "1000000000000000000"; // 1e18
 const wei = (n: number) => `${n}${"0".repeat(18)}`;
@@ -216,5 +219,25 @@ describe("projectBroadcast", () => {
       out,
     );
     expect(out).toEqual([]);
+  });
+});
+
+describe("isClanWorldEventName", () => {
+  it("accepts canonical ABI event names", () => {
+    expect(isClanWorldEventName("TickAdvanced")).toBe(true);
+    expect(isClanWorldEventName("ResourcesGathered")).toBe(true);
+    expect(isClanWorldEventName("GoldTransferred")).toBe(true);
+  });
+
+  it("rejects unknown names", () => {
+    expect(isClanWorldEventName("FakeEvent")).toBe(false);
+    expect(isClanWorldEventName("")).toBe(false);
+  });
+
+  it("rejects non-string inputs", () => {
+    expect(isClanWorldEventName(undefined)).toBe(false);
+    expect(isClanWorldEventName(null)).toBe(false);
+    expect(isClanWorldEventName(123)).toBe(false);
+    expect(isClanWorldEventName({})).toBe(false);
   });
 });
