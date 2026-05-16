@@ -74,14 +74,31 @@ def strip_white_bg(path: Path) -> tuple[bool, int]:
 
 
 def check_white_bg(path: Path) -> bool:
-    """Returns True if path has opaque near-white corners (i.e. bug present)."""
+    """Returns True if path has any opaque near-white pixel along its outer
+    border (i.e. issue #325 bug present).
+
+    Walks the full top/bottom rows + left/right columns rather than just the
+    four corners — a sheet could have transparent corners but still leak
+    opaque-white bg along an interior edge segment, which would still render
+    as a visible halo in PixiJS.
+    """
     img = Image.open(path)
     if img.mode != "RGBA":
         return True
     w, h = img.size
-    for x, y in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
-        r, g, b, a = img.getpixel((x, y))
-        if a > 0 and r >= THRESHOLD and g >= THRESHOLD and b >= THRESHOLD:
+    pixels = img.load()
+
+    def is_opaque_white(x: int, y: int) -> bool:
+        r, g, b, a = pixels[x, y]
+        return a > 0 and r >= THRESHOLD and g >= THRESHOLD and b >= THRESHOLD
+
+    # Top + bottom rows.
+    for x in range(w):
+        if is_opaque_white(x, 0) or is_opaque_white(x, h - 1):
+            return True
+    # Left + right columns (skip already-checked corners).
+    for y in range(1, h - 1):
+        if is_opaque_white(0, y) or is_opaque_white(w - 1, y):
             return True
     return False
 
