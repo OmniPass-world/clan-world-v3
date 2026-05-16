@@ -14,10 +14,15 @@ import world.clan.app.BuildConfig
 import world.clan.app.ui.theme.CockpitTokens
 
 /**
- * Renders the live game map by hosting a WebView that loads
- * [BuildConfig.MAP_URL] (defaults to https://app.clan-world.com — the
- * dedicated map-only surface). JS + DOM storage are required by the
- * Pixi map; everything else is left at WebView defaults.
+ * Loads the full web cockpit route configured by [BuildConfig.MAP_URL]
+ * (defaults to https://app.clan-world.com). After issue #326 unified the
+ * map across `/`, `/cockpit`, and the Android webview, the root route
+ * mounts the same canonical `WorldMap` surface as `/cockpit`, so any URL
+ * served by the production web app surfaces the full world map plus
+ * shared overlays (version badge, ghost layer, HUD, event ticker).
+ *
+ * JS + DOM storage are required by the Pixi map; everything else is left
+ * at WebView defaults.
  */
 @Composable
 @SuppressLint("SetJavaScriptEnabled")

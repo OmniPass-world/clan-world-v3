@@ -1,10 +1,9 @@
 import { Component } from 'react';
 import type { ReactNode } from 'react';
-import { WorldMap } from './WorldMap';
 import { Cockpit } from './pages/Cockpit';
 import { OwnerEditor } from './pages/OwnerEditor';
 import { AgentControlPage } from './pages/agent/AgentControlPage';
-import { WorldMapBoundary } from './components/cockpit/shared/WorldMapBoundary';
+import { WorldMapEmbed } from './components/WorldMapEmbed';
 
 class CockpitErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   override state = { hasError: false };
@@ -135,9 +134,7 @@ function MainApp() {
         overflow: 'hidden',
       }}
     >
-      <WorldMapBoundary>
-        <WorldMap />
-      </WorldMapBoundary>
+      <WorldMapEmbed />
     </main>
   );
 }
