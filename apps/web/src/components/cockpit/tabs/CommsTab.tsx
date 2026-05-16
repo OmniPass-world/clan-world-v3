@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useSafeQuery as useQuery } from '../../../hooks/useSafeQuery';
+import { useCurrentWorldTick } from '../../../hooks/useCurrentWorldTick';
 import { api } from '../../../../../server/convex/_generated/api';
 import { tokens, ELDERS } from '../../../styles/cockpit-tokens';
 import type { ElderDef } from '../../../styles/cockpit-tokens';
@@ -87,13 +88,6 @@ export function lighten(hex: string, amount: number): string {
   const lg = Math.round(g + (255 - g) * amount);
   const lb = Math.round(b + (255 - b) * amount);
   return `rgb(${lr},${lg},${lb})`;
-}
-
-function useCurrentWorldTick(): number {
-  const snapshot = useQuery(api.getSnapshot.getSnapshot);
-  return typeof snapshot?.tick === 'number' && Number.isFinite(snapshot.tick)
-    ? snapshot.tick
-    : 0;
 }
 
 export function fadeOpacity(tick: number, currentTick: number): number {
