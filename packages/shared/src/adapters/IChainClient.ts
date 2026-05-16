@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import clanWorldLensAbi from '@clan-world/contracts/abi/IClanWorldLens.json' with { type: 'json' };
+import { iClanWorldLensAbi } from '@clan-world/contract-types';
 import {
   type Abi,
   createPublicClient,
@@ -15,7 +15,7 @@ import type { ClanFullView, ClanOrder, Tick } from '../types';
 import { ActionType } from '../generated/enums';
 import { readEnv } from './_env';
 
-const CLAN_WORLD_LENS_ABI = clanWorldLensAbi.abi as Abi;
+const CLAN_WORLD_LENS_ABI = iClanWorldLensAbi satisfies Abi;
 
 export interface SubmitOrderResult {
   clansmanId: number;

@@ -2115,9 +2115,8 @@ export function WorldMap() {
             } else {
               // User just turned reduced-motion OFF. Lazily build the handle
               // if init skipped it (reducedMotion was true at startup), then
-              // restore the snapshot-driven active state. The (snapshot as any)
-              // cast mirrors the dedicated useEffect downstream — same broader
-              // snapshot-schema-pending caveat.
+              // restore the snapshot-driven active state. winterActive is typed
+              // in the getSnapshot return type via deriveSeasonState().
               if (!winterSnowRef.current) {
                 const snow = createWinterSnow(currentApp, { particleCount: 100 });
                 currentApp.stage.addChild(snow.container);
@@ -5003,9 +5002,8 @@ export function WorldMap() {
   }, [liveTick, pixiReady, liveBandit]);
 
   // Winter snowfall: subscribe to `worldSnapshot.winterActive` and drive the
-  // particle overlay's active state. The underlying snapshot type doesn't yet
-  // expose the season fields (matches the cast TopHud does — same getSnapshot
-  // query, same broader-schema-pending caveat), so we read via `any`.
+  // particle overlay's active state. Season fields are derived in getSnapshot
+  // via deriveSeasonState() and present in the return type.
   const winterActive = snapshot?.winterActive === true;
   useEffect(() => {
     if (!pixiReady) return;

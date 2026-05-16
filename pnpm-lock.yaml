@@ -371,6 +371,9 @@ importers:
 
   packages/shared:
     dependencies:
+      '@clan-world/contract-types':
+        specifier: workspace:*
+        version: link:../contract-types
       '@clan-world/contracts':
         specifier: workspace:*
         version: link:../contracts
