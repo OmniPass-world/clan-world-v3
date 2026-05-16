@@ -6,6 +6,65 @@ Format follows [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [2.8.5] — 2026-05-16
+
+Architecture cleanup. One PR — completing the elder-direct whisper path and deleting the vestigial on-chain whisper indexer. No game-visible change; whispers table was empty in production (events `Whisper`/`WhisperBroadcast` were never declared in the contract ABI so the indexer block had been dead code since it shipped). The dev→main release also includes the gitflow-light ADR (#0018) codifying the PR base-branch convention after the 2026-05-16 PR #399 misroute incident, and the canonical-scratch-path migration for the local + super-swarm review skills (`~/claudes-world/tmp/` instead of `/tmp/` — gemini-cli sandbox compat).
+
+Note on intermediate versions: v2.7.0, v2.8.0–v2.8.4 were released between v2.6.0 and this entry; CHANGELOG entries for those have not yet been backfilled and are out of scope for this release. Their on-chain tags + GitHub release notes remain authoritative for the intervening history.
+
+### Changed
+
+- **Whisper path: elder CLI → Convex direct (not via chain events)** (PR #401, closes follow-up #422):
+  - **Deleted** the dead Whisper/WhisperBroadcast indexer block at `apps/server/convex/indexer.ts:352-378`. The contract ABI declares zero whisper events; the block had been scanning for event names that the chain never emitted. The `whispers` Convex table never received a row from this path in production.
+  - **Renamed** `seedWhisper` → `sendWhisper` mutation in `apps/server/convex/comms.ts`, adding `(fromClanId, tick, msgId)` dedup via a new `by_from_clan_tick_msgid` index.
+  - **Schema:** dropped `txHash` from the `whispers` table; added optional `msgId` (idempotency key). Zero data migration needed — table is empty in production.
+  - **CLI wiring:** `packages/agents/src/cli.ts` `elder peer whisper` handler now writes durably to the local JSONL inbox FIRST (unconditionally), then mirrors best-effort to Convex via `sendWhisper`. Both the chain `getCurrentTick` and `convex.postWhisper` calls are bounded by a 5s `withTimeout` that uses `AbortController` to cancel underlying operations on timeout (chain side via viem `fetchOptions.signal`; Convex side via per-call `ConvexHttpClient` with a `setFetchOptions({ signal })` that's typed via module augmentation — no `as unknown as` casts).
+  - **Cockpit:** `apps/web/src/components/cockpit/tabs/CommsTab.tsx` no longer falls back to mock stub data — empty result = empty render per Liam directive.
+  - **Android Kotlin app:** verified no `txHash` references in `WhispersViewModel.kt` or `ClanWorldConvexClient.kt`; the canonical mobile target.
+  - **React Native:** deferred to follow-up issue #422 (RN is a design playground; Kotlin Android is canonical).
+
+### Removed
+
+- **`apps/server/convex/indexer.ts` whisper event block** (PR #401, 27 lines deleted): see above.
+- **`CommsTab.tsx` stub data fallback** (PR #401): `STUB_LINES` + `STUB_BULLETINS` constants gone; live query is the only render path.
+- **`IConvexClient.subscribeWhispers`** (PR #401): vestigial interface method + both stub + real no-op implementations deleted.
+
+### Fixed
+
+- **CLI hang after timeout** (PR #401): the previous timeout pattern rejected the wrapper promise but left the underlying socket alive, so a hung chain/convex call could keep the Node.js process alive past its useful work. New `withTimeout` uses `AbortController`; signal threads through `IChainClient.getCurrentTick` (per-call viem client with signal-bearing transport) and `IConvexClient.postWhisper` (per-call `ConvexHttpClient` — race-free with concurrent callers). CLI process exits cleanly when timeout fires. Cross-model agreement: cloud gemini-code-assist MED + local gemini-3-flash LOW (R2), upgraded to local gemini HIGH (R3); fix verified clean across 4 rounds of 3-tier swarm review.
+
+### Infrastructure
+
+- **ADR 0018: gitflow-light PR branching codified** (`knowledge/adr/0018-gitflow-light-pr-branching.md`, committed in this release window): explicit rule that all feature/fix PRs target `dev`; only the periodic dev→main release PR targets `main`. Filed in response to PR #399 (closed as misrouted, content cherry-picked onto `recover/issue-354-url-rename`). Companion memory `feedback_gitflow_light_pr_base_is_dev.md`. Applies to ALL repos in both orgs.
+
+- **Swarm-review scratch path canonicalized to `~/claudes-world/tmp/`** (skill updates `/swarm-review` + `/phase-super-swarm`): gemini-cli sandbox rejects `/tmp` paths; all swarm-review scratch + log artifacts now live under `~/claudes-world/tmp/swarm-*`. Code-review-gemini subagent definition propagated to pm-dobot. Memory `feedback_super_swarm_sandbox_gotchas.md` appended with 2026-05-16 update note marking the gemini /tmp workaround superseded.
+
+- **20 draft PRs opened for Phase 0 + Phase 1 rollback walkthrough** (PRs #402-#421): the 2026-05-16 rollback of PR #392 (bundled Phase 0 + Phase 1) preserved all 20 sub-issue feature branches under `recover/issue-NNN` on origin. One draft PR per branch (base `dev`) is now open for Liam to walk through, decide salvage / cherry-pick / drop per phase. Not part of this release; tracked here for visibility.
+
+### Validation
+
+- **PR #401 swarm review trail (4 rounds):**
+  - R1: Tier 1 Claude CLEAN; Tier 2 Codex 2 HIGH (chain-read-before-local-write, no postWhisper timeout); Tier 3 Gemini 1 MED (NaN guard)
+  - R2 (post-fix): all 3 tiers CLEAN (gemini noted 2 academic LOW)
+  - R3 (post-AbortController upgrade + cloud gemini MED fix): Tier 1 Claude MED on setFetchOptions race; Tier 2 Codex MED on race + LOW on sync-throw; Tier 3 Gemini 2 HIGH on race + fragile cast
+  - R4 (post-module-augmentation + per-call client + sync-throw catch): all 3 tiers CLEAN (gemini noted 3 academic LOW)
+- **Tests pass on PR #401 final commit:** 53 agents + 36 server + 27 shared = 116 total. Typecheck clean on @clan-world/{server,shared,agents,web}.
+- **Memory entries codified during this release cycle:**
+  - `feedback_release_pr_merge_requires_explicit_liam_approval.md` (THE lesson of 2026-05-16)
+  - `feedback_super_swarm_cross_model_disagreement_resolution.md` (rewritten — never default by reviewer identity)
+  - `feedback_swarm_rerun_all_reviewers_per_round.md` (new — re-dispatch all 3 tiers every round; no skipping CLEAN tiers)
+  - `feedback_gitflow_light_pr_base_is_dev.md` (companion to ADR 0018)
+  - `feedback_cc_settings_double_slash_absolute_path.md`, `feedback_container_ip6tables_default_drop.md`, `feedback_codex_resume_flag_limits.md`, `feedback_codex_exploration_loop_no_output.md` (overnight session learnings)
+
+### Operational follow-up
+
+- **#422** filed (RN WhispersScreen): replace mock data with real Convex query when RN gets promoted from design playground.
+- **20 recovery walkthrough PRs (#402–#421)**: Liam to drive — orchestrator stands by per phase decision.
+- **Typechain audit plan** (`docs/plans/typechain-and-generated-types-audit-v1.md`): 5-PR migration to eliminate hand-rolled type drift across chain interactions; scoped, not started.
+- **CHANGELOG backfill** (v2.7.0, v2.8.0–v2.8.4): out of scope this release; tracking implicit in this entry's leading note.
+
+---
+
 ## [2.6.0] — 2026-05-12
 
 Minor release. Eight PRs landed since v2.5.1 in a single overnight build-out: new world map asset + region debug overlay; per-clan 4-frame walking animations; winter map overlay with seasonal fade; on-chain diamond upgrade that finally enables the `setMaxBanditTier` cap at spawn time (was code-only since v2.5.0); plus polish on Android edge-to-edge, TopHud ordering, base-click focus dim, and the four super-swarm deferred fixes from v2.5.0 review. All eight PRs had Tier 1 Claude subagent CLEAN at merge.
