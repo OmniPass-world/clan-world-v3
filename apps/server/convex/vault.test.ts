@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { projectAttributed, projectBroadcast, type Movement } from "./vault";
+import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 
 const WEI = "1000000000000000000"; // 1e18
 const wei = (n: number) => `${n}${"0".repeat(18)}`;
 
-const baseAttributed = (eventName: string, args: Record<string, unknown>, tick = 5) => ({
+const baseAttributed = (eventName: IClanWorldAbiEventName, args: Record<string, unknown>, tick = 5) => ({
   eventName,
   args,
   tick,
@@ -12,7 +13,7 @@ const baseAttributed = (eventName: string, args: Record<string, unknown>, tick =
   clanId: 7,
 });
 
-const baseBroadcast = (eventName: string, args: Record<string, unknown>, tick = 5) => ({
+const baseBroadcast = (eventName: IClanWorldAbiEventName, args: Record<string, unknown>, tick = 5) => ({
   eventName,
   args,
   tick,
@@ -115,7 +116,28 @@ describe("projectAttributed", () => {
     ]);
   });
 
-  it("ignores unknown event names", () => {
+  it("projects ResourcesInjected (admin recovery) as gains for all non-zero resources", () => {
+    const out: Movement[] = [];
+    projectAttributed(
+      baseAttributed("ResourcesInjected", {
+        wood: wei(5),
+        iron: wei(0),
+        wheat: wei(3),
+        fish: wei(0),
+        gold: wei(10),
+        blueprint: wei(0),
+      }),
+      7,
+      out,
+    );
+    expect(out.map(m => `${m.type}:${m.amount}:${m.resource}:${m.source}`)).toEqual([
+      "gain:5:wood:admin inject",
+      "gain:3:wheat:admin inject",
+      "gain:10:gold:admin inject",
+    ]);
+  });
+
+  it("ignores ABI event names with no vault projection (e.g. TickAdvanced)", () => {
     const out: Movement[] = [];
     projectAttributed(baseAttributed("TickAdvanced", { closedTick: 1 }), 7, out);
     expect(out).toEqual([]);
