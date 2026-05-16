@@ -48,6 +48,41 @@ const LEGACY_REGIONS = [
 ];
 const indexerApi = (internal as any).indexer;
 
+/**
+ * Key-order-stable JSON serializer for Convex-safe values.
+ * Accepts: string, number, boolean, null, plain object, array.
+ *
+ * Undefined-key semantics: matches JSON.stringify — keys with undefined values
+ * are DROPPED from objects; undefined array elements become null. This makes
+ * `stableJson({ a: 1, b: undefined })` equal to `stableJson({ a: 1 })`, which
+ * means callers can use the spread-with-undefined-override pattern to strip
+ * fields from a Convex doc before comparison:
+ *
+ *   const previousComparable = { ...prev, _id: undefined, _creationTime: undefined };
+ *   if (stableJson(previousComparable) === stableJson(nextView)) // ...
+ *
+ * Without this drop-undefined behavior, the spread pattern leaves stripped keys
+ * present-but-undefined, making the two strings always differ (super-swarm r3
+ * H1, fix-round 5).
+ *
+ * Do NOT pass: Date, BigInt, Symbol — these are not valid in Convex
+ * documents and will serialize incorrectly (Date→{}, BigInt→throws).
+ */
+export function stableJson(val: unknown): string {
+  if (val === undefined) return "undefined";  // sentinel; callers shouldn't pass undefined at top-level
+  if (val === null || typeof val !== "object") return JSON.stringify(val);
+  if (Array.isArray(val)) {
+    // JSON.stringify converts array `undefined` elements to `null`.
+    return `[${val.map(v => v === undefined ? "null" : stableJson(v)).join(",")}]`;
+  }
+  const obj = val as Record<string, unknown>;
+  return `{${Object.keys(obj)
+    .sort()
+    .filter(k => obj[k] !== undefined)
+    .map(k => `${JSON.stringify(k)}:${stableJson(obj[k])}`)
+    .join(",")}}`;
+}
+
 type ParsedIndexerEvent = {
   eventName: string;
   args: Record<string, unknown>;
@@ -79,6 +114,51 @@ type LegacyClanView = Partial<Doc<"clanView">> &
 
 const isPresent = <T>(value: T | null | undefined): value is T =>
   value !== null && value !== undefined;
+
+// Non-content fields stripped before delta-comparison in commitSnapshot's
+// banditView / marketState writes (see #334). Convex auto-fields (_id,
+// _creationTime) plus per-insert audit/timestamp fields that advance every
+// heartbeat even when on-chain state is identical. marketState additionally
+// carries tick cursors (currentTick / lastUpdatedTick) that advance every
+// tick — these must be stripped too or the no-op guard never fires.
+const BANDIT_VIEW_NON_CONTENT_FIELDS = [
+  "_id",
+  "_creationTime",
+  "refreshedAt",
+  "lastUpdatedBlock",
+] as const;
+const MARKET_STATE_NON_CONTENT_FIELDS = [
+  "_id",
+  "_creationTime",
+  "refreshedAt",
+  "lastUpdatedBlock",
+  "currentTick",
+  "lastUpdatedTick",
+] as const;
+
+const stripNonContentFields = (
+  row: object | null | undefined,
+  fieldsToStrip: readonly string[],
+): Record<string, unknown> | undefined => {
+  if (!row) return undefined;
+  const skip = new Set(fieldsToStrip);
+  return Object.fromEntries(
+    Object.entries(row).filter(([key]) => !skip.has(key)),
+  );
+};
+
+// JSON.stringify-based content equality. Matches the existing `clanView`
+// delta pattern in `commitSnapshot` (`previousComparable` block). Field
+// order in object literals is stable across V8 for same-shape inserts,
+// so this is sound without a deep-equal dep — and consistent with the
+// pattern that PR #338 may later upgrade to fast-deep-equal.
+const isContentEqualIgnoring = (
+  previous: object | null | undefined,
+  next: object,
+  fieldsToStrip: readonly string[],
+) =>
+  JSON.stringify(stripNonContentFields(previous, fieldsToStrip)) ===
+  JSON.stringify(stripNonContentFields(next, fieldsToStrip));
 
 export function bigintSafe(value: unknown): unknown {
   if (typeof value === "bigint") return value.toString();
@@ -242,6 +322,50 @@ export function planPollLogRange(
   };
 }
 
+function stableClansman(row: unknown): unknown {
+  const r = row as Record<string, unknown>;
+  const derived = (r.clansman ?? r) as Record<string, unknown>;
+  const cs = (derived.clansman ?? derived) as Record<string, unknown>;
+  const mission = (r.activeMission ?? derived.activeMission) as Record<string, unknown> | undefined;
+  return {
+    clansman: {
+      clansman: {
+        clansmanId: cs.clansmanId,
+        clanId: cs.clanId,
+        state: cs.state,
+        currentRegion: cs.currentRegion,
+        carryWood: cs.carryWood,
+        carryIron: cs.carryIron,
+        carryWheat: cs.carryWheat,
+        carryFish: cs.carryFish,
+        // NOTE: intentionally omitting cooldownEndsAtTs, lastMissionNonce — monotonic per-tick,
+        // not read by WorldMap, would defeat worldSnapshot delta-check
+      },
+      effectiveRegion: derived.effectiveRegion,
+    },
+    // Build activeMission with only defined fields. Convex documents reject
+    // arbitrary `undefined` property values; without this filter, an
+    // activeMission fixture that omits e.g. `startTick` would materialize
+    // `{ startTick: undefined, ... }` via the legacy projection and break
+    // serialization on the worldSnapshot insert path. Per pr338-r4 super-
+    // swarm codex HIGH.
+    activeMission: mission
+      ? Object.fromEntries(
+          Object.entries({
+            active: mission.active,
+            action: mission.action,
+            startRegion: mission.startRegion,
+            targetRegion: mission.targetRegion,
+            startTick: mission.startTick,
+            arrivalTick: mission.arrivalTick,
+            actionStartTick: mission.actionStartTick,
+            settlesAtTick: mission.settlesAtTick,
+          }).filter(([, value]) => value !== undefined),
+        )
+      : undefined,
+  };
+}
+
 export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
   clanViews
     .filter((view) => view.clanId > 0)
@@ -262,7 +386,7 @@ export const legacyClansFromClanViews = (clanViews: LegacyClanView[]) =>
       monumentLevel: asNumber(view.monumentLevel),
       livingClansmen: asNumber(view.livingClansmen),
       owner: asString(view.owner, ""),
-      clansmen: view.clansmen ?? [],
+      clansmen: (view.clansmen ?? []).map(stableClansman),
     }));
 
 // M-5: tighten internal-mutation arg shape. We can't enumerate every event
@@ -438,11 +562,15 @@ export const commitSnapshot = internalMutation({
       .query("worldSnapshot")
       .order("desc")
       .first();
-    const previousTick = asNumber(previousWorldSnapshot?.tick, -1);
-    const previousBlock = asNumber(previousWorldSnapshot?.lastUpdatedBlock, -1);
+    // Fetch tickClock first — it's the always-advancing monotonic cursor.
+    // worldSnapshot can freeze between content-change ticks (delta-check), so
+    // previousWorldSnapshot.tick is not a reliable stale-gate cursor anymore.
+    const tickClockRow = await ctx.db.query("tickClock").order("desc").first();
+    const previousTick = asNumber(tickClockRow?.tick ?? previousWorldSnapshot?.tick, -1);
+    const previousBlock = asNumber(tickClockRow?.blockNumber ?? previousWorldSnapshot?.lastUpdatedBlock, -1);
     const incomingBlock = snapshot.blockNumber ?? -1;
     if (
-      previousWorldSnapshot &&
+      (tickClockRow || previousWorldSnapshot) &&
       (tick < previousTick ||
         (tick === previousTick && incomingBlock <= previousBlock))
     ) {
@@ -452,10 +580,29 @@ export const commitSnapshot = internalMutation({
         skipped: "stale-snapshot",
       };
     }
+    // Write tickClock on every tick — cheap single-row table (~50 bytes).
+    const tickClockData = {
+      tick,
+      blockNumber: snapshot.blockNumber,
+      tickEpochStartedAt:
+        tickClockRow?.tick === tick
+          ? tickClockRow.tickEpochStartedAt
+          : Math.floor(now / 1000),
+      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      seasonStartTick: asNumber(world.seasonStartTick),
+      seasonEndTick: asNumber(world.seasonEndTick),
+      winterActive: asBool(world.winterActive),
+      winterStartsAtTick: (() => { const wsat = asNumber(world.winterStartsAtTick); return wsat > 0 ? wsat : undefined; })(),
+    };
+    if (tickClockRow) {
+      await ctx.db.patch(tickClockRow._id, tickClockData);
+    } else {
+      await ctx.db.insert("tickClock", tickClockData);
+    }
 
     if (snapshot.market) {
       const market = snapshot.market;
-      await ctx.db.insert("marketState", {
+      const nextMarketState = {
         pools: RESOURCE_NAMES.map((resourceType) => {
           const pool = objectAt(market, resourceType);
           return {
@@ -477,12 +624,25 @@ export const commitSnapshot = internalMutation({
         lastUpdatedTick: tick,
         lastUpdatedBlock: snapshot.blockNumber,
         refreshedAt: now,
-      });
+      };
+      const previousMarketState = await ctx.db
+        .query("marketState")
+        .order("desc")
+        .first();
+      if (
+        !isContentEqualIgnoring(
+          previousMarketState,
+          nextMarketState,
+          MARKET_STATE_NON_CONTENT_FIELDS,
+        )
+      ) {
+        await ctx.db.insert("marketState", nextMarketState);
+      }
     }
 
     if (snapshot.bandit) {
       const bandit = snapshot.bandit;
-      await ctx.db.insert("banditView", {
+      const nextBanditView = {
         exists: asBool(bandit.exists),
         id: asNumber(bandit.banditId),
         region: asNumber(bandit.currentRegion),
@@ -501,7 +661,20 @@ export const commitSnapshot = internalMutation({
         projectedTargetLootValue: asString(bandit.projectedTargetLootValue),
         refreshedAt: now,
         lastUpdatedBlock: snapshot.blockNumber,
-      });
+      };
+      const previousBanditView = await ctx.db
+        .query("banditView")
+        .order("desc")
+        .first();
+      if (
+        !isContentEqualIgnoring(
+          previousBanditView,
+          nextBanditView,
+          BANDIT_VIEW_NON_CONTENT_FIELDS,
+        )
+      ) {
+        await ctx.db.insert("banditView", nextBanditView);
+      }
     }
 
     for (const view of snapshot.clans) {
@@ -555,11 +728,13 @@ export const commitSnapshot = internalMutation({
             _id: undefined,
             _creationTime: undefined,
             refreshedAt: undefined,
+            derivedAtTick: undefined,
+            lastUpdatedBlock: undefined,
           }
         : undefined;
       if (
-        JSON.stringify(previousComparable) !==
-        JSON.stringify({ ...nextView, refreshedAt: undefined })
+        stableJson(previousComparable) !==
+        stableJson({ ...nextView, refreshedAt: undefined, derivedAtTick: undefined, lastUpdatedBlock: undefined })
       ) {
         await ctx.db.insert("clanView", nextView);
       }
@@ -579,14 +754,10 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
-    const tickEpochStartedAt =
-      previousWorldSnapshot?.tick === tick
-        ? previousWorldSnapshot.tickEpochStartedAt
-        : Math.floor(now / 1000);
     const worldSnapshot = {
       tick,
-      tickEpochStartedAt,
-      tickEpochDurationMs: Number(HEARTBEAT_INTERVAL_SECONDS) * 1000,
+      tickEpochStartedAt: tickClockData.tickEpochStartedAt,
+      tickEpochDurationMs: tickClockData.tickEpochDurationMs,
       currentSeasonNumber: asNumber(world.currentSeasonNumber),
       seasonStartTick: asNumber(world.seasonStartTick),
       seasonEndTick: asNumber(world.seasonEndTick),
@@ -622,10 +793,43 @@ export const commitSnapshot = internalMutation({
         };
       }),
     };
-    if (previousWorldSnapshot) {
-      await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
-    } else {
-      await ctx.db.insert("worldSnapshot", worldSnapshot);
+    // Delta-check: only patch worldSnapshot when data actually changes.
+    // Strip audit/timestamp fields before comparing so a no-data tick is a no-op.
+    const previousComparableSnapshot = previousWorldSnapshot
+      ? (() => {
+          const {
+            _id, _creationTime, lastUpdatedAt, lastUpdatedBlock, txHash,
+            tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+            ...rest
+          } =
+            previousWorldSnapshot as typeof previousWorldSnapshot & {
+              _id: unknown;
+              _creationTime: unknown;
+            };
+          void _id; void _creationTime; void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+          void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
+          return rest;
+        })()
+      : undefined;
+    const nextComparableSnapshot = (() => {
+      const {
+        lastUpdatedAt, lastUpdatedBlock, txHash,
+        tick, tickEpochStartedAt, tickEpochDurationMs, currentTickSeed, nextHeartbeatAtTick,
+        ...rest
+      } = worldSnapshot;
+      void lastUpdatedAt; void lastUpdatedBlock; void txHash;
+      void tick; void tickEpochStartedAt; void tickEpochDurationMs; void currentTickSeed; void nextHeartbeatAtTick;
+      return rest;
+    })();
+    if (
+      stableJson(previousComparableSnapshot) !==
+      stableJson(nextComparableSnapshot)
+    ) {
+      if (previousWorldSnapshot) {
+        await ctx.db.patch(previousWorldSnapshot._id, worldSnapshot);
+      } else {
+        await ctx.db.insert("worldSnapshot", worldSnapshot);
+      }
     }
 
     return { tick, clans: snapshot.clans.length };
