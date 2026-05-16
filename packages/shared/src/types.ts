@@ -48,6 +48,19 @@ export interface WorldSnapshot {
   tickEpoch: TickEpoch;
   regions: Region[];
   clans: Clan[];
+  /**
+   * Season + winter timers surfaced from `worldSnapshot` (Phase 4.4+).
+   * All optional for backward compat with legacy rows that pre-date the
+   * persisted-fields migration. When `getSnapshot()` returns these, they
+   * are authoritative chain values from `_world.*` — see
+   * `apps/server/convex/getSnapshot.ts` and ClanWorld._worldStateView.
+   */
+  currentSeasonNumber?: number;
+  seasonStartTick?: number;
+  seasonEndTick?: number;
+  winterActive?: boolean;
+  winterStartsAtTick?: number;
+  winterEndsAtTick?: number;
 }
 
 export interface ClanFullView {
