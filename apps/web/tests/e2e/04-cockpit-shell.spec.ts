@@ -4,7 +4,8 @@ import { test, expect } from '@playwright/test';
  * Phase A — Cockpit layout shell.
  *
  * Verifies the structural skeleton:
- *   - /cockpit route renders without error
+ *   - `/` route renders the cockpit without error (was `/cockpit` before
+ *     issue #354 URL rename; legacy alias still redirects client-side)
  *   - 3-col 2-row grid is mounted
  *   - all 4 mini-cockpits visible
  *   - world map cell visible
@@ -20,12 +21,12 @@ test.describe('cockpit shell (Phase A)', () => {
   // depends on external network. Individual tests override the route to
   // simulate connection failures.
   test.beforeEach(async ({ page }) => {
-    await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) =>
+    await page.route('**/app.clan-world.com/elder-*/**', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'text/html',
         body: `<!DOCTYPE html><html><body data-stub="ttyd"><script>
-          const match = location.pathname.match(/elder-(\\d+)-tty/);
+          const match = location.pathname.match(/elder-(\\d+)/);
           parent.postMessage({
             type: 'clanworld-ttyd-status',
             clanId: Number(match?.[1] ?? 0),
@@ -39,7 +40,7 @@ test.describe('cockpit shell (Phase A)', () => {
   test('renders 3-col 2-row layout with 4 mini-cockpits + world map', async ({
     page,
   }, testInfo) => {
-    await page.goto('/cockpit');
+    await page.goto('/');
 
     // No error boundary crash.
     const errorBoundary = page.locator('[data-testid="error-boundary"]');
@@ -106,7 +107,7 @@ test.describe('cockpit shell (Phase A)', () => {
     page,
   }) => {
     let shouldFail = true;
-    await page.route('**/cockpit.clan-world.com/elder-*-tty/**', (route) => {
+    await page.route('**/app.clan-world.com/elder-*/**', (route) => {
       if (shouldFail) {
         return route.abort('failed');
       }
@@ -117,7 +118,7 @@ test.describe('cockpit shell (Phase A)', () => {
       });
     });
 
-    await page.goto('/cockpit');
+    await page.goto('/');
 
     const pill = page.locator('[data-testid="cockpit-connection-pill"]');
     await expect(pill).toBeVisible();
@@ -143,7 +144,7 @@ test.describe('cockpit shell (Phase A)', () => {
     page,
   }) => {
     let documentLoads = 0;
-    await page.route('**/cockpit.clan-world.com/elder-1-tty/**', (route) => {
+    await page.route('**/app.clan-world.com/elder-1/**', (route) => {
       if (route.request().resourceType() !== 'document') {
         return route.fulfill({ status: 200, body: '' });
       }
@@ -170,7 +171,7 @@ test.describe('cockpit shell (Phase A)', () => {
       });
     });
 
-    await page.goto('/cockpit');
+    await page.goto('/');
 
     await expect
       .poll(() => documentLoads, { timeout: 8_000 })
@@ -185,7 +186,7 @@ test.describe('cockpit shell (Phase A)', () => {
     page,
   }) => {
     let documentLoads = 0;
-    await page.route('**/cockpit.clan-world.com/elder-1-tty/**', (route) => {
+    await page.route('**/app.clan-world.com/elder-1/**', (route) => {
       if (route.request().resourceType() !== 'document') {
         return route.fulfill({ status: 200, body: '' });
       }
@@ -198,7 +199,7 @@ test.describe('cockpit shell (Phase A)', () => {
       });
     });
 
-    await page.goto('/cockpit');
+    await page.goto('/');
 
     await expect(
       page.locator('[data-testid="mini-cockpit-1-content-terminal"]'),

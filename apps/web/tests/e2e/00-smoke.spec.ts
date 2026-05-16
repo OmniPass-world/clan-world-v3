@@ -39,7 +39,11 @@ test('web app loads with no console errors', async ({ page }) => {
     pageErrors.push({ message: err.message, stack: err.stack });
   });
 
-  await page.goto('/');
+  // Phase 1.11 URL rename (issue #354): `/` is now the cockpit (which
+  // embeds the map as an iframe). The map canvas lives at `/map`, so the
+  // canvas-centric smoke test loads `/map` directly — same render
+  // pipeline, no iframe traversal needed.
+  await page.goto('/map');
 
   // Wait for canvas to mount — WorldMap renders one.
   // 10s gives PIXI v8 + Convex client time to initialize.
