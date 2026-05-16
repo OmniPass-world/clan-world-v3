@@ -5,13 +5,13 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import clanWorldArtifact from "../../../packages/contracts/abi/IClanWorld.json";
+import { iClanWorldAbi } from "@clan-world/contract-types";
+import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 import {
   defineChain,
   createPublicClient,
   http,
   parseEventLogs,
-  type Abi,
   type Hex,
   type Log,
   type ParseEventLogsReturnType,
@@ -20,7 +20,6 @@ import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constan
 import type { Doc } from "./_generated/dataModel";
 import { resetLocked } from "./resetLock";
 
-const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
 const baseSepolia = defineChain({
   id: 84532,
   name: "Base Sepolia",
@@ -46,10 +45,10 @@ const LEGACY_REGIONS = [
   { id: "east-docks", name: "East Docks", ownerClanId: null },
   { id: "deep-sea", name: "Deep Sea", ownerClanId: null },
 ];
-const indexerApi = (internal as any).indexer;
+const indexerApi = internal.indexer;
 
 type ParsedIndexerEvent = {
-  eventName: string;
+  eventName: IClanWorldAbiEventName;
   args: Record<string, unknown>;
   address?: string;
   blockHash?: string | null;
@@ -69,7 +68,7 @@ type SnapshotPayload = {
 };
 
 type ParsedClanWorldLog = ParseEventLogsReturnType<
-  typeof CLAN_WORLD_ABI,
+  typeof iClanWorldAbi,
   undefined,
   false
 >[number];
@@ -96,7 +95,7 @@ export function decodeClanWorldLogs(
   logs: readonly Log[],
 ): ParsedIndexerEvent[] {
   return parseEventLogs({
-    abi: CLAN_WORLD_ABI,
+    abi: iClanWorldAbi,
     logs: [...logs],
     strict: false,
   }).map((event: ParsedClanWorldLog) => ({
@@ -623,7 +622,7 @@ export const refreshSnapshot = internalAction({
       client
         .readContract({
           address,
-          abi: CLAN_WORLD_ABI,
+          abi: iClanWorldAbi,
           functionName: "getWorldSnapshot",
           blockNumber: pinnedBlockNumber,
         })
@@ -631,7 +630,7 @@ export const refreshSnapshot = internalAction({
       client
         .readContract({
           address,
-          abi: CLAN_WORLD_ABI,
+          abi: iClanWorldAbi,
           functionName: "getMarketState",
           blockNumber: pinnedBlockNumber,
         })
@@ -639,7 +638,7 @@ export const refreshSnapshot = internalAction({
       client
         .readContract({
           address,
-          abi: CLAN_WORLD_ABI,
+          abi: iClanWorldAbi,
           functionName: "getActiveBanditView",
           blockNumber: pinnedBlockNumber,
         })
@@ -657,7 +656,7 @@ export const refreshSnapshot = internalAction({
     const clanIdsRaw = await client
       .readContract({
         address,
-        abi: CLAN_WORLD_ABI,
+        abi: iClanWorldAbi,
         functionName: "getClanIds",
         blockNumber: pinnedBlockNumber,
       })
@@ -672,7 +671,7 @@ export const refreshSnapshot = internalAction({
         return client
           .readContract({
             address,
-            abi: CLAN_WORLD_ABI,
+            abi: iClanWorldAbi,
             functionName: "getClanFullView",
             args: [clanId],
             blockNumber: pinnedBlockNumber,
