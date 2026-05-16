@@ -32,30 +32,32 @@ The codebase is a **pnpm + Turborepo monorepo**. Eight workspace packages today:
 | Heartbeat | KeeperHub workflow, 60s ticks |
 | Stretch deps | 0G Storage KV, 0G iNFT (ERC-7857), AXL whispers, KeeperHub |
 
-## 3. Gitflow Light — V3 Branching (canonical for this repo)
-
-Phases bundle features. Phase branches integrate; releases tag.
+## 3. Gitflow Light — 4-level branching + strict trust gates
 
 ```
-main                  ← sacred. Only tagged release merges.
-  ↑
-  └── dev             ← integration. Phase branches merge in when all features green.
-        ↑
-        └── dev-phase-N-<bundle-name>   ← phase integration. Per-phase work happens here.
-              ↑
-              └── feat/issue-N-foo      ← feature branch. PR targets the phase branch.
+main                              ← Liam-only merge. semver tags here.
+  └── dev                         ← orch-only merge. always shippable.
+       └── dev-<group>            ← orch-only merge. coherent feature group (typechain, phase-2-economy, etc).
+            └── feat/###-issue-PR ← sub-agent opens. orch reviews + merges into dev-<group>.
+                 └── feat/###-issue-PR-N ← stacked. rebased after parent merges.
 ```
+
+**Trust gates (load-bearing — failure modes validated 2026-05-16):**
+
+| Boundary | Authority | Required gate |
+|---|---|---|
+| feat → dev-<group> *(or dev)* | **orch only** | sub-agent local 3-tier swarm clean + orch review |
+| dev-<group> → dev | **orch only** | `/phase-super-swarm` clean + CI green |
+| dev → main (release PR) | **Liam only** | super-swarm clean + curated changelog + UAT |
 
 **Rules:**
 
-- `main` is **sacred**. The only commits that land on `main` are merges of fully-green `dev` releases, immediately followed by a semver tag (`vN.N.N`). Never push a hotfix straight to `main`.
-- `dev` is the integration branch. Phase branches merge into `dev` once every feature in the phase is GREEN.
-- **Phase branches** (`dev-phase-N-<bundle-name>`, e.g. `dev-phase-1-clansmen-revival`) bundle related features. They live until all features in the phase merge in, then squash-merge into `dev`.
-- **Feature branches** (`feat/issue-N-short-desc`) target the active phase branch, not `dev` directly. One PR closes one issue (`Closes #N` in body).
-- Commits: conventional commits + issue ref → `type(scope): desc (#N)`.
-- All 3 local reviewers (Claude subagent → Codex → Gemini flash) must be GREEN before opening a PR. Cloud reviewers (Copilot + Gemini Code Assist) are a single sanity pass per cloud-thrift.
-- **Releases:** when `dev` is GREEN and we want to ship, merge `dev` → `main` and tag `vN.N.N`. The tag is what frontend deploys reference.
-- Full rules + memory: `docs/conventions/gitflow.md` + memories `feedback_stacked_phase_branches.md` + `feedback_default_feature_workflow.md`.
+- `main` is sacred. Only release-train PRs (`dev → main`) merge here. Liam-only authority.
+- `dev` is the integration line. Only orch merges. Sub-agents (PM, codex, gemini) NEVER `gh pr merge` to dev.
+- `dev-<group>` activates when: 3+ sub-issue PRs in a group, ≥500 LOC net new, >1 calendar week, or risk-bearing surface. Otherwise base feature PRs on `dev` directly.
+- Conventional commits: `type(scope): desc (#N)`.
+- Local 3-tier swarm clean before opening any PR.
+- Full rules: `docs/adr/0018-gitflow-light-pr-branching.md` (canonical) + `~/claudes-world/knowledge/sop/feature-group-branching.md` (typechain stack walked end-to-end) + skill `branching-convention` (fires on every git/PR/merge op for orchestrator).
 
 ## 4. Hackathon Coding Rules
 

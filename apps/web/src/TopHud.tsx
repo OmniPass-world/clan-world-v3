@@ -72,17 +72,13 @@ export function TopHud({ liveTick }: { liveTick: number }) {
   }, []);
 
   const { seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick } = useMemo(() => {
-    // Try to read real season data from full worldSnapshot via getSnapshot.
-    // The lightweight getSnapshot query only returns tick + tickEpoch + clans + regions —
-    // season fields come from a broader snapshot query if exposed.
-    // Cast as any to access optional fields the TS type doesn't expose yet.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const s = snapshot as any;
+    // getSnapshot derives season fields from tick via deriveSeasonState() — all four
+    // fields are present in the return type.
     return {
-      seasonStartTick: typeof s?.seasonStartTick === 'number' ? s.seasonStartTick : null,
-      seasonEndTick: typeof s?.seasonEndTick === 'number' ? s.seasonEndTick : null,
-      winterActive: s?.winterActive === true,
-      winterStartsAtTick: typeof s?.winterStartsAtTick === 'number' ? s.winterStartsAtTick : null,
+      seasonStartTick: typeof snapshot?.seasonStartTick === 'number' ? snapshot.seasonStartTick : null,
+      seasonEndTick: typeof snapshot?.seasonEndTick === 'number' ? snapshot.seasonEndTick : null,
+      winterActive: snapshot?.winterActive === true,
+      winterStartsAtTick: typeof snapshot?.winterStartsAtTick === 'number' ? snapshot.winterStartsAtTick : null,
     };
   }, [snapshot]);
 

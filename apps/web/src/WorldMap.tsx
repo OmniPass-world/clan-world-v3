@@ -2115,16 +2115,14 @@ export function WorldMap() {
             } else {
               // User just turned reduced-motion OFF. Lazily build the handle
               // if init skipped it (reducedMotion was true at startup), then
-              // restore the snapshot-driven active state. The (snapshot as any)
-              // cast mirrors the dedicated useEffect downstream — same broader
-              // snapshot-schema-pending caveat.
+              // restore the snapshot-driven active state. winterActive is typed
+              // in the getSnapshot return type via deriveSeasonState().
               if (!winterSnowRef.current) {
                 const snow = createWinterSnow(currentApp, { particleCount: 100 });
                 currentApp.stage.addChild(snow.container);
                 winterSnowRef.current = snow;
               }
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const winterActive = (snapshotRef.current as any)?.winterActive === true;
+              const winterActive = snapshotRef.current?.winterActive === true;
               winterSnowRef.current.setActive(winterActive);
             }
           };
@@ -3775,10 +3773,9 @@ export function WorldMap() {
       REGION_KEY_BY_CHAIN_ID,
     );
 
-    // TODO(backend): worldPaused is not currently in worldSnapshot schema.
-    // Plumb through apps/server/convex/getSnapshot.ts when adding pause support.
-    // Until then, this branch is dormant and animations advance during pause.
-    const worldPaused = ((snap as any)?.worldPaused ?? false) === true;
+    // TODO(backend): worldPaused is not yet returned by getSnapshot. Wire up when
+    // pause support lands in the schema; until then animations advance during pause.
+    const worldPaused = false;
 
     // Hide everything by default, then enable per-phase.
     hideBanditAnimSprites();
@@ -5005,11 +5002,9 @@ export function WorldMap() {
   }, [liveTick, pixiReady, liveBandit]);
 
   // Winter snowfall: subscribe to `worldSnapshot.winterActive` and drive the
-  // particle overlay's active state. The underlying snapshot type doesn't yet
-  // expose the season fields (matches the cast TopHud does — same getSnapshot
-  // query, same broader-schema-pending caveat), so we read via `any`.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const winterActive = (snapshot as any)?.winterActive === true;
+  // particle overlay's active state. Season fields are derived in getSnapshot
+  // via deriveSeasonState() and present in the return type.
+  const winterActive = snapshot?.winterActive === true;
   useEffect(() => {
     if (!pixiReady) return;
     const snow = winterSnowRef.current;
