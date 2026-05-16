@@ -13,27 +13,45 @@ const WINTER_START = Number(WINTER_START_TICK);
 const WINTER_DUR = Number(WINTER_DURATION_TICKS);
 const WINTER_PERIOD = Number(WINTER_PERIOD_TICKS);
 
-/**
- * Derive season + winter state from `tick` per `LibSeason.sol`. Pure
- * computation — no chain or DB read required. Surfaces the four fields the
- * `<TopHud>` component reads (`seasonStartTick`, `seasonEndTick`,
- * `winterActive`, `winterStartsAtTick`) so the live HUD reflects on-chain
- * state without a separate facet view.
- */
-function deriveSeasonState(tick: number): {
+export interface DerivedSeasonState {
+  currentSeasonNumber: number;
   seasonStartTick: number;
   seasonEndTick: number;
   winterActive: boolean;
-  winterStartsAtTick: number | null;
-} {
+  winterStartsAtTick: number;
+  winterEndsAtTick: number;
+}
+
+/**
+ * Derive season + winter state from `tick` using LibSeason-style math.
+ *
+ * IMPORTANT: this helper is ONLY for the empty-state fallback (no
+ * `worldSnapshot` row yet) and as per-field fallback for legacy rows where
+ * a specific optional season/winter field was not persisted (pre-Phase-4.4
+ * indexer rows). For any row written by the current indexer the persisted
+ * chain values are authoritative — see `_worldStateView` in
+ * `packages/contracts/src/ClanWorld.sol`, which holds the OLD season fields
+ * on storage until `finalizeSeason()` runs. Overriding persisted values
+ * with this derivation flipped season N → N+1 one tick early (the freeze
+ * window between `tick === seasonEndTick` and `finalizeSeason()`).
+ *
+ * Returns the same six season/winter fields the indexer persists, with
+ * deterministic values for every `tick >= 0`.
+ */
+export function deriveSeasonState(tick: number): DerivedSeasonState {
   const seasonStartTick = Math.floor(tick / SEASON_LEN) * SEASON_LEN;
   const seasonEndTick = seasonStartTick + SEASON_LEN;
+  // 1-based season number, matching contract `_world.currentSeasonNumber`
+  // (initialised to 1 in ClanWorld constructor + ClanWorldStub).
+  const currentSeasonNumber = Math.floor(tick / SEASON_LEN) + 1;
 
   // Winter cycles after WINTER_START. Mirrors LibSeason.isWinterActive():
   // active when `(tick - WINTER_START) % WINTER_PERIOD < WINTER_DURATION`,
-  // and only after the first window has opened.
+  // and only after the first window has opened. `winterEndsAtTick` mirrors
+  // contract `_winterWindowForTick`: it is always `startsAtTick +
+  // WINTER_DURATION_TICKS`, regardless of active/inactive.
   let winterActive = false;
-  let winterStartsAtTick: number | null = null;
+  let winterStartsAtTick: number;
   if (tick >= WINTER_START) {
     const elapsed = tick - WINTER_START;
     const cycleIndex = Math.floor(elapsed / WINTER_PERIOD);
@@ -44,8 +62,67 @@ function deriveSeasonState(tick: number): {
   } else {
     winterStartsAtTick = WINTER_START;
   }
+  const winterEndsAtTick = winterStartsAtTick + WINTER_DUR;
 
-  return { seasonStartTick, seasonEndTick, winterActive, winterStartsAtTick };
+  return {
+    currentSeasonNumber,
+    seasonStartTick,
+    seasonEndTick,
+    winterActive,
+    winterStartsAtTick,
+    winterEndsAtTick,
+  };
+}
+
+/**
+ * Persisted-fields subset of `worldSnapshot` that this resolver reads.
+ * Mirrors the optional season/winter fields written by `indexer.ts`. Keep
+ * this in lockstep with `apps/server/convex/schema.ts:worldSnapshot`.
+ */
+export interface PersistedSnapshotSeasonFields {
+  tick: number;
+  currentSeasonNumber?: number;
+  seasonStartTick?: number;
+  seasonEndTick?: number;
+  seasonFinalized?: boolean;
+  winterActive?: boolean;
+  winterStartsAtTick?: number;
+  winterEndsAtTick?: number;
+}
+
+/**
+ * Resolve the six season/winter fields for a `worldSnapshot` row, with
+ * persisted chain values winning over a per-field fallback to
+ * `deriveSeasonState(snap.tick)` only when the field is `undefined` (legacy
+ * pre-Phase-4.4 rows). This is the regression seam for issue #435.
+ *
+ * Exported so unit tests can exercise the freeze-window behaviour without
+ * touching Convex's `query()` wrapper.
+ */
+export function resolveSeasonStateForSnap(
+  snap: PersistedSnapshotSeasonFields,
+): DerivedSeasonState {
+  const derived = deriveSeasonState(snap.tick);
+  return {
+    currentSeasonNumber: snap.currentSeasonNumber !== undefined
+      ? snap.currentSeasonNumber
+      : derived.currentSeasonNumber,
+    seasonStartTick: snap.seasonStartTick !== undefined
+      ? snap.seasonStartTick
+      : derived.seasonStartTick,
+    seasonEndTick: snap.seasonEndTick !== undefined
+      ? snap.seasonEndTick
+      : derived.seasonEndTick,
+    winterActive: snap.winterActive !== undefined
+      ? snap.winterActive
+      : derived.winterActive,
+    winterStartsAtTick: snap.winterStartsAtTick !== undefined
+      ? snap.winterStartsAtTick
+      : derived.winterStartsAtTick,
+    winterEndsAtTick: snap.winterEndsAtTick !== undefined
+      ? snap.winterEndsAtTick
+      : derived.winterEndsAtTick,
+  };
 }
 
 export const getSnapshot = query({
@@ -102,7 +179,7 @@ export const getSnapshot = query({
       bandit,
       worldPaused: snap.worldPaused === true,
       pausedAtTs: typeof snap.pausedAtTs === "number" ? snap.pausedAtTs : null,
-      ...deriveSeasonState(snap.tick),
+      ...resolveSeasonStateForSnap(snap),
     };
   },
 });
