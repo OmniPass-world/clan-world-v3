@@ -87,3 +87,67 @@ This keeps a clean separation: shared base files are version-controlled and insp
 ## Submodule note
 
 For v1 this lives in-repo. A follow-up issue (TBD) will convert `agents/` to a git submodule so the elder-infra lifecycle is decoupled from the game-contract lifecycle.
+
+## Self-hosted Convex bootstrap (Phase 1.4, #347)
+
+The compose stack ships two Convex containers: `convex-backend` (the Rust binary + SQLite) and `convex-dashboard` (the Next.js admin UI). Both are pinned to a specific git SHA — see `CONVEX_BACKEND_TAG` / `CONVEX_DASHBOARD_TAG` in `.env.template`.
+
+### First-time setup (one-shot per host)
+
+```bash
+# 1. Bring up the backend so it can generate its INSTANCE_SECRET.
+docker compose --profile dev up -d convex-backend
+
+# 2. Generate the admin key. This script is provided by Phase 1.12 (#355);
+#    the canonical recipe it wraps is:
+#       docker compose exec convex-backend ./generate_admin_key.sh \
+#         | sudo tee /etc/clan-world/secrets/convex-admin.key >/dev/null
+#       sudo chmod 600 /etc/clan-world/secrets/convex-admin.key
+#       ln -sf /etc/clan-world/secrets/convex-admin.key \
+#         agents/secrets/convex-admin.key
+make bootstrap-convex-admin-key
+
+# 3. Bring up the dashboard now that the backend is healthy.
+docker compose --profile dev up -d convex-dashboard
+
+# 4. Deploy the convex/ functions into the self-hosted backend.
+bin/import-convex-schema.sh
+
+# 5. Open the dashboard, paste the key from agents/secrets/convex-admin.key
+#    when prompted.
+xdg-open "http://127.0.0.1:${CONVEX_DASHBOARD_HOST_PORT:-38048}"
+```
+
+### Daily operations
+
+| What                       | How                                                          |
+|----------------------------|--------------------------------------------------------------|
+| Deploy schema/functions    | `bin/import-convex-schema.sh` (idempotent — skips if no diff)|
+| Check sync status          | `bin/import-convex-schema.sh --check` (exit 3 if drift)      |
+| Snapshot the data volume   | `bin/backup-convex.sh` (pause → tar.zst → unpause)           |
+| Migrate from hosted Convex | `bin/migrate-from-hosted-convex.sh` (Phase 2 cutover only)   |
+| Restart backend safely     | `docker compose stop convex-backend && docker compose start convex-backend` — INSTANCE_SECRET persists, same admin key |
+| Inspect a query / data     | dashboard at `http://127.0.0.1:${CONVEX_DASHBOARD_HOST_PORT}`|
+
+### Files
+
+```
+agents/secrets/
+  .gitignore                       # only .template + README.md committed
+  convex-admin-key.template        # docs the convex-admin.key layout
+  convex-admin.key                 # GENERATED — gitignored, chmod 600
+bin/
+  import-convex-schema.sh          # npx convex deploy wrapper
+  migrate-from-hosted-convex.sh    # one-time migration runbook
+  backup-convex.sh                 # paused-snapshot of convex_data volume
+```
+
+### Data location
+
+Inside the container: `/convex/data/`. From the host: docker volume `clan-world_convex_data`. The `bin/backup-convex.sh` script tars the volume contents while the backend is paused.
+
+### Admin-key safety
+
+- The key is derived from `INSTANCE_NAME + INSTANCE_SECRET`, both persisted in the `convex_data` volume. **Volume survives → captured admin key stays valid across restarts.** (Note: `generate_admin_key.sh` embeds a random nonce, so a fresh exec returns a textually different but functionally equivalent key. All keys derived from the same `INSTANCE_SECRET` unlock the same instance.)
+- The dashboard does NOT receive the key via env. The operator pastes it into the dashboard UI on first visit (Next.js stores it in browser `localStorage`).
+- The CLI tools read the key from `agents/secrets/convex-admin.key` (file) — env-var fallback exists but file is preferred (env leaks via `docker inspect`).

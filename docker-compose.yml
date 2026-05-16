@@ -40,6 +40,28 @@ secrets:
   # Plan revision (Finding 10): admin key lives in a file mounted as a Docker
   # secret, NOT an env var (env vars leak through `docker inspect`).
   # `make bootstrap-convex-admin-key` (Phase 1.12) materializes these files.
+  #
+  # WHAT THIS FILE CONTAINS (Phase 1.4, #347):
+  #   The admin key is a string of the form `<instance-name>|<hex>` produced
+  #   by `/convex/generate_admin_key.sh` inside the convex-backend container.
+  #   It is derived from INSTANCE_NAME + INSTANCE_SECRET (both persisted in
+  #   the convex_data volume at /convex/data/credentials/). The backend does
+  #   NOT itself read this file — it regenerates the key on demand from the
+  #   persisted INSTANCE_SECRET. The file is consumed by:
+  #     - convex-dashboard (CONVEX_SELF_HOSTED_ADMIN_KEY env var)
+  #     - `npx convex deploy` from heartbeat container / host (via the
+  #       CONVEX_SELF_HOSTED_ADMIN_KEY env var or the --admin-key flag)
+  #     - bin/import-convex-schema.sh, bin/migrate-from-hosted-convex.sh
+  #
+  # Bootstrap on first stack-up:
+  #   `make bootstrap-convex-admin-key` (Phase 1.12, #355) brings up the
+  #   convex-backend, execs `/convex/generate_admin_key.sh`, writes the
+  #   output to /etc/clan-world/secrets/convex-admin.key (chmod 600), and
+  #   symlinks agents/secrets/convex-admin.key to that path. The
+  #   INSTANCE_SECRET is auto-persisted to the volume so the captured key
+  #   stays valid across restarts (no rotation unless the volume is wiped).
+  #   Note: `generate_admin_key.sh` embeds a random nonce, so successive
+  #   calls produce different key strings — all valid for the same instance.
   convex-admin-key:
     file: ./agents/secrets/convex-admin.key
   # Webhook HMAC shared secret for heartbeat → Convex webhook (Finding 30 fix).
@@ -73,40 +95,124 @@ x-elder-common: &elder-common
 
 services:
   # ---------------------------------------------------------------------------
-  # Self-hosted Convex backend + dashboard.
+  # Self-hosted Convex backend + dashboard. Phase 1.4 (#347).
   #
-  # Phase 1.1 scaffolds the service definitions only. Image pinning, admin-key
-  # bootstrap, and `npx convex deploy --self-hosted` land in #347.
+  # Image pinning: CONVEX_BACKEND_TAG and CONVEX_DASHBOARD_TAG MUST be set to
+  # a specific commit SHA in .env (NOT `:latest`, per Phase 1.4 plan + Convex
+  # self-host research synthesis 2026-05-16). The default below pins to git
+  # SHA dd00d1f30042cedab25b8cc76a23c40cc2abbd90 — the latest stable
+  # release `precompiled-2026-05-13-dd00d1f` at the time of Phase 1.4. Pin
+  # bumps require an explicit PR + restart test.
+  #
+  # Data path: the official convex image stores data under /convex/data (NOT
+  # /data — earlier scaffold was wrong). Persisted artifacts:
+  #   /convex/data/db.sqlite3          - SQLite DB (paused for backup)
+  #   /convex/data/storage/            - file-storage backend (local mode)
+  #   /convex/data/credentials/        - INSTANCE_NAME + INSTANCE_SECRET
+  #                                      (re-deriving the same admin key
+  #                                      across restarts)
+  #
+  # Admin-key lifecycle (empirically verified 2026-05-16 on pinned SHA):
+  #   1. First stack-up: container writes a fresh INSTANCE_SECRET into
+  #      /convex/data/credentials/instance_secret on the convex_data volume.
+  #      `make bootstrap-convex-admin-key` execs the in-container generator
+  #      and saves the output to agents/secrets/convex-admin.key.
+  #   2. Subsequent restarts: container reads the persisted INSTANCE_SECRET
+  #      so the SAME secret unlocks the instance. The `generate_admin_key.sh`
+  #      script embeds a random nonce, so successive invocations produce
+  #      DIFFERENT key strings — but EVERY such key authenticates against
+  #      the same persisted INSTANCE_SECRET. The bootstrap-captured key
+  #      remains valid as long as the volume isn't wiped.
+  #   3. Volume wipe = INSTANCE_SECRET rotation = every captured key
+  #      invalidates. Re-bootstrap required.
   # ---------------------------------------------------------------------------
   convex-backend:
-    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-latest}
+    image: ghcr.io/get-convex/convex-backend:${CONVEX_BACKEND_TAG:-dd00d1f30042cedab25b8cc76a23c40cc2abbd90}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
     environment:
-      CONVEX_INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
-      # Backend reads admin key from a file path, not an env var.
-      CONVEX_ADMIN_KEY_FILE: /run/secrets/convex-admin-key
-    secrets:
-      - convex-admin-key
+      # INSTANCE_NAME pins the deployment identity. Persisted on first run
+      # to /convex/data/credentials/instance_name; setting it here makes the
+      # initial value deterministic per CHAIN_NETWORK profile.
+      INSTANCE_NAME: clan-world-${CHAIN_NETWORK:?CHAIN_NETWORK required (dev|prod)}
+      # Disable the upstream telemetry beacon (Convex phones home on startup
+      # otherwise). Self-host research synthesis 2026-05-16: opt out by default.
+      DISABLE_BEACON: "true"
+      # /metrics endpoint disabled (Prometheus-compat). Enable in a follow-up
+      # if observability is added.
+      DISABLE_METRICS_ENDPOINT: "true"
+      # Lower default document retention to 2 days (matches official self-host
+      # default; reduces SQLite growth).
+      DOCUMENT_RETENTION_DELAY: "172800"
+      # Origin URLs used in storage URLs + action callbacks. Internal-only by
+      # default; override in .env if the backend is fronted by Caddy/TLS.
+      CONVEX_CLOUD_ORIGIN: ${CONVEX_CLOUD_ORIGIN:-http://convex-backend:3210}
+      CONVEX_SITE_ORIGIN: ${CONVEX_SITE_ORIGIN:-http://convex-backend:3211}
+      # Allow plain HTTP between containers (no TLS terminator inside the
+      # docker network — Caddy handles TLS at the edge).
+      DO_NOT_REQUIRE_SSL: "true"
+      RUST_LOG: ${CONVEX_RUST_LOG:-info}
+    # NOTE: the admin key secret is NOT mounted into convex-backend itself —
+    # the backend regenerates it on demand from the persisted INSTANCE_SECRET
+    # in the data volume. It IS mounted into convex-dashboard (below) and is
+    # read by `bin/import-convex-schema.sh` / `bin/migrate-from-hosted-convex.sh`
+    # via the CONVEX_SELF_HOSTED_ADMIN_KEY env var.
     volumes:
-      - convex_data:/data
+      - convex_data:/convex/data
     networks: [clan-world-internal]
+    # Host-side port publishing. Bound to 127.0.0.1 (loopback only) so the
+    # backend is reachable from `npx convex deploy` on the host but NOT from
+    # the public internet. In prod (CONVEX_BACKEND_HOST_PORT empty/0), set
+    # to an unbound value to disable; the elder containers reach the backend
+    # via the docker network at convex-backend:3210 regardless.
+    #
+    # Default 38046 / 38047 are the canonical dev ports declared in
+    # .world/ports.yml (clan-world-convex-backend and
+    # clan-world-convex-backend-site). Override per-worktree via the .env
+    # values set by `port-for clan-world-convex-backend`.
+    ports:
+      - "127.0.0.1:${CONVEX_BACKEND_HOST_PORT:-38046}:3210"
+      - "127.0.0.1:${CONVEX_BACKEND_SITE_HOST_PORT:-38047}:3211"
+    # Healthcheck: `/version` returns HTTP 200 once the backend is accepting
+    # requests. The earlier `/health` path returns 404 in this image — verified
+    # against the pinned SHA on 2026-05-16. The official self-host compose
+    # uses `/version` for the same reason.
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3210/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:3210/version"]
       interval: 10s
       timeout: 3s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
     profiles: [dev, prod]
 
   convex-dashboard:
-    image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-latest}
+    image: ghcr.io/get-convex/convex-dashboard:${CONVEX_DASHBOARD_TAG:-dd00d1f30042cedab25b8cc76a23c40cc2abbd90}
+    stop_grace_period: 10s
+    stop_signal: SIGINT
     environment:
-      NEXT_PUBLIC_DEPLOYMENT_URL: http://convex-backend:3210
+      # The dashboard is a Next.js app that talks to the backend at this URL.
+      # When fronted by Caddy with TLS termination, override to the public URL.
+      NEXT_PUBLIC_DEPLOYMENT_URL: ${CONVEX_DASHBOARD_DEPLOYMENT_URL:-http://convex-backend:3210}
+    # NOTE: the admin key secret is intentionally NOT mounted into the
+    # dashboard. The dashboard prompts the operator for the admin key in its
+    # UI on first visit (and stores it in localStorage). This avoids exposing
+    # the key via a server-side env var that would be readable by anyone with
+    # `docker inspect` access. The CLI / bin/ scripts read the key from
+    # agents/secrets/convex-admin.key directly.
     networks: [clan-world-internal]
     depends_on:
       convex-backend:
         condition: service_healthy
+    # Bind to 127.0.0.1 — production access flows through host caddy +
+    # basic-auth at /convex-admin (Phase 1.5).
+    ports:
+      - "127.0.0.1:${CONVEX_DASHBOARD_HOST_PORT:-38048}:6791"
+    # Healthcheck: this image does NOT ship wget — earlier scaffold used
+    # `wget --spider` which would have failed. curl IS present. The dashboard
+    # root path serves the Next.js entry HTML when healthy.
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6791/"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:6791/"]
       interval: 10s
       timeout: 3s
       retries: 3

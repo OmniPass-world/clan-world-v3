@@ -201,6 +201,10 @@ agents/runtime/
 agents/.env
 agents/.docker-mounts/*
 !agents/.docker-mounts/.gitkeep
-agents/secrets/
+# agents/secrets/ — ignore key material, allow *.template + .gitignore + README
+agents/secrets/*
+!agents/secrets/.gitignore
+!agents/secrets/*.template
+!agents/secrets/README.md
 agents/elder-*/.env
 !agents/elder-*/.env.example
