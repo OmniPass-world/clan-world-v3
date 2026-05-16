@@ -280,7 +280,9 @@ const indexerEventValidator = v.object({
   args: v.any(),
   address: v.optional(v.string()),
   blockHash: v.optional(v.union(v.string(), v.null())),
-  blockNumber: v.optional(v.union(v.int64(), v.number(), v.string(), v.null())),
+  blockNumber: v.optional(
+    v.union(v.int64(), v.number(), v.string(), v.null()),
+  ),
   transactionHash: v.optional(v.union(v.string(), v.null())),
   transactionIndex: v.optional(v.union(v.number(), v.null())),
   logIndex: v.optional(v.union(v.number(), v.null())),
@@ -681,7 +683,9 @@ export const refreshSnapshot = internalAction({
 
     const world = worldRaw as Record<string, unknown> | undefined;
     if (!world) {
-      console.warn("[indexer] getWorldSnapshot failed; skipping refresh");
+      console.warn(
+        "[indexer] getWorldSnapshot failed; skipping refresh",
+      );
       return { tick: 0, clans: 0 };
     }
 

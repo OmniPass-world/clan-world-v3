@@ -50,8 +50,7 @@ const GOLD_RESOURCE_ID = 4;
 function resourceName(index: unknown): string {
   const i = Number(index);
   if (Number.isFinite(i) && i === GOLD_RESOURCE_ID) return "gold";
-  if (Number.isFinite(i) && i >= 0 && i < RESOURCE_NAMES.length)
-    return RESOURCE_NAMES[i] ?? "resource";
+  if (Number.isFinite(i) && i >= 0 && i < RESOURCE_NAMES.length) return RESOURCE_NAMES[i] ?? "resource";
   return "resource";
 }
 
@@ -78,13 +77,7 @@ function pushDelta(
 }
 
 export function projectAttributed(
-  event: {
-    eventName: IClanWorldAbiEventName;
-    args: Record<string, unknown>;
-    tick?: number;
-    decodedAt: number;
-    clanId?: number;
-  },
+  event: { eventName: IClanWorldAbiEventName; args: Record<string, unknown>; tick?: number; decodedAt: number; clanId?: number },
   _clanId: number,
   out: Movement[],
 ) {
@@ -93,279 +86,55 @@ export function projectAttributed(
   const args = event.args ?? {};
   switch (event.eventName) {
     case "ResourcesGathered": {
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.woodGained),
-        "wood",
-        "gather",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.ironGained),
-        "iron",
-        "gather",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.wheatGained),
-        "wheat",
-        "gather",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.fishGained),
-        "fish",
-        "gather",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.goldBonus),
-        "gold",
-        "gather bonus",
-        ts,
-      );
+      pushDelta(out, tick, "gain", whole(args.woodGained), "wood", "gather", ts);
+      pushDelta(out, tick, "gain", whole(args.ironGained), "iron", "gather", ts);
+      pushDelta(out, tick, "gain", whole(args.wheatGained), "wheat", "gather", ts);
+      pushDelta(out, tick, "gain", whole(args.fishGained), "fish", "gather", ts);
+      pushDelta(out, tick, "gain", whole(args.goldBonus), "gold", "gather bonus", ts);
       return;
     }
     case "ResourcesDeposited": {
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.woodDelta),
-        "wood",
-        "deposit",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.ironDelta),
-        "iron",
-        "deposit",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.wheatDelta),
-        "wheat",
-        "deposit",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.fishDelta),
-        "fish",
-        "deposit",
-        ts,
-      );
+      pushDelta(out, tick, "gain", whole(args.woodDelta), "wood", "deposit", ts);
+      pushDelta(out, tick, "gain", whole(args.ironDelta), "iron", "deposit", ts);
+      pushDelta(out, tick, "gain", whole(args.wheatDelta), "wheat", "deposit", ts);
+      pushDelta(out, tick, "gain", whole(args.fishDelta), "fish", "deposit", ts);
       return;
     }
     case "ResourcesWithdrawn": {
       // Withdrawals leave the vault (clansman pulls inventory).
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.woodDelta),
-        "wood",
-        "withdraw",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.ironDelta),
-        "iron",
-        "withdraw",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.wheatDelta),
-        "wheat",
-        "withdraw",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.fishDelta),
-        "fish",
-        "withdraw",
-        ts,
-      );
+      pushDelta(out, tick, "spend", whole(args.woodDelta), "wood", "withdraw", ts);
+      pushDelta(out, tick, "spend", whole(args.ironDelta), "iron", "withdraw", ts);
+      pushDelta(out, tick, "spend", whole(args.wheatDelta), "wheat", "withdraw", ts);
+      pushDelta(out, tick, "spend", whole(args.fishDelta), "fish", "withdraw", ts);
       return;
     }
     case "BlueprintAwarded":
     case "BlueprintEarned": {
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.amount),
-        "blueprint",
-        "bandit defeat",
-        ts,
-      );
+      pushDelta(out, tick, "gain", whole(args.amount), "blueprint", "bandit defeat", ts);
       return;
     }
     case "BanditAttackResolved": {
       // Defender-vault losses. defended=true with stolen=0 still shows as a no-op (filtered by amount<=0).
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.stolenWood),
-        "wood",
-        "bandit raid",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.stolenIron),
-        "iron",
-        "bandit raid",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.stolenWheat),
-        "wheat",
-        "bandit raid",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "spend",
-        whole(args.stolenFish),
-        "fish",
-        "bandit raid",
-        ts,
-      );
+      pushDelta(out, tick, "spend", whole(args.stolenWood), "wood", "bandit raid", ts);
+      pushDelta(out, tick, "spend", whole(args.stolenIron), "iron", "bandit raid", ts);
+      pushDelta(out, tick, "spend", whole(args.stolenWheat), "wheat", "bandit raid", ts);
+      pushDelta(out, tick, "spend", whole(args.stolenFish), "fish", "bandit raid", ts);
       return;
     }
     case "LootDistributedToDefender": {
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.wood),
-        "wood",
-        "defender loot",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.iron),
-        "iron",
-        "defender loot",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.wheat),
-        "wheat",
-        "defender loot",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.fish),
-        "fish",
-        "defender loot",
-        ts,
-      );
+      pushDelta(out, tick, "gain", whole(args.wood), "wood", "defender loot", ts);
+      pushDelta(out, tick, "gain", whole(args.iron), "iron", "defender loot", ts);
+      pushDelta(out, tick, "gain", whole(args.wheat), "wheat", "defender loot", ts);
+      pushDelta(out, tick, "gain", whole(args.fish), "fish", "defender loot", ts);
       return;
     }
     case "ResourcesInjected": {
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.wood),
-        "wood",
-        "admin inject",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.iron),
-        "iron",
-        "admin inject",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.wheat),
-        "wheat",
-        "admin inject",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.fish),
-        "fish",
-        "admin inject",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.gold),
-        "gold",
-        "admin inject",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.blueprint),
-        "blueprint",
-        "admin inject",
-        ts,
-      );
+      pushDelta(out, tick, "gain", whole(args.wood), "wood", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.iron), "iron", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.wheat), "wheat", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.fish), "fish", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.gold), "gold", "admin inject", ts);
+      pushDelta(out, tick, "gain", whole(args.blueprint), "blueprint", "admin inject", ts);
       return;
     }
     case "ImmediateMarketActionExecuted":
@@ -373,10 +142,7 @@ export function projectAttributed(
       // Market trade: the clan spends `amountIn` of `resourceIn` and receives
       // `amountOut` of `resourceOut`. resource id 4 == gold (per
       // RESOURCE_GOLD in contracts). Emit two deltas — one spend, one gain.
-      const label =
-        event.eventName === "ImmediateMarketActionExecuted"
-          ? "market trade"
-          : "market settle";
+      const label = event.eventName === "ImmediateMarketActionExecuted" ? "market trade" : "market settle";
       const resIn = resourceName(args.resourceIn);
       const resOut = resourceName(args.resourceOut);
       pushDelta(out, tick, "spend", whole(args.amountIn), resIn, label, ts);
@@ -389,12 +155,7 @@ export function projectAttributed(
 }
 
 export function projectBroadcast(
-  event: {
-    eventName: IClanWorldAbiEventName;
-    args: Record<string, unknown>;
-    tick?: number;
-    decodedAt: number;
-  },
+  event: { eventName: IClanWorldAbiEventName; args: Record<string, unknown>; tick?: number; decodedAt: number },
   clanId: number,
   out: Movement[],
 ) {
@@ -407,25 +168,9 @@ export function projectBroadcast(
       const to = Number(args.toClanId);
       const amount = whole(args.amount);
       if (Number.isFinite(from) && from === clanId)
-        pushDelta(
-          out,
-          tick,
-          "spend",
-          amount,
-          "gold",
-          `transfer → clan ${to}`,
-          ts,
-        );
+        pushDelta(out, tick, "spend", amount, "gold", `transfer → clan ${to}`, ts);
       if (Number.isFinite(to) && to === clanId)
-        pushDelta(
-          out,
-          tick,
-          "gain",
-          amount,
-          "gold",
-          `transfer ← clan ${from}`,
-          ts,
-        );
+        pushDelta(out, tick, "gain", amount, "gold", `transfer ← clan ${from}`, ts);
       return;
     }
     case "VaultResourceTransferred": {
@@ -436,67 +181,17 @@ export function projectBroadcast(
       if (Number.isFinite(from) && from === clanId)
         pushDelta(out, tick, "spend", amount, res, `transfer → clan ${to}`, ts);
       if (Number.isFinite(to) && to === clanId)
-        pushDelta(
-          out,
-          tick,
-          "gain",
-          amount,
-          res,
-          `transfer ← clan ${from}`,
-          ts,
-        );
+        pushDelta(out, tick, "gain", amount, res, `transfer ← clan ${from}`, ts);
       return;
     }
     case "LootDistributed": {
-      const rewarded = Array.isArray(args.clanIdsRewarded)
-        ? args.clanIdsRewarded.map(Number)
-        : [];
+      const rewarded = Array.isArray(args.clanIdsRewarded) ? args.clanIdsRewarded.map(Number) : [];
       if (!rewarded.includes(clanId)) return;
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.perClanWood),
-        "wood",
-        "loot share",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.perClanIron),
-        "iron",
-        "loot share",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.perClanWheat),
-        "wheat",
-        "loot share",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.perClanFish),
-        "fish",
-        "loot share",
-        ts,
-      );
-      pushDelta(
-        out,
-        tick,
-        "gain",
-        whole(args.perClanGold),
-        "gold",
-        "loot share",
-        ts,
-      );
+      pushDelta(out, tick, "gain", whole(args.perClanWood), "wood", "loot share", ts);
+      pushDelta(out, tick, "gain", whole(args.perClanIron), "iron", "loot share", ts);
+      pushDelta(out, tick, "gain", whole(args.perClanWheat), "wheat", "loot share", ts);
+      pushDelta(out, tick, "gain", whole(args.perClanFish), "fish", "loot share", ts);
+      pushDelta(out, tick, "gain", whole(args.perClanGold), "gold", "loot share", ts);
       return;
     }
     case "BlueprintTransferred": {
@@ -506,25 +201,9 @@ export function projectBroadcast(
       const to = Number(args.toClanId);
       const amount = whole(args.amount);
       if (Number.isFinite(from) && from === clanId)
-        pushDelta(
-          out,
-          tick,
-          "spend",
-          amount,
-          "blueprint",
-          `transfer → clan ${to}`,
-          ts,
-        );
+        pushDelta(out, tick, "spend", amount, "blueprint", `transfer → clan ${to}`, ts);
       if (Number.isFinite(to) && to === clanId)
-        pushDelta(
-          out,
-          tick,
-          "gain",
-          amount,
-          "blueprint",
-          `transfer ← clan ${from}`,
-          ts,
-        );
+        pushDelta(out, tick, "gain", amount, "blueprint", `transfer ← clan ${from}`, ts);
       return;
     }
     default:
@@ -544,7 +223,7 @@ export const getVaultMovements = query({
     // 1. Indexer-attributed events: row.clanId === clanId.
     const attributed = await ctx.db
       .query("chainEvents")
-      .withIndex("by_clan_tick", (q) => q.eq("clanId", clanId))
+      .withIndex("by_clan_tick", q => q.eq("clanId", clanId))
       .order("desc")
       .take(scanWindow);
 
@@ -559,10 +238,10 @@ export const getVaultMovements = query({
       "BlueprintTransferred",
     ];
     const broadcastBuckets = await Promise.all(
-      broadcastEventNames.map((name) =>
+      broadcastEventNames.map(name =>
         ctx.db
           .query("chainEvents")
-          .withIndex("by_event_block", (q) => q.eq("eventName", name))
+          .withIndex("by_event_block", q => q.eq("eventName", name))
           .order("desc")
           .take(scanWindow),
       ),
@@ -578,31 +257,21 @@ export const getVaultMovements = query({
       logIndex: number;
     };
     const movements: (Movement & { _src: string })[] = [];
-    const collect = (
-      e: SourceEvent,
-      project: (s: SourceEvent, c: number, out: Movement[]) => void,
-    ) => {
+    const collect = (e: SourceEvent, project: (s: SourceEvent, c: number, out: Movement[]) => void) => {
       const before = movements.length;
       const buf: Movement[] = [];
       project(e, clanId, buf);
-      for (const m of buf)
-        movements.push({ ...m, _src: `${e.txHash}:${e.logIndex}` });
+      for (const m of buf) movements.push({ ...m, _src: `${e.txHash}:${e.logIndex}` });
       void before;
     };
     for (const e of attributed) {
       if (!isClanWorldEventName(e.eventName)) {
         console.warn(
           `[vault] skipping unknown chainEvent eventName "${String(e.eventName)}"`,
-          {
-            eventName: e.eventName,
-            txHash: e.txHash,
-            logIndex: e.logIndex,
-            tick: e.tick,
-          },
+          { eventName: e.eventName, txHash: e.txHash, logIndex: e.logIndex, tick: e.tick },
         );
         continue;
       }
-
       collect(
         {
           // Allowlist-guarded — unknown event names were skipped + logged above.
@@ -615,13 +284,7 @@ export const getVaultMovements = query({
         },
         (src, cid, out) =>
           projectAttributed(
-            {
-              eventName: src.eventName,
-              args: src.args,
-              tick: src.tick,
-              decodedAt: src.decodedAt,
-              clanId: e.clanId,
-            },
+            { eventName: src.eventName, args: src.args, tick: src.tick, decodedAt: src.decodedAt, clanId: e.clanId },
             cid,
             out,
           ),
@@ -631,16 +294,10 @@ export const getVaultMovements = query({
       if (!isClanWorldEventName(e.eventName)) {
         console.warn(
           `[vault] skipping unknown chainEvent eventName "${String(e.eventName)}"`,
-          {
-            eventName: e.eventName,
-            txHash: e.txHash,
-            logIndex: e.logIndex,
-            tick: e.tick,
-          },
+          { eventName: e.eventName, txHash: e.txHash, logIndex: e.logIndex, tick: e.tick },
         );
         continue;
       }
-
       collect(
         {
           // Allowlist-guarded — unknown event names were skipped + logged above.
@@ -653,12 +310,7 @@ export const getVaultMovements = query({
         },
         (src, cid, out) =>
           projectBroadcast(
-            {
-              eventName: src.eventName,
-              args: src.args,
-              tick: src.tick,
-              decodedAt: src.decodedAt,
-            },
+            { eventName: src.eventName, args: src.args, tick: src.tick, decodedAt: src.decodedAt },
             cid,
             out,
           ),

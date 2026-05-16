@@ -8,11 +8,7 @@ import {
 const WEI = "1000000000000000000"; // 1e18
 const wei = (n: number) => `${n}${"0".repeat(18)}`;
 
-const baseAttributed = (
-  eventName: IClanWorldAbiEventName,
-  args: Record<string, unknown>,
-  tick = 5,
-) => ({
+const baseAttributed = (eventName: IClanWorldAbiEventName, args: Record<string, unknown>, tick = 5) => ({
   eventName,
   args,
   tick,
@@ -20,11 +16,7 @@ const baseAttributed = (
   clanId: 7,
 });
 
-const baseBroadcast = (
-  eventName: IClanWorldAbiEventName,
-  args: Record<string, unknown>,
-  tick = 5,
-) => ({
+const baseBroadcast = (eventName: IClanWorldAbiEventName, args: Record<string, unknown>, tick = 5) => ({
   eventName,
   args,
   tick,
@@ -46,61 +38,31 @@ describe("projectAttributed", () => {
       out,
     );
     // Filters zero-amount entries, keeps wood/wheat/gold gains
-    expect(out.map((m) => `${m.type}:${m.amount}:${m.resource}`)).toEqual([
+    expect(out.map(m => `${m.type}:${m.amount}:${m.resource}`)).toEqual([
       "gain:3:wood",
       "gain:2:wheat",
       "gain:1:gold",
     ]);
-    expect(out.every((m) => m.tick === 5)).toBe(true);
-    expect(
-      out.every((m) => m.source === "gather" || m.source === "gather bonus"),
-    ).toBe(true);
+    expect(out.every(m => m.tick === 5)).toBe(true);
+    expect(out.every(m => m.source === "gather" || m.source === "gather bonus")).toBe(true);
   });
 
   it("projects ResourcesDeposited as gains; ResourcesWithdrawn as spends", () => {
     const out: Movement[] = [];
-    projectAttributed(
-      baseAttributed("ResourcesDeposited", { woodDelta: wei(5) }),
-      7,
-      out,
-    );
-    projectAttributed(
-      baseAttributed("ResourcesWithdrawn", { ironDelta: wei(2) }),
-      7,
-      out,
-    );
+    projectAttributed(baseAttributed("ResourcesDeposited", { woodDelta: wei(5) }), 7, out);
+    projectAttributed(baseAttributed("ResourcesWithdrawn", { ironDelta: wei(2) }), 7, out);
     expect(out).toEqual([
-      expect.objectContaining({
-        type: "gain",
-        amount: 5,
-        resource: "wood",
-        source: "deposit",
-      }),
-      expect.objectContaining({
-        type: "spend",
-        amount: 2,
-        resource: "iron",
-        source: "withdraw",
-      }),
+      expect.objectContaining({ type: "gain", amount: 5, resource: "wood", source: "deposit" }),
+      expect.objectContaining({ type: "spend", amount: 2, resource: "iron", source: "withdraw" }),
     ]);
   });
 
   it("projects BlueprintAwarded / BlueprintEarned as blueprint gains", () => {
     const out: Movement[] = [];
-    projectAttributed(
-      baseAttributed("BlueprintAwarded", { amount: wei(4) }),
-      7,
-      out,
-    );
-    projectAttributed(
-      baseAttributed("BlueprintEarned", { amount: wei(2) }),
-      7,
-      out,
-    );
-    expect(out.map((m) => m.amount)).toEqual([4, 2]);
-    expect(
-      out.every((m) => m.resource === "blueprint" && m.type === "gain"),
-    ).toBe(true);
+    projectAttributed(baseAttributed("BlueprintAwarded", { amount: wei(4) }), 7, out);
+    projectAttributed(baseAttributed("BlueprintEarned", { amount: wei(2) }), 7, out);
+    expect(out.map(m => m.amount)).toEqual([4, 2]);
+    expect(out.every(m => m.resource === "blueprint" && m.type === "gain")).toBe(true);
   });
 
   it("projects BanditAttackResolved stolen amounts as spends", () => {
@@ -116,18 +78,8 @@ describe("projectAttributed", () => {
       out,
     );
     expect(out).toEqual([
-      expect.objectContaining({
-        type: "spend",
-        amount: 3,
-        resource: "wood",
-        source: "bandit raid",
-      }),
-      expect.objectContaining({
-        type: "spend",
-        amount: 1,
-        resource: "fish",
-        source: "bandit raid",
-      }),
+      expect.objectContaining({ type: "spend", amount: 3, resource: "wood", source: "bandit raid" }),
+      expect.objectContaining({ type: "spend", amount: 1, resource: "fish", source: "bandit raid" }),
     ]);
   });
 
@@ -145,18 +97,8 @@ describe("projectAttributed", () => {
       out,
     );
     expect(out).toEqual([
-      expect.objectContaining({
-        type: "spend",
-        amount: 10,
-        resource: "gold",
-        source: "market trade",
-      }),
-      expect.objectContaining({
-        type: "gain",
-        amount: 5,
-        resource: "wood",
-        source: "market trade",
-      }),
+      expect.objectContaining({ type: "spend", amount: 10, resource: "gold", source: "market trade" }),
+      expect.objectContaining({ type: "gain", amount: 5, resource: "wood", source: "market trade" }),
     ]);
 
     // Sell scheduled: spend wheat, gain gold; uses "market settle" label
@@ -171,9 +113,10 @@ describe("projectAttributed", () => {
       7,
       out,
     );
-    expect(
-      out.map((m) => `${m.type}:${m.amount}:${m.resource}:${m.source}`),
-    ).toEqual(["spend:8:wheat:market settle", "gain:11:gold:market settle"]);
+    expect(out.map(m => `${m.type}:${m.amount}:${m.resource}:${m.source}`)).toEqual([
+      "spend:8:wheat:market settle",
+      "gain:11:gold:market settle",
+    ]);
   });
 
   it("projects ResourcesInjected (admin recovery) as gains for all non-zero resources", () => {
@@ -190,9 +133,7 @@ describe("projectAttributed", () => {
       7,
       out,
     );
-    expect(
-      out.map((m) => `${m.type}:${m.amount}:${m.resource}:${m.source}`),
-    ).toEqual([
+    expect(out.map(m => `${m.type}:${m.amount}:${m.resource}:${m.source}`)).toEqual([
       "gain:5:wood:admin inject",
       "gain:3:wheat:admin inject",
       "gain:10:gold:admin inject",
@@ -201,11 +142,7 @@ describe("projectAttributed", () => {
 
   it("ignores ABI event names with no vault projection (e.g. TickAdvanced)", () => {
     const out: Movement[] = [];
-    projectAttributed(
-      baseAttributed("TickAdvanced", { closedTick: 1 }),
-      7,
-      out,
-    );
+    projectAttributed(baseAttributed("TickAdvanced", { closedTick: 1 }), 7, out);
     expect(out).toEqual([]);
   });
 });
@@ -215,80 +152,43 @@ describe("projectBroadcast", () => {
     const out: Movement[] = [];
     // Sender perspective: clanId === fromClanId
     projectBroadcast(
-      baseBroadcast("GoldTransferred", {
-        fromClanId: 7,
-        toClanId: 9,
-        amount: wei(20),
-      }),
+      baseBroadcast("GoldTransferred", { fromClanId: 7, toClanId: 9, amount: wei(20) }),
       7,
       out,
     );
     expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({
-      type: "spend",
-      amount: 20,
-      resource: "gold",
-      source: "transfer → clan 9",
-    });
+    expect(out[0]).toMatchObject({ type: "spend", amount: 20, resource: "gold", source: "transfer → clan 9" });
 
     // Recipient perspective
     out.length = 0;
     projectBroadcast(
-      baseBroadcast("GoldTransferred", {
-        fromClanId: 7,
-        toClanId: 9,
-        amount: wei(20),
-      }),
+      baseBroadcast("GoldTransferred", { fromClanId: 7, toClanId: 9, amount: wei(20) }),
       9,
       out,
     );
     expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({
-      type: "gain",
-      amount: 20,
-      resource: "gold",
-      source: "transfer ← clan 7",
-    });
+    expect(out[0]).toMatchObject({ type: "gain", amount: 20, resource: "gold", source: "transfer ← clan 7" });
   });
 
   it("projects VaultResourceTransferred with resource enum mapping", () => {
     const out: Movement[] = [];
     projectBroadcast(
       // resource id 2 = wheat
-      baseBroadcast("VaultResourceTransferred", {
-        fromClanId: 1,
-        toClanId: 9,
-        resource: 2,
-        amount: wei(7),
-      }),
+      baseBroadcast("VaultResourceTransferred", { fromClanId: 1, toClanId: 9, resource: 2, amount: wei(7) }),
       9,
       out,
     );
-    expect(out[0]).toMatchObject({
-      type: "gain",
-      amount: 7,
-      resource: "wheat",
-      source: "transfer ← clan 1",
-    });
+    expect(out[0]).toMatchObject({ type: "gain", amount: 7, resource: "wheat", source: "transfer ← clan 1" });
   });
 
   it("projects BlueprintTransferred (the missing-event finding from review)", () => {
     const out: Movement[] = [];
     projectBroadcast(
-      baseBroadcast("BlueprintTransferred", {
-        fromClanId: 7,
-        toClanId: 3,
-        amount: wei(2),
-      }),
+      baseBroadcast("BlueprintTransferred", { fromClanId: 7, toClanId: 3, amount: wei(2) }),
       7,
       out,
     );
-    expect(out[0]).toMatchObject({
-      type: "spend",
-      amount: 2,
-      resource: "blueprint",
-      source: "transfer → clan 3",
-    });
+    expect(out[0]).toMatchObject({ type: "spend", amount: 2, resource: "blueprint", source: "transfer → clan 3" });
   });
 
   it("projects LootDistributed only for clans in clanIdsRewarded", () => {
@@ -307,24 +207,14 @@ describe("projectBroadcast", () => {
 
     // Rewarded clan: emits gains for the non-zero per-resource fields
     projectBroadcast(baseBroadcast("LootDistributed", args), 5, out);
-    expect(out.map((m) => `${m.amount}:${m.resource}`)).toEqual([
-      "2:wood",
-      "1:wheat",
-      "4:gold",
-    ]);
-    expect(
-      out.every((m) => m.type === "gain" && m.source === "loot share"),
-    ).toBe(true);
+    expect(out.map(m => `${m.amount}:${m.resource}`)).toEqual(["2:wood", "1:wheat", "4:gold"]);
+    expect(out.every(m => m.type === "gain" && m.source === "loot share")).toBe(true);
   });
 
   it("ignores transfers where the clan is neither sender nor recipient", () => {
     const out: Movement[] = [];
     projectBroadcast(
-      baseBroadcast("GoldTransferred", {
-        fromClanId: 1,
-        toClanId: 2,
-        amount: wei(20),
-      }),
+      baseBroadcast("GoldTransferred", { fromClanId: 1, toClanId: 2, amount: wei(20) }),
       9,
       out,
     );
