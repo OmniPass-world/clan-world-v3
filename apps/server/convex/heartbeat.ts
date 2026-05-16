@@ -4,19 +4,16 @@
 // and refreshes Convex snapshots from chain state. Tracked: GH issue #TBD
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
-import clanWorldArtifact from "../../../packages/contracts/abi/IClanWorld.json";
+import { iClanWorldAbi } from "@clan-world/contract-types";
 import {
   defineChain,
   createPublicClient,
   http,
   parseEventLogs,
   WaitForTransactionReceiptTimeoutError,
-  type Abi,
   type Hex,
   type Log,
 } from "viem";
-
-const CLAN_WORLD_ABI = clanWorldArtifact.abi as Abi;
 const baseSepolia = defineChain({
   id: 84532,
   name: "Base Sepolia",
@@ -24,7 +21,7 @@ const baseSepolia = defineChain({
   rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
 });
 
-const indexerApi = (internal as any).indexer;
+const indexerApi = internal.indexer;
 
 type HeartbeatWebhookPayload = {
   txHash?: unknown;
@@ -105,7 +102,7 @@ export function validateHeartbeatReceipt(
 
 export function parseHeartbeatEngineEvents(engineLogs: readonly Log[]) {
   return parseEventLogs({
-    abi: CLAN_WORLD_ABI,
+    abi: iClanWorldAbi,
     logs: [...engineLogs],
     strict: false,
   }).map((event) => ({
