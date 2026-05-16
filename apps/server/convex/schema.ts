@@ -2,6 +2,16 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  tickClock: defineTable({
+    tick: v.number(),
+    blockNumber: v.optional(v.number()),
+    tickEpochStartedAt: v.number(),
+    tickEpochDurationMs: v.number(),
+    seasonStartTick: v.number(),
+    seasonEndTick: v.number(),
+    winterActive: v.boolean(),
+    winterStartsAtTick: v.optional(v.number()),
+  }),
   worldSnapshot: defineTable({
     tick: v.number(),
     tickEpochStartedAt: v.number(),
