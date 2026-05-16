@@ -3028,6 +3028,9 @@ export function WorldMap() {
   function currentTickFloat() {
     const snap = snapshotRef.current;
     const tick = typeof snap?.tick === 'number' && Number.isFinite(snap.tick) ? snap.tick : liveTickRef.current;
+    if (snap?.worldPaused === true) {
+      return tick;
+    }
     const epoch = snap?.tickEpoch;
     if (!epoch || typeof epoch.startedAt !== 'number' || typeof epoch.durationMs !== 'number' || epoch.durationMs <= 0) {
       return tick;
@@ -3773,9 +3776,7 @@ export function WorldMap() {
       REGION_KEY_BY_CHAIN_ID,
     );
 
-    // TODO(backend): worldPaused is not yet returned by getSnapshot. Wire up when
-    // pause support lands in the schema; until then animations advance during pause.
-    const worldPaused = false;
+    const worldPaused = snap?.worldPaused === true;
 
     // Hide everything by default, then enable per-phase.
     hideBanditAnimSprites();

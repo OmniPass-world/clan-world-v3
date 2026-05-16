@@ -335,6 +335,9 @@ importers:
       '@clan-world/contracts':
         specifier: workspace:*
         version: link:../contracts
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@25.6.0)(lightningcss@1.32.0)(terser@5.46.2)
 
   packages/contracts: {}
 

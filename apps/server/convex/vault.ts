@@ -1,6 +1,9 @@
 import { query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
-import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
+import {
+  isClanWorldEventName,
+  type IClanWorldAbiEventName,
+} from "@clan-world/contract-types";
 
 /**
  * Vault movement feed for a single clan.
@@ -262,10 +265,17 @@ export const getVaultMovements = query({
       void before;
     };
     for (const e of attributed) {
+      if (!isClanWorldEventName(e.eventName)) {
+        console.warn(
+          `[vault] skipping unknown chainEvent eventName "${String(e.eventName)}"`,
+          { eventName: e.eventName, txHash: e.txHash, logIndex: e.logIndex, tick: e.tick },
+        );
+        continue;
+      }
       collect(
         {
-          // Safe: unknown names fall through to `default: return` in projectAttributed.
-          eventName: e.eventName as IClanWorldAbiEventName,
+          // Allowlist-guarded — unknown event names were skipped + logged above.
+          eventName: e.eventName,
           args: (e.args ?? {}) as Record<string, unknown>,
           tick: e.tick,
           decodedAt: e.decodedAt,
@@ -281,10 +291,17 @@ export const getVaultMovements = query({
       );
     }
     for (const e of broadcast) {
+      if (!isClanWorldEventName(e.eventName)) {
+        console.warn(
+          `[vault] skipping unknown chainEvent eventName "${String(e.eventName)}"`,
+          { eventName: e.eventName, txHash: e.txHash, logIndex: e.logIndex, tick: e.tick },
+        );
+        continue;
+      }
       collect(
         {
-          // Safe: unknown names fall through to `default: return` in projectBroadcast.
-          eventName: e.eventName as IClanWorldAbiEventName,
+          // Allowlist-guarded — unknown event names were skipped + logged above.
+          eventName: e.eventName,
           args: (e.args ?? {}) as Record<string, unknown>,
           tick: e.tick,
           decodedAt: e.decodedAt,

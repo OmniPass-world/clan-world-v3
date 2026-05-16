@@ -13,6 +13,8 @@ export default defineSchema({
     winterActive: v.optional(v.boolean()),
     winterStartsAtTick: v.optional(v.number()),
     winterEndsAtTick: v.optional(v.number()),
+    worldPaused: v.optional(v.boolean()),
+    pausedAtTs: v.optional(v.number()),
     nextHeartbeatAtTick: v.optional(v.number()),
     regions: v.array(
       v.object({

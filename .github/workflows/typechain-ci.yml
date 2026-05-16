@@ -25,10 +25,14 @@ jobs:
         with:
           version: stable
       - run: pnpm install --frozen-lockfile
+      - name: Verify committed ABI JSON matches forge artifacts
+        run: pnpm --filter @clan-world/contracts run check:abi
       # codegen:check reads the ABI JSON and exits non-zero if the committed
       # output in packages/contract-types/src/ is stale — no files are written.
       - name: Check @clan-world/contract-types output is current
         run: pnpm --filter @clan-world/contract-types run codegen:check
+      - name: Build smoke — @clan-world/contract-types compiles cleanly
+        run: pnpm --filter @clan-world/contract-types run build
 
   convex-types-freshness:
     name: Convex generated types are current
@@ -54,7 +58,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Grep for as-Abi casts
         run: |
-          if grep -rEn "as[[:space:]]+Abi\b" \
+          # Catches single-line raw casts (`as Abi`) and double-casts (`as unknown as Abi`); multiline and alias bypasses are out of scope follow-ups if found.
+          if grep -rEn "as[[:space:]]+(unknown[[:space:]]+as[[:space:]]+)?Abi\b" \
             --include="*.ts" \
             --include="*.tsx" \
             --exclude-dir="_generated" \

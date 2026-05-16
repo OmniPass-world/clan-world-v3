@@ -5,7 +5,10 @@ import {
   internalQuery,
 } from "./_generated/server";
 import { internal } from "./_generated/api";
-import { iClanWorldAbi } from "@clan-world/contract-types";
+import {
+  iClanWorldAbi,
+  isClanWorldEventName,
+} from "@clan-world/contract-types";
 import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 import {
   defineChain,
@@ -298,12 +301,42 @@ export const ingestEvents = internalMutation({
       return {
         inserted: 0,
         skipped: args.events.length,
+        // Keep the response shape stable for callers that inspect ingest stats.
+        rejected: 0,
         resetLocked: true,
       };
     }
 
     let inserted = 0;
-    for (const raw of args.events as ParsedIndexerEvent[]) {
+    let rejected = 0;
+    for (const raw of args.events) {
+      if (!isClanWorldEventName(raw.eventName)) {
+        console.warn(
+          `[indexer] rejecting unknown eventName "${String(raw.eventName)}"`,
+          {
+            eventName: raw.eventName,
+            txHash: raw.transactionHash ?? args.txHash,
+            logIndex: raw.logIndex,
+            blockNumber: raw.blockNumber ?? args.blockNumber,
+          },
+        );
+        rejected++;
+        continue;
+      }
+
+      const event: ParsedIndexerEvent = {
+        eventName: raw.eventName,
+        args: raw.args,
+        address: raw.address,
+        blockHash: raw.blockHash,
+        blockNumber:
+          typeof raw.blockNumber === "string"
+            ? Number(raw.blockNumber)
+            : raw.blockNumber,
+        transactionHash: raw.transactionHash,
+        transactionIndex: raw.transactionIndex,
+        logIndex: raw.logIndex,
+      };
       const logIndex = raw.logIndex ?? 0;
       const txHash = raw.transactionHash ?? args.txHash;
       if (!txHash) continue;
@@ -320,27 +353,28 @@ export const ingestEvents = internalMutation({
         txHash,
         logIndex,
         blockNumber,
-        eventName: raw.eventName,
-        args: bigintSafe(raw.args),
+        eventName: event.eventName,
+        args: bigintSafe(event.args),
         decodedAt: Date.now(),
-        blockHash: raw.blockHash ?? undefined,
-        transactionIndex: raw.transactionIndex ?? undefined,
+        blockHash: event.blockHash ?? undefined,
+        transactionIndex: event.transactionIndex ?? undefined,
         tick:
-          eventNumber(raw, "tick") ??
-          eventNumber(raw, "atTick") ??
-          eventNumber(raw, "openedTick"),
-        clanId: eventNumber(raw, "clanId") ?? eventNumber(raw, "targetClanId"),
-        clansmanId: eventNumber(raw, "clansmanId"),
-        banditId: eventNumber(raw, "banditId"),
+          eventNumber(event, "tick") ??
+          eventNumber(event, "atTick") ??
+          eventNumber(event, "openedTick"),
+        clanId:
+          eventNumber(event, "clanId") ?? eventNumber(event, "targetClanId"),
+        clansmanId: eventNumber(event, "clansmanId"),
+        banditId: eventNumber(event, "banditId"),
         source: "real-indexer",
       });
       inserted++;
 
-      if (raw.eventName === "TickAdvanced") {
+      if (event.eventName === "TickAdvanced") {
         await ctx.db.insert("tickHistory", {
-          closedTick: asNumber(raw.args.closedTick),
-          openedTick: asNumber(raw.args.openedTick),
-          tickSeed: asString(raw.args.tickSeed),
+          closedTick: asNumber(event.args.closedTick),
+          openedTick: asNumber(event.args.openedTick),
+          tickSeed: asString(event.args.tickSeed),
           blockNumber,
           txHash,
           firedAtTs: args.firedAtTs,
@@ -348,7 +382,7 @@ export const ingestEvents = internalMutation({
         });
       }
 
-      const pricePoint = pricePointFromEvent(raw, blockNumber);
+      const pricePoint = pricePointFromEvent(event, blockNumber);
       if (pricePoint) await ctx.db.insert("pricePoint", pricePoint);
     }
 
@@ -368,7 +402,7 @@ export const ingestEvents = internalMutation({
       }
     }
 
-    return { inserted };
+    return { inserted, rejected };
   },
 });
 
@@ -553,6 +587,12 @@ export const commitSnapshot = internalMutation({
       previousWorldSnapshot?.tick === tick
         ? previousWorldSnapshot.tickEpochStartedAt
         : Math.floor(now / 1000);
+    const worldPaused = asBool(world.worldPaused);
+    const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
+    const pausedAtTs =
+      Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)
+        ? rawPausedAtTs
+        : undefined;
     const worldSnapshot = {
       tick,
       tickEpochStartedAt,
@@ -563,6 +603,8 @@ export const commitSnapshot = internalMutation({
       winterActive: asBool(world.winterActive),
       winterStartsAtTick: asNumber(world.winterStartsAtTick),
       winterEndsAtTick: asNumber(world.winterEndsAtTick),
+      worldPaused,
+      pausedAtTs,
       nextHeartbeatAtTick: asNumber(world.nextHeartbeatAtTick),
       regions: LEGACY_REGIONS,
       clans: legacyClans,

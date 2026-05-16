@@ -316,6 +316,55 @@ describe("ingestEvents checkpoint isolation", () => {
   });
 });
 
+describe("ingestEvents allowlist", () => {
+  it("skips unknown event names with structured warning and rejected counter", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { db, tables } = createDb({
+        eventCheckpoint: [
+          { _id: "eventCheckpoint:0", _creationTime: 0, lastBlock: 100 },
+        ],
+      });
+
+      const goodEvent = {
+        eventName: "TickAdvanced",
+        args: { closedTick: "1", openedTick: "2", tickSeed: "0x1234" },
+        transactionHash,
+        blockNumber: 105,
+        logIndex: 0,
+      };
+      const badEvent = {
+        eventName: "FakeEvent",
+        args: { foo: "bar" },
+        transactionHash,
+        blockNumber: 105,
+        logIndex: 1,
+      };
+
+      const result = await (ingestEvents as any)._handler(
+        { db },
+        {
+          events: [goodEvent, badEvent],
+          blockNumber: 105,
+          txHash: transactionHash,
+          advanceCheckpoint: false,
+        },
+      );
+
+      expect(result.inserted).toBe(1);
+      expect(result.rejected).toBe(1);
+      expect(tables.chainEvents).toHaveLength(1);
+      expect(tables.chainEvents?.[0]?.eventName).toBe("TickAdvanced");
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("FakeEvent"),
+        expect.objectContaining({ eventName: "FakeEvent" }),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});
+
 describe("legacy snapshot backfill", () => {
   it("commitSnapshot writes non-empty legacy clans from clanView rows", async () => {
     const { db, tables } = createDb();
