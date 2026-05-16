@@ -18,6 +18,8 @@ export class TmuxSink {
     // execFile does not support stdin piping; use spawn + stdin.end() instead.
     await new Promise<void>((resolve, reject) => {
       const proc = spawn("tmux", ["load-buffer", "-b", name, "-"]);
+      // Guard stdin against EPIPE if tmux exits before consuming all input.
+      proc.stdin.on("error", reject);
       proc.stdin.end(content);
       proc.on("close", (code) => {
         if (code === 0) resolve();
