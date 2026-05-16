@@ -177,7 +177,29 @@ export const failCommand = mutation({
   },
 });
 
-// 6. getQueuedFor — reactive query for elder's queue
+// 6. releaseLease — return a leased/acked command to queued without bumping retryCount
+export const releaseLease = mutation({
+  args: {
+    secret: v.string(),
+    agentId: v.string(),
+    commandId: v.id("agentCommands"),
+  },
+  handler: async (ctx, args) => {
+    checkElderAuth(args.secret, args.agentId);
+    const cmd = await ctx.db.get(args.commandId);
+    if (!cmd || cmd.leaseOwner !== args.agentId) {
+      throw new Error("Command not found or not owned by this elder");
+    }
+    await ctx.db.patch(args.commandId, {
+      status: "queued",
+      leaseOwner: undefined,
+      leaseExpiresAt: undefined,
+      ackedAt: undefined,
+    });
+  },
+});
+
+// 8. getQueuedFor — reactive query for elder's queue
 export const getQueuedFor = query({
   args: { secret: v.string(), agentId: v.string() },
   handler: async (ctx, args) => {
@@ -190,7 +212,7 @@ export const getQueuedFor = query({
   },
 });
 
-// 7. sweepStaleDelivered — cron: re-queue expired leases
+// 9. sweepStaleDelivered — cron: re-queue expired leases
 export const sweepStaleDelivered = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -222,7 +244,7 @@ export const sweepStaleDelivered = internalMutation({
   },
 });
 
-// 8. heartbeat — elder-runtime upserts heartbeat row
+// 10. heartbeat — elder-runtime upserts heartbeat row
 export const heartbeat = mutation({
   args: {
     secret: v.string(),
