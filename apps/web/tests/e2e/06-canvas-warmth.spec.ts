@@ -84,9 +84,10 @@ const FOUR_CLAN_PAYLOAD = {
 async function clearSnapshotCache(page: Page): Promise<void> {
   // localStorage is per-origin. We must navigate to the origin first so
   // `page.evaluate` runs with a valid storage context (about:blank has none).
-  // Empty navigation to `/` is the cheapest way to bind the page to the origin
-  // — the page errors are ignored; we only care about establishing storage.
-  await page.goto('/');
+  // Navigate to `/map` (the raw map surface — same origin as `/`) which is
+  // the cheapest origin-binding for this storage-only use; we don't want
+  // the cockpit at `/` to spin up its iframe just to clear localStorage.
+  await page.goto('/map');
   await page.evaluate(() => {
     const toRemove: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
@@ -131,7 +132,9 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     // Load fresh — useCachedSnapshot.useState() returns undefined; liveSnapshot
     // also stays undefined (no real Convex backend in e2e); hasClans=false →
     // grace timer arms for 5s.
-    await page.goto('/');
+    // Phase 1.11 URL rename (issue #354): the raw map (with ghost +
+    // placeholder) is at `/map`; `/` is the cockpit that iframes it.
+    await page.goto('/map');
 
     // At t=0 (well within grace) the placeholder MUST NOT be visible. We use
     // a small timeout to ride past any sync mount latency without giving the
@@ -155,7 +158,9 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
       ts: Date.now(),
     });
 
-    await page.goto('/');
+    // Phase 1.11 URL rename (issue #354): the raw map (with ghost +
+    // placeholder) is at `/map`; `/` is the cockpit that iframes it.
+    await page.goto('/map');
 
     // Ghost must be in the DOM and visible at first paint — primed cache
     // hydrates synchronously in useState initializer + useMemo, no useEffect
@@ -240,7 +245,9 @@ test.describe('canvas warmth state machine (DEMO_MODE=false)', () => {
     // page.waitForTimeout(4000) + a single post-wait assert would let a
     // mid-window flash slip past (it could appear at t=2s then disappear
     // before t=4s). We sample 8 times across the window to catch a flash.
-    await page.goto('/');
+    // Phase 1.11 URL rename (issue #354): the raw map (with ghost +
+    // placeholder) is at `/map`; `/` is the cockpit that iframes it.
+    await page.goto('/map');
 
     // First, confirm we got past mount with a primed cache by checking the
     // ghost is present AND rendering cache-derived per-clan content. The
