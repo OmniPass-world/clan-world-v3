@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveSeasonState,
+  normalizePausedAtTs,
+  resolvePauseStateForSnap,
   resolveSeasonStateForSnap,
   type PersistedSnapshotSeasonFields,
 } from "./getSnapshot";
@@ -142,5 +144,27 @@ describe("deriveSeasonState (empty-state fallback)", () => {
     expect(result.winterActive).toBe(false);
     expect(result.winterStartsAtTick).toBe(WINTER_START + 110);
     expect(result.winterEndsAtTick).toBe(WINTER_START + 110 + WINTER_DUR);
+  });
+});
+
+describe("normalizePausedAtTs", () => {
+  it("paused row: preserves a positive pausedAtTs", () => {
+    expect(resolvePauseStateForSnap({ worldPaused: true, pausedAtTs: 12345 })).toEqual({
+      worldPaused: true,
+      pausedAtTs: 12345,
+    });
+  });
+
+  it("unpaused row: normalizes missing or non-positive pausedAtTs to null", () => {
+    expect(resolvePauseStateForSnap({ worldPaused: false, pausedAtTs: undefined })).toEqual({
+      worldPaused: false,
+      pausedAtTs: null,
+    });
+    expect(resolvePauseStateForSnap({ worldPaused: false, pausedAtTs: 0 })).toEqual({
+      worldPaused: false,
+      pausedAtTs: null,
+    });
+    expect(normalizePausedAtTs(undefined)).toBeNull();
+    expect(normalizePausedAtTs(0)).toBeNull();
   });
 });

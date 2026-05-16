@@ -587,6 +587,12 @@ export const commitSnapshot = internalMutation({
       previousWorldSnapshot?.tick === tick
         ? previousWorldSnapshot.tickEpochStartedAt
         : Math.floor(now / 1000);
+    const worldPaused = asBool(world.worldPaused);
+    const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
+    const pausedAtTs =
+      Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)
+        ? rawPausedAtTs
+        : undefined;
     const worldSnapshot = {
       tick,
       tickEpochStartedAt,
@@ -597,8 +603,8 @@ export const commitSnapshot = internalMutation({
       winterActive: asBool(world.winterActive),
       winterStartsAtTick: asNumber(world.winterStartsAtTick),
       winterEndsAtTick: asNumber(world.winterEndsAtTick),
-      worldPaused: asBool(world.worldPaused),
-      pausedAtTs: asNumber(world.pausedAtTs),
+      worldPaused,
+      pausedAtTs,
       nextHeartbeatAtTick: asNumber(world.nextHeartbeatAtTick),
       regions: LEGACY_REGIONS,
       clans: legacyClans,

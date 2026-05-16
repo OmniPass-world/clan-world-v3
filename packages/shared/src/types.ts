@@ -61,6 +61,8 @@ export interface WorldSnapshot {
   winterActive?: boolean;
   winterStartsAtTick?: number;
   winterEndsAtTick?: number;
+  worldPaused?: boolean;
+  pausedAtTs?: number | null;
 }
 
 export interface ClanFullView {
