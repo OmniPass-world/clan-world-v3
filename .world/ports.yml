@@ -63,3 +63,23 @@ purposes:
     type: backend
     env: scratch
     canonical: 38793
+
+  # Self-hosted Convex (Phase 1.4, #347). Inside the compose network services
+  # reach the backend at http://convex-backend:3210 (no host port required).
+  # The host-side ports below are dev-profile conveniences so the operator
+  # can run `npx convex deploy` and `curl /version` from the host, and open
+  # the dashboard in a browser. port-for picks concrete values per worktree.
+  - name: clan-world-convex-backend
+    type: backend
+    env: dev
+    canonical: 38046   # Convex backend HTTP API (container :3210) — dev profile only
+
+  - name: clan-world-convex-backend-site
+    type: backend
+    env: dev
+    canonical: 38047   # Convex backend site port (container :3211, HTTP actions)
+
+  - name: clan-world-convex-dashboard
+    type: backend
+    env: dev
+    canonical: 38048   # Convex dashboard UI (container :6791) — dev profile only

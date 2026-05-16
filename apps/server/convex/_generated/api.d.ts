@@ -17,10 +17,12 @@ import type * as agentLogs from "../agentLogs.js";
 import type * as authShared from "../authShared.js";
 import type * as bulletins from "../bulletins.js";
 import type * as clansmen from "../clansmen.js";
+import type * as commandBus from "../commandBus.js";
 import type * as comms from "../comms.js";
 import type * as crons from "../crons.js";
 import type * as events from "../events.js";
 import type * as getSnapshot from "../getSnapshot.js";
+import type * as getTickClock from "../getTickClock.js";
 import type * as gold from "../gold.js";
 import type * as goldQuote from "../goldQuote.js";
 import type * as heartbeat from "../heartbeat.js";
@@ -32,6 +34,7 @@ import type * as memory from "../memory.js";
 import type * as mock from "../mock.js";
 import type * as ops from "../ops.js";
 import type * as resetLock from "../resetLock.js";
+import type * as retention from "../retention.js";
 import type * as vault from "../vault.js";
 
 /**
@@ -47,10 +50,12 @@ declare const fullApi: ApiFromModules<{
   authShared: typeof authShared;
   bulletins: typeof bulletins;
   clansmen: typeof clansmen;
+  commandBus: typeof commandBus;
   comms: typeof comms;
   crons: typeof crons;
   events: typeof events;
   getSnapshot: typeof getSnapshot;
+  getTickClock: typeof getTickClock;
   gold: typeof gold;
   goldQuote: typeof goldQuote;
   heartbeat: typeof heartbeat;
@@ -62,6 +67,7 @@ declare const fullApi: ApiFromModules<{
   mock: typeof mock;
   ops: typeof ops;
   resetLock: typeof resetLock;
+  retention: typeof retention;
   vault: typeof vault;
 }>;
 export declare const api: FilterApi<
