@@ -200,6 +200,10 @@ docs/planning/V1/
 agents/runtime/
 agents/.env
 agents/.docker-mounts/
-agents/secrets/
+# agents/secrets/ — ignore key material, allow *.template + .gitignore
+agents/secrets/*
+!agents/secrets/.gitignore
+!agents/secrets/*.template
+!agents/secrets/README.md
 agents/elder-*/.env
 !agents/elder-*/.env.example

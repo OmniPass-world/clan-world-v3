@@ -249,23 +249,39 @@ Each sub-issue below is sized for one PR. Filed sequentially as GH issues #339 t
 
 **Scope.** Add the `convex-backend` and `convex-dashboard` compose services. Image pins: `ghcr.io/get-convex/convex-backend:<commit-sha>` and matching dashboard. Persist SQLite at named volume `convex_data`. Admin key managed by `make bootstrap-convex-admin-key` (NOT env-var or auto-regen). Expose backend at `convex-backend:3210` (internal only), dashboard at `convex-dashboard:6791` (internal — front through Caddy with basic-auth at `/convex-admin`). Convex functions deploy via `apps/server/convex/`'s existing `npx convex dev` retargeted at `CONVEX_DEPLOY_URL=http://convex-backend:3210`.
 
-**Admin-key lifecycle (Finding 10 fix).** Explicit bootstrap + persistence:
-1. **First stack-up:** Operator runs `make bootstrap-convex-admin-key` (Phase 1.12 must include this target). The target:
-   - Generates a random 256-bit key via `openssl rand -hex 32`
-   - Writes to `/etc/clan-world/secrets/convex-admin.key` (chmod 600, root:root via `sudo` step)
-   - Records SHA256 fingerprint to `/etc/clan-world/secrets/convex-admin.key.fp` (chmod 644) for audit
-   - Symlinks `agents/secrets/convex-admin.key` → `/etc/clan-world/secrets/convex-admin.key` for the compose bind-mount
-   - Prints a one-line operator instruction: "Back up `/etc/clan-world/secrets/convex-admin.key` to your password manager NOW; this key is unrecoverable if lost."
-2. **Persistence across restarts:** Docker secret entry in compose mounts `/etc/clan-world/secrets/convex-admin.key` R/O into the convex-backend container at `/run/secrets/admin-key`. Backend reads from file path, not env var (env vars leak through `docker inspect`).
-3. **Rotation:** `make rotate-convex-admin-key` (deferred to a follow-up issue; v1 documents the manual procedure: stop backend, regenerate key, update file, restart backend, re-issue dashboard basic-auth grants). Filed as #356 (follow-up).
-4. **Lost-key recovery:** If the key file is deleted/corrupted, the backend won't accept any deploy/import. Recovery is restore-from-backup OR full re-bootstrap (loses all data unless `convex_data` volume is intact and admin key is re-injected via Convex's recovery procedure — documented in the runbook).
+**Admin-key lifecycle (Finding 10 fix, revised in #347).** The Convex image regenerates a stable admin key on every restart **as long as the `INSTANCE_SECRET` in the data volume survives**. The earlier "rotate the key, write it to a Docker secret file, mount it into the backend" design was wrong — the backend does NOT consume an admin-key file. The corrected flow:
+
+1. **First stack-up:**
+   - `docker compose --profile dev up -d convex-backend` — container generates an `INSTANCE_SECRET` at `/convex/data/credentials/instance_secret` (volume `convex_data`).
+   - Operator runs `make bootstrap-convex-admin-key` (Phase 1.12 must include this target). The target:
+     - Execs `docker compose exec convex-backend ./generate_admin_key.sh` to derive the admin key from the persisted secret.
+     - Writes the key to `/etc/clan-world/secrets/convex-admin.key` (chmod 600, root:root via `sudo` step).
+     - Records SHA256 fingerprint to `/etc/clan-world/secrets/convex-admin.key.fp` (chmod 644) for audit.
+     - Symlinks `agents/secrets/convex-admin.key` → `/etc/clan-world/secrets/convex-admin.key` for the docker-secret entry to resolve.
+     - Prints a one-line operator instruction: "Back up `/etc/clan-world/secrets/convex-admin.key` to your password manager NOW; this key only re-derives while the docker volume `clan-world_convex_data` is intact."
+   - The dashboard prompts for the admin key in its UI on first visit (Next.js stores it in browser `localStorage`); we deliberately do NOT inject the key via env (env leaks via `docker inspect`).
+
+2. **Persistence across restarts:** the `convex_data` named volume carries `INSTANCE_SECRET` between container restarts. The persistence story is more nuanced than "same key text every time" — verified empirically on the pinned SHA 2026-05-16: `generate_admin_key.sh` embeds a random nonce and produces a DIFFERENT key string on every invocation, but ALL such keys are valid against the same instance (POST `/api/check_admin_key` returns `{"success":true}` for any of them) because they're derived from the persisted `INSTANCE_SECRET`. The implication: the key captured at bootstrap stays valid across restarts; a fresh `generate_admin_key.sh` call after restart also produces a valid (but textually different) key. Volume wipe = INSTANCE_SECRET rotation = both old keys become invalid.
+
+3. **Rotation:** wiping the `convex_data` volume rotates everything (key + data). For just-key rotation, the canonical procedure (deferred to a follow-up `#356`):
+   ```bash
+   docker compose exec convex-backend rm /convex/data/credentials/instance_secret
+   docker compose restart convex-backend
+   make bootstrap-convex-admin-key FORCE=1   # captures the new key
+   ```
+
+4. **Lost-key recovery:** if the key file is deleted but the volume is intact, recovery is a single command: `docker compose exec convex-backend ./generate_admin_key.sh > /etc/clan-world/secrets/convex-admin.key` (then chmod/symlink). If the volume is also wiped, fall back to `bin/migrate-from-hosted-convex.sh --import-only <backup.zip>` against a freshly bootstrapped instance.
 
 **Files affected.**
-- `docker-compose.yml` (UPDATE — add backend + dashboard services, with Docker secret mount for admin key)
-- `.env.template` (UPDATE — `CONVEX_SELF_HOSTED_URL`, `CONVEX_DEPLOY_URL`, `CONVEX_CLI_PINNED_VERSION`, `CONVEX_BACKEND_TAG`, `CONVEX_DASHBOARD_TAG`)
-- `apps/server/convex/README.md` (UPDATE — document self-hosted target swap + admin-key lifecycle)
-- `scripts/deploy-convex-self-hosted.sh` (NEW — wraps `npx convex deploy --self-hosted`, reads admin key from `/etc/clan-world/secrets/convex-admin.key`)
-- `scripts/bootstrap-convex-admin-key.sh` (NEW — invoked by Makefile target)
+- `docker-compose.yml` (UPDATE — pin tags to git SHA `dd00d1f30042cedab25b8cc76a23c40cc2abbd90`; fix data volume path `/convex/data` (was `/data`); fix backend healthcheck `/version` (was the non-existent `/health`); fix dashboard healthcheck to use `curl` (was `wget`, which is not in the dashboard image); add `DISABLE_BEACON`, `DISABLE_METRICS_ENDPOINT`, `CONVEX_CLOUD_ORIGIN`, `CONVEX_SITE_ORIGIN`, `DO_NOT_REQUIRE_SSL`, `DOCUMENT_RETENTION_DELAY` envs per the official upstream compose; expose host ports on `127.0.0.1` for dev-profile operator access)
+- `.env.template` (UPDATE — pin `CONVEX_BACKEND_TAG` + `CONVEX_DASHBOARD_TAG` to specific git SHA; add `CONVEX_BACKEND_HOST_PORT` + `CONVEX_BACKEND_SITE_HOST_PORT` + `CONVEX_DASHBOARD_HOST_PORT`; add `CONVEX_SELF_HOSTED_URL_FROM_HOST`, `CONVEX_CLOUD_ORIGIN`, `CONVEX_SITE_ORIGIN`, `CONVEX_DASHBOARD_DEPLOYMENT_URL`, `CONVEX_RUST_LOG`)
+- `agents/secrets/.gitignore` (NEW — ignore all secret values except `.template` + README)
+- `agents/secrets/convex-admin-key.template` (NEW — documents the on-disk format + lifecycle)
+- `agents/README.md` (UPDATE — operator bootstrap recipe, daily-ops table, file inventory, data location, admin-key safety notes)
+- `bin/import-convex-schema.sh` (NEW — idempotent `npx convex deploy` wrapper with CLI-version pin check, --check / --force / --dry-run modes, content-hash short-circuit)
+- `bin/migrate-from-hosted-convex.sh` (NEW — Phase 2 cutover runbook: export from hosted → import into self-hosted → smoke + next-steps instructions; --export-only / --import-only / --dry-run modes)
+- `bin/backup-convex.sh` (NEW — pause backend → tar.zst the `convex_data` volume → unpause; sha256 sidecar; rotates to 14 most-recent backups by default)
+- `.world/ports.yml` (UPDATE — add `clan-world-convex-backend` / `clan-world-convex-backend-site` / `clan-world-convex-dashboard` port declarations)
 
 **Dependencies.** Phase 1.1. **Phase 0 must have merged** (so we're not self-hosting the broken bandwidth pattern). See revised Phase 0 gate language below.
 
@@ -273,13 +289,15 @@ Each sub-issue below is sized for one PR. Filed sequentially as GH issues #339 t
 
 **Acceptance.**
 - `make bootstrap-convex-admin-key` creates `/etc/clan-world/secrets/convex-admin.key` (chmod 600), prints fingerprint, refuses to overwrite if already exists (require `FORCE=1`)
-- `make up` brings both services healthy after bootstrap
-- `docker compose stop convex-backend && docker compose start convex-backend` — backend resumes with same admin key (no regeneration)
-- `curl -sf http://localhost:${CADDY_HOST_PORT}/convex-admin/` reaches the dashboard, basic-auth challenge presented
-- `bash scripts/deploy-convex-self-hosted.sh` succeeds: all functions in `apps/server/convex/` deploy to the self-hosted instance
-- From a sibling container: `convex client can query getSnapshot via http://convex-backend:3210`
+- `make up` brings both services healthy after bootstrap (the backend's `/version` healthcheck and the dashboard's `/` healthcheck both pass in ≤30s)
+- `docker compose stop convex-backend && docker compose start convex-backend` — backend resumes with same admin key (verified empirically on pinned SHA `dd00d1f30042cedab25b8cc76a23c40cc2abbd90`)
+- `curl -sf http://localhost:${CADDY_HOST_PORT}/convex-admin/` reaches the dashboard, basic-auth challenge presented (Phase 1.5)
+- `bash bin/import-convex-schema.sh` succeeds: all functions in `apps/server/convex/` deploy to the self-hosted instance
+- `bash bin/import-convex-schema.sh --check` exits 0 (clean) after a successful deploy and exits 3 if any function file is edited without redeploy
+- `bash bin/backup-convex.sh` produces `/var/lib/clan-world/backups/convex/convex-<ts>.tar.zst` + matching `.sha256`; backend is paused only for the duration of the tar
+- From a sibling container: convex client can query `getSnapshot` via `http://convex-backend:3210`
 - `docker compose pause convex-backend && docker compose unpause convex-backend` preserves state
-- `docker inspect convex-backend` shows admin key NOT in env (only the mount)
+- `docker inspect convex-backend` shows admin key NOT in env
 - CLI-version pin check: `npx convex --version` returns the value in `CONVEX_CLI_PINNED_VERSION`; deploy aborts if mismatched (Finding 11 fix)
 
 ---
