@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import canonicalAbi from '@clan-world/contracts/abi/IClanWorld.json' with { type: 'json' };
+import { iClanWorldAbi } from '@clan-world/contract-types';
 import { decodeFunctionResult, encodeAbiParameters, getAbiItem, type Abi, type AbiFunction } from 'viem';
 import { CLAN_WORLD_ABI } from '../src/adapters/IChainClient';
 
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as `0x${string}`;
-const abi = canonicalAbi.abi as Abi;
+const abi: Abi = iClanWorldAbi;
 
 const getFunctionOutputs = (name: string) => (getAbiItem({ abi, name }) as AbiFunction).outputs;
 const worldStateOutputs = getFunctionOutputs('getWorldState');
