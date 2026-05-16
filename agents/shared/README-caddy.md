@@ -94,9 +94,10 @@ This snippet introduces `app.clan-world.com` as a NEW top-level site
 block. It does NOT touch the existing `*.clan-world.com` wildcard block
 or any of the other tunneled services (pm-dobot, narrator, cockpit,
 gstack, etc.). The pre-existing `cockpit.clan-world.com` block with its
-`/elder-N-tty/` routes proxying to ports 38790-38793 is the legacy
-phase-5 mirror — it remains untouched and continues to serve that
-hostname during the coexist window.
+`/elder-N-tty/` routes is the legacy Phase 5 (bare-metal) mirror. As of
+Phase 1 completion (2026-05-16), the canonical terminal URLs are
+`app.clan-world.com/elder-N/` — the legacy `cockpit.clan-world.com/elder-N-tty/`
+paths are deprecated and may be removed after the cutover soak period.
 
 ## Limitations / known v1 caveats
 

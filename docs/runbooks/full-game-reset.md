@@ -281,49 +281,37 @@ tmux new-session -d -s clanworld-heartbeat -c "$PWD" \
 
 Restart runner and four Elder sessions using the current package scripts or host wrappers. Confirm each new process reads the new `.env.local` / elder `.env` values.
 
-For TTYD in the public cockpit, match Caddy, not only `port-for`. As of the
-2026-05-11 host config, `https://cockpit.clan-world.com/elder-N-tty/` proxies
-to:
+For TTYD in the public cockpit, verify the canonical Phase 1 dockerized
+URLs are reachable. As of Phase 1 (2026-05-16), ttyd runs inside each
+elder container bound to `127.0.0.1` and is routed via host-Caddy at:
 
-| Elder | Public path | Local upstream |
-|---|---|---|
-| 1 | `/elder-1-tty/` | `127.0.0.1:38790` |
-| 2 | `/elder-2-tty/` | `127.0.0.1:38791` |
-| 3 | `/elder-3-tty/` | `127.0.0.1:38792` |
-| 4 | `/elder-4-tty/` | `127.0.0.1:38793` |
+| Elder | Public URL |
+|---|---|
+| 1 | `https://app.clan-world.com/elder-1/` |
+| 2 | `https://app.clan-world.com/elder-2/` |
+| 3 | `https://app.clan-world.com/elder-3/` |
+| 4 | `https://app.clan-world.com/elder-4/` |
 
-Start read-only terminal mirrors:
+See `docker-compose.yml` and `agents/shared/README-caddy.md` for the
+canonical port mapping. ttyd ports are bound to loopback inside each
+elder container and exposed via the host-Caddy `/elder-N/` prefix.
+
+Verify dockerized elder containers and TTYD routes:
 
 ```bash
+# Check all elder containers are healthy
+docker compose ps elder-1 elder-2 elder-3 elder-4
+
+# Verify TTYD routes via Caddy
 for n in 1 2 3 4; do
-  tmux has-session -t "elder-$n" 2>/dev/null ||
-    tmux new-session -d -s "elder-$n" -c "$HOME/clan-world/elder-$n" './run.sh'
-
-  tmux kill-session -t "ttyd-elder-$n" 2>/dev/null || true
-  port=$((38789+n))
-  tmux new-session -d -s "ttyd-elder-$n" \
-    "/home/claude/bin/ttyd -p $port \
-      -I /home/claude/clan-world/ttyd/index.html \
-      -t fontSize=11 -t cursorStyle=bar \
-      tmux attach-session -t elder-$n \
-      2>&1 | tee -a /tmp/clanworld-ttyd-elder-$n.log"
+  curl -I "https://app.clan-world.com/elder-$n/"
 done
 ```
 
-Verify both local Caddy and public Cloudflare routes. A direct TTYD `200` is
-not enough if Caddy points at a different port.
-
-```bash
-ss -ltnp | grep -E '3879[0-3]'
-for path in elder-1-tty elder-2-tty elder-3-tty elder-4-tty; do
-  curl -I -H 'Host: cockpit.clan-world.com' "http://127.0.0.1:18080/$path/"
-  curl -I "https://cockpit.clan-world.com/$path/"
-done
-```
-
-If public cockpit returns `502 Bad Gateway`, inspect Caddy logs. The common
-reset failure is `dial tcp 127.0.0.1:3879N: connect: connection refused`,
-which means TTYD is either down or listening on the wrong port.
+If `https://app.clan-world.com/elder-N/` returns `502 Bad Gateway`, inspect
+Caddy and container logs: `docker compose logs elder-N | tail -50`. The common
+reset failure is the elder container's ttyd service not running (check that
+the elder container healthcheck passes and the tmux session exists inside).
 
 Clear old runner/Elder inbox artifacts before the first tick if they contain stale situation blocks, old diamond addresses, or old clan IDs.
 
