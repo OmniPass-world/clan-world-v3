@@ -145,9 +145,13 @@ fi
 if [[ "${MODE}" == "full" || "${MODE}" == "export-only" ]]; then
     step "exporting hosted convex → ${DEFAULT_EXPORT_PATH}"
     EXPORT_PATH="${DEFAULT_EXPORT_PATH}"
+    # --include-file-storage is REQUIRED to capture stored blobs (defaults
+    # to OFF per Convex docs). Without it, _storage references survive but
+    # the actual files don't — broken media post-cutover. Per super-swarm
+    # codex HIGH on PR #372.
     CONVEX_URL="${CONVEX_URL}" \
     CONVEX_DEPLOY_KEY="${CONVEX_DEPLOY_KEY}" \
-        npx convex export --path "${EXPORT_PATH}"
+        npx convex export --path "${EXPORT_PATH}" --include-file-storage
     [[ -f "${EXPORT_PATH}" ]] || die "export did not produce ${EXPORT_PATH}"
     EXPORT_SIZE="$(du -h "${EXPORT_PATH}" | awk '{print $1}')"
     log "export OK: ${EXPORT_PATH} (${EXPORT_SIZE})"
