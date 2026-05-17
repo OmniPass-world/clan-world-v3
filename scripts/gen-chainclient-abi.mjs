@@ -39,55 +39,6 @@ const functionNames = [
   'transferClanOwnership',
 ];
 
-const eventNames = [
-  'BanditAttackResolved',
-  'BanditDefeated',
-  'BanditEscaped',
-  'BanditMoved',
-  'BanditSpawned',
-  'BanditStateChanged',
-  'BanditTargetDied',
-  'BaseLevelChanged',
-  'BlueprintAwarded',
-  'BlueprintEarned',
-  'ClanColdShortage',
-  'ClanDied',
-  'ClanEliminated',
-  'ClanSettled',
-  'ClanSpawned',
-  'ClanStarvationChanged',
-  'ClansmanColdDeath',
-  'ClansmanKilledByBandit',
-  'GoldTransferred',
-  'ImmediateMarketActionExecuted',
-  'LootDistributed',
-  'LootDistributedToDefender',
-  'MarketActionFailed',
-  'MissionAssigned',
-  'MissionCompleted',
-  'MissionInterrupted',
-  'MonumentLevelChanged',
-  'PoolsSeeded',
-  'ResourceBurned',
-  'ResourceMinted',
-  'ResourcesDeposited',
-  'ResourcesGathered',
-  'ResourcesWithdrawn',
-  'ScheduledMarketActionCommitted',
-  'ScheduledMarketActionExecuted',
-  'SeasonFinalized',
-  'TickAdvanced',
-  'ClanOwnershipTransferred',
-  'VaultResourceTransferred',
-  'WallDamagedByBandit',
-  'WallDegradedByCold',
-  'WallLevelChanged',
-  'WinterEnded',
-  'WinterStarted',
-  'WorkerArrived',
-  'BlueprintTransferred',
-];
-
 function readCanonicalAbi() {
   const parsed = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
   const abi = Array.isArray(parsed) ? parsed : parsed.abi;
@@ -95,6 +46,22 @@ function readCanonicalAbi() {
     throw new Error(`${artifactPath} must contain an ABI array or an "abi" array`);
   }
   return abi;
+}
+
+function eventNameSort(left, right) {
+  return left.localeCompare(right);
+}
+
+function readEventNames(abi) {
+  return abi
+    .filter((entry) => entry.type === 'event')
+    .map((entry) => {
+      if (typeof entry.name !== 'string' || entry.name.length === 0) {
+        throw new Error(`Found event without a name in ${artifactPath}`);
+      }
+      return entry.name;
+    })
+    .sort(eventNameSort);
 }
 
 function generatedBlock() {
@@ -106,6 +73,7 @@ function generatedBlock() {
     }
     return fragment;
   });
+  const eventNames = readEventNames(abi);
   const eventFragments = eventNames.map((name) => {
     const fragment = abi.find((entry) => entry.type === 'event' && entry.name === name);
     if (!fragment) {
