@@ -168,7 +168,7 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
     case 'BanditDefeated':
       return { text: `★ Clan ${safeNum(args.targetClanId, clanId)} defeated the bandits!`, clanColor: '#d4a24c', highlight: true };
     case 'WallDamagedByBandit': {
-      const newLevel = safeNum(args.wallLevel, 0);
+      const newLevel = safeNum(args.newLevel, 0);
       return { text: `${clanLabel} wall damaged → level ${newLevel}`, clanColor: '#b23a48' };
     }
     case 'ClansmanKilledByBandit':
