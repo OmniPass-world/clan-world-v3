@@ -15,6 +15,7 @@ import {
   createPublicClient,
   http,
   parseEventLogs,
+  type ContractFunctionName,
   type Hex,
   type Log,
   type ParseEventLogsReturnType,
@@ -38,6 +39,17 @@ const DEFAULT_CONFIRMATION_DEPTH = 5;
 // a non-PAYG RPC (e.g. demo deployment).
 const MAX_LOG_BLOCK_RANGE = 9n;
 const DEFAULT_COLD_START_LOOKBACK = 100n;
+type ReadContractMutability = "view" | "pure";
+type ClanWorldFunctionName = ContractFunctionName<
+  typeof iClanWorldAbi,
+  ReadContractMutability
+>;
+const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies ClanWorldFunctionName;
+const GET_MARKET_STATE = "getMarketState" satisfies ClanWorldFunctionName;
+const GET_ACTIVE_BANDIT_VIEW =
+  "getActiveBanditView" satisfies ClanWorldFunctionName;
+const GET_CLAN_IDS = "getClanIds" satisfies ClanWorldFunctionName;
+const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies ClanWorldFunctionName;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
   { id: "mountains", name: "Mountains", ownerClanId: null },
@@ -583,11 +595,14 @@ export const commitSnapshot = internalMutation({
     const legacyClans = legacyClansFromClanViews(
       latestClanViews.filter(isPresent),
     );
+    const worldPaused = asBool(world.worldPaused);
+    const sameTickAsPrevious = previousWorldSnapshot?.tick === tick;
+    const wasPausedNowUnpaused =
+      previousWorldSnapshot?.worldPaused === true && !worldPaused;
     const tickEpochStartedAt =
-      previousWorldSnapshot?.tick === tick
+      previousWorldSnapshot && sameTickAsPrevious && !wasPausedNowUnpaused
         ? previousWorldSnapshot.tickEpochStartedAt
         : Math.floor(now / 1000);
-    const worldPaused = asBool(world.worldPaused);
     const rawPausedAtTs = asNumber(world.pausedAtTs, Number.NaN);
     const pausedAtTs =
       Number.isFinite(rawPausedAtTs) && (rawPausedAtTs > 0 || worldPaused)
@@ -659,31 +674,20 @@ export const refreshSnapshot = internalAction({
       args.blockNumber === undefined ? undefined : BigInt(args.blockNumber);
     const blockNumber =
       args.blockNumber ?? Number(await client.getBlockNumber());
+    const readArgs = <TFunctionName extends ClanWorldFunctionName>(
+      fn: TFunctionName,
+    ) => ({
+      address,
+      abi: iClanWorldAbi,
+      ["functionName"]: fn,
+      blockNumber: pinnedBlockNumber,
+    });
 
     const [worldRaw, market, bandit] = await Promise.all([
+      client.readContract(readArgs(GET_WORLD_SNAPSHOT)).catch(() => undefined),
+      client.readContract(readArgs(GET_MARKET_STATE)).catch(() => undefined),
       client
-        .readContract({
-          address,
-          abi: iClanWorldAbi,
-          functionName: "getWorldSnapshot",
-          blockNumber: pinnedBlockNumber,
-        })
-        .catch(() => undefined),
-      client
-        .readContract({
-          address,
-          abi: iClanWorldAbi,
-          functionName: "getMarketState",
-          blockNumber: pinnedBlockNumber,
-        })
-        .catch(() => undefined),
-      client
-        .readContract({
-          address,
-          abi: iClanWorldAbi,
-          functionName: "getActiveBanditView",
-          blockNumber: pinnedBlockNumber,
-        })
+        .readContract(readArgs(GET_ACTIVE_BANDIT_VIEW))
         .catch(() => undefined),
     ]);
 
@@ -696,12 +700,7 @@ export const refreshSnapshot = internalAction({
     }
 
     const clanIdsRaw = await client
-      .readContract({
-        address,
-        abi: iClanWorldAbi,
-        functionName: "getClanIds",
-        blockNumber: pinnedBlockNumber,
-      })
+      .readContract(readArgs(GET_CLAN_IDS))
       .catch(() => undefined);
     const clanIds =
       Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
@@ -712,11 +711,8 @@ export const refreshSnapshot = internalAction({
       clanIds.map(async (clanId) => {
         return client
           .readContract({
-            address,
-            abi: iClanWorldAbi,
-            functionName: "getClanFullView",
+            ...readArgs(GET_CLAN_FULL_VIEW),
             args: [clanId],
-            blockNumber: pinnedBlockNumber,
           })
           .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
           .catch(() => undefined);

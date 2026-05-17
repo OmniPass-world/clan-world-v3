@@ -12,82 +12,6 @@ const targetPath = path.join(repoRoot, 'packages/shared/src/adapters/IChainClien
 const startMarker = '// BEGIN GENERATED CLAN_WORLD_ABI';
 const endMarker = '// END GENERATED CLAN_WORLD_ABI';
 
-const functionNames = [
-  'heartbeat',
-  'getWorldState',
-  'getClan',
-  'getClansman',
-  'getActiveMission',
-  'getBanditTroop',
-  'getScheduledMarketActionsForTick',
-  'getDerivedClanState',
-  'getDerivedClansmanState',
-  'getWorldSnapshot',
-  'getClanFullView',
-  'getMarketState',
-  'getActiveBanditView',
-  'getWallUpgradeCost',
-  'getBaseUpgradeCost',
-  'getMonumentUpgradeCost',
-  'getClanScore',
-  'getRankings',
-  'submitClanOrders',
-  'transferGold',
-  'transferVaultResource',
-  'transferBlueprint',
-  'transferBundle',
-  'transferClanOwnership',
-];
-
-const eventNames = [
-  'BanditAttackResolved',
-  'BanditDefeated',
-  'BanditEscaped',
-  'BanditMoved',
-  'BanditSpawned',
-  'BanditStateChanged',
-  'BanditTargetDied',
-  'BaseLevelChanged',
-  'BlueprintAwarded',
-  'BlueprintEarned',
-  'ClanColdShortage',
-  'ClanDied',
-  'ClanEliminated',
-  'ClanSettled',
-  'ClanSpawned',
-  'ClanStarvationChanged',
-  'ClansmanColdDeath',
-  'ClansmanKilledByBandit',
-  'GoldTransferred',
-  'ImmediateMarketActionExecuted',
-  'LootDistributed',
-  'LootDistributedToDefender',
-  'MarketActionFailed',
-  'MissionAssigned',
-  'MissionCompleted',
-  'MissionInterrupted',
-  'MonumentLevelChanged',
-  'PoolsSeeded',
-  'ResourceBurned',
-  'ResourceMinted',
-  'ResourcesDeposited',
-  'ResourcesGathered',
-  'ResourcesWithdrawn',
-  'ScheduledMarketActionCommitted',
-  'ScheduledMarketActionExecuted',
-  'SeasonFinalized',
-  'TickAdvanced',
-  'ClanOwnershipTransferred',
-  'VaultResourceTransferred',
-  'WallDamagedByBandit',
-  'WallDegradedByCold',
-  'WallLevelChanged',
-  'WinterEnded',
-  'WinterStarted',
-  'WorkerArrived',
-  'BlueprintTransferred',
-];
-
 function readCanonicalAbi() {
   const parsed = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
   const abi = Array.isArray(parsed) ? parsed : parsed.abi;
@@ -97,8 +21,37 @@ function readCanonicalAbi() {
   return abi;
 }
 
+function eventNameSort(left, right) {
+  return left.localeCompare(right);
+}
+
+function readFunctionNames(abi) {
+  return abi
+    .filter((entry) => entry.type === 'function')
+    .map((entry) => {
+      if (typeof entry.name !== 'string' || entry.name.length === 0) {
+        throw new Error(`Found function without a name in ${artifactPath}`);
+      }
+      return entry.name;
+    })
+    .sort(eventNameSort);
+}
+
+function readEventNames(abi) {
+  return abi
+    .filter((entry) => entry.type === 'event')
+    .map((entry) => {
+      if (typeof entry.name !== 'string' || entry.name.length === 0) {
+        throw new Error(`Found event without a name in ${artifactPath}`);
+      }
+      return entry.name;
+    })
+    .sort(eventNameSort);
+}
+
 function generatedBlock() {
   const abi = readCanonicalAbi();
+  const functionNames = readFunctionNames(abi);
   const functionFragments = functionNames.map((name) => {
     const fragment = abi.find((entry) => entry.type === 'function' && entry.name === name);
     if (!fragment) {
@@ -106,6 +59,7 @@ function generatedBlock() {
     }
     return fragment;
   });
+  const eventNames = readEventNames(abi);
   const eventFragments = eventNames.map((name) => {
     const fragment = abi.find((entry) => entry.type === 'event' && entry.name === name);
     if (!fragment) {

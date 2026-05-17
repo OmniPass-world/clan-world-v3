@@ -130,257 +130,54 @@ export const baseSepolia = defineChain({
 export const CLAN_WORLD_ABI = [
   {
     "type": "function",
-    "name": "heartbeat",
+    "name": "finalizeSeason",
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
   {
     "type": "function",
-    "name": "getWorldState",
+    "name": "getActionDuration",
+    "inputs": [
+      {
+        "name": "action",
+        "type": "uint8",
+        "internalType": "enum ActionType"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "getActiveBanditView",
     "inputs": [],
     "outputs": [
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct WorldState",
+        "internalType": "struct ActiveBanditView",
         "components": [
           {
-            "name": "currentTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "seasonStartTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "seasonEndTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "seasonFinalized",
+            "name": "exists",
             "type": "bool",
             "internalType": "bool"
           },
           {
-            "name": "currentSeasonNumber",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextHeartbeatAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextHeartbeatAtTs",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextBanditSpawnEligibleTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "currentBanditSpawnChanceBps",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "currentTickSeed",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "activeBanditId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "winterActive",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "winterStartsAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "winterEndsAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextCommitSequence",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "worldPaused",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "pausedAtTs",
-            "type": "uint64",
-            "internalType": "uint64"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getClan",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct Clan",
-        "components": [
-          {
-            "name": "clanId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "iftTokenId",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "owner",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "clanState",
-            "type": "uint8",
-            "internalType": "enum ClanState"
-          },
-          {
-            "name": "baseRegion",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "baseLevel",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "wallLevel",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "monumentLevel",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "livingClansmen",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "lastSettledTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "starvationStartsAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "coldDamage",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "ownerNonce",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "goldBalance",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "blueprintBalance",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "vaultWood",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "vaultIron",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "vaultWheat",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "vaultFish",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getClansman",
-    "inputs": [
-      {
-        "name": "clansmanId",
-        "type": "uint32",
-        "internalType": "uint32"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct Clansman",
-        "components": [
-          {
-            "name": "clansmanId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "clanId",
+            "name": "banditId",
             "type": "uint32",
             "internalType": "uint32"
           },
           {
             "name": "state",
             "type": "uint8",
-            "internalType": "enum ClansmanState"
+            "internalType": "enum BanditState"
           },
           {
             "name": "currentRegion",
@@ -388,14 +185,34 @@ export const CLAN_WORLD_ABI = [
             "internalType": "uint8"
           },
           {
-            "name": "cooldownEndsAtTs",
+            "name": "attackAttemptsMade",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "maxAttemptsRemaining",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "stateEnteredTick",
             "type": "uint64",
             "internalType": "uint64"
           },
           {
-            "name": "lastMissionNonce",
+            "name": "nextActionTick",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "tier",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "attackPower",
+            "type": "uint16",
+            "internalType": "uint16"
           },
           {
             "name": "carryWood",
@@ -416,8 +233,37 @@ export const CLAN_WORLD_ABI = [
             "name": "carryFish",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "projectedTargetClanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "projectedTargetLootValue",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getActiveDefenders",
+    "inputs": [
+      {
+        "name": "targetClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "clansmanIds",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
       }
     ],
     "stateMutability": "view"
@@ -562,6 +408,130 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
+    "name": "getBandit",
+    "inputs": [
+      {
+        "name": "banditId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct BanditTroop",
+        "components": [
+          {
+            "name": "id",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "region",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "state",
+            "type": "uint8",
+            "internalType": "enum BanditState"
+          },
+          {
+            "name": "targetClanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "tickEnteredState",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "strength",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "tier",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "attackAttemptsMade",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "carryWood",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryIron",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryWheat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryFish",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryGold",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBanditsInRegion",
+    "inputs": [
+      {
+        "name": "region",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getBanditTargetPreview",
+    "inputs": [
+      {
+        "name": "banditId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "previewClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getBanditTroop",
     "inputs": [
       {
@@ -648,73 +618,36 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
-    "name": "getScheduledMarketActionsForTick",
+    "name": "getBaseUpgradeCost",
     "inputs": [
       {
-        "name": "tick",
-        "type": "uint64",
-        "internalType": "uint64"
+        "name": "currentLevel",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "outputs": [
       {
-        "name": "",
-        "type": "tuple[]",
-        "internalType": "struct ScheduledMarketAction[]",
-        "components": [
-          {
-            "name": "executeAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "commitSequence",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "missionNonce",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "clanId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "clansmanId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "action",
-            "type": "uint8",
-            "internalType": "enum ActionType"
-          },
-          {
-            "name": "marketToken",
-            "type": "address",
-            "internalType": "address"
-          },
-          {
-            "name": "marketAmount",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "maxGoldIn",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "name": "wood",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "iron",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "wheat",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "stateMutability": "view"
+    "stateMutability": "pure"
   },
   {
     "type": "function",
-    "name": "getDerivedClanState",
+    "name": "getClan",
     "inputs": [
       {
         "name": "clanId",
@@ -726,124 +659,102 @@ export const CLAN_WORLD_ABI = [
       {
         "name": "",
         "type": "tuple",
-        "internalType": "struct DerivedClanState",
+        "internalType": "struct Clan",
         "components": [
           {
-            "name": "clan",
-            "type": "tuple",
-            "internalType": "struct Clan",
-            "components": [
-              {
-                "name": "clanId",
-                "type": "uint32",
-                "internalType": "uint32"
-              },
-              {
-                "name": "iftTokenId",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "owner",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "clanState",
-                "type": "uint8",
-                "internalType": "enum ClanState"
-              },
-              {
-                "name": "baseRegion",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "baseLevel",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "wallLevel",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "monumentLevel",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "livingClansmen",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "lastSettledTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "starvationStartsAtTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "coldDamage",
-                "type": "uint16",
-                "internalType": "uint16"
-              },
-              {
-                "name": "ownerNonce",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "goldBalance",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "blueprintBalance",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "vaultWood",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "vaultIron",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "vaultWheat",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "vaultFish",
-                "type": "uint256",
-                "internalType": "uint256"
-              }
-            ]
+            "name": "clanId",
+            "type": "uint32",
+            "internalType": "uint32"
           },
           {
-            "name": "isStarving",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "lootValue",
+            "name": "iftTokenId",
             "type": "uint256",
             "internalType": "uint256"
           },
           {
-            "name": "derivedAtTick",
+            "name": "owner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "clanState",
+            "type": "uint8",
+            "internalType": "enum ClanState"
+          },
+          {
+            "name": "baseRegion",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "baseLevel",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "wallLevel",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "monumentLevel",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "livingClansmen",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "lastSettledTick",
             "type": "uint64",
             "internalType": "uint64"
+          },
+          {
+            "name": "starvationStartsAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "coldDamage",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "ownerNonce",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "goldBalance",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "blueprintBalance",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vaultWood",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vaultIron",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vaultWheat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "vaultFish",
+            "type": "uint256",
+            "internalType": "uint256"
           }
         ]
       }
@@ -852,339 +763,19 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
-    "name": "getDerivedClansmanState",
+    "name": "getClanClansmanIds",
     "inputs": [
       {
-        "name": "clansmanId",
+        "name": "clanId",
         "type": "uint32",
         "internalType": "uint32"
       }
     ],
     "outputs": [
       {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct DerivedClansmanState",
-        "components": [
-          {
-            "name": "clansman",
-            "type": "tuple",
-            "internalType": "struct Clansman",
-            "components": [
-              {
-                "name": "clansmanId",
-                "type": "uint32",
-                "internalType": "uint32"
-              },
-              {
-                "name": "clanId",
-                "type": "uint32",
-                "internalType": "uint32"
-              },
-              {
-                "name": "state",
-                "type": "uint8",
-                "internalType": "enum ClansmanState"
-              },
-              {
-                "name": "currentRegion",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "cooldownEndsAtTs",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "lastMissionNonce",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "carryWood",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "carryIron",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "carryWheat",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "carryFish",
-                "type": "uint256",
-                "internalType": "uint256"
-              }
-            ]
-          },
-          {
-            "name": "activeMission",
-            "type": "tuple",
-            "internalType": "struct Mission",
-            "components": [
-              {
-                "name": "active",
-                "type": "bool",
-                "internalType": "bool"
-              },
-              {
-                "name": "nonce",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "submittedAtTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "executesAtTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "settlesAtTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "clansmanId",
-                "type": "uint32",
-                "internalType": "uint32"
-              },
-              {
-                "name": "startRegion",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "targetRegion",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "action",
-                "type": "uint8",
-                "internalType": "enum ActionType"
-              },
-              {
-                "name": "startTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "arrivalTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "actionStartTick",
-                "type": "uint64",
-                "internalType": "uint64"
-              },
-              {
-                "name": "missionSeed",
-                "type": "bytes32",
-                "internalType": "bytes32"
-              },
-              {
-                "name": "marketMode",
-                "type": "uint8",
-                "internalType": "enum MarketExecutionMode"
-              },
-              {
-                "name": "targetClanId",
-                "type": "uint32",
-                "internalType": "uint32"
-              },
-              {
-                "name": "marketToken",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "marketAmount",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "maxGoldIn",
-                "type": "uint256",
-                "internalType": "uint256"
-              },
-              {
-                "name": "withdrawResources",
-                "type": "tuple",
-                "internalType": "struct WithdrawResourcesData",
-                "components": [
-                  {
-                    "name": "wood",
-                    "type": "uint256",
-                    "internalType": "uint256"
-                  },
-                  {
-                    "name": "iron",
-                    "type": "uint256",
-                    "internalType": "uint256"
-                  },
-                  {
-                    "name": "wheat",
-                    "type": "uint256",
-                    "internalType": "uint256"
-                  },
-                  {
-                    "name": "fish",
-                    "type": "uint256",
-                    "internalType": "uint256"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "name": "effectiveRegion",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "derivedAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          }
-        ]
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "getWorldSnapshot",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct WorldSnapshot",
-        "components": [
-          {
-            "name": "currentTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "seasonStartTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "seasonEndTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "seasonFinalized",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "currentSeasonNumber",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextHeartbeatAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "worldPaused",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "pausedAtTs",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "winterActive",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "winterStartsAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "winterEndsAtTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "activeBanditId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "currentTickSeed",
-            "type": "bytes32",
-            "internalType": "bytes32"
-          },
-          {
-            "name": "leaderboard",
-            "type": "tuple[]",
-            "internalType": "struct LeaderboardEntry[]",
-            "components": [
-              {
-                "name": "clanId",
-                "type": "uint32",
-                "internalType": "uint32"
-              },
-              {
-                "name": "owner",
-                "type": "address",
-                "internalType": "address"
-              },
-              {
-                "name": "monumentLevel",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "baseLevel",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "wallLevel",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "livingClansmen",
-                "type": "uint8",
-                "internalType": "uint8"
-              },
-              {
-                "name": "state",
-                "type": "uint8",
-                "internalType": "enum ClanState"
-              },
-              {
-                "name": "lootValue",
-                "type": "uint256",
-                "internalType": "uint256"
-              }
-            ]
-          }
-        ]
+        "name": "clansmanIds",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
       }
     ],
     "stateMutability": "view"
@@ -1729,6 +1320,507 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
+    "name": "getClanIds",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "clanIds",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getClanScore",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "score",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "monumentReachedAtTick",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "monumentLevel",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getClansman",
+    "inputs": [
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct Clansman",
+        "components": [
+          {
+            "name": "clansmanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "clanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "state",
+            "type": "uint8",
+            "internalType": "enum ClansmanState"
+          },
+          {
+            "name": "currentRegion",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "cooldownEndsAtTs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "lastMissionNonce",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "carryWood",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryIron",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryWheat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "carryFish",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getClansmanDefendingRegion",
+    "inputs": [
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "region",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getDefendingClans",
+    "inputs": [
+      {
+        "name": "region",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "clanIds",
+        "type": "uint32[]",
+        "internalType": "uint32[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getDerivedClansmanState",
+    "inputs": [
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct DerivedClansmanState",
+        "components": [
+          {
+            "name": "clansman",
+            "type": "tuple",
+            "internalType": "struct Clansman",
+            "components": [
+              {
+                "name": "clansmanId",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "clanId",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "state",
+                "type": "uint8",
+                "internalType": "enum ClansmanState"
+              },
+              {
+                "name": "currentRegion",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "cooldownEndsAtTs",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "lastMissionNonce",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "carryWood",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "carryIron",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "carryWheat",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "carryFish",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          },
+          {
+            "name": "activeMission",
+            "type": "tuple",
+            "internalType": "struct Mission",
+            "components": [
+              {
+                "name": "active",
+                "type": "bool",
+                "internalType": "bool"
+              },
+              {
+                "name": "nonce",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "submittedAtTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "executesAtTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "settlesAtTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "clansmanId",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "startRegion",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "targetRegion",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "action",
+                "type": "uint8",
+                "internalType": "enum ActionType"
+              },
+              {
+                "name": "startTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "arrivalTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "actionStartTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "missionSeed",
+                "type": "bytes32",
+                "internalType": "bytes32"
+              },
+              {
+                "name": "marketMode",
+                "type": "uint8",
+                "internalType": "enum MarketExecutionMode"
+              },
+              {
+                "name": "targetClanId",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "marketToken",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "marketAmount",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "maxGoldIn",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "withdrawResources",
+                "type": "tuple",
+                "internalType": "struct WithdrawResourcesData",
+                "components": [
+                  {
+                    "name": "wood",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  },
+                  {
+                    "name": "iron",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  },
+                  {
+                    "name": "wheat",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  },
+                  {
+                    "name": "fish",
+                    "type": "uint256",
+                    "internalType": "uint256"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "effectiveRegion",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "derivedAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getDerivedClanState",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct DerivedClanState",
+        "components": [
+          {
+            "name": "clan",
+            "type": "tuple",
+            "internalType": "struct Clan",
+            "components": [
+              {
+                "name": "clanId",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "iftTokenId",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "owner",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "clanState",
+                "type": "uint8",
+                "internalType": "enum ClanState"
+              },
+              {
+                "name": "baseRegion",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "baseLevel",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "wallLevel",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "monumentLevel",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "livingClansmen",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "lastSettledTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "starvationStartsAtTick",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "coldDamage",
+                "type": "uint16",
+                "internalType": "uint16"
+              },
+              {
+                "name": "ownerNonce",
+                "type": "uint64",
+                "internalType": "uint64"
+              },
+              {
+                "name": "goldBalance",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "blueprintBalance",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "vaultWood",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "vaultIron",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "vaultWheat",
+                "type": "uint256",
+                "internalType": "uint256"
+              },
+              {
+                "name": "vaultFish",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          },
+          {
+            "name": "isStarving",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "lootValue",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "derivedAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getMarketState",
     "inputs": [],
     "outputs": [
@@ -1961,151 +2053,61 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
-    "name": "getActiveBanditView",
-    "inputs": [],
+    "name": "getMissionTiming",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
     "outputs": [
       {
-        "name": "",
-        "type": "tuple",
-        "internalType": "struct ActiveBanditView",
-        "components": [
-          {
-            "name": "exists",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
-            "name": "banditId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "state",
-            "type": "uint8",
-            "internalType": "enum BanditState"
-          },
-          {
-            "name": "currentRegion",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "attackAttemptsMade",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "maxAttemptsRemaining",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "stateEnteredTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "nextActionTick",
-            "type": "uint64",
-            "internalType": "uint64"
-          },
-          {
-            "name": "tier",
-            "type": "uint8",
-            "internalType": "uint8"
-          },
-          {
-            "name": "attackPower",
-            "type": "uint16",
-            "internalType": "uint16"
-          },
-          {
-            "name": "carryWood",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "carryIron",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "carryWheat",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "carryFish",
-            "type": "uint256",
-            "internalType": "uint256"
-          },
-          {
-            "name": "projectedTargetClanId",
-            "type": "uint32",
-            "internalType": "uint32"
-          },
-          {
-            "name": "projectedTargetLootValue",
-            "type": "uint256",
-            "internalType": "uint256"
-          }
-        ]
+        "name": "submitted",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "executes",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "settles",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
   },
   {
     "type": "function",
-    "name": "getWallUpgradeCost",
+    "name": "getMonumentLevelReachedAt",
     "inputs": [
       {
-        "name": "currentLevel",
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "level",
         "type": "uint8",
         "internalType": "uint8"
       }
     ],
     "outputs": [
       {
-        "name": "wood",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "iron",
-        "type": "uint256",
-        "internalType": "uint256"
+        "name": "reachedAtTick",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
-    "stateMutability": "pure"
-  },
-  {
-    "type": "function",
-    "name": "getBaseUpgradeCost",
-    "inputs": [
-      {
-        "name": "currentLevel",
-        "type": "uint8",
-        "internalType": "uint8"
-      }
-    ],
-    "outputs": [
-      {
-        "name": "wood",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "iron",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "wheat",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "stateMutability": "pure"
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -2143,29 +2145,43 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
-    "name": "getClanScore",
+    "name": "getPool",
     "inputs": [
       {
-        "name": "clanId",
-        "type": "uint32",
-        "internalType": "uint32"
+        "name": "resourceType",
+        "type": "uint8",
+        "internalType": "uint8"
       }
     ],
     "outputs": [
       {
-        "name": "score",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getPrice",
+    "inputs": [
       {
-        "name": "monumentReachedAtTick",
-        "type": "uint64",
-        "internalType": "uint64"
-      },
-      {
-        "name": "monumentLevel",
+        "name": "resourceType",
         "type": "uint8",
         "internalType": "uint8"
+      },
+      {
+        "name": "amountIn",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "amountOut",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
     "stateMutability": "view"
@@ -2187,6 +2203,859 @@ export const CLAN_WORLD_ABI = [
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getRegionPopulation",
+    "inputs": [
+      {
+        "name": "region",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct RegionOccupant[]",
+        "components": [
+          {
+            "name": "clansmanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "clanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "state",
+            "type": "uint8",
+            "internalType": "enum ClansmanState"
+          },
+          {
+            "name": "currentAction",
+            "type": "uint8",
+            "internalType": "enum ActionType"
+          },
+          {
+            "name": "missionNonce",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getResourceToken",
+    "inputs": [
+      {
+        "name": "resourceType",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getScheduledMarketActionsForTick",
+    "inputs": [
+      {
+        "name": "tick",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct ScheduledMarketAction[]",
+        "components": [
+          {
+            "name": "executeAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "commitSequence",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "missionNonce",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "clanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "clansmanId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "action",
+            "type": "uint8",
+            "internalType": "enum ActionType"
+          },
+          {
+            "name": "marketToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "marketAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "maxGoldIn",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getTravelTicks",
+    "inputs": [
+      {
+        "name": "fromRegion",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "toRegion",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "getTreasuryState",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct TreasuryState",
+        "components": [
+          {
+            "name": "treasuryOwner",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "prizePotGold",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "poolsSeeded",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "woodToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "wheatToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fishToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "ironToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "goldToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "blueprintToken",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "woodGoldPool",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "wheatGoldPool",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "fishGoldPool",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "ironGoldPool",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getWallUpgradeCost",
+    "inputs": [
+      {
+        "name": "currentLevel",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "wood",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "iron",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "pure"
+  },
+  {
+    "type": "function",
+    "name": "getWheatPlots",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "west",
+        "type": "tuple",
+        "internalType": "struct WheatPlot",
+        "components": [
+          {
+            "name": "state",
+            "type": "uint8",
+            "internalType": "enum WheatPlotState"
+          },
+          {
+            "name": "region",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "remainingWheat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "regrowUntilTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "east",
+        "type": "tuple",
+        "internalType": "struct WheatPlot",
+        "components": [
+          {
+            "name": "state",
+            "type": "uint8",
+            "internalType": "enum WheatPlotState"
+          },
+          {
+            "name": "region",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "remainingWheat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "regrowUntilTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getWorldSnapshot",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct WorldSnapshot",
+        "components": [
+          {
+            "name": "currentTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "seasonStartTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "seasonEndTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "seasonFinalized",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "currentSeasonNumber",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "nextHeartbeatAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "worldPaused",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "pausedAtTs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "winterActive",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "winterStartsAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "winterEndsAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "activeBanditId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "currentTickSeed",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "leaderboard",
+            "type": "tuple[]",
+            "internalType": "struct LeaderboardEntry[]",
+            "components": [
+              {
+                "name": "clanId",
+                "type": "uint32",
+                "internalType": "uint32"
+              },
+              {
+                "name": "owner",
+                "type": "address",
+                "internalType": "address"
+              },
+              {
+                "name": "monumentLevel",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "baseLevel",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "wallLevel",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "livingClansmen",
+                "type": "uint8",
+                "internalType": "uint8"
+              },
+              {
+                "name": "state",
+                "type": "uint8",
+                "internalType": "enum ClanState"
+              },
+              {
+                "name": "lootValue",
+                "type": "uint256",
+                "internalType": "uint256"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getWorldState",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct WorldState",
+        "components": [
+          {
+            "name": "currentTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "seasonStartTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "seasonEndTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "seasonFinalized",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "currentSeasonNumber",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "nextHeartbeatAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "nextHeartbeatAtTs",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "nextBanditSpawnEligibleTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "currentBanditSpawnChanceBps",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "currentTickSeed",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "activeBanditId",
+            "type": "uint32",
+            "internalType": "uint32"
+          },
+          {
+            "name": "winterActive",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "winterStartsAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "winterEndsAtTick",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "nextCommitSequence",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "worldPaused",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "pausedAtTs",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "heartbeat",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "initTreasury",
+    "inputs": [
+      {
+        "name": "tokens",
+        "type": "address[6]",
+        "internalType": "address[6]"
+      },
+      {
+        "name": "pools",
+        "type": "address[4]",
+        "internalType": "address[4]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "injectClanResources",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "wood",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "iron",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "wheat",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "fish",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "gold",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "blueprint",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "isWinter",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isWorldPaused",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "mintClan",
+    "inputs": [
+      {
+        "name": "to",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "iftTokenId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "pauseWorld",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "quoteLootValueRaw",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "lootValue",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteLootValueSettled",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "lootValue",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "quoteTravel",
+    "inputs": [
+      {
+        "name": "srcRegion",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "dstRegion",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "travelTicks",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "path",
+        "type": "bytes8",
+        "internalType": "bytes8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "reviveClansman",
+    "inputs": [
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "reviveDeadClansmen",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "seedPools",
+    "inputs": [
+      {
+        "name": "cfg",
+        "type": "tuple",
+        "internalType": "struct PoolSeedConfig",
+        "components": [
+          {
+            "name": "woodSeed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "wheatSeed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fishSeed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "ironSeed",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "goldSeedForWood",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "goldSeedForWheat",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "goldSeedForFish",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "goldSeedForIron",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "settleClan",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "settleClansman",
+    "inputs": [
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -2305,57 +3174,6 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "function",
-    "name": "transferGold",
-    "inputs": [
-      {
-        "name": "fromClanId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "toClanId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
-    "name": "transferVaultResource",
-    "inputs": [
-      {
-        "name": "fromClanId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "toClanId",
-        "type": "uint32",
-        "internalType": "uint32"
-      },
-      {
-        "name": "resource",
-        "type": "uint8",
-        "internalType": "enum ResourceType"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
-  },
-  {
-    "type": "function",
     "name": "transferBlueprint",
     "inputs": [
       {
@@ -2440,6 +3258,64 @@ export const CLAN_WORLD_ABI = [
         "internalType": "address"
       }
     ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferGold",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "transferVaultResource",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "resource",
+        "type": "uint8",
+        "internalType": "enum ResourceType"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "unpauseWorld",
+    "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
   },
@@ -2773,6 +3649,37 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
+    "name": "BlueprintTransferred",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ClanColdShortage",
     "inputs": [
       {
@@ -2842,6 +3749,37 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
+    "name": "ClanOwnershipTransferred",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "oldOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwnerNonce",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ClanSettled",
     "inputs": [
       {
@@ -2852,6 +3790,81 @@ export const CLAN_WORLD_ABI = [
       },
       {
         "name": "settledToTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClansmanColdDeath",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "csId",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "tick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClansmanKilledByBandit",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "banditId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClansmanRevived",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "atTick",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
@@ -2917,56 +3930,6 @@ export const CLAN_WORLD_ABI = [
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ClansmanColdDeath",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "csId",
-        "type": "uint32",
-        "indexed": false,
-        "internalType": "uint32"
-      },
-      {
-        "name": "tick",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ClansmanKilledByBandit",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "clansmanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "banditId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -3569,6 +4532,61 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
+    "name": "ResourcesInjected",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "wood",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "iron",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "wheat",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "fish",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "gold",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "blueprint",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ResourcesWithdrawn",
     "inputs": [
       {
@@ -3778,37 +4796,6 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
-    "name": "ClanOwnershipTransferred",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "oldOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwnerNonce",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "VaultResourceTransferred",
     "inputs": [
       {
@@ -3984,28 +4971,41 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
-    "name": "BlueprintTransferred",
+    "name": "WorldPaused",
     "inputs": [
       {
-        "name": "fromClanId",
-        "type": "uint32",
+        "name": "tick",
+        "type": "uint64",
         "indexed": true,
-        "internalType": "uint32"
+        "internalType": "uint64"
       },
       {
-        "name": "toClanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
+        "name": "pausedAtTs",
+        "type": "uint64",
         "indexed": false,
-        "internalType": "uint256"
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "WorldUnpaused",
+    "inputs": [
+      {
+        "name": "tick",
+        "type": "uint64",
+        "indexed": true,
+        "internalType": "uint64"
       },
       {
-        "name": "atTick",
+        "name": "durationSeconds",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "nextHeartbeatAtTs",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"

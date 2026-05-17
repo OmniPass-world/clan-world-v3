@@ -137,7 +137,7 @@ export function resolvePauseStateForSnap(snap: {
 }): { worldPaused: boolean; pausedAtTs: number | null } {
   return {
     worldPaused: snap.worldPaused === true,
-    pausedAtTs: normalizePausedAtTs(snap.pausedAtTs),
+    pausedAtTs: snap.worldPaused === true ? normalizePausedAtTs(snap.pausedAtTs) : null,
   };
 }
 
