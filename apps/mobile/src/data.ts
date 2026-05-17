@@ -1,6 +1,8 @@
 // Mock data for the Clan World shell. Mirrors data.jsx from the design bundle.
 // When integrations land, swap these for live queries against the backend.
 
+import type { Doc } from '../../server/convex/_generated/dataModel';
+
 export type ResourceKey = 'gold' | 'wood' | 'iron' | 'wheat' | 'fish' | 'blueprint';
 
 export type ArchetypeKey =
@@ -239,6 +241,16 @@ export const BAZAAR_INFTS: Inft[] = [
 
 export type WhisperKind = 'live' | 'danger' | 'warn' | 'info';
 
+// schema-source: Doc<"whispers">
+export type WhisperFromConvex = Doc<'whispers'>;
+export type _ConvexWhisper = WhisperFromConvex;
+
+// Mobile whispers are display fixtures, not persisted rows. The backing schema
+// stores tick/fromClanId/toClanIds/body/msgId/timestamp, while this UI layer
+// keeps hand-rolled presentation fields:
+// id/day group the mock list, kind/icon drive styling, title/snippet/t are
+// derived copy for cards, and unread is local UI state. There are currently no
+// same-named fields shared with Doc<"whispers">, so no schema type conflicts.
 export type Whisper = {
   id: string;
   day: 'today' | 'yesterday' | 'wed-6-may';
