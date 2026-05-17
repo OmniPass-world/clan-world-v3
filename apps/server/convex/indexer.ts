@@ -7,7 +7,6 @@ import {
 import { internal } from "./_generated/api";
 import {
   iClanWorldAbi,
-  iClanWorldLensAbi,
   isClanWorldEventName,
 } from "@clan-world/contract-types";
 import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
@@ -41,19 +40,16 @@ const DEFAULT_CONFIRMATION_DEPTH = 5;
 const MAX_LOG_BLOCK_RANGE = 9n;
 const DEFAULT_COLD_START_LOOKBACK = 100n;
 type ReadContractMutability = "view" | "pure";
-type LensFunctionName = ContractFunctionName<
-  typeof iClanWorldLensAbi,
-  ReadContractMutability
->;
 type ClanWorldFunctionName = ContractFunctionName<
   typeof iClanWorldAbi,
   ReadContractMutability
 >;
-const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies LensFunctionName;
-const GET_MARKET_STATE = "getMarketState" satisfies LensFunctionName;
-const GET_ACTIVE_BANDIT_VIEW = "getActiveBanditView" satisfies LensFunctionName;
+const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies ClanWorldFunctionName;
+const GET_MARKET_STATE = "getMarketState" satisfies ClanWorldFunctionName;
+const GET_ACTIVE_BANDIT_VIEW =
+  "getActiveBanditView" satisfies ClanWorldFunctionName;
 const GET_CLAN_IDS = "getClanIds" satisfies ClanWorldFunctionName;
-const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies LensFunctionName;
+const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies ClanWorldFunctionName;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
   { id: "mountains", name: "Mountains", ownerClanId: null },

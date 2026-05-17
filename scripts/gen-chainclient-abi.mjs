@@ -12,33 +12,6 @@ const targetPath = path.join(repoRoot, 'packages/shared/src/adapters/IChainClien
 const startMarker = '// BEGIN GENERATED CLAN_WORLD_ABI';
 const endMarker = '// END GENERATED CLAN_WORLD_ABI';
 
-const functionNames = [
-  'heartbeat',
-  'getWorldState',
-  'getClan',
-  'getClansman',
-  'getActiveMission',
-  'getBanditTroop',
-  'getScheduledMarketActionsForTick',
-  'getDerivedClanState',
-  'getDerivedClansmanState',
-  'getWorldSnapshot',
-  'getClanFullView',
-  'getMarketState',
-  'getActiveBanditView',
-  'getWallUpgradeCost',
-  'getBaseUpgradeCost',
-  'getMonumentUpgradeCost',
-  'getClanScore',
-  'getRankings',
-  'submitClanOrders',
-  'transferGold',
-  'transferVaultResource',
-  'transferBlueprint',
-  'transferBundle',
-  'transferClanOwnership',
-];
-
 function readCanonicalAbi() {
   const parsed = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
   const abi = Array.isArray(parsed) ? parsed : parsed.abi;
@@ -50,6 +23,18 @@ function readCanonicalAbi() {
 
 function eventNameSort(left, right) {
   return left.localeCompare(right);
+}
+
+function readFunctionNames(abi) {
+  return abi
+    .filter((entry) => entry.type === 'function')
+    .map((entry) => {
+      if (typeof entry.name !== 'string' || entry.name.length === 0) {
+        throw new Error(`Found function without a name in ${artifactPath}`);
+      }
+      return entry.name;
+    })
+    .sort(eventNameSort);
 }
 
 function readEventNames(abi) {
@@ -66,6 +51,7 @@ function readEventNames(abi) {
 
 function generatedBlock() {
   const abi = readCanonicalAbi();
+  const functionNames = readFunctionNames(abi);
   const functionFragments = functionNames.map((name) => {
     const fragment = abi.find((entry) => entry.type === 'function' && entry.name === name);
     if (!fragment) {
