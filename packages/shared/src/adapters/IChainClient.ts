@@ -2773,6 +2773,37 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
+    "name": "BlueprintTransferred",
+    "inputs": [
+      {
+        "name": "fromClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "toClanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ClanColdShortage",
     "inputs": [
       {
@@ -2842,6 +2873,37 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
+    "name": "ClanOwnershipTransferred",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "oldOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwnerNonce",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ClanSettled",
     "inputs": [
       {
@@ -2852,6 +2914,81 @@ export const CLAN_WORLD_ABI = [
       },
       {
         "name": "settledToTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClansmanColdDeath",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "csId",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "tick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClansmanKilledByBandit",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "banditId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClansmanRevived",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "clansmanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "atTick",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
@@ -2917,56 +3054,6 @@ export const CLAN_WORLD_ABI = [
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ClansmanColdDeath",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "csId",
-        "type": "uint32",
-        "indexed": false,
-        "internalType": "uint32"
-      },
-      {
-        "name": "tick",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
-    "name": "ClansmanKilledByBandit",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "clansmanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "banditId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
       }
     ],
     "anonymous": false
@@ -3569,6 +3656,61 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
+    "name": "ResourcesInjected",
+    "inputs": [
+      {
+        "name": "clanId",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "wood",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "iron",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "wheat",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "fish",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "gold",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "blueprint",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "atTick",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "ResourcesWithdrawn",
     "inputs": [
       {
@@ -3778,37 +3920,6 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
-    "name": "ClanOwnershipTransferred",
-    "inputs": [
-      {
-        "name": "clanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "oldOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwner",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "newOwnerNonce",
-        "type": "uint64",
-        "indexed": false,
-        "internalType": "uint64"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "VaultResourceTransferred",
     "inputs": [
       {
@@ -3984,28 +4095,41 @@ export const CLAN_WORLD_ABI = [
   },
   {
     "type": "event",
-    "name": "BlueprintTransferred",
+    "name": "WorldPaused",
     "inputs": [
       {
-        "name": "fromClanId",
-        "type": "uint32",
+        "name": "tick",
+        "type": "uint64",
         "indexed": true,
-        "internalType": "uint32"
+        "internalType": "uint64"
       },
       {
-        "name": "toClanId",
-        "type": "uint32",
-        "indexed": true,
-        "internalType": "uint32"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
+        "name": "pausedAtTs",
+        "type": "uint64",
         "indexed": false,
-        "internalType": "uint256"
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "WorldUnpaused",
+    "inputs": [
+      {
+        "name": "tick",
+        "type": "uint64",
+        "indexed": true,
+        "internalType": "uint64"
       },
       {
-        "name": "atTick",
+        "name": "durationSeconds",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "nextHeartbeatAtTs",
         "type": "uint64",
         "indexed": false,
         "internalType": "uint64"
