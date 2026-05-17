@@ -15,6 +15,7 @@ import type {
   Movement,
   Strategy,
 } from './data';
+import type { Doc } from '../../server/convex/_generated/dataModel';
 import { ARCHETYPE_GLYPHS } from './data';
 import type { ForgedInft } from './storage';
 
@@ -22,23 +23,26 @@ import type { ForgedInft } from './storage';
  * Live Convex clan slice from `worldSnapshot.clans[i]`. Subset of fields we
  * actually need for slice 1 — the snapshot has more.
  */
-export type SnapshotClan = {
-  id: string;
-  name: string;
-  treasury: string;
-  goldBalance?: string;
-  blueprintBalance?: string;
-  vaultWood?: string;
-  vaultIron?: string;
-  vaultWheat?: string;
-  vaultFish?: string;
-  baseRegion?: number;
-  baseLevel?: number;
-  wallLevel?: number;
-  monumentLevel?: number;
-  livingClansmen?: number;
-  owner?: string;
-};
+type ConvexSnapshotClan = Doc<'worldSnapshot'>['clans'][number];
+
+export type SnapshotClan = Pick<
+  ConvexSnapshotClan,
+  | 'id'
+  | 'name'
+  | 'treasury'
+  | 'goldBalance'
+  | 'blueprintBalance'
+  | 'vaultWood'
+  | 'vaultIron'
+  | 'vaultWheat'
+  | 'vaultFish'
+  | 'baseRegion'
+  | 'baseLevel'
+  | 'wallLevel'
+  | 'monumentLevel'
+  | 'livingClansmen'
+  | 'owner'
+>;
 
 /** Subset of the worldSnapshot we read for the Hero. */
 export type SnapshotForHero = {
