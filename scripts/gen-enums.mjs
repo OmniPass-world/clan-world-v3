@@ -54,13 +54,15 @@ function renderEnum(name, values) {
   ].join('\n');
 }
 
-function render(enums) {
+function render(enums, check) {
   const enumNames = [...enums.keys()];
   const missing = expectedEnumNames.filter(name => !enums.has(name));
   if (missing.length > 0) {
-    console.warn(
-      `Expected enum(s) missing from ${path.relative(repoRoot, sourcePath)}: ${missing.join(', ')}`,
-    );
+    const message = `Expected enum(s) missing from ${path.relative(repoRoot, sourcePath)}: ${missing.join(', ')}`;
+    if (check) {
+      throw new Error(message);
+    }
+    console.warn(message);
   }
 
   if (enumNames.length === 0) {
@@ -76,8 +78,8 @@ function render(enums) {
 }
 
 const source = fs.readFileSync(sourcePath, 'utf8');
-const output = render(parseEnums(source));
 const check = process.argv.includes('--check');
+const output = render(parseEnums(source), check);
 
 if (check) {
   const current = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : '';
