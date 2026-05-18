@@ -13,6 +13,7 @@
     "playwright": "playwright"
   },
   "dependencies": {
+    "@clan-world/contract-types": "workspace:*",
     "@clan-world/shared": "workspace:*",
     "convex": "1.17.4",
     "framer-motion": "^12.38.0",

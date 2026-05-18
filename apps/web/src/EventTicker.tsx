@@ -1,5 +1,6 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
 import { BanditState } from '@clan-world/shared/generated/enums';
+import { RESOURCE_NAMES_BY_ENUM } from '@clan-world/shared/utils/resources';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
 import type { Doc } from '../../server/convex/_generated/dataModel';
@@ -19,13 +20,6 @@ const REGION_NAMES: Record<number, string> = {
   6: 'West Docks',
   7: 'East Docks',
   8: 'Deep Sea',
-};
-
-const RESOURCE_NAMES: Record<number, string> = {
-  0: 'wood',
-  1: 'iron',
-  2: 'wheat',
-  3: 'fish',
 };
 
 const ACTION_LABELS: Record<number, string> = {
@@ -120,7 +114,7 @@ export function formatChainEvent(ev: ChainEventForTicker): TickerEntry | null {
       ['wood', 'iron', 'wheat', 'fish'].forEach((r, i) => {
         const key = `${r}Gained`;
         const amt = resourceAmount(args[key] ?? args[r]);
-        if (amt) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
+        if (amt) parts.push(`${amt} ${RESOURCE_NAMES_BY_ENUM[i]}`);
       });
       if (!parts.length) return null;
       return { text: `${clanLabel} gathered ${parts.join(', ')}`, clanColor };
@@ -131,7 +125,7 @@ export function formatChainEvent(ev: ChainEventForTicker): TickerEntry | null {
         const title = r.charAt(0).toUpperCase() + r.slice(1);
         const raw = args[`${r}Delta`] ?? args[r] ?? args[`amount${title}`];
         const amt = resourceAmount(raw);
-        if (amt) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
+        if (amt) parts.push(`${amt} ${RESOURCE_NAMES_BY_ENUM[i]}`);
       });
       if (!parts.length) return { text: `${clanLabel} deposited resources`, clanColor };
       return { text: `${clanLabel} deposited ${parts.join(', ')}`, clanColor };
@@ -143,8 +137,8 @@ export function formatChainEvent(ev: ChainEventForTicker): TickerEntry | null {
       const amtIn = safeNum(args.amountIn, 0);
       const amtOut = safeNum(args.amountOut, 0);
       if (resourceIn === -1 || resourceOut === -1) return null;
-      const inName = RESOURCE_NAMES[resourceIn] ?? `res${resourceIn}`;
-      const outName = RESOURCE_NAMES[resourceOut] ?? `res${resourceOut}`;
+      const inName = RESOURCE_NAMES_BY_ENUM[resourceIn] ?? `res${resourceIn}`;
+      const outName = RESOURCE_NAMES_BY_ENUM[resourceOut] ?? `res${resourceOut}`;
       return {
         text: `${clanLabel} traded ${amtIn} ${inName} → ${amtOut} ${outName} at Unicorn Town`,
         clanColor,

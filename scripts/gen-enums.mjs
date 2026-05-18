@@ -9,7 +9,7 @@ const repoRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(repoRoot, 'packages/contracts/src/IClanWorld.sol');
 const targetPath = path.join(repoRoot, 'packages/shared/src/generated/enums.ts');
 
-const enumNames = [
+const expectedEnumNames = [
   'ActionType',
   'StatusCode',
   'ResourceType',
@@ -54,10 +54,19 @@ function renderEnum(name, values) {
   ].join('\n');
 }
 
-function render(enums) {
-  const missing = enumNames.filter(name => !enums.has(name));
+function render(enums, check) {
+  const enumNames = [...enums.keys()];
+  const missing = expectedEnumNames.filter(name => !enums.has(name));
   if (missing.length > 0) {
-    throw new Error(`Missing enum(s) in ${path.relative(repoRoot, sourcePath)}: ${missing.join(', ')}`);
+    const message = `Expected enum(s) missing from ${path.relative(repoRoot, sourcePath)}: ${missing.join(', ')}`;
+    if (check) {
+      throw new Error(message);
+    }
+    console.warn(message);
+  }
+
+  if (enumNames.length === 0) {
+    throw new Error(`No enums found in ${path.relative(repoRoot, sourcePath)}`);
   }
 
   return [
@@ -69,8 +78,8 @@ function render(enums) {
 }
 
 const source = fs.readFileSync(sourcePath, 'utf8');
-const output = render(parseEnums(source));
 const check = process.argv.includes('--check');
+const output = render(parseEnums(source), check);
 
 if (check) {
   const current = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : '';

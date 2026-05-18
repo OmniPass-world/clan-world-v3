@@ -6,8 +6,9 @@
  * Check: node scripts/generate.mjs --check
  */
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { abiTargets } from '../../../scripts/abi-targets.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, '..');
@@ -47,10 +48,18 @@ function generateFile(varName, abi) {
   return lines.join('\n');
 }
 
-const contracts = [
-  { abiFile: 'IClanWorld', varName: 'iClanWorldAbi', outFile: 'IClanWorld.ts' },
-  { abiFile: 'IClanWorldLens', varName: 'iClanWorldLensAbi', outFile: 'IClanWorldLens.ts' },
-];
+function lowerFirst(value) {
+  return `${value.charAt(0).toLowerCase()}${value.slice(1)}`;
+}
+
+const contracts = abiTargets.map(({ targetPath }) => {
+  const abiFile = basename(targetPath, '.json');
+  return {
+    abiFile,
+    varName: `${lowerFirst(abiFile)}Abi`,
+    outFile: `${abiFile}.ts`,
+  };
+});
 
 for (const { abiFile, varName, outFile } of contracts) {
   const abi = readAbi(abiFile);
