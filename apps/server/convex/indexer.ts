@@ -7,6 +7,7 @@ import {
 import { internal } from "./_generated/api";
 import {
   iClanWorldAbi,
+  iClanWorldLensAbi,
   isClanWorldEventName,
 } from "@clan-world/contract-types";
 import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
@@ -44,12 +45,16 @@ type ClanWorldFunctionName = ContractFunctionName<
   typeof iClanWorldAbi,
   ReadContractMutability
 >;
-const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies ClanWorldFunctionName;
-const GET_MARKET_STATE = "getMarketState" satisfies ClanWorldFunctionName;
+type LensFunctionName = ContractFunctionName<
+  typeof iClanWorldLensAbi,
+  ReadContractMutability
+>;
+const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies LensFunctionName;
+const GET_MARKET_STATE = "getMarketState" satisfies LensFunctionName;
 const GET_ACTIVE_BANDIT_VIEW =
-  "getActiveBanditView" satisfies ClanWorldFunctionName;
+  "getActiveBanditView" satisfies LensFunctionName;
 const GET_CLAN_IDS = "getClanIds" satisfies ClanWorldFunctionName;
-const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies ClanWorldFunctionName;
+const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies LensFunctionName;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
   { id: "mountains", name: "Mountains", ownerClanId: null },
@@ -164,6 +169,16 @@ function engineAddress(): Hex {
   if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
     throw new Error(
       "CLAN_WORLD_CONTRACT_ADDRESS must be a 0x-prefixed 20-byte address",
+    );
+  }
+  return address as Hex;
+}
+
+export function lensAddress(): Hex {
+  const address = process.env.CLAN_WORLD_LENS_ADDRESS;
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    throw new Error(
+      "CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template",
     );
   }
   return address as Hex;
@@ -674,7 +689,15 @@ export const refreshSnapshot = internalAction({
       args.blockNumber === undefined ? undefined : BigInt(args.blockNumber);
     const blockNumber =
       args.blockNumber ?? Number(await client.getBlockNumber());
-    const readArgs = <TFunctionName extends ClanWorldFunctionName>(
+    const readLensArgs = <TFunctionName extends LensFunctionName>(
+      fn: TFunctionName,
+    ) => ({
+      address: lensAddress(),
+      abi: iClanWorldLensAbi,
+      ["functionName"]: fn,
+      blockNumber: pinnedBlockNumber,
+    });
+    const readWorldArgs = <TFunctionName extends ClanWorldFunctionName>(
       fn: TFunctionName,
     ) => ({
       address,
@@ -684,10 +707,12 @@ export const refreshSnapshot = internalAction({
     });
 
     const [worldRaw, market, bandit] = await Promise.all([
-      client.readContract(readArgs(GET_WORLD_SNAPSHOT)).catch(() => undefined),
-      client.readContract(readArgs(GET_MARKET_STATE)).catch(() => undefined),
       client
-        .readContract(readArgs(GET_ACTIVE_BANDIT_VIEW))
+        .readContract(readLensArgs(GET_WORLD_SNAPSHOT))
+        .catch(() => undefined),
+      client.readContract(readLensArgs(GET_MARKET_STATE)).catch(() => undefined),
+      client
+        .readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW))
         .catch(() => undefined),
     ]);
 
@@ -700,7 +725,7 @@ export const refreshSnapshot = internalAction({
     }
 
     const clanIdsRaw = await client
-      .readContract(readArgs(GET_CLAN_IDS))
+      .readContract(readWorldArgs(GET_CLAN_IDS))
       .catch(() => undefined);
     const clanIds =
       Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
@@ -711,7 +736,7 @@ export const refreshSnapshot = internalAction({
       clanIds.map(async (clanId) => {
         return client
           .readContract({
-            ...readArgs(GET_CLAN_FULL_VIEW),
+            ...readLensArgs(GET_CLAN_FULL_VIEW),
             args: [clanId],
           })
           .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
