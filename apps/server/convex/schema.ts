@@ -1,6 +1,96 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+export const goldQuoteInputFields = {
+  tokenMint: v.string(),
+  symbol: v.string(),
+  name: v.string(),
+  usdPrice: v.number(),
+  priceChange1h: v.optional(v.number()),
+  priceChange6h: v.optional(v.number()),
+  priceChange24h: v.optional(v.number()),
+  priceChange7d: v.optional(v.number()),
+  iconUrl: v.optional(v.string()),
+  sourceUpdatedAt: v.optional(v.string()),
+};
+
+export const goldQuoteFields = {
+  ...goldQuoteInputFields,
+  fetchedAt: v.number(),
+};
+
+export const kickstartTokenInputFields = {
+  tokenMint: v.string(),
+  poolAddress: v.string(),
+  name: v.string(),
+  symbol: v.string(),
+  iconUrl: v.optional(v.string()),
+  usdPrice: v.number(),
+  mcap: v.number(),
+  liquidity: v.optional(v.number()),
+  volume24h: v.optional(v.number()),
+  priceChange1h: v.optional(v.number()),
+  priceChange6h: v.optional(v.number()),
+  priceChange24h: v.optional(v.number()),
+  priceChange7d: v.optional(v.number()),
+  rank: v.number(),
+  sourceUpdatedAt: v.optional(v.string()),
+  sparkline24h: v.optional(
+    v.array(v.object({
+      price: v.number(),
+      open: v.optional(v.number()),
+      high: v.optional(v.number()),
+      low: v.optional(v.number()),
+      close: v.optional(v.number()),
+      volume: v.optional(v.number()),
+      observedAt: v.number(),
+    })),
+  ),
+};
+
+export const kickstartTokenFields = {
+  ...kickstartTokenInputFields,
+  fetchedAt: v.number(),
+};
+
+export const whisperInputFields = {
+  tick: v.number(),
+  fromClanId: v.number(),
+  toClanIds: v.array(v.number()),
+  body: v.string(),
+  msgId: v.optional(v.string()),
+};
+
+export const whisperFields = {
+  ...whisperInputFields,
+  timestamp: v.number(),
+};
+
+export const orchEventInputFields = {
+  tick: v.number(),
+  kind: v.union(v.literal("world_event"), v.literal("directive"), v.literal("narration")),
+  body: v.string(),
+  targetClanId: v.optional(v.number()),
+};
+
+export const orchEventFields = {
+  ...orchEventInputFields,
+  timestamp: v.number(),
+};
+
+export const humanSteeringMessageInputFields = {
+  tick: v.number(),
+  targetClanId: v.number(),
+  body: v.string(),
+  sentBy: v.optional(v.string()),
+};
+
+export const humanSteeringMessageFields = {
+  ...humanSteeringMessageInputFields,
+  txHash: v.optional(v.string()),
+  timestamp: v.number(),
+};
+
 export default defineSchema({
   worldSnapshot: defineTable({
     tick: v.number(),
@@ -172,19 +262,7 @@ export default defineSchema({
   })
     .index("by_tick", ["tick"])
     .index("by_resource_tick", ["resourceType", "tick"]),
-  goldQuote: defineTable({
-    tokenMint: v.string(),
-    symbol: v.string(),
-    name: v.string(),
-    usdPrice: v.number(),
-    priceChange1h: v.optional(v.number()),
-    priceChange6h: v.optional(v.number()),
-    priceChange24h: v.optional(v.number()),
-    priceChange7d: v.optional(v.number()),
-    iconUrl: v.optional(v.string()),
-    sourceUpdatedAt: v.optional(v.string()),
-    fetchedAt: v.number(),
-  }).index("by_token", ["tokenMint"]),
+  goldQuote: defineTable(goldQuoteFields).index("by_token", ["tokenMint"]),
   goldQuoteSample: defineTable({
     tokenMint: v.string(),
     usdPrice: v.number(),
@@ -200,35 +278,7 @@ export default defineSchema({
     memo: v.string(),
     observedAt: v.number(),
   }).index("by_signature", ["signature"]),
-  kickstartTokens: defineTable({
-    tokenMint: v.string(),
-    poolAddress: v.string(),
-    name: v.string(),
-    symbol: v.string(),
-    iconUrl: v.optional(v.string()),
-    usdPrice: v.number(),
-    mcap: v.number(),
-    liquidity: v.optional(v.number()),
-    volume24h: v.optional(v.number()),
-    priceChange1h: v.optional(v.number()),
-    priceChange6h: v.optional(v.number()),
-    priceChange24h: v.optional(v.number()),
-    priceChange7d: v.optional(v.number()),
-    rank: v.number(),
-    sourceUpdatedAt: v.optional(v.string()),
-    sparkline24h: v.optional(
-      v.array(v.object({
-        price: v.number(),
-        open: v.optional(v.number()),
-        high: v.optional(v.number()),
-        low: v.optional(v.number()),
-        close: v.optional(v.number()),
-        volume: v.optional(v.number()),
-        observedAt: v.number(),
-      })),
-    ),
-    fetchedAt: v.number(),
-  })
+  kickstartTokens: defineTable(kickstartTokenFields)
     .index("by_token", ["tokenMint"])
     .index("by_rank", ["rank"]),
   kickstartWatchedTokens: defineTable({
@@ -301,42 +351,18 @@ export default defineSchema({
   // "0G Bulletin" view + the cross-clan flyout.
 
   /** AXL direct whispers between clans. Recorded by elder CLI via Convex. */
-  whispers: defineTable({
-    tick: v.number(),
-    fromClanId: v.number(),
-    /** Recipient clan IDs. Whispers are point-to-point or broadcast. */
-    toClanIds: v.array(v.number()),
-    body: v.string(),
-    msgId: v.optional(v.string()),
-    timestamp: v.number(),
-  })
+  whispers: defineTable(whisperFields)
     .index("by_tick", ["tick"])
     .index("by_from_clan", ["fromClanId", "tick"])
     .index("by_from_clan_tick_msgid", ["fromClanId", "tick", "msgId"]),
 
   /** Orchestrator-emitted world events surfaced to the cockpit Comms tab. */
-  orchEvents: defineTable({
-    tick: v.number(),
-    /** Discriminator — narration of world state vs. directive issued to clans. */
-    kind: v.union(v.literal("world_event"), v.literal("directive"), v.literal("narration")),
-    body: v.string(),
-    /** When set, orchestrator targeted a specific clan; null = global broadcast. */
-    targetClanId: v.optional(v.number()),
-    timestamp: v.number(),
-  })
+  orchEvents: defineTable(orchEventFields)
     .index("by_tick", ["tick"])
     .index("by_target_clan", ["targetClanId", "tick"]),
 
   /** Human ("iNFT Owner") steering messages routed to a specific clan. */
-  humanSteeringMessages: defineTable({
-    tick: v.number(),
-    targetClanId: v.number(),
-    body: v.string(),
-    /** Wallet/owner address of the sender (when known). */
-    sentBy: v.optional(v.string()),
-    txHash: v.optional(v.string()),
-    timestamp: v.number(),
-  })
+  humanSteeringMessages: defineTable(humanSteeringMessageFields)
     .index("by_target_clan", ["targetClanId", "tick"])
     .index("by_tick", ["tick"]),
 });
