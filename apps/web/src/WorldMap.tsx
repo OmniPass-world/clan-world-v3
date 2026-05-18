@@ -12,6 +12,7 @@ import { MapGhostLayer } from './components/MapGhostLayer';
 import { VersionBadge } from './components/cockpit/VersionBadge';
 import { MAP_WIDTH, MAP_HEIGHT, LIVE_CLAN_REGION_BY_ID } from './components/mapGeometry';
 import { api } from '../../server/convex/_generated/api';
+import type { Doc } from '../../server/convex/_generated/dataModel';
 import worldMapBg from './assets/world-map.png';
 import worldMapWinterBg from './assets/world-map-winter.png';
 import { DEMO_MODE } from './config/env';
@@ -104,47 +105,41 @@ interface ClanDef {
   level?: number;
 }
 
-type SnapshotClan = {
-  id: string;
-  name: string;
-  treasury: string;
-  goldBalance?: string;
-  vaultWood?: string;
-  vaultIron?: string;
-  vaultWheat?: string;
-  vaultFish?: string;
-  baseRegion?: number;
-  baseLevel?: number;
-  wallLevel?: number;
-  monumentLevel?: number;
-  livingClansmen?: number;
-  owner?: string;
-  clansmen?: unknown[];
-};
+type WorldSnapshotClan = Doc<'worldSnapshot'>['clans'][number];
+type SnapshotClan = Pick<
+  WorldSnapshotClan,
+  | 'id'
+  | 'name'
+  | 'treasury'
+  | 'goldBalance'
+  | 'blueprintBalance'
+  | 'vaultWood'
+  | 'vaultIron'
+  | 'vaultWheat'
+  | 'vaultFish'
+  | 'baseRegion'
+  | 'baseLevel'
+  | 'wallLevel'
+  | 'monumentLevel'
+  | 'livingClansmen'
+  | 'owner'
+  | 'clansmen'
+>;
 
-type SnapshotBandit = {
-  id: number;
-  region: number;
-  state: number;
-  tier: number;
-  attackPower: number;
-  stateEnteredTick: number;
-  nextActionTick: number;
-  projectedTargetClanId: number;
-};
+type BanditViewDoc = Doc<'banditView'>;
+type SnapshotBandit = Pick<
+  BanditViewDoc,
+  | 'id'
+  | 'region'
+  | 'state'
+  | 'tier'
+  | 'attackPower'
+  | 'stateEnteredTick'
+  | 'nextActionTick'
+  | 'projectedTargetClanId'
+>;
 
-type ChainEvent = {
-  _id?: string;
-  txHash?: string;
-  logIndex?: number;
-  blockNumber?: number;
-  eventName: string;
-  tick?: number;
-  banditId?: number;
-  clanId?: number;
-  decodedAt?: number;
-  args: unknown;
-};
+type ChainEvent = Doc<'chainEvents'>;
 
 type LiveClansmanMarker = {
   key: string;
@@ -1339,7 +1334,7 @@ export function WorldMap() {
   // Grace period before showing the "no chain data yet" placeholder — see the
   // useEffect a few hooks below for the 5s debounce.
   const [showNoChainDataPlaceholder, setShowNoChainDataPlaceholder] = useState(false);
-  const rawChainEvents = useQuery(api.events.getRecentChainEvents) as ChainEvent[] | undefined;
+  const rawChainEvents = useQuery(api.events.getRecentChainEvents);
 
   // Derived live tick counter — the worldSnapshot.tick field is currently
   // unwritten by the orchestrator script (it only writes to agentLogs), so
