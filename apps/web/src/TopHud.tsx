@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
+import type { Doc } from '../../server/convex/_generated/dataModel';
+import { SEASON_DURATION_TICKS } from '@clan-world/shared/generated/constants';
 import { DEMO_MODE } from './config/env';
 
-// Season length in ticks — matches TICKS_PER_DAY_CYCLE * seasons (hardcoded to 360
-// as per spec until server exposes it). Used for progress bar.
-const TICKS_PER_SEASON = 360;
+const TICKS_PER_SEASON = Number(SEASON_DURATION_TICKS);
 
 // Demo bandit state mirrors WorldMap.tsx DEMO_BANDIT so both components agree.
 const DEMO_BANDIT_ATTACKS_AT_TICK = 48;
@@ -23,10 +23,7 @@ type TickCountdownAnchor = {
   durationMs: number;
 };
 
-type SnapshotBandit = {
-  state: number;
-  nextActionTick: number;
-};
+type SnapshotBandit = Pick<Doc<'banditView'>, 'state' | 'nextActionTick'>;
 
 function useBanditWarning(liveTick: number, bandit: SnapshotBandit | null): { active: boolean; ticksUntil: number } {
   const attackTick = DEMO_MODE ? DEMO_BANDIT_ATTACKS_AT_TICK : bandit?.nextActionTick;
