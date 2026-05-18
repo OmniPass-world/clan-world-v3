@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { requireIndexerSecret } from "./authShared";
+import { humanSteeringMessageInputFields, orchEventInputFields, whisperInputFields } from "./schema";
 
 /**
  * Combined Comms feed for one clan's AXL view.
@@ -84,11 +85,7 @@ export const getCombinedComms = query({
 export const sendWhisper = mutation({
   args: {
     secret: v.string(),
-    tick: v.number(),
-    fromClanId: v.number(),
-    toClanIds: v.array(v.number()),
-    body: v.string(),
-    msgId: v.optional(v.string()),
+    ...whisperInputFields,
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
@@ -108,10 +105,7 @@ export const sendWhisper = mutation({
 export const seedOrchEvent = mutation({
   args: {
     secret: v.string(),
-    tick: v.number(),
-    kind: v.union(v.literal("world_event"), v.literal("directive"), v.literal("narration")),
-    body: v.string(),
-    targetClanId: v.optional(v.number()),
+    ...orchEventInputFields,
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
@@ -123,12 +117,7 @@ export const seedOrchEvent = mutation({
 export const seedHumanSteering = mutation({
   args: {
     secret: v.string(),
-    tick: v.number(),
-    targetClanId: v.number(),
-    body: v.string(),
-    // Optional wallet/owner address of the sender — surfaced on the
-    // cockpit feed. Optional in the humanSteeringMessages table schema.
-    sentBy: v.optional(v.string()),
+    ...humanSteeringMessageInputFields,
   },
   handler: async (ctx, args) => {
     requireIndexerSecret(args.secret);
