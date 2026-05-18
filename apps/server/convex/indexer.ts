@@ -21,7 +21,10 @@ import {
   type Log,
   type ParseEventLogsReturnType,
 } from "viem";
-import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import {
+  HEARTBEAT_INTERVAL_SECONDS,
+  RESOURCE_GOLD,
+} from "@clan-world/shared/generated/constants";
 import type { Doc } from "./_generated/dataModel";
 import { resetLocked } from "./resetLock";
 
@@ -33,7 +36,9 @@ const baseSepolia = defineChain({
 });
 
 const MAX_CLANS = 12;
-const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
+// MarketState struct fields are wood/wheat/fish/iron, which is distinct from
+// ResourceType enum order (wood/iron/wheat/fish) used by RESOURCE_NAMES_BY_ENUM.
+const MARKET_POOL_KEYS = ["wood", "wheat", "fish", "iron"] as const;
 const DEFAULT_CONFIRMATION_DEPTH = 5;
 // Alchemy free tier caps eth_getLogs at 10 blocks. PAYG allows 10K.
 // Default to 9n so we stay under the free-tier cap when running against
@@ -207,8 +212,8 @@ export function pricePointFromEvent(
   const resourceOut = asNumber(event.args.resourceOut, 0);
   const amountIn = BigInt(asString(event.args.amountIn, "0"));
   const amountOut = BigInt(asString(event.args.amountOut, "0"));
-  const goldResourceType = 4;
-  const isBuy = resourceIn === goldResourceType;
+  const goldResourceId = Number(RESOURCE_GOLD);
+  const isBuy = resourceIn === goldResourceId;
   const resourceType = isBuy ? resourceOut : resourceIn;
   const resourceAmount = isBuy ? amountOut : amountIn;
   const goldAmount = isBuy ? amountIn : amountOut;
@@ -487,7 +492,7 @@ export const commitSnapshot = internalMutation({
     if (snapshot.market) {
       const market = snapshot.market;
       await ctx.db.insert("marketState", {
-        pools: RESOURCE_NAMES.map((resourceType) => {
+        pools: MARKET_POOL_KEYS.map((resourceType) => {
           const pool = objectAt(market, resourceType);
           return {
             resourceType,

@@ -4,6 +4,8 @@ import {
   isClanWorldEventName,
   type IClanWorldAbiEventName,
 } from "@clan-world/contract-types";
+import { RESOURCE_GOLD } from "@clan-world/shared/generated/constants";
+import { RESOURCE_NAMES_BY_ENUM } from "@clan-world/shared/utils/resources";
 
 /**
  * Vault movement feed for a single clan.
@@ -41,16 +43,13 @@ function whole(value: unknown): number {
   }
 }
 
-// Solidity ResourceType enum, mirrored from contracts. 0..3 = wood/iron/wheat/fish.
 // Market events use resource id 4 to mean gold (the quote asset). See
 // `packages/contracts/src/IClanWorld.sol` constant `RESOURCE_GOLD = 4` and
 // `apps/server/convex/indexer.ts::pricePointFromEvent` for the same convention.
-const RESOURCE_NAMES = ["wood", "iron", "wheat", "fish"] as const;
-const GOLD_RESOURCE_ID = 4;
 function resourceName(index: unknown): string {
   const i = Number(index);
-  if (Number.isFinite(i) && i === GOLD_RESOURCE_ID) return "gold";
-  if (Number.isFinite(i) && i >= 0 && i < RESOURCE_NAMES.length) return RESOURCE_NAMES[i] ?? "resource";
+  if (Number.isFinite(i) && i === Number(RESOURCE_GOLD)) return "gold";
+  if (Number.isFinite(i)) return RESOURCE_NAMES_BY_ENUM[i] ?? "resource";
   return "resource";
 }
 
