@@ -25,6 +25,10 @@ jobs:
         with:
           version: stable
       - run: pnpm install --frozen-lockfile
+      - name: Check generated constants are current
+        run: pnpm gen:constants -- --check
+      - name: Check generated enums are current
+        run: pnpm gen:enums -- --check
       - name: Verify committed ABI JSON matches forge artifacts
         run: pnpm --filter @clan-world/contracts run check:abi
       # codegen:check reads the ABI JSON and exits non-zero if the committed

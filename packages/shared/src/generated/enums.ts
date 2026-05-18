@@ -2,6 +2,44 @@
 
 
 
+export const ClanState = {
+  ACTIVE: 0,
+  DEAD: 1,
+} as const;
+export type ClanState = (typeof ClanState)[keyof typeof ClanState];
+
+export const ClansmanState = {
+  WAITING: 0,
+  TRAVELING: 1,
+  ACTING: 2,
+  DEAD: 3,
+} as const;
+export type ClansmanState = (typeof ClansmanState)[keyof typeof ClansmanState];
+
+export const BanditState = {
+  None: 0,
+  Spawned: 1,
+  Camped: 2,
+  Attacking: 3,
+  Defeated: 4,
+} as const;
+export type BanditState = (typeof BanditState)[keyof typeof BanditState];
+
+export const WheatPlotState = {
+  Harvestable: 0,
+  Regrowing: 1,
+  WinterLocked: 2,
+} as const;
+export type WheatPlotState = (typeof WheatPlotState)[keyof typeof WheatPlotState];
+
+export const ResourceType = {
+  Wood: 0,
+  Iron: 1,
+  Wheat: 2,
+  Fish: 3,
+} as const;
+export type ResourceType = (typeof ResourceType)[keyof typeof ResourceType];
+
 export const ActionType = {
   None: 0,
   ChopWood: 1,
@@ -20,6 +58,13 @@ export const ActionType = {
   WithdrawResources: 14,
 } as const;
 export type ActionType = (typeof ActionType)[keyof typeof ActionType];
+
+export const MarketExecutionMode = {
+  None: 0,
+  Immediate: 1,
+  Scheduled: 2,
+} as const;
+export type MarketExecutionMode = (typeof MarketExecutionMode)[keyof typeof MarketExecutionMode];
 
 export const StatusCode = {
   OK: 0,
@@ -56,49 +101,4 @@ export const StatusCode = {
   ERR_SLIPPAGE_REQUIRED: 31,
 } as const;
 export type StatusCode = (typeof StatusCode)[keyof typeof StatusCode];
-
-export const ResourceType = {
-  Wood: 0,
-  Iron: 1,
-  Wheat: 2,
-  Fish: 3,
-} as const;
-export type ResourceType = (typeof ResourceType)[keyof typeof ResourceType];
-
-export const ClansmanState = {
-  WAITING: 0,
-  TRAVELING: 1,
-  ACTING: 2,
-  DEAD: 3,
-} as const;
-export type ClansmanState = (typeof ClansmanState)[keyof typeof ClansmanState];
-
-export const ClanState = {
-  ACTIVE: 0,
-  DEAD: 1,
-} as const;
-export type ClanState = (typeof ClanState)[keyof typeof ClanState];
-
-export const BanditState = {
-  None: 0,
-  Spawned: 1,
-  Camped: 2,
-  Attacking: 3,
-  Defeated: 4,
-} as const;
-export type BanditState = (typeof BanditState)[keyof typeof BanditState];
-
-export const WheatPlotState = {
-  Harvestable: 0,
-  Regrowing: 1,
-  WinterLocked: 2,
-} as const;
-export type WheatPlotState = (typeof WheatPlotState)[keyof typeof WheatPlotState];
-
-export const MarketExecutionMode = {
-  None: 0,
-  Immediate: 1,
-  Scheduled: 2,
-} as const;
-export type MarketExecutionMode = (typeof MarketExecutionMode)[keyof typeof MarketExecutionMode];
 
