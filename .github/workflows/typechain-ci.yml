@@ -37,6 +37,10 @@ jobs:
         run: pnpm --filter @clan-world/contract-types run codegen:check
       - name: Build smoke — @clan-world/contract-types compiles cleanly
         run: pnpm --filter @clan-world/contract-types run build
+      - name: Check SDK generated constants/enums are current
+        run: node scripts/gen-constants.mjs --check && node scripts/gen-enums.mjs --check
+      - name: Build smoke — @clan-world/sdk compiles cleanly
+        run: pnpm --filter @clan-world/sdk run build
 
   convex-types-freshness:
     name: Convex generated types are current
@@ -49,9 +53,14 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Regenerate SDK Convex types
+        working-directory: packages/sdk
+        run: pnpm run codegen
       - name: Regenerate Convex types
         working-directory: apps/server
         run: pnpm run codegen
+      - name: Verify no working-tree changes in SDK _generated
+        run: git diff --exit-code packages/sdk/convex/_generated/
       - name: Verify no working-tree changes in _generated
         run: git diff --exit-code apps/server/convex/_generated/
 

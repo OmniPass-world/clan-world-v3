@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(repoRoot, 'packages/contracts/src/IClanWorld.sol');
-const targetPath = path.join(repoRoot, 'packages/shared/src/generated/constants.ts');
+const targetPath = path.join(repoRoot, 'packages/sdk/src/generated/constants.ts');
+const compatTargetPath = path.join(repoRoot, 'packages/shared/src/generated/constants.ts');
 
 function stripComments(source) {
   return source
@@ -55,13 +56,23 @@ function render(constants) {
   ].join('\n');
 }
 
+function renderCompat() {
+  return [
+    '// Compatibility re-export. Canonical generated constants live in @clan-world/sdk.',
+    "export * from '@clan-world/sdk/constants';",
+    '',
+  ].join('\n');
+}
+
 const source = fs.readFileSync(sourcePath, 'utf8');
 const output = render(parseConstants(source));
+const compatOutput = renderCompat();
 const check = process.argv.includes('--check');
 
 if (check) {
   const current = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : '';
-  if (current !== output) {
+  const currentCompat = fs.existsSync(compatTargetPath) ? fs.readFileSync(compatTargetPath, 'utf8') : '';
+  if (current !== output || currentCompat !== compatOutput) {
     console.error('Generated constants are out of date. Run `pnpm gen:constants`.');
     process.exit(1);
   }
@@ -69,5 +80,8 @@ if (check) {
 } else {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   fs.writeFileSync(targetPath, output);
+  fs.mkdirSync(path.dirname(compatTargetPath), { recursive: true });
+  fs.writeFileSync(compatTargetPath, compatOutput);
   console.log(`Updated ${path.relative(repoRoot, targetPath)} from ${path.relative(repoRoot, sourcePath)}.`);
+  console.log(`Updated ${path.relative(repoRoot, compatTargetPath)} compatibility re-export.`);
 }

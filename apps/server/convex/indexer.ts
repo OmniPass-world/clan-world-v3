@@ -20,7 +20,6 @@ import {
   type Log,
   type ParseEventLogsReturnType,
 } from "viem";
-<<<<<<< HEAD
 import {
   HEARTBEAT_INTERVAL_SECONDS,
   RESOURCE_GOLD,
