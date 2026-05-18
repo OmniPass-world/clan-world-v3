@@ -1,4 +1,14 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
+import {
+  REGION_DEEP_SEA,
+  REGION_EAST_DOCKS,
+  REGION_EAST_FARMS,
+  REGION_FOREST,
+  REGION_MOUNTAINS,
+  REGION_UNICORN_TOWN,
+  REGION_WEST_DOCKS,
+  REGION_WEST_FARMS,
+} from '@clan-world/shared/generated/constants';
 import { ActionType, BanditState } from '@clan-world/shared/generated/enums';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
@@ -11,14 +21,14 @@ const DEMO_MODE = import.meta.env?.VITE_CLANWORLD_DEMO_MODE === 'true';
 // --- Region + action label tables (mirrors WorldMap.tsx) ---
 
 const REGION_NAMES: Record<number, string> = {
-  1: 'Forest',
-  2: 'Mountains',
-  3: 'Unicorn Town',
-  4: 'West Farms',
-  5: 'East Farms',
-  6: 'West Docks',
-  7: 'East Docks',
-  8: 'Deep Sea',
+  [Number(REGION_FOREST)]: 'Forest',
+  [Number(REGION_MOUNTAINS)]: 'Mountains',
+  [Number(REGION_UNICORN_TOWN)]: 'Unicorn Town',
+  [Number(REGION_WEST_FARMS)]: 'West Farms',
+  [Number(REGION_EAST_FARMS)]: 'East Farms',
+  [Number(REGION_WEST_DOCKS)]: 'West Docks',
+  [Number(REGION_EAST_DOCKS)]: 'East Docks',
+  [Number(REGION_DEEP_SEA)]: 'Deep Sea',
 };
 
 const RESOURCE_NAMES: Record<number, string> = {
