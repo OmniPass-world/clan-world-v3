@@ -1,5 +1,15 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
-import { BanditState } from '@clan-world/shared/generated/enums';
+import {
+  REGION_DEEP_SEA,
+  REGION_EAST_DOCKS,
+  REGION_EAST_FARMS,
+  REGION_FOREST,
+  REGION_MOUNTAINS,
+  REGION_UNICORN_TOWN,
+  REGION_WEST_DOCKS,
+  REGION_WEST_FARMS,
+} from '@clan-world/shared/generated/constants';
+import { ActionType, BanditState } from '@clan-world/shared/generated/enums';
 import { RESOURCE_NAMES_BY_ENUM } from '@clan-world/shared/utils/resources';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
@@ -12,32 +22,38 @@ const DEMO_MODE = import.meta.env?.VITE_CLANWORLD_DEMO_MODE === 'true';
 // --- Region + action label tables (mirrors WorldMap.tsx) ---
 
 const REGION_NAMES: Record<number, string> = {
-  1: 'Forest',
-  2: 'Mountains',
-  3: 'Unicorn Town',
-  4: 'West Farms',
-  5: 'East Farms',
-  6: 'West Docks',
-  7: 'East Docks',
-  8: 'Deep Sea',
+  [Number(REGION_FOREST)]: 'Forest',
+  [Number(REGION_MOUNTAINS)]: 'Mountains',
+  [Number(REGION_UNICORN_TOWN)]: 'Unicorn Town',
+  [Number(REGION_WEST_FARMS)]: 'West Farms',
+  [Number(REGION_EAST_FARMS)]: 'East Farms',
+  [Number(REGION_WEST_DOCKS)]: 'West Docks',
+  [Number(REGION_EAST_DOCKS)]: 'East Docks',
+  [Number(REGION_DEEP_SEA)]: 'Deep Sea',
 };
 
-const ACTION_LABELS: Record<number, string> = {
-  1: 'chop wood',
-  2: 'mine iron',
-  3: 'fish the docks',
-  4: 'fish the deep sea',
-  5: 'harvest wheat',
-  6: 'deposit resources',
-  7: 'upgrade wall',
-  8: 'upgrade base',
-  9: 'upgrade monument',
-  10: 'defend base',
-  11: 'buy at market',
-  12: 'sell at market',
-  13: 'wait',
-  14: 'withdraw resources',
+const ACTION_LABEL_BY_NAME: Record<string, string> = {
+  ChopWood: 'chop wood',
+  MineIron: 'mine iron',
+  FishDocks: 'fish the docks',
+  FishDeepSea: 'fish the deep sea',
+  HarvestWheat: 'harvest wheat',
+  DepositResources: 'deposit resources',
+  UpgradeWall: 'upgrade wall',
+  UpgradeBase: 'upgrade base',
+  UpgradeMonument: 'upgrade monument',
+  DefendBase: 'defend base',
+  MarketBuy: 'buy at market',
+  MarketSell: 'sell at market',
+  Wait: 'wait',
+  WithdrawResources: 'withdraw resources',
 };
+
+const ACTION_LABELS: Record<number, string> = Object.fromEntries(
+  Object.entries(ActionType)
+    .filter(([, value]) => typeof value === 'number' && value > 0)
+    .map(([name, value]) => [value, ACTION_LABEL_BY_NAME[name] ?? name]),
+);
 
 // Clan color palette — matches heraldic colors in spec §1.2 + WorldMap.tsx MOCK_CLANS
 const CLAN_COLORS: Record<string, string> = {

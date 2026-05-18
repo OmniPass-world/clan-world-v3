@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(repoRoot, 'packages/contracts/src/IClanWorld.sol');
-const targetPath = path.join(repoRoot, 'packages/shared/src/generated/enums.ts');
+const targetPath = path.join(repoRoot, 'packages/sdk/src/generated/enums.ts');
+const compatTargetPath = path.join(repoRoot, 'packages/shared/src/generated/enums.ts');
 
 const expectedEnumNames = [
   'ActionType',
@@ -77,13 +78,23 @@ function render(enums, check) {
   ].join('\n\n');
 }
 
+function renderCompat() {
+  return [
+    '// Compatibility re-export. Canonical generated enums live in @clan-world/sdk.',
+    "export * from '@clan-world/sdk/enums';",
+    '',
+  ].join('\n');
+}
+
 const source = fs.readFileSync(sourcePath, 'utf8');
 const check = process.argv.includes('--check');
 const output = render(parseEnums(source), check);
+const compatOutput = renderCompat();
 
 if (check) {
   const current = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : '';
-  if (current !== output) {
+  const currentCompat = fs.existsSync(compatTargetPath) ? fs.readFileSync(compatTargetPath, 'utf8') : '';
+  if (current !== output || currentCompat !== compatOutput) {
     console.error('Generated enums are out of date. Run `pnpm gen:enums`.');
     process.exit(1);
   }
@@ -91,5 +102,8 @@ if (check) {
 } else {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   fs.writeFileSync(targetPath, output);
+  fs.mkdirSync(path.dirname(compatTargetPath), { recursive: true });
+  fs.writeFileSync(compatTargetPath, compatOutput);
   console.log(`Updated ${path.relative(repoRoot, targetPath)} from ${path.relative(repoRoot, sourcePath)}.`);
+  console.log(`Updated ${path.relative(repoRoot, compatTargetPath)} compatibility re-export.`);
 }

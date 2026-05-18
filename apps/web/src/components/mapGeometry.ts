@@ -8,6 +8,15 @@
  * constants without dragging the PixiJS bundle into its own chunk.
  */
 
+import {
+  REGION_EAST_DOCKS,
+  REGION_EAST_FARMS,
+  REGION_FOREST,
+  REGION_MOUNTAINS,
+  REGION_WEST_DOCKS,
+  REGION_WEST_FARMS,
+} from '@clan-world/shared/generated/constants';
+
 // ---------------------------------------------------------------------------
 // World dimensions
 // ---------------------------------------------------------------------------
@@ -37,12 +46,12 @@ export const REGION_CENTERS_BY_KEY: Readonly<Record<string, { nx: number; ny: nu
 // ---------------------------------------------------------------------------
 
 export const LIVE_CLAN_REGION_BY_ID: Readonly<Record<number, string>> = {
-  1: 'forest',
-  2: 'mountains',
-  4: 'west-farms',
-  5: 'east-farms',
-  6: 'west-docks',
-  7: 'east-docks',
+  [Number(REGION_FOREST)]: 'forest',
+  [Number(REGION_MOUNTAINS)]: 'mountains',
+  [Number(REGION_WEST_FARMS)]: 'west-farms',
+  [Number(REGION_EAST_FARMS)]: 'east-farms',
+  [Number(REGION_WEST_DOCKS)]: 'west-docks',
+  [Number(REGION_EAST_DOCKS)]: 'east-docks',
 };
 
 // ---------------------------------------------------------------------------
