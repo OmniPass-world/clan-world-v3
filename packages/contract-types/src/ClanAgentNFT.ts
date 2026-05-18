@@ -1,5 +1,5 @@
 // @generated — do not edit by hand. Run: pnpm --filter @clan-world/contract-types codegen
-export const clanAgentNftAbi = [
+export const clanAgentNFTAbi = [
   {
     "type": "constructor",
     "inputs": [
@@ -882,17 +882,17 @@ export const clanAgentNftAbi = [
   }
 ] as const;
 
-export type ClanAgentNftAbiType = typeof clanAgentNftAbi;
+export type ClanAgentNFTAbiType = typeof clanAgentNFTAbi;
 
 // Derived event name union
-export type ClanAgentNftAbiEventName = (typeof clanAgentNftAbi)[number] extends infer T
+export type ClanAgentNFTAbiEventName = (typeof clanAgentNFTAbi)[number] extends infer T
   ? T extends { type: 'event'; name: string }
     ? T['name']
     : never
   : never;
 
 // Derived function name union
-export type ClanAgentNftAbiFunctionName = (typeof clanAgentNftAbi)[number] extends infer T
+export type ClanAgentNFTAbiFunctionName = (typeof clanAgentNFTAbi)[number] extends infer T
   ? T extends { type: 'function'; name: string }
     ? T['name']
     : never
