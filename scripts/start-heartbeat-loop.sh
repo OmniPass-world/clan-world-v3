@@ -45,7 +45,7 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 1
 fi
 
-HEARTBEAT_INTERVAL=$(grep "^export const HEARTBEAT_INTERVAL_SECONDS" packages/shared/src/generated/constants.ts | grep -oE '[0-9]+')
+HEARTBEAT_INTERVAL=$(grep "^export const HEARTBEAT_INTERVAL_SECONDS" packages/sdk/src/generated/constants.ts | grep -oE '[0-9]+')
 HEARTBEAT_SLEEP_SECONDS="${HEARTBEAT_SLEEP_SECONDS:-$((HEARTBEAT_INTERVAL + 5))}"
 CONVEX_WEBHOOK_URL="${CONVEX_WEBHOOK_URL:-${CONVEX_DEPLOY_URL/.convex.cloud/.convex.site}}"
 

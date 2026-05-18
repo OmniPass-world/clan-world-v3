@@ -19,6 +19,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "codegen": "convex codegen --typecheck disable",
+    "deploy": "echo 'SDK is not a Convex deployment target' && exit 1",
+    "convex:deploy": "echo 'SDK is not a Convex deployment target' && exit 1",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'lint stub'",
     "clean": "rm -rf dist .turbo"

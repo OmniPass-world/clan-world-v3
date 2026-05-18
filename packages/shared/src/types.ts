@@ -4,7 +4,7 @@ import type {
   TickEpoch as SdkTickEpoch,
   WorldSnapshot as SdkWorldSnapshot,
 } from '@clan-world/sdk/convex';
-export { REGION_FOREST } from '@clan-world/sdk/constants';
+export * from '@clan-world/sdk/constants';
 
 // Shared adapter-facing types. Convex-backed snapshot slices are derived from
 // @clan-world/sdk; adapter-only command types stay local to shared.
