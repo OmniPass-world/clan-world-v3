@@ -50,6 +50,7 @@ function generateFile(varName, abi) {
 const contracts = [
   { abiFile: 'IClanWorld', varName: 'iClanWorldAbi', outFile: 'IClanWorld.ts' },
   { abiFile: 'IClanWorldLens', varName: 'iClanWorldLensAbi', outFile: 'IClanWorldLens.ts' },
+  { abiFile: 'ClanAgentNFT', varName: 'clanAgentNftAbi', outFile: 'ClanAgentNFT.ts' },
 ];
 
 for (const { abiFile, varName, outFile } of contracts) {
