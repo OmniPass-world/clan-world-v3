@@ -1,4 +1,4 @@
-import { clanAgentNftAbi } from '@clan-world/contract-types';
+import { clanAgentNFTAbi } from '@clan-world/contract-types';
 import {
   createPublicClient,
   createWalletClient,
@@ -133,19 +133,19 @@ class RealInftClient implements IInftClient {
     const [owner, currentDataHash, encryptedKeyHash, data] = await Promise.all([
       this.publicClient.readContract({
         address: this.address,
-        abi: clanAgentNftAbi,
+        abi: clanAgentNFTAbi,
         functionName: 'ownerOf',
         args: [tokenId],
       }),
       this.publicClient.readContract({
         address: this.address,
-        abi: clanAgentNftAbi,
+        abi: clanAgentNFTAbi,
         functionName: 'currentDataHash',
         args: [tokenId],
       }),
       this.publicClient.readContract({
         address: this.address,
-        abi: clanAgentNftAbi,
+        abi: clanAgentNFTAbi,
         functionName: 'encryptedKeyHash',
         args: [tokenId],
       }),
@@ -157,7 +157,7 @@ class RealInftClient implements IInftClient {
   async getIntelligentData(tokenId: bigint): Promise<IntelligentDataEntry[]> {
     const data = await this.publicClient.readContract({
       address: this.address,
-      abi: clanAgentNftAbi,
+      abi: clanAgentNFTAbi,
       functionName: 'intelligentDataOf',
       args: [tokenId],
     });
@@ -208,7 +208,7 @@ class RealInftClient implements IInftClient {
     const simulation = await this.publicClient.simulateContract({
       account,
       address: this.address,
-      abi: clanAgentNftAbi,
+      abi: clanAgentNFTAbi,
       functionName,
       args: args as never,
     });
