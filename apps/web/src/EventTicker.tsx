@@ -1,47 +1,59 @@
 import { useMemo, useRef, useEffect, useState } from 'react';
-import { BanditState } from '@clan-world/shared/generated/enums';
+import {
+  REGION_DEEP_SEA,
+  REGION_EAST_DOCKS,
+  REGION_EAST_FARMS,
+  REGION_FOREST,
+  REGION_MOUNTAINS,
+  REGION_UNICORN_TOWN,
+  REGION_WEST_DOCKS,
+  REGION_WEST_FARMS,
+} from '@clan-world/shared/generated/constants';
+import { ActionType, BanditState } from '@clan-world/shared/generated/enums';
+import { RESOURCE_NAMES_BY_ENUM } from '@clan-world/shared/utils/resources';
 import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
 import type { Doc } from '../../server/convex/_generated/dataModel';
 import { useAgentLogs } from './useAgentLogs';
-import { DEMO_MODE } from './config/env';
+import { ELDERS } from './styles/cockpit-tokens';
+
+const DEMO_MODE = import.meta.env?.VITE_CLANWORLD_DEMO_MODE === 'true';
 
 // --- Region + action label tables (mirrors WorldMap.tsx) ---
 
 const REGION_NAMES: Record<number, string> = {
-  1: 'Forest',
-  2: 'Mountains',
-  3: 'Unicorn Town',
-  4: 'West Farms',
-  5: 'East Farms',
-  6: 'West Docks',
-  7: 'East Docks',
-  8: 'Deep Sea',
+  [Number(REGION_FOREST)]: 'Forest',
+  [Number(REGION_MOUNTAINS)]: 'Mountains',
+  [Number(REGION_UNICORN_TOWN)]: 'Unicorn Town',
+  [Number(REGION_WEST_FARMS)]: 'West Farms',
+  [Number(REGION_EAST_FARMS)]: 'East Farms',
+  [Number(REGION_WEST_DOCKS)]: 'West Docks',
+  [Number(REGION_EAST_DOCKS)]: 'East Docks',
+  [Number(REGION_DEEP_SEA)]: 'Deep Sea',
 };
 
-const RESOURCE_NAMES: Record<number, string> = {
-  0: 'wood',
-  1: 'iron',
-  2: 'wheat',
-  3: 'fish',
+const ACTION_LABEL_BY_NAME: Record<string, string> = {
+  ChopWood: 'chop wood',
+  MineIron: 'mine iron',
+  FishDocks: 'fish the docks',
+  FishDeepSea: 'fish the deep sea',
+  HarvestWheat: 'harvest wheat',
+  DepositResources: 'deposit resources',
+  UpgradeWall: 'upgrade wall',
+  UpgradeBase: 'upgrade base',
+  UpgradeMonument: 'upgrade monument',
+  DefendBase: 'defend base',
+  MarketBuy: 'buy at market',
+  MarketSell: 'sell at market',
+  Wait: 'wait',
+  WithdrawResources: 'withdraw resources',
 };
 
-const ACTION_LABELS: Record<number, string> = {
-  1: 'chop wood',
-  2: 'mine iron',
-  3: 'fish the docks',
-  4: 'fish the deep sea',
-  5: 'harvest wheat',
-  6: 'deposit resources',
-  7: 'upgrade wall',
-  8: 'upgrade base',
-  9: 'upgrade monument',
-  10: 'defend base',
-  11: 'buy at market',
-  12: 'sell at market',
-  13: 'wait',
-  14: 'withdraw resources',
-};
+const ACTION_LABELS: Record<number, string> = Object.fromEntries(
+  Object.entries(ActionType)
+    .filter(([, value]) => typeof value === 'number' && value > 0)
+    .map(([name, value]) => [value, ACTION_LABEL_BY_NAME[name] ?? name]),
+);
 
 // Clan color palette — matches heraldic colors in spec §1.2 + WorldMap.tsx MOCK_CLANS
 const CLAN_COLORS: Record<string, string> = {
@@ -58,9 +70,14 @@ function slotColor(clanId: number): string {
   return CLAN_SLOT_COLORS[(clanId - 1) % CLAN_SLOT_COLORS.length] ?? '#cccccc';
 }
 
+function clanDisplayName(clanId: number): string {
+  return ELDERS.find((elder) => elder.clanId === clanId)?.name ?? String(clanId);
+}
+
 // ---- Chain event → ticker string -----------------------------------------------
 
 type ChainEvent = Doc<'chainEvents'>;
+export type ChainEventForTicker = Pick<ChainEvent, 'eventName' | 'args' | 'tick' | 'clanId' | 'clansmanId'>;
 
 function safeNum(v: unknown, fallback = 0): number {
   if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
@@ -84,11 +101,12 @@ function resourceAmount(v: unknown): string {
   return human.toFixed(2).replace(/0+$/, '').replace(/\\.$/, '');
 }
 
-function formatChainEvent(ev: ChainEvent): TickerEntry | null {
+export function formatChainEvent(ev: ChainEventForTicker): TickerEntry | null {
   const args = (ev.args ?? {}) as Record<string, unknown>;
   const clanId = ev.clanId ?? safeNum(args.clanId, 0);
   const clanLabel = clanId > 0 ? `Clan ${clanId}` : 'Unknown';
   const clanColor = clanId > 0 ? slotColor(clanId) : '#aaa';
+  const tick = ev.tick ?? safeNum(args.tick ?? args.atTick ?? args.openedTick, 0);
   const regionId = safeNum(args.region, 0) || safeNum(args.toRegion, 0);
   const regionName = REGION_NAMES[regionId] ?? `Region ${regionId}`;
 
@@ -112,7 +130,7 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
       ['wood', 'iron', 'wheat', 'fish'].forEach((r, i) => {
         const key = `${r}Gained`;
         const amt = resourceAmount(args[key] ?? args[r]);
-        if (amt) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
+        if (amt) parts.push(`${amt} ${RESOURCE_NAMES_BY_ENUM[i]}`);
       });
       if (!parts.length) return null;
       return { text: `${clanLabel} gathered ${parts.join(', ')}`, clanColor };
@@ -123,7 +141,7 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
         const title = r.charAt(0).toUpperCase() + r.slice(1);
         const raw = args[`${r}Delta`] ?? args[r] ?? args[`amount${title}`];
         const amt = resourceAmount(raw);
-        if (amt) parts.push(`${amt} ${RESOURCE_NAMES[i]}`);
+        if (amt) parts.push(`${amt} ${RESOURCE_NAMES_BY_ENUM[i]}`);
       });
       if (!parts.length) return { text: `${clanLabel} deposited resources`, clanColor };
       return { text: `${clanLabel} deposited ${parts.join(', ')}`, clanColor };
@@ -135,8 +153,8 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
       const amtIn = safeNum(args.amountIn, 0);
       const amtOut = safeNum(args.amountOut, 0);
       if (resourceIn === -1 || resourceOut === -1) return null;
-      const inName = RESOURCE_NAMES[resourceIn] ?? `res${resourceIn}`;
-      const outName = RESOURCE_NAMES[resourceOut] ?? `res${resourceOut}`;
+      const inName = RESOURCE_NAMES_BY_ENUM[resourceIn] ?? `res${resourceIn}`;
+      const outName = RESOURCE_NAMES_BY_ENUM[resourceOut] ?? `res${resourceOut}`;
       return {
         text: `${clanLabel} traded ${amtIn} ${inName} → ${amtOut} ${outName} at Unicorn Town`,
         clanColor,
@@ -173,6 +191,18 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
     }
     case 'ClansmanKilledByBandit':
       return { text: `${clanLabel} lost a clansman to bandits`, clanColor: '#b23a48' };
+    case 'ClansmanRevived': {
+      const clansmanId = ev.clansmanId ?? safeNum(args.clansmanId, 0);
+      return {
+        text: `Clan ${clanDisplayName(clanId)} revived clansman #${clansmanId}`,
+        clanColor,
+        highlight: true,
+      };
+    }
+    case 'WorldPaused':
+      return { text: `World paused at tick ${tick}`, clanColor: '#d4a24c', highlight: true };
+    case 'WorldUnpaused':
+      return { text: `World unpaused at tick ${tick}`, clanColor: '#d4a24c', highlight: true };
     case 'BlueprintEarned':
       return { text: `${clanLabel} earned a blueprint!`, clanColor: '#d4a24c', highlight: true };
     case 'BuildingUpgraded': {

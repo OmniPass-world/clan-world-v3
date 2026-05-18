@@ -7,9 +7,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..');
 const sourcePath = path.join(repoRoot, 'packages/contracts/src/IClanWorld.sol');
-const targetPath = path.join(repoRoot, 'packages/shared/src/generated/enums.ts');
+const targetPath = path.join(repoRoot, 'packages/sdk/src/generated/enums.ts');
+const compatTargetPath = path.join(repoRoot, 'packages/shared/src/generated/enums.ts');
 
-const enumNames = [
+const expectedEnumNames = [
   'ActionType',
   'StatusCode',
   'ResourceType',
@@ -54,10 +55,19 @@ function renderEnum(name, values) {
   ].join('\n');
 }
 
-function render(enums) {
-  const missing = enumNames.filter(name => !enums.has(name));
+function render(enums, check) {
+  const enumNames = [...enums.keys()];
+  const missing = expectedEnumNames.filter(name => !enums.has(name));
   if (missing.length > 0) {
-    throw new Error(`Missing enum(s) in ${path.relative(repoRoot, sourcePath)}: ${missing.join(', ')}`);
+    const message = `Expected enum(s) missing from ${path.relative(repoRoot, sourcePath)}: ${missing.join(', ')}`;
+    if (check) {
+      throw new Error(message);
+    }
+    console.warn(message);
+  }
+
+  if (enumNames.length === 0) {
+    throw new Error(`No enums found in ${path.relative(repoRoot, sourcePath)}`);
   }
 
   return [
@@ -68,13 +78,23 @@ function render(enums) {
   ].join('\n\n');
 }
 
+function renderCompat() {
+  return [
+    '// Compatibility re-export. Canonical generated enums live in @clan-world/sdk.',
+    "export * from '@clan-world/sdk/enums';",
+    '',
+  ].join('\n');
+}
+
 const source = fs.readFileSync(sourcePath, 'utf8');
-const output = render(parseEnums(source));
 const check = process.argv.includes('--check');
+const output = render(parseEnums(source), check);
+const compatOutput = renderCompat();
 
 if (check) {
   const current = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf8') : '';
-  if (current !== output) {
+  const currentCompat = fs.existsSync(compatTargetPath) ? fs.readFileSync(compatTargetPath, 'utf8') : '';
+  if (current !== output || currentCompat !== compatOutput) {
     console.error('Generated enums are out of date. Run `pnpm gen:enums`.');
     process.exit(1);
   }
@@ -82,5 +102,8 @@ if (check) {
 } else {
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
   fs.writeFileSync(targetPath, output);
+  fs.mkdirSync(path.dirname(compatTargetPath), { recursive: true });
+  fs.writeFileSync(compatTargetPath, compatOutput);
   console.log(`Updated ${path.relative(repoRoot, targetPath)} from ${path.relative(repoRoot, sourcePath)}.`);
+  console.log(`Updated ${path.relative(repoRoot, compatTargetPath)} compatibility re-export.`);
 }

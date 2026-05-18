@@ -5,8 +5,8 @@
 import { httpAction, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { iClanWorldAbi } from "@clan-world/contract-types";
+import { baseSepolia } from "@clan-world/shared/adapters";
 import {
-  defineChain,
   createPublicClient,
   http,
   parseEventLogs,
@@ -14,12 +14,6 @@ import {
   type Hex,
   type Log,
 } from "viem";
-const baseSepolia = defineChain({
-  id: 84532,
-  name: "Base Sepolia",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
-});
 
 const indexerApi = internal.indexer;
 

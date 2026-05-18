@@ -17,6 +17,8 @@ place during production soak.
 - `RPC_URL_PRIMARY`: RPC used by Convex actions for receipts, logs, and snapshot
   reads.
 - `CLAN_WORLD_CONTRACT_ADDRESS`: engine address to read and filter logs.
+- `CLAN_WORLD_LENS_ADDRESS`: deployed lens contract address for snapshot view
+  reads.
 - `WEBHOOK_SHARED_SECRET`: bearer token shared by the heartbeat loop and Convex
   webhook.
 - `INDEXER_START_BLOCK`: optional cold-start log cursor. Set this to the

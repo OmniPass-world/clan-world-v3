@@ -1,6 +1,7 @@
 import { internalAction, internalMutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
+import { goldQuoteInputFields } from "./schema";
 
 const GOLD_TOKEN_MINT = "4kWysUHVqtFmxrvwPUxA66exm2iJBMkvD4EBRrNmcieL";
 const JUPITER_ASSET_SEARCH_URL =
@@ -154,18 +155,7 @@ export const refreshGoldQuote = internalAction({
 
 export const upsertGoldQuote = internalMutation({
   args: {
-    quote: v.object({
-      tokenMint: v.string(),
-      symbol: v.string(),
-      name: v.string(),
-      usdPrice: v.number(),
-      priceChange1h: v.optional(v.number()),
-      priceChange6h: v.optional(v.number()),
-      priceChange24h: v.optional(v.number()),
-      priceChange7d: v.optional(v.number()),
-      iconUrl: v.optional(v.string()),
-      sourceUpdatedAt: v.optional(v.string()),
-    }),
+    quote: v.object(goldQuoteInputFields),
     sparkline24h: v.optional(
       v.array(
         v.object({

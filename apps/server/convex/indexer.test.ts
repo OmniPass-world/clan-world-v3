@@ -5,6 +5,7 @@ import {
   commitSnapshot,
   decodeClanWorldLogs,
   ingestEvents,
+  lensAddress,
   planPollLogRange,
   pricePointFromEvent,
 } from "./indexer";
@@ -232,6 +233,20 @@ describe("pollLogs range planning", () => {
     if (previousDepth === undefined)
       delete process.env.INDEXER_CONFIRMATION_DEPTH;
     else process.env.INDEXER_CONFIRMATION_DEPTH = previousDepth;
+  });
+});
+
+describe("lensAddress", () => {
+  it("fails loudly when CLAN_WORLD_LENS_ADDRESS is missing", () => {
+    const previous = process.env.CLAN_WORLD_LENS_ADDRESS;
+    delete process.env.CLAN_WORLD_LENS_ADDRESS;
+
+    expect(() => lensAddress()).toThrow(
+      "CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template",
+    );
+
+    if (previous === undefined) delete process.env.CLAN_WORLD_LENS_ADDRESS;
+    else process.env.CLAN_WORLD_LENS_ADDRESS = previous;
   });
 });
 

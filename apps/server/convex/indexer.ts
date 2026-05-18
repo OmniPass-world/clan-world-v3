@@ -7,11 +7,11 @@ import {
 import { internal } from "./_generated/api";
 import {
   iClanWorldAbi,
+  iClanWorldLensAbi,
   isClanWorldEventName,
 } from "@clan-world/contract-types";
 import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 import {
-  defineChain,
   createPublicClient,
   http,
   parseEventLogs,
@@ -20,19 +20,18 @@ import {
   type Log,
   type ParseEventLogsReturnType,
 } from "viem";
-import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import {
+  HEARTBEAT_INTERVAL_SECONDS,
+  RESOURCE_GOLD,
+} from "@clan-world/shared/generated/constants";
+import { baseSepolia } from "@clan-world/shared/adapters";
 import type { Doc } from "./_generated/dataModel";
 import { resetLocked } from "./resetLock";
 
-const baseSepolia = defineChain({
-  id: 84532,
-  name: "Base Sepolia",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
-});
-
 const MAX_CLANS = 12;
-const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
+// MarketState struct fields are wood/wheat/fish/iron, which is distinct from
+// ResourceType enum order (wood/iron/wheat/fish) used by RESOURCE_NAMES_BY_ENUM.
+const MARKET_POOL_KEYS = ["wood", "wheat", "fish", "iron"] as const;
 const DEFAULT_CONFIRMATION_DEPTH = 5;
 // Alchemy free tier caps eth_getLogs at 10 blocks. PAYG allows 10K.
 // Default to 9n so we stay under the free-tier cap when running against
@@ -44,12 +43,16 @@ type ClanWorldFunctionName = ContractFunctionName<
   typeof iClanWorldAbi,
   ReadContractMutability
 >;
-const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies ClanWorldFunctionName;
-const GET_MARKET_STATE = "getMarketState" satisfies ClanWorldFunctionName;
+type LensFunctionName = ContractFunctionName<
+  typeof iClanWorldLensAbi,
+  ReadContractMutability
+>;
+const GET_WORLD_SNAPSHOT = "getWorldSnapshot" satisfies LensFunctionName;
+const GET_MARKET_STATE = "getMarketState" satisfies LensFunctionName;
 const GET_ACTIVE_BANDIT_VIEW =
-  "getActiveBanditView" satisfies ClanWorldFunctionName;
+  "getActiveBanditView" satisfies LensFunctionName;
 const GET_CLAN_IDS = "getClanIds" satisfies ClanWorldFunctionName;
-const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies ClanWorldFunctionName;
+const GET_CLAN_FULL_VIEW = "getClanFullView" satisfies LensFunctionName;
 const LEGACY_REGIONS = [
   { id: "forest", name: "Forest", ownerClanId: null },
   { id: "mountains", name: "Mountains", ownerClanId: null },
@@ -169,6 +172,16 @@ function engineAddress(): Hex {
   return address as Hex;
 }
 
+export function lensAddress(): Hex {
+  const address = process.env.CLAN_WORLD_LENS_ADDRESS;
+  if (!address || !/^0x[0-9a-fA-F]{40}$/.test(address)) {
+    throw new Error(
+      "CLAN_WORLD_LENS_ADDRESS must be set to a 0x-prefixed 20-byte address; see .env.template",
+    );
+  }
+  return address as Hex;
+}
+
 function eventNumber(
   event: ParsedIndexerEvent,
   key: string,
@@ -192,8 +205,8 @@ export function pricePointFromEvent(
   const resourceOut = asNumber(event.args.resourceOut, 0);
   const amountIn = BigInt(asString(event.args.amountIn, "0"));
   const amountOut = BigInt(asString(event.args.amountOut, "0"));
-  const goldResourceType = 4;
-  const isBuy = resourceIn === goldResourceType;
+  const goldResourceId = Number(RESOURCE_GOLD);
+  const isBuy = resourceIn === goldResourceId;
   const resourceType = isBuy ? resourceOut : resourceIn;
   const resourceAmount = isBuy ? amountOut : amountIn;
   const goldAmount = isBuy ? amountIn : amountOut;
@@ -472,7 +485,7 @@ export const commitSnapshot = internalMutation({
     if (snapshot.market) {
       const market = snapshot.market;
       await ctx.db.insert("marketState", {
-        pools: RESOURCE_NAMES.map((resourceType) => {
+        pools: MARKET_POOL_KEYS.map((resourceType) => {
           const pool = objectAt(market, resourceType);
           return {
             resourceType,
@@ -674,7 +687,15 @@ export const refreshSnapshot = internalAction({
       args.blockNumber === undefined ? undefined : BigInt(args.blockNumber);
     const blockNumber =
       args.blockNumber ?? Number(await client.getBlockNumber());
-    const readArgs = <TFunctionName extends ClanWorldFunctionName>(
+    const readLensArgs = <TFunctionName extends LensFunctionName>(
+      fn: TFunctionName,
+    ) => ({
+      address: lensAddress(),
+      abi: iClanWorldLensAbi,
+      ["functionName"]: fn,
+      blockNumber: pinnedBlockNumber,
+    });
+    const readWorldArgs = <TFunctionName extends ClanWorldFunctionName>(
       fn: TFunctionName,
     ) => ({
       address,
@@ -687,7 +708,11 @@ export const refreshSnapshot = internalAction({
       client.readContract(readArgs(GET_WORLD_SNAPSHOT)).catch(() => undefined),
       client.readContract(readArgs(GET_MARKET_STATE)).catch(() => undefined),
       client
-        .readContract(readArgs(GET_ACTIVE_BANDIT_VIEW))
+        .readContract(readLensArgs(GET_WORLD_SNAPSHOT))
+        .catch(() => undefined),
+      client.readContract(readLensArgs(GET_MARKET_STATE)).catch(() => undefined),
+      client
+        .readContract(readLensArgs(GET_ACTIVE_BANDIT_VIEW))
         .catch(() => undefined),
     ]);
 
@@ -700,7 +725,7 @@ export const refreshSnapshot = internalAction({
     }
 
     const clanIdsRaw = await client
-      .readContract(readArgs(GET_CLAN_IDS))
+      .readContract(readWorldArgs(GET_CLAN_IDS))
       .catch(() => undefined);
     const clanIds =
       Array.isArray(clanIdsRaw) && clanIdsRaw.length > 0
@@ -711,7 +736,7 @@ export const refreshSnapshot = internalAction({
       clanIds.map(async (clanId) => {
         return client
           .readContract({
-            ...readArgs(GET_CLAN_FULL_VIEW),
+            ...readLensArgs(GET_CLAN_FULL_VIEW),
             args: [clanId],
           })
           .then((view: unknown) => bigintSafe(view) as Record<string, unknown>)
