@@ -1,3 +1,4 @@
+import { clanAgentNftAbi } from '@clan-world/contract-types';
 import {
   createPublicClient,
   createWalletClient,
@@ -42,115 +43,6 @@ export interface IInftClient {
   authorizeUsage(tokenId: bigint, user: Address): Promise<Hex>;
   revokeAuthorization(tokenId: bigint, user: Address): Promise<Hex>;
 }
-
-export const CLAN_AGENT_NFT_ABI = [
-  {
-    type: 'function',
-    name: 'ownerOf',
-    stateMutability: 'view',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'address' }],
-  },
-  {
-    type: 'function',
-    name: 'currentDataHash',
-    stateMutability: 'view',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'bytes32' }],
-  },
-  {
-    type: 'function',
-    name: 'encryptedKeyHash',
-    stateMutability: 'view',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'bytes32' }],
-  },
-  {
-    type: 'function',
-    name: 'intelligentDataOf',
-    stateMutability: 'view',
-    inputs: [{ name: 'tokenId', type: 'uint256' }],
-    outputs: [
-      {
-        name: '',
-        type: 'tuple[]',
-        components: [
-          { name: 'label', type: 'string' },
-          { name: 'dataHash', type: 'bytes32' },
-          { name: 'uri', type: 'string' },
-        ],
-      },
-    ],
-  },
-  {
-    type: 'function',
-    name: 'updateMetadata',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'tokenId', type: 'uint256' },
-      {
-        name: 'data',
-        type: 'tuple[]',
-        components: [
-          { name: 'label', type: 'string' },
-          { name: 'dataHash', type: 'bytes32' },
-          { name: 'uri', type: 'string' },
-        ],
-      },
-      { name: 'proof', type: 'bytes' },
-    ],
-    outputs: [],
-  },
-  {
-    type: 'function',
-    name: 'iTransfer',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'to', type: 'address' },
-      { name: 'tokenId', type: 'uint256' },
-      {
-        name: 'newData',
-        type: 'tuple[]',
-        components: [
-          { name: 'label', type: 'string' },
-          { name: 'dataHash', type: 'bytes32' },
-          { name: 'uri', type: 'string' },
-        ],
-      },
-      {
-        name: 'transferProof',
-        type: 'tuple',
-        components: [
-          { name: 'newDataHash', type: 'bytes32' },
-          { name: 'encryptedKeyHash', type: 'bytes32' },
-          { name: 'newUri', type: 'string' },
-          { name: 'proof', type: 'bytes' },
-        ],
-      },
-    ],
-    outputs: [],
-  },
-  {
-    type: 'function',
-    name: 'authorizeUsage',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'tokenId', type: 'uint256' },
-      { name: 'user', type: 'address' },
-    ],
-    outputs: [],
-  },
-  {
-    type: 'function',
-    name: 'revokeAuthorization',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'tokenId', type: 'uint256' },
-      { name: 'user', type: 'address' },
-    ],
-    outputs: [],
-  },
-] as const;
 
 const ZERO_BYTES32 = `0x${'00'.repeat(32)}` as Hex;
 
@@ -241,19 +133,19 @@ class RealInftClient implements IInftClient {
     const [owner, currentDataHash, encryptedKeyHash, data] = await Promise.all([
       this.publicClient.readContract({
         address: this.address,
-        abi: CLAN_AGENT_NFT_ABI,
+        abi: clanAgentNftAbi,
         functionName: 'ownerOf',
         args: [tokenId],
       }),
       this.publicClient.readContract({
         address: this.address,
-        abi: CLAN_AGENT_NFT_ABI,
+        abi: clanAgentNftAbi,
         functionName: 'currentDataHash',
         args: [tokenId],
       }),
       this.publicClient.readContract({
         address: this.address,
-        abi: CLAN_AGENT_NFT_ABI,
+        abi: clanAgentNftAbi,
         functionName: 'encryptedKeyHash',
         args: [tokenId],
       }),
@@ -265,7 +157,7 @@ class RealInftClient implements IInftClient {
   async getIntelligentData(tokenId: bigint): Promise<IntelligentDataEntry[]> {
     const data = await this.publicClient.readContract({
       address: this.address,
-      abi: CLAN_AGENT_NFT_ABI,
+      abi: clanAgentNftAbi,
       functionName: 'intelligentDataOf',
       args: [tokenId],
     });
@@ -316,7 +208,7 @@ class RealInftClient implements IInftClient {
     const simulation = await this.publicClient.simulateContract({
       account,
       address: this.address,
-      abi: CLAN_AGENT_NFT_ABI,
+      abi: clanAgentNftAbi,
       functionName,
       args: args as never,
     });

@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
+import { clanAgentNftAbi } from '@clan-world/contract-types';
 import {
-  CLAN_AGENT_NFT_ABI,
   hashIntelligentData,
   type IntelligentDataEntry,
 } from '@clan-world/shared/adapters';
@@ -112,13 +112,13 @@ export function OwnerEditor() {
       const [tokenOwner, intelligentData] = await Promise.all([
         publicClient.readContract({
           address: OG_INFT_ADDRESS,
-          abi: CLAN_AGENT_NFT_ABI,
+          abi: clanAgentNftAbi,
           functionName: 'ownerOf',
           args: [tokenId],
         }),
         publicClient.readContract({
           address: OG_INFT_ADDRESS,
-          abi: CLAN_AGENT_NFT_ABI,
+          abi: clanAgentNftAbi,
           functionName: 'intelligentDataOf',
           args: [tokenId],
         }),
@@ -164,7 +164,7 @@ export function OwnerEditor() {
       const tx = await client.writeContract({
         account,
         address: OG_INFT_ADDRESS,
-        abi: CLAN_AGENT_NFT_ABI,
+        abi: clanAgentNftAbi,
         functionName: 'updateMetadata',
         args: [tokenId, nextData, proofHex(`metadata:${tokenId}:${notes}`)],
       });
@@ -201,7 +201,7 @@ export function OwnerEditor() {
       const tx = await client.writeContract({
         account,
         address: OG_INFT_ADDRESS,
-        abi: CLAN_AGENT_NFT_ABI,
+        abi: clanAgentNftAbi,
         functionName: 'iTransfer',
         args: [
           newOwner as Address,

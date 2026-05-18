@@ -267,6 +267,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@clan-world/contract-types':
+        specifier: workspace:*
+        version: link:../../packages/contract-types
       '@clan-world/shared':
         specifier: workspace:*
         version: link:../../packages/shared
