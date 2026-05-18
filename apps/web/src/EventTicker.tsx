@@ -4,7 +4,9 @@ import { useSafeQuery as useQuery } from './hooks/useSafeQuery';
 import { api } from '../../server/convex/_generated/api';
 import type { Doc } from '../../server/convex/_generated/dataModel';
 import { useAgentLogs } from './useAgentLogs';
-import { DEMO_MODE } from './config/env';
+import { ELDERS } from './styles/cockpit-tokens';
+
+const DEMO_MODE = import.meta.env?.VITE_CLANWORLD_DEMO_MODE === 'true';
 
 // --- Region + action label tables (mirrors WorldMap.tsx) ---
 
@@ -58,9 +60,14 @@ function slotColor(clanId: number): string {
   return CLAN_SLOT_COLORS[(clanId - 1) % CLAN_SLOT_COLORS.length] ?? '#cccccc';
 }
 
+function clanDisplayName(clanId: number): string {
+  return ELDERS.find((elder) => elder.clanId === clanId)?.name ?? String(clanId);
+}
+
 // ---- Chain event → ticker string -----------------------------------------------
 
 type ChainEvent = Doc<'chainEvents'>;
+export type ChainEventForTicker = Pick<ChainEvent, 'eventName' | 'args' | 'tick' | 'clanId' | 'clansmanId'>;
 
 function safeNum(v: unknown, fallback = 0): number {
   if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
@@ -84,11 +91,12 @@ function resourceAmount(v: unknown): string {
   return human.toFixed(2).replace(/0+$/, '').replace(/\\.$/, '');
 }
 
-function formatChainEvent(ev: ChainEvent): TickerEntry | null {
+export function formatChainEvent(ev: ChainEventForTicker): TickerEntry | null {
   const args = (ev.args ?? {}) as Record<string, unknown>;
   const clanId = ev.clanId ?? safeNum(args.clanId, 0);
   const clanLabel = clanId > 0 ? `Clan ${clanId}` : 'Unknown';
   const clanColor = clanId > 0 ? slotColor(clanId) : '#aaa';
+  const tick = ev.tick ?? safeNum(args.tick ?? args.atTick ?? args.openedTick, 0);
   const regionId = safeNum(args.region, 0) || safeNum(args.toRegion, 0);
   const regionName = REGION_NAMES[regionId] ?? `Region ${regionId}`;
 
@@ -173,6 +181,18 @@ function formatChainEvent(ev: ChainEvent): TickerEntry | null {
     }
     case 'ClansmanKilledByBandit':
       return { text: `${clanLabel} lost a clansman to bandits`, clanColor: '#b23a48' };
+    case 'ClansmanRevived': {
+      const clansmanId = ev.clansmanId ?? safeNum(args.clansmanId, 0);
+      return {
+        text: `Clan ${clanDisplayName(clanId)} revived clansman #${clansmanId}`,
+        clanColor,
+        highlight: true,
+      };
+    }
+    case 'WorldPaused':
+      return { text: `World paused at tick ${tick}`, clanColor: '#d4a24c', highlight: true };
+    case 'WorldUnpaused':
+      return { text: `World unpaused at tick ${tick}`, clanColor: '#d4a24c', highlight: true };
     case 'BlueprintEarned':
       return { text: `${clanLabel} earned a blueprint!`, clanColor: '#d4a24c', highlight: true };
     case 'BuildingUpgraded': {
