@@ -12,7 +12,6 @@ import {
 } from "@clan-world/contract-types";
 import type { IClanWorldAbiEventName } from "@clan-world/contract-types";
 import {
-  defineChain,
   createPublicClient,
   http,
   parseEventLogs,
@@ -22,15 +21,9 @@ import {
   type ParseEventLogsReturnType,
 } from "viem";
 import { HEARTBEAT_INTERVAL_SECONDS } from "@clan-world/shared/generated/constants";
+import { baseSepolia } from "@clan-world/shared/adapters";
 import type { Doc } from "./_generated/dataModel";
 import { resetLocked } from "./resetLock";
-
-const baseSepolia = defineChain({
-  id: 84532,
-  name: "Base Sepolia",
-  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: ["https://sepolia.base.org"] } },
-});
 
 const MAX_CLANS = 12;
 const RESOURCE_NAMES = ["wood", "wheat", "fish", "iron"] as const;
