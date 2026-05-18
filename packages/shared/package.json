@@ -25,6 +25,7 @@
   "dependencies": {
     "@clan-world/contract-types": "workspace:*",
     "@clan-world/contracts": "workspace:*",
+    "@clan-world/sdk": "workspace:*",
     "convex": "1.17.4",
     "viem": "^2.48.4"
   }
