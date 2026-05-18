@@ -1,6 +1,7 @@
 import { action, internalAction, internalMutation, internalQuery, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { ConvexError, v } from "convex/values";
+import { kickstartTokenInputFields } from "./schema";
 
 const KICKSTART_HOME_URL = "https://kickstart.easya.io/api/home-launches";
 const PAGE_SIZE = 48;
@@ -265,40 +266,7 @@ export const listWatchedTokens = internalQuery({
   },
 });
 
-// Mirrors the on-disk `kickstartTokens` table validator in schema.ts. Defining
-// it here (and applying it as the mutation arg validator below) means we
-// reject malformed input at the boundary instead of relying on a
-// `as KickstartTokenInput[]` cast that v.any() previously waved through.
-const kickstartTokenInputValidator = v.object({
-  tokenMint: v.string(),
-  poolAddress: v.string(),
-  name: v.string(),
-  symbol: v.string(),
-  iconUrl: v.optional(v.string()),
-  usdPrice: v.number(),
-  mcap: v.number(),
-  liquidity: v.optional(v.number()),
-  volume24h: v.optional(v.number()),
-  priceChange1h: v.optional(v.number()),
-  priceChange6h: v.optional(v.number()),
-  priceChange24h: v.optional(v.number()),
-  priceChange7d: v.optional(v.number()),
-  rank: v.number(),
-  sourceUpdatedAt: v.optional(v.string()),
-  sparkline24h: v.optional(
-    v.array(
-      v.object({
-        price: v.number(),
-        open: v.optional(v.number()),
-        high: v.optional(v.number()),
-        low: v.optional(v.number()),
-        close: v.optional(v.number()),
-        volume: v.optional(v.number()),
-        observedAt: v.number(),
-      }),
-    ),
-  ),
-});
+const kickstartTokenInputValidator = v.object(kickstartTokenInputFields);
 
 export const replaceKickstartTokens = internalMutation({
   args: { tokens: v.array(kickstartTokenInputValidator) },
